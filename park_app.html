@@ -491,11 +491,12 @@ function recalcAreaFeature(f){
 }
 // 除草工か（自動控除の対象＝ベース面積）
 function isWeeding(f){return f.type==='area'&&f.cat==='除草工';}
-// 除草の内側にある“他工種の面積”（刈込・低木等）＝自動的に除外する対象の一覧
+// 除草の内側にある“刈込（中低木刈込工）”＝地面を占有するので除草から自動控除する対象。
+// ※つる性植物除去・低木内除草清掃は刈込の上に重なる作業なので控除しない（引きすぎ防止）。
 function autoDeductList(f){
   const out=[]; if(!state.scale||f.type!=='area')return out;
   state.features.forEach(g=>{
-    if(g!==f&&g.type==='area'&&g.cat!=='除草工'){
+    if(g!==f&&g.type==='area'&&g.cat==='中低木刈込工'){
       const c=centroid(g.pts);
       if(pointInPoly(c,f.pts)){const nf=netFootprintM2(g);out.push({kind:g.kind,cat:g.cat,area:(nf==null?0:nf)});}
     }
@@ -1033,7 +1034,7 @@ function renderSansha(){
   }
   const ded=isWeeding(selected)?autoDeductList(selected):[];
   if(ded.length){
-    h+=`<tr><td colspan="4" style="text-align:left;color:#ff8c00;padding-top:6px">内側の他工種を自動控除（除草対象外）</td></tr>`;
+    h+=`<tr><td colspan="4" style="text-align:left;color:#ff8c00;padding-top:6px">内側の刈込（中低木刈込）を自動控除（除草対象外）</td></tr>`;
     ded.forEach(d=>h+=`<tr><td colspan="3" style="text-align:right;color:#ff8c00">　− ${d.kind}</td><td class="num" style="color:#ff8c00">-${d.area.toFixed(3)} ㎡</td></tr>`);
   }
   // 斜面補正
@@ -1060,6 +1061,8 @@ function renderSansha(){
   }
   h+=`<button class="btn holebtn ${inHole?'on':''}" id="addHole" style="margin-top:8px">${inHole?'■ 除外モードを終了':'⊘ 除外エリア（穴）を追加'}<small>${inHole?'続けて別の場所をポチポチ→「✓確定」で次々追加できます':'木・ベンチなど刈らない部分を全体から差し引く'}</small></button>`;
   if(holes.length)h+='<button class="btn ghost" id="clrHole" style="margin-top:6px">除外エリアをすべて消去</button>';
+  const curKindName=$('kindSel').value, canCopy=((MASTER[$('catSel').value]||{}).mode==='area'&&curGeom()==='poly');
+  if(canCopy)h+=`<button class="btn ghost" id="copyAsCur" style="margin-top:6px">この範囲をコピーして「${curKindName}」で作成<small>低木の範囲などを流用→頂点を調整して使えます（つる性・低木内除草向け）</small></button>`;
   h+='<button class="btn ghost" id="dlSansha" style="margin-top:6px">求積表をCSVで書き出す</button>';
   el.innerHTML=h;
   if(trim)attachHeightEditor(selected);
@@ -1072,6 +1075,7 @@ function renderSansha(){
   el.querySelectorAll('.holedel').forEach(b=>b.onclick=(e)=>{e.stopPropagation();deleteHole(selected,parseInt(b.dataset.hi));});
   $('addHole').onclick=inHole?endHole:startHole;
   if(holes.length)$('clrHole').onclick=clearHoles;
+  if(canCopy&&document.getElementById('copyAsCur'))$('copyAsCur').onclick=duplicateAsCurrent;
   $('dlSansha').onclick=()=>{
     let c='No,底辺('+u+'),高さ('+u+'),倍面積('+u+'²)\n';
     t.rows.forEach(r=>c+=`${r.no},${r.base.toFixed(3)},${r.height.toFixed(3)},${r.dbl.toFixed(3)}\n`);
@@ -1089,6 +1093,20 @@ function startHole(){ if(!selected||selected.type!=='area')return; holeMode=sele
 function endHole(){ holeMode=null; draft=null; refreshDraftBar(); renderSansha(); updateHint(); draw(); }
 function clearHoles(){ if(!selected||!selected.holes||!selected.holes.length)return; pushHistory(); selected.holes=[]; hlHole=null; recalcAll(); renderAgg(); renderSansha(); draw(); }
 function deleteHole(f,i){ if(!f||!f.holes||i<0||i>=f.holes.length)return; pushHistory(); f.holes.splice(i,1); hlHole=null; recalcAll(); renderAgg(); renderSansha(); draw(); }
+// 選択中の面積の形をコピーして、いま選んでいる工種の新しい面積を作る（つる性・低木内除草などで低木範囲を流用→調整）
+function duplicateAsCurrent(){
+  if(!selected||selected.type!=='area')return;
+  const cat=$('catSel').value, kind=$('kindSel').value;
+  if((MASTER[cat]||{}).mode!=='area'||curGeom()!=='poly'){alert('面積系（ポチポチ）の工種を選んでからコピーしてください。');return;}
+  pushHistory();
+  const f={type:'area',cat,kind,
+    pts:selected.pts.map(p=>({x:p.x,y:p.y})),
+    holes:(selected.holes||[]).map(h=>h.map(p=>({x:p.x,y:p.y}))),
+    calc:curCalc(), height:(curNeedsHeight()?curHeightVal():0),
+    slopeK:selected.slopeK||1, slopeKind:selected.slopeKind||'平坦'};
+  recalcAreaFeature(f); state.features.push(f); selected=f; hlHole=null;
+  recalcAll(); renderAgg(); renderSansha(); draw();
+}
 function removeFeature(f){pushHistory();state.features=state.features.filter(x=>x!==f);if(selected===f)selected=null;recalcAll();renderSansha();renderAgg();draw();}
 
 /* ---------- 集計 ---------- */
