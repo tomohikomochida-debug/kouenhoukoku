@@ -486,8 +486,8 @@ function recalcAreaFeature(f){
   if(f.type==='box'){const fp=f.L*f.D;f.area=(f.sides===false)?fp:(fp+2*(f.H||0)*(f.L+f.D));}  // 低木=投影のみ／中木=投影+側面4面
   else if(f.type==='line'){f.length=lengthM(f.pts);f.area=lineAreaM2(f);}
   else if(f.type==='area'){f.footprint=netFootprintM2(f);
-    const side=(f.calc==='trim')?perimeterM(f.pts)*(f.height||0):0;
-    f.area=(f.footprint==null)?null:f.footprint+side;}   // 穴を差し引いた投影＋（中木は側面）
+    const k=f.slopeK||1, side=(f.calc==='trim')?perimeterM(f.pts)*(f.height||0):0;
+    f.area=(f.footprint==null)?null:f.footprint*k+side;}   // 投影×斜面係数＋（中木は側面）。穴は投影段階で控除済
 }
 // 除草工か（自動控除の対象＝ベース面積）
 function isWeeding(f){return f.type==='area'&&f.cat==='除草工';}
@@ -507,8 +507,8 @@ function autoDeductM2(f){return autoDeductList(f).reduce((s,d)=>s+d.area,0);}
 function recalcAll(){
   state.features.forEach(f=>recalcAreaFeature(f));            // まず各自の投影/面積
   state.features.forEach(f=>{
-    if(f.type==='area'&&isWeeding(f)){const d=autoDeductM2(f);f.autoDeduct=d;
-      if(f.footprint!=null)f.area=Math.max(0,(f.footprint||0)-d);}     // 除草＝（外周−穴）−内側の刈込等
+    if(f.type==='area'&&isWeeding(f)){const d=autoDeductM2(f);f.autoDeduct=d;const k=f.slopeK||1;
+      if(f.footprint!=null)f.area=Math.max(0,(f.footprint-d)*k);}     // 除草＝（外周−穴−内側刈込）×斜面係数
     else if(f.type==='area')f.autoDeduct=0;
   });
 }
@@ -611,7 +611,7 @@ function draw(){
       });
       if(f===selected)drawHandles(f);
       if(f===selected)drawEdgeLengths(f);
-      const c=centroid(f.pts);const tag=(f.calc==='trim')?'（投影＋側面）':'';label(c.x,c.y,`${f.kind}${tag}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+      const c=centroid(f.pts);const tag=(f.calc==='trim')?'（投影＋側面）':'';const stag=(f.slopeK&&f.slopeK!==1)?` ${f.slopeKind||''}×${f.slopeK}`:'';label(c.x,c.y,`${f.kind}${tag}${stag}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
     }else{
       const rad=treeRadius(f)/view.zoom;
       ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad,0,7);ctx.fillStyle=col;ctx.fill();
@@ -1036,6 +1036,17 @@ function renderSansha(){
     h+=`<tr><td colspan="4" style="text-align:left;color:#ff8c00;padding-top:6px">内側の他工種を自動控除（除草対象外）</td></tr>`;
     ded.forEach(d=>h+=`<tr><td colspan="3" style="text-align:right;color:#ff8c00">　− ${d.kind}</td><td class="num" style="color:#ff8c00">-${d.area.toFixed(3)} ㎡</td></tr>`);
   }
+  // 斜面補正
+  const sk=selected.slopeK||1, skind=selected.slopeKind||'平坦';
+  const svalsel=(skind==='緩斜面'?'gentle':skind==='急斜面'?'steep':skind==='直接入力'?'custom':'flat');
+  h+=`<tr><td colspan="3" style="text-align:right">斜面区分</td><td class="num"><select id="slopeSel" style="width:100%">`+
+     `<option value="flat"${svalsel==='flat'?' selected':''}>平坦 (×1.00)</option>`+
+     `<option value="gentle"${svalsel==='gentle'?' selected':''}>緩斜面 (×1.15)</option>`+
+     `<option value="steep"${svalsel==='steep'?' selected':''}>急斜面 (×1.30)</option>`+
+     `<option value="custom"${svalsel==='custom'?' selected':''}>直接入力</option></select></td></tr>`;
+  h+=`<tr><td colspan="3" style="text-align:right">斜面係数 ×<span style="color:var(--mut);font-size:11px">／投影面積に掛ける（仕様に合わせ変更可）</span></td><td class="num"><input id="slopeKin" type="number" value="${sk}" step="0.01" min="1" style="width:74px;text-align:right"></td></tr>`;
+  if(sk!==1){const base=(selected.footprint!=null?(selected.footprint-(isWeeding(selected)?(selected.autoDeduct||0):0)):null);
+    h+=`<tr><td colspan="3" style="text-align:right;color:#2f9e57">斜面補正：投影 ${base!=null?base.toFixed(2):'—'} × ${sk}（${skind}）</td><td class="num" style="color:#2f9e57">${base!=null?(base*sk).toFixed(2)+' ㎡':'—'}</td></tr>`;}
   h+=`<tr><td colspan="3" style="text-align:right">計上面積（積算に使用）</td><td class="num" style="color:var(--acc);font-weight:700">${selected.area!=null?selected.area.toFixed(2)+' ㎡':'—'}</td></tr>`;
   h+='</table>';
   const inHole=(holeMode===selected);
@@ -1052,6 +1063,11 @@ function renderSansha(){
   h+='<button class="btn ghost" id="dlSansha" style="margin-top:6px">求積表をCSVで書き出す</button>';
   el.innerHTML=h;
   if(trim)attachHeightEditor(selected);
+  (function(){const ssel=document.getElementById('slopeSel'),sin=document.getElementById('slopeKin');
+    const PRE={flat:['平坦',1],gentle:['緩斜面',1.15],steep:['急斜面',1.30]};
+    if(ssel)ssel.onchange=()=>{const v=ssel.value;pushHistory();if(v==='custom'){selected.slopeKind='直接入力';if(!selected.slopeK)selected.slopeK=1.15;}else{selected.slopeKind=PRE[v][0];selected.slopeK=PRE[v][1];}recalcAll();renderAgg();renderSansha();draw();};
+    if(sin)sin.onchange=()=>{const v=parseFloat(sin.value);if(isNaN(v)||v<=0)return;pushHistory();selected.slopeK=v;if(v===1)selected.slopeKind='平坦';else if(!selected.slopeKind||selected.slopeKind==='平坦')selected.slopeKind='直接入力';recalcAll();renderAgg();renderSansha();draw();};
+  })();
   el.querySelectorAll('.holerow').forEach(r=>r.onclick=()=>{hlHole=parseInt(r.dataset.hi);renderSansha();draw();});
   el.querySelectorAll('.holedel').forEach(b=>b.onclick=(e)=>{e.stopPropagation();deleteHole(selected,parseInt(b.dataset.hi));});
   $('addHole').onclick=inHole?endHole:startHole;
@@ -1062,6 +1078,7 @@ function renderSansha(){
     c+=`外周投影(=合計/2),,,${t.total.toFixed(3)}\n`;
     if(holes.length){const hSum=state.scale?holesAreaM2(selected):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);c+=`除外(穴)合計,,,-${hSum.toFixed(3)}\n`;}
     ded.forEach(d=>c+=`内側控除 ${d.kind},,,-${d.area.toFixed(3)}\n`);
+    if((selected.slopeK||1)!==1)c+=`斜面補正 ×${selected.slopeK}（${selected.slopeKind||''}）,,,\n`;
     c+=`計上面積,,,${selected.area!=null?selected.area.toFixed(3):''}\n`;
     dl('\uFEFF'+c,`${($('parkName').value||'求積')}_${selected.kind}_求積表.csv`,'text/csv');
   };
@@ -1214,7 +1231,7 @@ function allAreaBlocks(){
 function blockHoleSum(f){const holes=f.holes||[];return state.scale?holesAreaM2(f):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);}
 function buildSummary(blocks){
   const byKind={};let grand=0;
-  blocks.forEach(b=>{const net=b.t.total-blockHoleSum(b.f)-(b.f.autoDeduct||0);byKind[b.f.kind]=(byKind[b.f.kind]||0)+net;grand+=net;});  // 穴＋内側控除を差し引いた投影
+  blocks.forEach(b=>{const k=b.f.slopeK||1;const net=(b.t.total-blockHoleSum(b.f)-(b.f.autoDeduct||0))*k;byKind[b.f.kind]=(byKind[b.f.kind]||0)+net;grand+=net;});  // 穴＋内側控除を差引、斜面係数を反映
   return {byKind,grand,unit:blocks[0]?blocks[0].t.unit:'m'};
 }
 function showAllSansha(){
@@ -1234,6 +1251,7 @@ function showAllSansha(){
     if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">側面 ＝ 周長×高さ(${(b.f.height||0).toFixed(2)}m)</td><td class="num">${state.scale?r3(side)+' ㎡':'—'}</td></tr>`;}
     const ded=isWeeding(b.f)?autoDeductList(b.f):[];
     ded.forEach(d=>h+=`<tr><td colspan="3" style="text-align:right;color:#ff8c00">内側控除 − ${d.kind}</td><td class="num" style="color:#ff8c00">-${r3(d.area)} ㎡</td></tr>`);
+    if((b.f.slopeK||1)!==1)h+=`<tr><td colspan="3" style="text-align:right;color:#2f9e57">斜面補正 ×${b.f.slopeK}（${b.f.slopeKind||''}）</td><td class="num" style="color:#2f9e57">投影×係数</td></tr>`;
     h+=`<tr><td colspan="3" style="text-align:right">計上面積</td><td class="num" style="color:var(--acc);font-weight:700">${b.f.area!=null?r3(b.f.area)+' ㎡':'—'}</td></tr></table></div>`;
   });
   h+='<div class="grand"><h2>工種別 面積集計</h2><table><tr><th>工種</th><th class="num">面積('+u+'²)</th></tr>';
@@ -1272,7 +1290,9 @@ function exportExcel(){
       if(hSum>0)aoa.push([`除外（穴）${(b.f.holes||[]).length}か所`,'','',r3(-hSum)]);
       const ded=isWeeding(b.f)?autoDeductList(b.f):[];
       ded.forEach(d=>aoa.push([`内側控除 ${d.kind}`,'','',r3(-d.area)]));
-      if(hSum>0||ded.length)aoa.push(['計上面積','','',r3(b.f.area!=null?b.f.area:b.t.total)]);
+      const sk=b.f.slopeK||1;
+      if(sk!==1)aoa.push([`斜面補正 ×${sk}（${b.f.slopeKind||''}）`,'','','']);
+      if(hSum>0||ded.length||sk!==1)aoa.push(['計上面積','','',r3(b.f.area!=null?b.f.area:b.t.total)]);
       aoa.push([]);
     });
     const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:16},{wch:12},{wch:12},{wch:14}];ws['!merges']=merges;
