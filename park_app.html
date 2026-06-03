@@ -54,6 +54,14 @@
   .scalebadge{position:absolute;right:12px;bottom:12px;background:rgba(10,14,20,.85);
     border:1px solid var(--line);padding:6px 10px;border-radius:8px;font-size:12px;font-family:var(--mono)}
   .scalebadge.no{color:var(--warn);border-color:var(--warn)}
+  .draftbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:none;gap:8px;
+    background:rgba(10,14,20,.92);border:1px solid var(--line);padding:8px;border-radius:12px;box-shadow:0 6px 24px #0008}
+  .draftbar.on{display:flex}
+  .draftbar button{border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:9px;padding:11px 16px;font-size:15px;font-weight:700;cursor:pointer;touch-action:manipulation}
+  .draftbar button.ok{background:var(--acc);color:#08110b;border-color:var(--acc)}
+  .draftbar button:disabled{opacity:.4;cursor:default}
+  .draftbar button:active{transform:scale(.96)}
   .tot{font-family:var(--mono);font-size:20px;font-weight:700}
   table{width:100%;border-collapse:collapse;font-size:12px}
   th,td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line)}
@@ -76,14 +84,31 @@
     .col{border:none;border-bottom:1px solid var(--line);max-height:38vh}
     .col.r{border-left:none}
   }
+  .modal{position:fixed;inset:0;background:rgba(5,8,12,.88);display:none;z-index:50;padding:24px;overflow:auto}
+  .modal.on{display:block}
+  .modal .card{max-width:960px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px}
+  .modal h2{margin:0 0 2px;font-size:18px}
+  .modal .close{float:right;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer}
+  .modal .close:hover{border-color:var(--bad);color:var(--bad)}
+  .modal .toolbar{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}
+  .modal .toolbar button{background:var(--acc);color:#08110b;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer}
+  .modal .toolbar button.alt{background:var(--panel2);color:var(--ink);border:1px solid var(--line);font-weight:600}
+  .block{margin:14px 0;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .block .bh{padding:8px 12px;font-weight:700;background:var(--panel2);display:flex;align-items:center;gap:8px}
+  .block .bh .a{margin-left:auto;font-family:var(--mono);color:var(--acc)}
+  .block table{width:100%}
+  .block table tr:last-child td{font-weight:700}
+  .grand{margin-top:18px;border-top:2px solid var(--acc);padding-top:10px}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 <div class="app">
   <header>
     <div class="logo">公園作業記録 <b>/</b> 求積＆出来形</div>
     <input class="park" id="parkName" placeholder="公園名（例：久地さくら緑地）">
-    <span class="meta" id="contractMeta">高津区北部 業務委託</span>
+    <input class="park" id="contractName" value="高津区北部" placeholder="委託名（例：高津区北部）" style="width:160px">
+    <span class="meta" id="contractMeta">業務委託</span>
     <span class="sp"></span>
     <span class="meta">試作版 — データは端末内のみ・JSONで保存/集計</span>
   </header>
@@ -108,7 +133,7 @@
 
     <div class="sec">
       <h3>② 記録モード</h3>
-      <button class="btn on" id="toolArea" data-tool="area">面積（㎡）<small>外周をクリック→ダブルクリックで確定</small></button>
+      <button class="btn on" id="toolArea" data-tool="area">面積（㎡）<small>外周をタップ→「✓確定」か始点をタップ</small></button>
       <button class="btn" id="toolTree" data-tool="tree">樹木（本）<small>クリックで1本配置</small></button>
       <button class="btn" id="toolSelect" data-tool="select">選択・移動・削除<small>ドラッグで地図移動 / クリックで選択</small></button>
     </div>
@@ -139,6 +164,11 @@
     <canvas id="cv"></canvas>
     <div class="hint" id="hint"></div>
     <div class="scalebadge no" id="scaleBadge">縮尺：未設定</div>
+    <div class="draftbar" id="draftbar">
+      <button id="dbFinish" class="ok">✓ 確定</button>
+      <button id="dbUndo">↶ 1点戻す</button>
+      <button id="dbCancel">✕ やめる</button>
+    </div>
   </div>
 
   <!-- RIGHT: aggregation -->
@@ -150,6 +180,8 @@
     <div class="sec">
       <h3>求積表（選択中の面積・三斜法）</h3>
       <div id="sansha"></div>
+      <button class="btn ghost" id="showAll" style="margin-top:8px">全面積の算出根拠を画面表示</button>
+      <button class="btn ghost" id="xlsxBtn">Excelで求積表を書き出す（別シート展開）</button>
     </div>
     <div class="sec">
       <h3>本数集計</h3>
@@ -180,32 +212,32 @@
 </div>
 
 <script>
-/* ---------- 工種マスタ（仕様書 高津区北部 / 登録単価R7.12） ---------- */
+/* ---------- 工種マスタ（高津区 地区標準単価・2025.12） ---------- */
 const BANDS = ["30cm未満","30〜60cm","60〜90cm","90〜120cm","120〜150cm","150〜180cm","180〜210cm","210〜240cm","240〜270cm","270〜300cm"];
-// 単価が分かっているものだけ price を入れる（仕様書 登録単価より）
-const P=(o)=>o;
+/* 受注中の委託は委託名（ヘッダー欄）で管理。工種はここに集約し、将来増えたら追記する。
+   単価は高津区の地区標準（単価地区高津区・歩2025.12単2025.12）。price/prices 未記載は単価不明＝概算0。 */
 const MASTER = {
   "中低木刈込工":{unit:"㎡",mode:"area",kinds:{
-    "低木刈込":{}, "中木刈込":{} }},
+    "低木刈込":{price:195}, "中木刈込":{price:295} }},
   "除草工":{unit:"㎡",mode:"area",kinds:{
-    "機械除草Ⅰ（肩掛式）":{}, "集草":{}, "積込・運搬":{},
+    "機械除草Ⅰ（肩掛式）":{price:46}, "集草":{price:23}, "積込・運搬":{price:24},
     "刈草小運搬（15m以上50m未満）":{price:35} }},
-  "つる性植物除去":{unit:"㎡",mode:"area",kinds:{
-    "地表・寄植":{price:183}, "管理柵":{price:513} }},
-  "低木内除草清掃":{unit:"㎡",mode:"area",kinds:{ "植込み地":{} }},
-  "軽剪定（着葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "着葉木":{prices:{"30〜60cm":5950,"60〜90cm":10450,"90〜120cm":14270,"120〜150cm":21090,"150〜180cm":26650,"180〜210cm":28950,"210〜240cm":32510}} }},
-  "軽剪定（落葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "落葉木":{prices:{"120〜150cm":18200}} }},
+  "つる性植物除去":{unit:"㎡",mode:"area",kinds:{ "地表・寄植":{price:183}, "管理柵":{price:513} }},
+  "低木内除草清掃":{unit:"㎡",mode:"area",kinds:{ "植込み地":{price:163} }},
+  "軽剪定（着葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "着葉木":{prices:{"30cm未満":4310,"30〜60cm":5950,"60〜90cm":10450,"90〜120cm":14270,"120〜150cm":21090,"150〜180cm":26650,"180〜210cm":28950,"210〜240cm":32510,"240〜270cm":52760,"270〜300cm":57270}} }},
+  "軽剪定（落葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "落葉木":{prices:{"30cm未満":2860,"30〜60cm":3980,"60〜90cm":7160,"90〜120cm":9710,"120〜150cm":18200,"150〜180cm":18460,"180〜210cm":21330,"210〜240cm":24340,"240〜270cm":42520,"270〜300cm":42730}} }},
   "基本剪定（着葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "着葉木":{prices:{"30cm未満":7700,"30〜60cm":10650,"60〜90cm":18660,"90〜120cm":25820,"120〜150cm":37880,"150〜180cm":48260,"180〜210cm":51860,"210〜240cm":58490,"240〜270cm":94400,"270〜300cm":100200}} }},
-  "基本剪定（落葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "落葉木":{prices:{"30〜60cm":7100,"60〜90cm":12950,"90〜120cm":17250,"120〜150cm":32640,"150〜180cm":35440,"180〜210cm":38590,"210〜240cm":43850}} }},
-  "胴ぶき剪除":{unit:"本",mode:"tree",ranks:false,kinds:{ "高さ2.0mまで":{}, "高さ4.5mまで":{} }},
+  "基本剪定（落葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "落葉木":{prices:{"30cm未満":5120,"30〜60cm":7100,"60〜90cm":12950,"90〜120cm":17250,"120〜150cm":32640,"150〜180cm":35440,"180〜210cm":38590,"210〜240cm":43850,"240〜270cm":75090,"270〜300cm":77320}} }},
+  "胴ぶき剪除":{unit:"本",mode:"tree",ranks:false,kinds:{ "高さ2.0mまで":{price:422}, "高さ4.5mまで":{price:1020} }},
   "樹木撤去":{unit:"本",mode:"tree",ranks:true,kinds:{
-    "実生木（C=10cm程度）":{ranks:false},
-    "支障木":{prices:{}},
-    "枯損木":{prices:{"150〜180cm":92520}} }},
+    "実生木（C=10cm程度）":{ranks:false,price:523},
+    "支障木":{prices:{"30cm未満":2590,"30〜60cm":7910,"60〜90cm":17140,"90〜120cm":49380,"120〜150cm":73310,"150〜180cm":129600,"180〜210cm":164500,"210〜240cm":187700,"240〜270cm":210500,"270〜300cm":250400}},
+    "枯損木":{prices:{"30cm未満":1990,"30〜60cm":5930,"60〜90cm":12930,"90〜120cm":36570,"120〜150cm":51430,"150〜180cm":92520,"180〜210cm":118000,"210〜240cm":138600,"240〜270cm":155500,"270〜300cm":198600}} }},
   "竹伐採（斜面地）":{unit:"本",mode:"tree",ranks:false,kinds:{ "斜面地":{price:1750} }},
 };
 const MANUAL = {
-  "カラスの巣撤去":{unit:"個"}, "スズメバチの巣撤去":{unit:"個"},
+  "カラスの巣撤去":{unit:"個",price:18440}, "スズメバチの巣撤去":{unit:"個",price:44030},
+  "トラック2t 公園外運搬":{unit:"台",price:2141},
   "発生材運搬（10km程度）":{unit:"t",price:19050}, "発生材運搬（20km程度）":{unit:"t"},
   "一般廃棄物処理手数料":{unit:"t",price:13630},
 };
@@ -266,7 +298,7 @@ function fillManual(){
 
 /* ---------- ツール切替 ---------- */
 function setTool(t){
-  tool=t; draft=null;
+  tool=t; draft=null; if(typeof refreshDraftBar==="function")refreshDraftBar();
   document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));
   cv.style.cursor = t==='select'?'grab':'crosshair';
   updateHint(); draw();
@@ -278,7 +310,7 @@ function updateHint(){
   if(!state.img){h.innerHTML='まず <b>「公園図面を読み込む」</b> から地図画像を読み込んでください。';return;}
   if(!state.scale&&tool!=='cal'){h.innerHTML='面積を出すには先に <b>① 縮尺合わせ</b> を。本数だけなら縮尺なしでもOK。';return;}
   if(tool==='cal')h.innerHTML='図面上の<b>既知の距離</b>の両端を2回クリック。左の「実距離(m)」を合わせてから押すと正確です。';
-  else if(tool==='area')h.innerHTML='外周の角を順にクリック →<b>ダブルクリックで確定</b>。面積が自動計算されます。';
+  else if(tool==='area')h.innerHTML='外周の角を順にタップ→下の<b>「✓ 確定」</b>か<b>始点（黄色）をタップ</b>で閉じます。「↶1点戻す」で取り消し。';
   else if(tool==='tree')h.innerHTML='木のある場所を<b>クリック</b>で1本ずつ配置。左で工種と幹周ランクを選んでから。';
   else h.innerHTML='注記を<b>クリックで選択</b>→そのまま<b>ドラッグで移動</b>。Deleteで削除。何もない所のドラッグで地図移動。';
 }
@@ -363,6 +395,34 @@ function moveFeature(f,dx,dy){
   if(f.type==='tree'){f.pt.x+=dx;f.pt.y+=dy;}
   else f.pts.forEach(p=>{p.x+=dx;p.y+=dy;});
 }
+function refreshDraftBar(){
+  const bar=$('draftbar'),active=!!(draft&&(tool==='area'||tool==='cal'));
+  bar.classList.toggle('on',active);
+  if(active){
+    const isArea=tool==='area';
+    $('dbFinish').style.display=isArea?'':'none';
+    $('dbFinish').disabled=!(isArea&&draft.pts.length>=3);
+    $('dbUndo').disabled=draft.pts.length===0;
+  }
+}
+function addAreaPoint(ip){
+  if(!draft)draft={pts:[]};
+  // 始点付近のタップで閉じる（iPadのダブルタップ不要）
+  if(draft.pts.length>=3&&dist(ip,draft.pts[0])<16/view.zoom){finishArea();return;}
+  draft.pts.push(ip);refreshDraftBar();draw();
+}
+function addCalPoint(ip){
+  if(!draft)draft={pts:[],cal:true};
+  draft.pts.push(ip);
+  if(draft.pts.length===2)finishCal();else{refreshDraftBar();draw();}
+}
+function undoDraftPoint(){
+  if(!draft)return;draft.pts.pop();if(!draft.pts.length)draft=null;refreshDraftBar();draw();
+}
+function cancelDraft(){draft=null;refreshDraftBar();draw();}
+$('dbFinish').onclick=()=>{if(tool==='area'&&draft&&draft.pts.length>=3)finishArea();};
+$('dbUndo').onclick=undoDraftPoint;
+$('dbCancel').onclick=cancelDraft;
 cv.addEventListener('mousedown',e=>{
   const p=evtPos(e),ip=toImg(p.x,p.y);
   if(tool==='select'){
@@ -371,16 +431,8 @@ cv.addEventListener('mousedown',e=>{
     else{panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};cv.style.cursor='grabbing';}
     return;
   }
-  if(tool==='cal'){
-    if(!draft)draft={pts:[],cal:true};
-    draft.pts.push(ip);
-    if(draft.pts.length===2){finishCal();}
-    draw();return;
-  }
-  if(tool==='area'){
-    if(!draft)draft={pts:[]};
-    draft.pts.push(ip);draw();return;
-  }
+  if(tool==='cal'){addCalPoint(ip);return;}
+  if(tool==='area'){addAreaPoint(ip);return;}
   if(tool==='tree'){placeTree(ip);return;}
 });
 cv.addEventListener('mousemove',e=>{
@@ -414,8 +466,8 @@ cv.addEventListener('touchend',e=>{
   if(dragging){if(dragging.type==='area')dragging.area=areaM2(dragging.pts);dragging=null;renderAgg();renderSansha();lastTouch=null;return;}
   if(panning){panning=false;return;}
   if(!lastTouch)return;const ip=toImg(lastTouch.x,lastTouch.y);
-  if(tool==='cal'){if(!draft)draft={pts:[],cal:true};draft.pts.push(ip);if(draft.pts.length===2)finishCal();draw();}
-  else if(tool==='area'){if(!draft)draft={pts:[]};draft.pts.push(ip);draw();}
+  if(tool==='cal'){addCalPoint(ip);}
+  else if(tool==='area'){addAreaPoint(ip);}
   else if(tool==='tree'){placeTree(ip);}
   lastTouch=null;
 });
@@ -425,7 +477,7 @@ function zoomAt(px,py,f){const ip=toImg(px,py);view.zoom*=f;view.ox=px-ip.x*view
 window.addEventListener('keydown',e=>{
   if((e.key==='Delete'||e.key==='Backspace')&&selected){removeFeature(selected);}
   if(e.key==='Enter'&&tool==='area'&&draft&&draft.pts.length>=3)finishArea();
-  if(e.key==='Escape'){draft=null;draw();}
+  if(e.key==="Escape"){cancelDraft();}
 });
 
 /* ---------- 確定処理 ---------- */
@@ -434,12 +486,12 @@ function finishCal(){
   if(real>0&&d>0){state.scale=real/d;updateScaleBadge();
     state.features.forEach(f=>{if(f.type==='area')f.area=areaM2(f.pts);});
     renderAgg();}
-  draft=null;updateHint();draw();
+  draft=null;refreshDraftBar();updateHint();draw();
 }
 function finishArea(){
   const cat=$('catSel').value,kind=$('kindSel').value;
   const f={type:'area',cat,kind,pts:draft.pts.slice(),area:areaM2(draft.pts)};
-  state.features.push(f);draft=null;renderAgg();draw();
+  state.features.push(f);draft=null;refreshDraftBar();renderAgg();draw();
 }
 function placeTree(ip){
   const cat=$('catSel').value,kind=$('kindSel').value;
@@ -527,13 +579,14 @@ $('zoomOut').onclick=()=>zoomAt(cv.width/2,cv.height/2,1/1.2);
 $('clearAll').onclick=()=>{if(confirm('注記をすべて消去しますか？')){state.features=[];state.manual=[];selected=null;renderAgg();draw();}};
 
 $('saveJson').onclick=()=>{
-  const data={park:$('parkName').value||'未設定',scale:state.scale,imgData:state.imgData||null,
+  const data={park:$('parkName').value||'未設定',contract:$('contractName').value||'',scale:state.scale,imgData:state.imgData||null,
     features:state.features,manual:state.manual,saved:new Date().toISOString()};
   dl(JSON.stringify(data),`${data.park}.json`,'application/json');
 };
 $('openJson').onclick=()=>$('jsonFile').click();
 $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{
   const d=JSON.parse(r.result);$('parkName').value=d.park||'';state.scale=d.scale||null;
+  if(d.contract!==undefined)$('contractName').value=d.contract||'';
   state.features=d.features||[];state.manual=d.manual||[];updateScaleBadge();renderAgg();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();};im.src=d.imgData;}else draw();
 };r.readAsText(f);};
@@ -564,9 +617,113 @@ function showMulti(agg){
   $('dlCsv').onclick=()=>{let c='工種,数量,単位,公園数\n';keys.forEach(k=>c+=`"${k}",${agg[k].v},${agg[k].unit},${agg[k].parks.size}\n`);dl('\uFEFF'+c,'多公園集計.csv','text/csv');};
 }
 
+/* ---------- 全面積の算出根拠（三斜） ---------- */
+function r3(x){return Math.round(x*1000)/1000;}
+function allAreaBlocks(){
+  return state.features.filter(f=>f.type==='area').map(f=>({f,t:sanshaTable(f.pts)}));
+}
+function buildSummary(blocks){
+  const byKind={};let grand=0;
+  blocks.forEach(b=>{byKind[b.f.kind]=(byKind[b.f.kind]||0)+b.t.total;grand+=b.t.total;});
+  return {byKind,grand,unit:blocks[0]?blocks[0].t.unit:'m'};
+}
+function showAllSansha(){
+  const blocks=allAreaBlocks();
+  if(!blocks.length){alert('面積の注記がありません。先に面積（㎡）を作図してください。');return;}
+  const s=buildSummary(blocks),u=s.unit;
+  $('modalSub').innerHTML=`${$('parkName').value||'（公園名未設定）'} ／ 面積 ${blocks.length} 件${state.scale?'':' ・縮尺未設定のためpx表示'}`;
+  let h='';
+  blocks.forEach((b,idx)=>{
+    const sumDbl=b.t.rows.reduce((a,r)=>a+r.dbl,0),col=featColor(b.f);
+    h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.kind} ＃${idx+1}<span class="a">${r3(b.t.total)} ${u}²</span></div><table><tr><th>No</th><th class="num">底辺(${u})</th><th class="num">高さ(${u})</th><th class="num">倍面積(${u}²)</th></tr>`;
+    b.t.rows.forEach(r=>h+=`<tr><td>${r.no}</td><td class="num">${r3(r.base)}</td><td class="num">${r3(r.height)}</td><td class="num">${r3(r.dbl)}</td></tr>`);
+    h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">倍面積 合計</td><td class="num">${r3(sumDbl)}</td></tr>`;
+    h+=`<tr><td colspan="3" style="text-align:right">面積 ＝ 合計 ÷ 2</td><td class="num">${r3(b.t.total)} ${u}²</td></tr></table></div>`;
+  });
+  h+='<div class="grand"><h2>工種別 面積集計</h2><table><tr><th>工種</th><th class="num">面積('+u+'²)</th></tr>';
+  Object.entries(s.byKind).forEach(([k,v])=>h+=`<tr><td>${k}</td><td class="num">${r3(v)}</td></tr>`);
+  h+=`<tr><td style="font-weight:700">総合計</td><td class="num" style="font-weight:700;color:var(--acc)">${r3(s.grand)} ${u}²</td></tr></table></div>`;
+  $('modalBody').innerHTML=h;
+  $('modal').classList.add('on');
+}
+$('showAll').onclick=showAllSansha;
+$('modalClose').onclick=()=>$('modal').classList.remove('on');
+$('modal').onclick=e=>{if(e.target.id==='modal')$('modal').classList.remove('on');};
+
+/* ---------- Excel（面積計算を別シート展開・SheetJS） ---------- */
+function exportExcel(){
+  const blocks=allAreaBlocks();
+  if(!blocks.length){alert('面積の注記がありません。');return;}
+  if(typeof XLSX==='undefined'){alert('Excel出力ライブラリが読み込めませんでした。オンライン接続のうえ再度お試しください（CSVは利用できます）。');return;}
+  const s=buildSummary(blocks),u=s.unit,park=$('parkName').value||'公園';
+  // シート1：求積表（ブロック展開）
+  const aoa=[[park+'　求積表（三斜求積法）'],['委託：公園緑地等定期維持管理（'+($('contractName').value||'')+'）'],[]];
+  const merges=[{s:{r:0,c:0},e:{r:0,c:3}}];
+  blocks.forEach((b,idx)=>{
+    const sumDbl=b.t.rows.reduce((a,r)=>a+r.dbl,0);
+    merges.push({s:{r:aoa.length,c:0},e:{r:aoa.length,c:3}});
+    aoa.push([`${b.f.kind}　＃${idx+1}`]);
+    aoa.push(['No',`底辺(${u})`,`高さ(${u})`,`倍面積(${u}²)`]);
+    b.t.rows.forEach(r=>aoa.push([r.no,r3(r.base),r3(r.height),r3(r.dbl)]));
+    aoa.push(['合計','','',r3(sumDbl)]);
+    aoa.push(['面積（＝合計÷2）','','',r3(b.t.total)]);
+    aoa.push([]);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:16},{wch:12},{wch:12},{wch:14}];
+  ws['!merges']=merges;
+  // 数値セルに小数3桁書式
+  Object.keys(ws).forEach(k=>{if(k[0]!=='!'&&ws[k].t==='n')ws[k].z='0.000';});
+  // シート2：面積集計
+  const sum=[['工種',`面積(${u}²)`]];
+  Object.entries(s.byKind).forEach(([k,v])=>sum.push([k,r3(v)]));
+  sum.push(['総合計',r3(s.grand)]);
+  const ws2=XLSX.utils.aoa_to_sheet(sum);ws2['!cols']=[{wch:30},{wch:14}];
+  Object.keys(ws2).forEach(k=>{if(k[0]!=='!'&&ws2[k].t==='n')ws2[k].z='0.000';});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'求積表');
+  XLSX.utils.book_append_sheet(wb,ws2,'面積集計');
+  XLSX.writeFile(wb,`${park}_求積表.xlsx`);
+}
+$('xlsxBtn').onclick=exportExcel;$('mXlsx').onclick=exportExcel;
+
+function allSanshaCsv(){
+  const blocks=allAreaBlocks();if(!blocks.length){alert('面積の注記がありません。');return;}
+  const u=blocks[0].t.unit;let c=`\uFEFF${$('parkName').value||'公園'} 求積表（三斜法）\n`;
+  blocks.forEach((b,idx)=>{
+    const sumDbl=b.t.rows.reduce((a,r)=>a+r.dbl,0);
+    c+=`\n${b.f.kind} ＃${idx+1}\nNo,底辺(${u}),高さ(${u}),倍面積(${u}²)\n`;
+    b.t.rows.forEach(r=>c+=`${r.no},${r3(r.base)},${r3(r.height)},${r3(r.dbl)}\n`);
+    c+=`合計,,,${r3(sumDbl)}\n面積(=合計/2),,,${r3(b.t.total)}\n`;
+  });
+  dl(c,`${$('parkName').value||'公園'}_求積表.csv`,'text/csv');
+}
+$('mCsv').onclick=allSanshaCsv;
+$('mCopy').onclick=()=>{
+  const blocks=allAreaBlocks();if(!blocks.length)return;const u=blocks[0].t.unit;let txt='';
+  blocks.forEach((b,idx)=>{const sumDbl=b.t.rows.reduce((a,r)=>a+r.dbl,0);
+    txt+=`${b.f.kind} ＃${idx+1}\nNo\t底辺(${u})\t高さ(${u})\t倍面積\n`;
+    b.t.rows.forEach(r=>txt+=`${r.no}\t${r3(r.base)}\t${r3(r.height)}\t${r3(r.dbl)}\n`);
+    txt+=`合計\t\t\t${r3(sumDbl)}\n面積\t\t\t${r3(b.t.total)}\n\n`;});
+  navigator.clipboard.writeText(txt).then(()=>{$('mCopy').textContent='コピーしました';setTimeout(()=>$('mCopy').textContent='表をコピー',1500);});
+};
+
 /* ---------- init ---------- */
 fillCats();fillManual();renderAgg();renderSansha();setTool('area');updateHint();
 new ResizeObserver(resize).observe(cv.parentElement);resize();
 </script>
+<div class="modal" id="modal">
+  <div class="card">
+    <button class="close" id="modalClose">閉じる ✕</button>
+    <h2>面積 算出根拠（三斜求積法）</h2>
+    <div class="legend" id="modalSub"></div>
+    <div class="toolbar">
+      <button id="mXlsx">Excelで書き出す</button>
+      <button class="alt" id="mCsv">CSVで書き出す</button>
+      <button class="alt" id="mCopy">表をコピー</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
 </body>
 </html>
