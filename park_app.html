@@ -603,9 +603,11 @@ function draw(){
       ctx.lineWidth=(f===selected?3:2)/view.zoom;ctx.strokeStyle=(f===selected?SEL:col);ctx.stroke();
       // 穴の輪郭（橙の破線）＋面積ラベル
       (f.holes||[]).forEach((h,hi)=>{
+        const hot=(f===selected&&hi===hlHole);
         ctx.beginPath();h.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();
-        ctx.setLineDash([6/view.zoom,4/view.zoom]);ctx.lineWidth=2/view.zoom;ctx.strokeStyle='#ff8c00';ctx.stroke();ctx.setLineDash([]);
-        const hc=centroid(h),ha=areaM2(h);label(hc.x,hc.y,`除外${hi+1}\n${ha!=null?'-'+ha.toFixed(2):''} ㎡`,'#ff8c00');
+        if(hot){ctx.fillStyle='#ff8c0038';ctx.fill();}
+        ctx.setLineDash([6/view.zoom,4/view.zoom]);ctx.lineWidth=(hot?4:2)/view.zoom;ctx.strokeStyle=hot?'#ff5e00':'#ff8c00';ctx.stroke();ctx.setLineDash([]);
+        const hc=centroid(h),ha=areaM2(h);label(hc.x,hc.y,`${hot?'▶ ':''}除外${hi+1}\n${ha!=null?'-'+ha.toFixed(2):''} ㎡`,hot?'#ff5e00':'#ff8c00');
       });
       if(f===selected)drawHandles(f);
       if(f===selected)drawEdgeLengths(f);
@@ -723,7 +725,7 @@ function legendHit(p){const b=legend._box;return !!(legend.show&&b&&p.x>=b.x&&p.
 
 /* ---------- 入力 ---------- */
 let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null,draggingLegend=false,legDragOff=null,spaceDown=false,dragSnap=null;
-let editV=null,lastPick=null,pickIdx=0,lastVtxTap=null,prevToolForPan='area',holeMode=null,dragRing=null;
+let editV=null,lastPick=null,pickIdx=0,lastVtxTap=null,prevToolForPan='area',holeMode=null,dragRing=null,hlHole=null;
 function ringPts(f,ring){return ring==='outer'?f.pts:(f.holes||[])[ring];}
 function nearestTree(ip){let best=null,bd=Infinity;state.features.forEach(f=>{if(f.type==='tree'){const d=dist(f.pt,ip);if(d<(treeRadius(f)+8)/view.zoom&&d<bd){bd=d;best=f;}}});return best;}
 // 重なり対応：クリック地点の全ヒットを上から返す
@@ -780,7 +782,7 @@ function downCommon(p,ip){
   if(tool==='area')return null;                 // 面積モードは常に描画（樹木と同様、既存図形の上でも開始可）。編集は選択中図形のハンドル or 選択モードで。
   const f=(tool==='tree')?nearestTree(ip):pickHit(ip);   // 樹木モードは既存の木だけ拾う／選択モードは全部（重なり巡回）
   if(f){
-    selected=f;renderSansha();dragging=f;dragLast=ip;dragSnap=snapshot();dragRing=null;
+    selected=f;hlHole=null;renderSansha();dragging=f;dragLast=ip;dragSnap=snapshot();dragRing=null;
     if(f.type==='area'&&f.holes){for(let i=0;i<f.holes.length;i++){if(pointInPoly(ip,f.holes[i])){dragRing=i;break;}}}  // 穴の中なら穴だけ移動
     return 'drag';
   }
@@ -977,7 +979,7 @@ function hit(ip){
 }
 function pointInPoly(p,pts){let c=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){
   if(((pts[i].y>p.y)!=(pts[j].y>p.y))&&(p.x<(pts[j].x-pts[i].x)*(p.y-pts[i].y)/(pts[j].y-pts[i].y)+pts[i].x))c=!c;}return c;}
-function selectFeature(f){selected=f;renderSansha();draw();}
+function selectFeature(f){selected=f;hlHole=null;renderSansha();draw();}
 function renderSansha(){
   const el=$('sansha');
   // 刈込（長さ×奥行×高さ：投影＋側面4面）
@@ -1038,9 +1040,11 @@ function renderSansha(){
   h+='</table>';
   const inHole=(holeMode===selected);
   if(holes.length){
-    h+='<div style="margin-top:8px;font-size:12px"><div style="color:#ff8c00;font-weight:600;margin-bottom:4px">除外エリア（穴）一覧</div>';
-    holes.forEach((hh,i)=>{const a=state.scale?(shoelace(hh)*state.scale*state.scale):shoelace(hh);
-      h+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="flex:1;color:#ffb066">除外${i+1}：-${a.toFixed(2)} ${state.scale?'㎡':'px²'}</span><button class="btn ghost holedel" data-hi="${i}" style="width:auto;padding:4px 10px;margin:0;font-size:12px">この除外を削除</button></div>`;});
+    h+='<div style="margin-top:8px;font-size:12px"><div style="color:#ff8c00;font-weight:600;margin-bottom:4px">除外エリア（穴）一覧 <span style="color:var(--mut);font-weight:400">／行をタップで地図上を確認</span></div>';
+    holes.forEach((hh,i)=>{const a=state.scale?(shoelace(hh)*state.scale*state.scale):shoelace(hh);const on=(i===hlHole);
+      h+=`<div class="holerow" data-hi="${i}" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;padding:5px 7px;border-radius:7px;cursor:pointer;border:1px solid ${on?'#ff8c00':'var(--line)'};background:${on?'#ff8c0022':'transparent'}">`+
+        `<span style="flex:1;color:${on?'#ff6a00':'#ffb066'};font-weight:${on?'700':'400'}">除外${i+1}：-${a.toFixed(2)} ${state.scale?'㎡':'px²'}${on?'　◀ 選択中':''}</span>`+
+        `<button class="btn ghost holedel" data-hi="${i}" style="width:auto;padding:4px 10px;margin:0;font-size:12px">削除</button></div>`;});
     h+='</div>';
   }
   h+=`<button class="btn holebtn ${inHole?'on':''}" id="addHole" style="margin-top:8px">${inHole?'■ 除外モードを終了':'⊘ 除外エリア（穴）を追加'}<small>${inHole?'続けて別の場所をポチポチ→「✓確定」で次々追加できます':'木・ベンチなど刈らない部分を全体から差し引く'}</small></button>`;
@@ -1048,7 +1052,8 @@ function renderSansha(){
   h+='<button class="btn ghost" id="dlSansha" style="margin-top:6px">求積表をCSVで書き出す</button>';
   el.innerHTML=h;
   if(trim)attachHeightEditor(selected);
-  el.querySelectorAll('.holedel').forEach(b=>b.onclick=()=>deleteHole(selected,parseInt(b.dataset.hi)));
+  el.querySelectorAll('.holerow').forEach(r=>r.onclick=()=>{hlHole=parseInt(r.dataset.hi);renderSansha();draw();});
+  el.querySelectorAll('.holedel').forEach(b=>b.onclick=(e)=>{e.stopPropagation();deleteHole(selected,parseInt(b.dataset.hi));});
   $('addHole').onclick=inHole?endHole:startHole;
   if(holes.length)$('clrHole').onclick=clearHoles;
   $('dlSansha').onclick=()=>{
@@ -1065,8 +1070,8 @@ function attachHeightEditor(f){const inp=document.getElementById('editHt');if(!i
   inp.onchange=()=>{const v=parseFloat(inp.value);if(isNaN(v)||v<0)return;pushHistory();f.height=v;recalcAll();renderAgg();renderSansha();draw();};}
 function startHole(){ if(!selected||selected.type!=='area')return; holeMode=selected; draft=null; if(tool!=='area')setTool('area'); refreshDraftBar(); renderSansha(); updateHint(); draw(); }
 function endHole(){ holeMode=null; draft=null; refreshDraftBar(); renderSansha(); updateHint(); draw(); }
-function clearHoles(){ if(!selected||!selected.holes||!selected.holes.length)return; pushHistory(); selected.holes=[]; recalcAll(); renderAgg(); renderSansha(); draw(); }
-function deleteHole(f,i){ if(!f||!f.holes||i<0||i>=f.holes.length)return; pushHistory(); f.holes.splice(i,1); recalcAll(); renderAgg(); renderSansha(); draw(); }
+function clearHoles(){ if(!selected||!selected.holes||!selected.holes.length)return; pushHistory(); selected.holes=[]; hlHole=null; recalcAll(); renderAgg(); renderSansha(); draw(); }
+function deleteHole(f,i){ if(!f||!f.holes||i<0||i>=f.holes.length)return; pushHistory(); f.holes.splice(i,1); hlHole=null; recalcAll(); renderAgg(); renderSansha(); draw(); }
 function removeFeature(f){pushHistory();state.features=state.features.filter(x=>x!==f);if(selected===f)selected=null;recalcAll();renderSansha();renderAgg();draw();}
 
 /* ---------- 集計 ---------- */
