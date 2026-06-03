@@ -309,7 +309,7 @@ function updateHint(){
   const h=$('hint');
   if(!state.img){h.innerHTML='まず <b>「公園図面を読み込む」</b> から地図画像を読み込んでください。';return;}
   if(!state.scale&&tool!=='cal'){h.innerHTML='面積を出すには先に <b>① 縮尺合わせ</b> を。本数だけなら縮尺なしでもOK。';return;}
-  if(tool==='cal')h.innerHTML='図面上の<b>既知の距離</b>の両端を2回クリック。左の「実距離(m)」を合わせてから押すと正確です。';
+  if(tool==='cal')h.innerHTML='既知の長さの<b>一端を押して、もう一端までドラッグ</b>（タップ2回でもOK）。置いた点は<b>離さず動かせば微調整</b>できます。先に左の「実距離(m)」を合わせて。';
   else if(tool==='area')h.innerHTML='外周の角を順にタップ→下の<b>「✓ 確定」</b>か<b>始点（黄色）をタップ</b>で閉じます。「↶1点戻す」で取り消し。';
   else if(tool==='tree')h.innerHTML='木のある場所を<b>クリック</b>で1本ずつ配置。左で工種と幹周ランクを選んでから。';
   else h.innerHTML='注記を<b>クリックで選択</b>→そのまま<b>ドラッグで移動</b>。Deleteで削除。何もない所のドラッグで地図移動。';
@@ -364,16 +364,31 @@ function draw(){
       if(view.zoom>0.4)label(f.pt.x,f.pt.y-14/view.zoom,(f.rank?f.rank:f.kind),col);
     }
   });
-  // draft（作図中：赤＋白フチで背景を問わず視認）
+  // draft（作図中：破線＋点で視認。面積=赤、縮尺=青） 
   if(draft&&draft.pts){
+    const isCal=!!draft.cal, lineCol=isCal?'#5aa9ff':'#ff2d2d';
+    // 確定済みの点を結ぶ破線（縮尺で2点目待ちのときは hover までラバーバンド）
     ctx.beginPath();draft.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
-    ctx.lineWidth=3/view.zoom;ctx.strokeStyle='#ff2d2d';ctx.setLineDash([6/view.zoom,4/view.zoom]);ctx.stroke();ctx.setLineDash([]);
+    if(isCal&&draft.pts.length===1&&calDragIdx===null&&hover)ctx.lineTo(hover.x,hover.y);
+    ctx.lineWidth=3/view.zoom;ctx.strokeStyle=lineCol;ctx.setLineDash([7/view.zoom,5/view.zoom]);ctx.stroke();ctx.setLineDash([]);
+    // 確定済みの点（始点=黄）
     draft.pts.forEach((p,i)=>{
       ctx.beginPath();ctx.arc(p.x,p.y,6/view.zoom,0,7);
-      ctx.fillStyle=(i===0?'#ffd400':'#ff2d2d');ctx.fill();
+      ctx.fillStyle=(i===0?'#ffd400':lineCol);ctx.fill();
       ctx.lineWidth=2/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();
     });
-    if(draft.pts.length>=2&&draft.cal){const m=midpoint(draft.pts[0],draft.pts[1]);label(m.x,m.y,'2点目をクリック','#ff2d2d');}
+    // 縮尺：2点目待ちの仮点（hover）
+    if(isCal&&draft.pts.length===1&&calDragIdx===null&&hover){
+      ctx.beginPath();ctx.arc(hover.x,hover.y,5/view.zoom,0,7);
+      ctx.fillStyle=lineCol;ctx.globalAlpha=.8;ctx.fill();ctx.globalAlpha=1;
+      ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();
+    }
+    // 縮尺：区間の実距離ラベル
+    if(isCal){
+      const a=draft.pts[0], b=draft.pts[1]||(calDragIdx===null?hover:null);
+      if(a&&b){const m=midpoint(a,b),real=parseFloat($('calDist').value)||0;
+        label(m.x,m.y-12/view.zoom, real>0?`この区間 ＝ ${real} m`:'左で実距離(m)を入力','#5aa9ff');}
+    }
   }
   ctx.restore();
 }
@@ -390,7 +405,7 @@ function label(x,y,txt,col){
 }
 
 /* ---------- 入力 ---------- */
-let panning=false,panStart=null,dragging=null,dragLast=null;
+let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null;
 function moveFeature(f,dx,dy){
   if(f.type==='tree'){f.pt.x+=dx;f.pt.y+=dy;}
   else f.pts.forEach(p=>{p.x+=dx;p.y+=dy;});
@@ -411,15 +426,21 @@ function addAreaPoint(ip){
   if(draft.pts.length>=3&&dist(ip,draft.pts[0])<16/view.zoom){finishArea();return;}
   draft.pts.push(ip);refreshDraftBar();draw();
 }
-function addCalPoint(ip){
-  if(!draft)draft={pts:[],cal:true};
-  draft.pts.push(ip);
-  if(draft.pts.length===2)finishCal();else{refreshDraftBar();draw();}
+// 縮尺：押した位置に点を置き、指/マウスを離すまでドラッグで微調整。離した位置で確定。
+function calDown(ip){
+  if(!draft){draft={pts:[ip],cal:true};calDragIdx=0;}
+  else if(draft.pts.length===1){draft.pts.push(ip);calDragIdx=1;}
+  hover=null;refreshDraftBar();draw();
+}
+function calUp(){
+  if(calDragIdx===null)return;
+  if(calDragIdx===1){calDragIdx=null;finishCal();return;} // 2点目を離した→確定
+  calDragIdx=null;draw();                                  // 1点目確定、2点目待ち
 }
 function undoDraftPoint(){
-  if(!draft)return;draft.pts.pop();if(!draft.pts.length)draft=null;refreshDraftBar();draw();
+  if(!draft)return;draft.pts.pop();calDragIdx=null;hover=null;if(!draft.pts.length)draft=null;refreshDraftBar();draw();
 }
-function cancelDraft(){draft=null;refreshDraftBar();draw();}
+function cancelDraft(){draft=null;calDragIdx=null;hover=null;refreshDraftBar();draw();}
 $('dbFinish').onclick=()=>{if(tool==='area'&&draft&&draft.pts.length>=3)finishArea();};
 $('dbUndo').onclick=undoDraftPoint;
 $('dbCancel').onclick=cancelDraft;
@@ -431,15 +452,17 @@ cv.addEventListener('mousedown',e=>{
     else{panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};cv.style.cursor='grabbing';}
     return;
   }
-  if(tool==='cal'){addCalPoint(ip);return;}
+  if(tool==='cal'){calDown(ip);return;}
   if(tool==='area'){addAreaPoint(ip);return;}
   if(tool==='tree'){placeTree(ip);return;}
 });
 cv.addEventListener('mousemove',e=>{
+  if(tool==='cal'){const p=evtPos(e),ip=toImg(p.x,p.y);if(calDragIdx!==null)draft.pts[calDragIdx]=ip;else if(draft)hover=ip;draw();return;}
   if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;draw();}
 });
 window.addEventListener('mouseup',()=>{
+  if(tool==='cal'&&calDragIdx!==null){calUp();return;}
   if(dragging){if(dragging.type==='area')dragging.area=areaM2(dragging.pts);dragging=null;renderAgg();renderSansha();}
   if(panning)panning=false;
   cv.style.cursor=tool==='select'?'grab':'crosshair';
@@ -449,8 +472,9 @@ cv.addEventListener('wheel',e=>{e.preventDefault();const p=evtPos(e);const f=e.d
 // touch
 let lastTouch=null,pinchD=null;
 cv.addEventListener('touchstart',e=>{
-  if(e.touches.length===2){pinchD=touchDist(e);dragging=null;return;}
+  if(e.touches.length===2){pinchD=touchDist(e);dragging=null;calDragIdx=null;return;}
   const p=evtPos(e),ip=toImg(p.x,p.y);
+  if(tool==='cal'){calDown(ip);lastTouch=null;return;}
   if(tool==='select'){const f=hit(ip);selectFeature(f);
     if(f){dragging=f;dragLast=ip;}else{panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};}}
   lastTouch=p;
@@ -458,16 +482,17 @@ cv.addEventListener('touchstart',e=>{
 cv.addEventListener('touchmove',e=>{
   e.preventDefault();
   if(e.touches.length===2&&pinchD){const d=touchDist(e),c=touchMid(e);zoomAt(c.x,c.y,d/pinchD);pinchD=d;return;}
+  if(tool==='cal'&&calDragIdx!==null){const p=evtPos(e),ip=toImg(p.x,p.y);draft.pts[calDragIdx]=ip;lastTouch=null;draw();return;}
   if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;lastTouch=null;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;lastTouch=null;draw();}
 },{passive:false});
 cv.addEventListener('touchend',e=>{
   if(pinchD&&e.touches.length<2){pinchD=null;return;}
+  if(tool==='cal'){if(calDragIdx!==null)calUp();lastTouch=null;return;}
   if(dragging){if(dragging.type==='area')dragging.area=areaM2(dragging.pts);dragging=null;renderAgg();renderSansha();lastTouch=null;return;}
   if(panning){panning=false;return;}
   if(!lastTouch)return;const ip=toImg(lastTouch.x,lastTouch.y);
-  if(tool==='cal'){addCalPoint(ip);}
-  else if(tool==='area'){addAreaPoint(ip);}
+  if(tool==='area'){addAreaPoint(ip);}
   else if(tool==='tree'){placeTree(ip);}
   lastTouch=null;
 });
@@ -486,7 +511,7 @@ function finishCal(){
   if(real>0&&d>0){state.scale=real/d;updateScaleBadge();
     state.features.forEach(f=>{if(f.type==='area')f.area=areaM2(f.pts);});
     renderAgg();}
-  draft=null;refreshDraftBar();updateHint();draw();
+  draft=null;calDragIdx=null;hover=null;refreshDraftBar();updateHint();draw();
 }
 function finishArea(){
   const cat=$('catSel').value,kind=$('kindSel').value;
