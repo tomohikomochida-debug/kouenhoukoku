@@ -88,6 +88,18 @@
     .col{order:2;flex:0 0 auto;max-height:none;overflow:visible;border:none;border-top:1px solid var(--line)}
     .col.r{order:3;border-left:none}
   }
+  @media(max-width:640px){
+    header{gap:6px;padding:6px 10px;min-height:0}
+    header .logo{font-size:13px}
+    header .meta{display:none}            /* 長い注記・委託ラベルはスマホでは隠す */
+    header .park{flex:1 1 90px;min-width:80px;font-size:13px;padding:5px 7px}
+    .blbl{display:none}                    /* 戻る/進むはアイコンのみ */
+    #undoBtn,#redoBtn{padding:5px 9px;font-size:16px;margin-right:4px;line-height:1}
+    .stage{flex:0 0 62vh;height:62vh}
+    .hint{font-size:11px;max-width:62vw;padding:7px 9px}
+    .draftbar{bottom:10px;padding:6px;gap:6px}
+    .draftbar button{padding:9px 12px;font-size:14px}
+  }
   .modal{position:fixed;inset:0;background:rgba(5,8,12,.88);display:none;z-index:50;padding:24px;overflow:auto}
   .modal.on{display:block}
   .modal .card{max-width:960px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px}
@@ -103,10 +115,25 @@
   .block table{width:100%}
   .block table tr:last-child td{font-weight:700}
   .grand{margin-top:18px;border-top:2px solid var(--acc);padding-top:10px}
+  /* 印刷／PDF保存用 */
+  #printArea{display:none}
+  @media print{
+    @page{size:A4 portrait;margin:12mm}
+    body *{visibility:hidden}
+    #printArea,#printArea *{visibility:visible}
+    #printArea{display:block;position:absolute;left:0;top:0;width:100%;color:#000;font-family:sans-serif}
+    #printArea img{max-width:100%;border:1px solid #999}
+    #printArea h1{font-size:16px;margin:0 0 4px}
+    #printArea .ph{font-size:12px;color:#333;margin-bottom:8px}
+    #printArea table{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0}
+    #printArea th,#printArea td{border:1px solid #999;padding:3px 6px;text-align:left}
+    #printArea td.num,#printArea th.num{text-align:right}
+  }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
+<div id="printArea"></div>
 <div class="app">
   <header>
     <div class="logo">公園作業記録 <b>/</b> 求積＆出来形</div>
@@ -114,6 +141,8 @@
     <input class="park" id="contractName" value="高津区北部" placeholder="委託名（例：高津区北部）" style="width:160px">
     <span class="meta" id="contractMeta">業務委託</span>
     <span class="sp"></span>
+    <button id="undoBtn" title="元に戻す (Ctrl+Z)" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px 10px;font-size:13px;cursor:pointer;margin-right:6px">↶<span class="blbl"> 戻る</span></button>
+    <button id="redoBtn" title="やり直す (Ctrl+Y)" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px 10px;font-size:13px;cursor:pointer;margin-right:10px">↷<span class="blbl"> 進む</span></button>
     <span class="meta">試作版 — データは端末内のみ・JSONで保存/集計</span>
   </header>
 
@@ -140,6 +169,7 @@
       <button class="btn on" id="toolArea" data-tool="area">面積（㎡）<small>外周をタップ→「✓確定」か始点をタップ</small></button>
       <button class="btn" id="toolTree" data-tool="tree">樹木（本）<small>クリックで1本配置</small></button>
       <button class="btn" id="toolSelect" data-tool="select">選択・移動・削除<small>ドラッグで地図移動 / クリックで選択</small></button>
+      <button class="btn" id="toolPan" data-tool="pan">✋ 地図を移動<small>ドラッグで表示位置だけずらす（iPad向け）</small></button>
     </div>
 
     <div class="sec">
@@ -150,6 +180,12 @@
       <select id="kindSel"></select>
       <label class="fld" id="rankLbl" style="display:none">規格（幹周ランク）</label>
       <select id="rankSel" style="display:none"></select>
+      <label class="fld" id="dimLbl" style="display:none">寸法（m）<span id="dimNote" style="color:var(--mut)"></span></label>
+      <div id="dimRow" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px">
+        <span id="lenWrap" style="display:none">長さ <input id="lenInput" type="number" value="2.0" step="0.1" style="width:62px"></span>
+        <span id="depWrap" style="display:none">奥行 <input id="depInput" type="number" value="0.8" step="0.1" style="width:62px"></span>
+        <span id="htWrap">高さ <input id="htInput" type="number" value="1.0" step="0.1" style="width:62px"></span>
+      </div>
       <div id="rankLegend" style="display:none;margin-top:8px"></div>
     </div>
 
@@ -165,6 +201,11 @@
       <button class="btn ghost" id="openJson">公園データを開く（.json）</button>
       <input type="file" id="jsonFile" accept="application/json" hidden>
       <button class="btn ghost" id="exportPng">注記図を画像で書き出す</button>
+      <label class="fld">指示番号（実績の管理用）</label>
+      <input id="orderNo" placeholder="例：5082000633-3" style="width:100%">
+      <label class="fld">実施年月日</label>
+      <input id="workDate" type="date" style="width:100%">
+      <button class="btn" id="printPdf">🖨 印刷／PDFで保存<small>実績用：地図＋集計を1枚に</small></button>
       <button class="btn ghost danger" id="clearAll">全消去</button>
     </div>
   </div>
@@ -241,11 +282,11 @@ const BANDS = ["30cm未満","30〜60cm","60〜90cm","90〜120cm","120〜150cm","
    単価は高津区の地区標準（単価地区高津区・歩2025.12単2025.12）。price/prices 未記載は単価不明＝概算0。 */
 const MASTER = {
   "中低木刈込工":{unit:"㎡",mode:"area",kinds:{
-    "低木刈込":{price:195}, "中木刈込":{price:295} }},
+    "低木刈込":{price:195}, "中木刈込":{price:295,height:true,calc:'trim'} }},
   "除草工":{unit:"㎡",mode:"area",kinds:{
     "機械除草Ⅰ（肩掛式）":{price:46}, "集草":{price:23}, "積込・運搬":{price:24},
     "刈草小運搬（15m以上50m未満）":{price:35} }},
-  "つる性植物除去":{unit:"㎡",mode:"area",kinds:{ "地表・寄植":{price:183}, "管理柵":{price:513} }},
+  "つる性植物除去":{unit:"㎡",mode:"area",kinds:{ "地表・寄植":{price:183}, "管理柵":{price:513,geom:'line',height:true} }},
   "低木内除草清掃":{unit:"㎡",mode:"area",kinds:{ "植込み地":{price:163} }},
   "軽剪定（着葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "着葉木":{prices:{"30cm未満":4310,"30〜60cm":5950,"60〜90cm":10450,"90〜120cm":14270,"120〜150cm":21090,"150〜180cm":26650,"180〜210cm":28950,"210〜240cm":32510,"240〜270cm":52760,"270〜300cm":57270}} }},
   "軽剪定（落葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "落葉木":{prices:{"30cm未満":2860,"30〜60cm":3980,"60〜90cm":7160,"90〜120cm":9710,"120〜150cm":18200,"150〜180cm":18460,"180〜210cm":21330,"210〜240cm":24340,"240〜270cm":42520,"270〜300cm":42730}} }},
@@ -280,6 +321,16 @@ let selected=null;
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 const $=id=>document.getElementById(id);
 
+/* ---------- Undo/Redo（全体の戻る/進む） ---------- */
+let undoStack=[], redoStack=[];
+function snapshot(){return JSON.stringify({features:state.features,manual:state.manual,scale:state.scale});}
+function restore(s){const o=JSON.parse(s);state.features=o.features;state.manual=o.manual;state.scale=o.scale;
+  selected=null;draft=null;updateScaleBadge();renderAgg();renderSansha();refreshDraftBar();draw();updateUndoButtons();}
+function pushHistory(){undoStack.push(snapshot());if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();}
+function undo(){if(!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop());}
+function redo(){if(!redoStack.length)return;undoStack.push(snapshot());restore(redoStack.pop());}
+function updateUndoButtons(){const u=$('undoBtn'),r=$('redoBtn');if(u)u.style.opacity=undoStack.length?'1':'.4';if(r)r.style.opacity=redoStack.length?'1':'.4';}
+
 /* ---------- 工種セレクト構築 ---------- */
 function fillCats(){
   const c=$('catSel'); c.innerHTML='';
@@ -297,6 +348,14 @@ function curKindRanks(){
   if(kd.ranks===false) return false;
   return m.ranks!==false;
 }
+function curKindDef(){return (MASTER[$('catSel').value]||{}).kinds?.[$('kindSel').value]||{};}
+function curGeom(){return curKindDef().geom||'poly';}                       // 'box'=刈込, 'line'=管理柵, 'poly'=その他
+function curBoxSides(){return curKindDef().sides!==false;}                   // false=低木(投影のみ)
+function curNeedsHeight(){const g=curGeom();return (g==='box'&&curBoxSides())||g==='line'||!!curKindDef().height;}
+function curCalc(){return curKindDef().calc||'flat';}
+function curHeightVal(){return parseFloat($('htInput').value)||0;}
+function curLenVal(){return parseFloat($('lenInput').value)||0;}
+function curDepVal(){return parseFloat($('depInput').value)||0;}
 function fillRanks(){
   const isTree=MASTER[$('catSel').value].mode==='tree';
   const show=curKindRanks();
@@ -319,6 +378,15 @@ function fillRanks(){
     }
     lg.innerHTML=h;
   }else{lg.style.display='none';}
+  // 寸法欄（低木＝なし／中木＝高さ／管理柵＝高さ）多角形でも高さを表示
+  const g=curGeom(), box=(g==='box'), line=(g==='line'), needH=curNeedsHeight();
+  const showDim=box||line||needH;
+  $('dimLbl').style.display=showDim?'block':'none';
+  $('dimRow').style.display=showDim?'flex':'none';
+  $('lenWrap').style.display=box?'inline':'none';
+  $('depWrap').style.display=box?'inline':'none';
+  $('htWrap').style.display=needH?'inline':'none';
+  $('dimNote').textContent= line?'：柵の長さ×高さ' : box?(curBoxSides()?'：投影＋側面4面':'：投影のみ') : (needH?'：投影面積＋側面（周長×高さ）':'');
   syncToolForCat();
 }
 function syncToolForCat(){
@@ -326,7 +394,7 @@ function syncToolForCat(){
   if(mode==='area'&&tool==='tree') setTool('area');
   if(mode==='tree'&&tool==='area') setTool('tree');
 }
-$('catSel').onchange=fillKinds; $('kindSel').onchange=fillRanks;
+$('catSel').onchange=fillKinds; $('kindSel').onchange=()=>{fillRanks();updateHint();refreshDraftBar();};
 
 function fillManual(){
   const s=$('manKind');s.innerHTML='';
@@ -337,7 +405,7 @@ function fillManual(){
 function setTool(t){
   tool=t; draft=null; if(typeof refreshDraftBar==="function")refreshDraftBar();
   document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));
-  cv.style.cursor = t==='select'?'grab':'crosshair';
+  cv.style.cursor = (t==='select'||t==='pan')?'grab':'crosshair';
   updateHint(); draw();
 }
 document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
@@ -347,9 +415,13 @@ function updateHint(){
   if(!state.img){h.innerHTML='まず <b>「公園図面を読み込む」</b> から地図画像を読み込んでください。';return;}
   if(!state.scale&&tool!=='cal'){h.innerHTML='面積を出すには先に <b>① 縮尺合わせ</b> を。本数だけなら縮尺なしでもOK。';return;}
   if(tool==='cal')h.innerHTML='既知の長さの<b>一端を押して、もう一端までドラッグ</b>（タップ2回でもOK）。置いた点は<b>離さず動かせば微調整</b>できます。先に左の「実距離(m)」を合わせて。';
-  else if(tool==='area')h.innerHTML='外周の角を順にタップ→下の<b>「✓ 確定」</b>か<b>始点（黄色）をタップ</b>で閉じます。「↶1点戻す」で取り消し。';
+  else if(tool==='pan')h.innerHTML='<b>地図移動モード</b>：ドラッグ（iPadは指1本）で<b>表示位置だけ</b>を動かします。記録に戻るには上で別のモードを選択。';
+  else if(tool==='area'){
+    if(curGeom()==='line')h.innerHTML='＜つる：管理柵＞フェンスに沿って<b>端から端へタップ</b>→<b>「✓ 確定」</b>。左の<b>高さ(m)</b>を掛けて面積にします。';
+    else h.innerHTML='外周の角を順に<b>タップ</b>→<b>「✓ 確定」</b>か<b>始点（黄色）をタップ</b>で閉じます。'+(curCalc()==='trim'?'中木は左の<b>高さ(m)</b>で側面も加算。':'');
+  }
   else if(tool==='tree')h.innerHTML='木のある場所を<b>クリック</b>で1本ずつ配置。左で工種と幹周ランクを選んでから。';
-  else h.innerHTML='注記を<b>クリックで選択</b>→そのまま<b>ドラッグで移動</b>。Deleteで削除。何もない所のドラッグで地図移動。';
+  else h.innerHTML='注記を<b>クリックで選択</b>（外周線の近くでもOK）→<b>ドラッグで移動</b>。Deleteで削除。<b>Space＋ドラッグ</b>か「✋地図を移動」で表示位置を移動。';
 }
 
 /* ---------- 座標変換 ---------- */
@@ -360,6 +432,20 @@ function evtPos(e){const r=cv.getBoundingClientRect();const t=e.touches?e.touche
 function shoelace(pts){let a=0;for(let i=0;i<pts.length;i++){const p=pts[i],q=pts[(i+1)%pts.length];a+=p.x*q.y-q.x*p.y;}return Math.abs(a)/2;}
 function areaM2(pts){if(!state.scale)return null;return shoelace(pts)*state.scale*state.scale;}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function perimeterM(pts){if(!state.scale)return 0;let s=0;for(let i=0;i<pts.length;i++)s+=dist(pts[i],pts[(i+1)%pts.length]);return s*state.scale;} // 閉路（多角形の周長）
+function lengthM(pts){if(!state.scale)return 0;let s=0;for(let i=0;i<pts.length-1;i++)s+=dist(pts[i],pts[i+1]);return s*state.scale;}        // 開いた折れ線の長さ
+function distToSeg(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,L2=dx*dx+dy*dy;if(L2===0)return dist(p,a);let t=((p.x-a.x)*dx+(p.y-a.y)*dy)/L2;t=Math.max(0,Math.min(1,t));return dist(p,{x:a.x+t*dx,y:a.y+t*dy});}
+function distToPoly(p,pts,closed){let m=Infinity;const n=pts.length;for(let i=0;i<(closed?n:n-1);i++){m=Math.min(m,distToSeg(p,pts[i],pts[(i+1)%n]));}return m;}
+// 刈込（投影＋側面）の合計面積：footprint + 周長×高さ。fは {pts, height}
+function trimAreaM2(f){const fp=areaM2(f.pts);if(fp==null)return null;return fp + perimeterM(f.pts)*(f.height||0);}
+// 管理柵（線×高さ）の面積：長さ×高さ
+function lineAreaM2(f){return lengthM(f.pts)*(f.height||0);}
+// featureの計上面積（㎡）を再計算
+function recalcAreaFeature(f){
+  if(f.type==='box'){const fp=f.L*f.D;f.area=(f.sides===false)?fp:(fp+2*(f.H||0)*(f.L+f.D));}  // 低木=投影のみ／中木=投影+側面4面
+  else if(f.type==='line'){f.length=lengthM(f.pts);f.area=lineAreaM2(f);}
+  else if(f.type==='area'){f.footprint=areaM2(f.pts);f.area=(f.calc==='trim')?trimAreaM2(f):f.footprint;}
+}
 // 三斜求積法：頂点0を基点に扇状に三角形分割。各三角形は最長辺を底辺、高さ=2×面積÷底辺。
 function sanshaTable(pts){
   const s=state.scale||1, hasScale=!!state.scale, rows=[]; let total=0;
@@ -399,12 +485,25 @@ function draw(){
   const SEL='#ff2d2d';
   state.features.forEach(f=>{
     const col=featColor(f);
-    if(f.type==='area'){
+    if(f.type==='box'){
+      const wpx=state.scale?(f.L/state.scale):60, hpx=state.scale?(f.D/state.scale):40;
+      const x=f.pt.x-wpx/2,y=f.pt.y-hpx/2;
+      ctx.beginPath();ctx.rect(x,y,wpx,hpx);
+      ctx.fillStyle=col+'33';ctx.fill();
+      ctx.lineWidth=(f===selected?3:2)/view.zoom;ctx.strokeStyle=(f===selected?SEL:col);ctx.stroke();
+      if(f===selected){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();}
+      label(f.pt.x,f.pt.y,`${f.kind}\n${f.sides===false?(f.L+'×'+f.D):(f.L+'×'+f.D+'×'+f.H)}m\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+    }else if(f.type==='line'){
+      ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+      ctx.lineWidth=(f===selected?5:3.5)/view.zoom;ctx.strokeStyle=(f===selected?SEL:col);ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();ctx.lineCap='butt';
+      if(f===selected)f.pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();});
+      const c=centroid(f.pts);label(c.x,c.y,`${f.kind}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+    }else if(f.type==='area'){
       ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();
       ctx.fillStyle=col+'33';ctx.fill();
       ctx.lineWidth=(f===selected?3:2)/view.zoom;ctx.strokeStyle=(f===selected?SEL:col);ctx.stroke();
       if(f===selected)f.pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();});
-      const c=centroid(f.pts);label(c.x,c.y,`${f.kind}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+      const c=centroid(f.pts);const tag=(f.calc==='trim')?'（投影＋側面）':'';label(c.x,c.y,`${f.kind}${tag}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
     }else{
       const rad=treeRadius(f)/view.zoom;
       ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad,0,7);ctx.fillStyle=col;ctx.fill();
@@ -461,16 +560,25 @@ let legend={x:null,y:null,show:true,_box:null};
 function aggregate(){
   const areas={},trees={};
   state.features.forEach(f=>{
-    if(f.type==='area'){const k=f.cat+' › '+f.kind;(areas[k]=areas[k]||{cat:f.cat,kind:f.kind,col:colorFor(f.cat+f.kind),m2:0}).m2+=f.area||0;}
+    if(f.type==='area'||f.type==='line'||f.type==='box'){const k=f.cat+' › '+f.kind;(areas[k]=areas[k]||{cat:f.cat,kind:f.kind,col:colorFor(f.cat+f.kind),m2:0,line:f.type==='line'}).m2+=f.area||0;}
     else{const k=f.cat+' › '+f.kind+(f.rank?' '+f.rank:'');(trees[k]=trees[k]||{cat:f.cat,kind:f.kind,rank:f.rank||'',col:treeColor(f),rad:treeRadius(f),n:0}).n+=1;}
   });
   return {areas,trees};
 }
+// 仕様書順（MASTER定義順 → 大分類→細別→規格）でソートするためのキー
+function specOrder(cat,kind,rank){
+  const cats=Object.keys(MASTER); let ci=cats.indexOf(cat); if(ci<0)ci=999;
+  const m=MASTER[cat]; let ki=m?Object.keys(m.kinds).indexOf(kind):-1; if(ki<0)ki=999;
+  let ri=rank?BANDS.indexOf(rank):-1; if(ri<0)ri=0;
+  return ci*1e6+ki*1e3+ri;
+}
+function cmpSpec(a,b){return specOrder(a.cat,a.kind,a.rank)-specOrder(b.cat,b.kind,b.rank);}
 function legendRows(){
-  const {areas,trees}=aggregate(),rows=[];
-  Object.values(areas).forEach(a=>rows.push({type:'area',col:a.col,label:a.kind,val:a.m2.toFixed(2)+' ㎡'}));
-  Object.values(trees).forEach(t=>rows.push({type:'tree',col:t.col,rad:t.rad,label:t.kind+(t.rank?' '+t.rank:''),val:t.n+' 本'}));
-  return rows;
+  const {areas,trees}=aggregate(),items=[];
+  Object.values(areas).forEach(a=>items.push({cat:a.cat,kind:a.kind,rank:'',type:a.line?'line':'area',col:a.col,label:a.kind,val:a.m2.toFixed(2)+' ㎡'}));
+  Object.values(trees).forEach(t=>items.push({cat:t.cat,kind:t.kind,rank:t.rank,type:'tree',col:t.col,rad:t.rad,label:t.kind+(t.rank?' '+t.rank:''),val:t.n+' 本'}));
+  items.sort(cmpSpec);   // 仕様書（工種）順に自動整列
+  return items;
 }
 function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 function drawLegend(){
@@ -498,6 +606,7 @@ function drawLegend(){
   rows.forEach((r,i)=>{
     const ry=y+pad+titleH+i*rowH+rowH/2-1, cx=x+pad+9;
     if(r.type==='area'){ctx.fillStyle=r.col+'55';ctx.fillRect(cx-7,ry-7,14,14);ctx.strokeStyle=r.col;ctx.lineWidth=2;ctx.strokeRect(cx-7,ry-7,14,14);}
+    else if(r.type==='line'){ctx.strokeStyle=r.col;ctx.lineWidth=3.5;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(cx-8,ry+6);ctx.lineTo(cx+8,ry-6);ctx.stroke();ctx.lineCap='butt';}
     else{const rr=Math.max(4,Math.min(9,r.rad));ctx.beginPath();ctx.arc(cx,ry,rr,0,7);ctx.fillStyle=r.col;ctx.fill();ctx.strokeStyle='#0007';ctx.lineWidth=1;ctx.stroke();}
     ctx.fillStyle='#16202c';ctx.font='12px sans-serif';ctx.textAlign='left';ctx.fillText(r.label,x+symW+2,ry);
     ctx.textAlign='right';ctx.fillStyle='#3a4757';ctx.fillText(r.val,x+boxW-pad,ry);ctx.textAlign='left';
@@ -507,27 +616,36 @@ function drawLegend(){
 function legendHit(p){const b=legend._box;return !!(legend.show&&b&&p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h);}
 
 /* ---------- 入力 ---------- */
-let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null,draggingLegend=false,legDragOff=null;
+let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null,draggingLegend=false,legDragOff=null,spaceDown=false,dragSnap=null;
 function startLegendDrag(p){legend.x=legend._box.x;legend.y=legend._box.y;draggingLegend=true;legDragOff={x:p.x-legend._box.x,y:p.y-legend._box.y};}
 function moveFeature(f,dx,dy){
-  if(f.type==='tree'){f.pt.x+=dx;f.pt.y+=dy;}
+  if(f.pt){f.pt.x+=dx;f.pt.y+=dy;}
   else f.pts.forEach(p=>{p.x+=dx;p.y+=dy;});
 }
 function refreshDraftBar(){
   const bar=$('draftbar'),active=!!(draft&&(tool==='area'||tool==='cal'));
   bar.classList.toggle('on',active);
   if(active){
-    const isArea=tool==='area';
+    const isArea=tool==='area', need=(curGeom()==='line')?2:3;
     $('dbFinish').style.display=isArea?'':'none';
-    $('dbFinish').disabled=!(isArea&&draft.pts.length>=3);
+    $('dbFinish').disabled=!(isArea&&draft.pts.length>=need);
     $('dbUndo').disabled=draft.pts.length===0;
   }
 }
 function addAreaPoint(ip){
+  if(curGeom()==='box'){placeBox(ip);return;}   // 刈込：寸法入力でタップ配置
   if(!draft)draft={pts:[]};
-  // 始点付近のタップで閉じる（iPadのダブルタップ不要）
-  if(draft.pts.length>=3&&dist(ip,draft.pts[0])<16/view.zoom){finishArea();return;}
+  // 多角形のみ：始点付近のタップで閉じる（線＝管理柵は閉じない）
+  if(curGeom()!=='line'&&draft.pts.length>=3&&dist(ip,draft.pts[0])<16/view.zoom){finishArea();return;}
   draft.pts.push(ip);refreshDraftBar();draw();
+}
+function placeBox(ip){
+  const L=curLenVal(),D=curDepVal(),sides=curBoxSides();
+  if(L<=0||D<=0){alert('刈込は左で「長さ」と「奥行」を入力してください。');return;}
+  pushHistory();
+  const cat=$('catSel').value,kind=$('kindSel').value;
+  const f={type:'box',cat,kind,pt:ip,L,D,H:sides?curHeightVal():0,sides};
+  recalcAreaFeature(f);state.features.push(f);renderAgg();draw();
 }
 // 縮尺：押した位置に点を置き、指/マウスを離すまでドラッグで微調整。離した位置で確定。
 function calDown(ip){
@@ -544,15 +662,16 @@ function undoDraftPoint(){
   if(!draft)return;draft.pts.pop();calDragIdx=null;hover=null;if(!draft.pts.length)draft=null;refreshDraftBar();draw();
 }
 function cancelDraft(){draft=null;calDragIdx=null;hover=null;refreshDraftBar();draw();}
-$('dbFinish').onclick=()=>{if(tool==='area'&&draft&&draft.pts.length>=3)finishArea();};
+$('dbFinish').onclick=()=>{const need=(curGeom()==='line')?2:3;if(tool==='area'&&draft&&draft.pts.length>=need)finishArea();};
 $('dbUndo').onclick=undoDraftPoint;
 $('dbCancel').onclick=cancelDraft;
 cv.addEventListener('mousedown',e=>{
   const p=evtPos(e),ip=toImg(p.x,p.y);
+  if(spaceDown||tool==='pan'){panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};cv.style.cursor='grabbing';return;} // Space or ✋ツール＝表示位置だけ移動
   if(legendHit(p)){startLegendDrag(p);cv.style.cursor='grabbing';return;}
   if(tool==='select'){
     const f=hit(ip); selectFeature(f);
-    if(f){dragging=f;dragLast=ip;cv.style.cursor='grabbing';}
+    if(f){dragging=f;dragLast=ip;dragSnap=snapshot();cv.style.cursor='grabbing';}
     else{panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};cv.style.cursor='grabbing';}
     return;
   }
@@ -563,17 +682,17 @@ cv.addEventListener('mousedown',e=>{
 cv.addEventListener('mousemove',e=>{
   if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;draw();return;}
   if(tool==='cal'){const p=evtPos(e),ip=toImg(p.x,p.y);if(calDragIdx!==null)draft.pts[calDragIdx]=ip;else if(draft)hover=ip;draw();return;}
-  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;draw();return;}
+  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;draw();}
 });
 window.addEventListener('mouseup',()=>{
   if(draggingLegend){draggingLegend=false;cv.style.cursor=tool==='select'?'grab':'crosshair';return;}
   if(tool==='cal'&&calDragIdx!==null){calUp();return;}
-  if(dragging){if(dragging.type==='area')dragging.area=areaM2(dragging.pts);dragging=null;renderAgg();renderSansha();}
+  if(dragging){recalcAreaFeature(dragging);dragging=null;dragSnap=null;renderAgg();renderSansha();}
   if(panning)panning=false;
-  cv.style.cursor=tool==='select'?'grab':'crosshair';
+  cv.style.cursor=spaceDown?'grab':(tool==='select'?'grab':'crosshair');
 });
-cv.addEventListener('dblclick',()=>{if(tool==='area'&&draft&&draft.pts.length>=3)finishArea();});
+cv.addEventListener('dblclick',()=>{const need=(curGeom()==='line')?2:3;if(tool==='area'&&draft&&draft.pts.length>=need)finishArea();});
 cv.addEventListener('wheel',e=>{e.preventDefault();const p=evtPos(e);const f=e.deltaY<0?1.12:1/1.12;zoomAt(p.x,p.y,f);},{passive:false});
 // touch
 let lastTouch=null,pinchD=null;
@@ -581,9 +700,10 @@ cv.addEventListener('touchstart',e=>{
   if(e.touches.length===2){pinchD=touchDist(e);dragging=null;calDragIdx=null;draggingLegend=false;return;}
   const p=evtPos(e),ip=toImg(p.x,p.y);
   if(legendHit(p)){startLegendDrag(p);lastTouch=null;return;}
+  if(tool==='pan'){panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};lastTouch=null;return;} // ✋地図移動（iPad指1本）
   if(tool==='cal'){calDown(ip);lastTouch=null;return;}
   if(tool==='select'){const f=hit(ip);selectFeature(f);
-    if(f){dragging=f;dragLast=ip;}else{panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};}}
+    if(f){dragging=f;dragLast=ip;dragSnap=snapshot();}else{panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};}}
   lastTouch=p;
 },{passive:false});
 cv.addEventListener('touchmove',e=>{
@@ -591,14 +711,14 @@ cv.addEventListener('touchmove',e=>{
   if(e.touches.length===2&&pinchD){const d=touchDist(e),c=touchMid(e);zoomAt(c.x,c.y,d/pinchD);pinchD=d;return;}
   if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;lastTouch=null;draw();return;}
   if(tool==='cal'&&calDragIdx!==null){const p=evtPos(e),ip=toImg(p.x,p.y);draft.pts[calDragIdx]=ip;lastTouch=null;draw();return;}
-  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;lastTouch=null;draw();return;}
+  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;lastTouch=null;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;lastTouch=null;draw();}
 },{passive:false});
 cv.addEventListener('touchend',e=>{
   if(pinchD&&e.touches.length<2){pinchD=null;return;}
   if(draggingLegend){draggingLegend=false;lastTouch=null;return;}
   if(tool==='cal'){if(calDragIdx!==null)calUp();lastTouch=null;return;}
-  if(dragging){if(dragging.type==='area')dragging.area=areaM2(dragging.pts);dragging=null;renderAgg();renderSansha();lastTouch=null;return;}
+  if(dragging){recalcAreaFeature(dragging);dragging=null;dragSnap=null;renderAgg();renderSansha();lastTouch=null;return;}
   if(panning){panning=false;return;}
   if(!lastTouch)return;const ip=toImg(lastTouch.x,lastTouch.y);
   if(tool==='area'){addAreaPoint(ip);}
@@ -609,25 +729,46 @@ function touchDist(e){const a=e.touches[0],b=e.touches[1];return Math.hypot(a.cl
 function touchMid(e){const r=cv.getBoundingClientRect(),a=e.touches[0],b=e.touches[1];return{x:(a.clientX+b.clientX)/2-r.left,y:(a.clientY+b.clientY)/2-r.top};}
 function zoomAt(px,py,f){const ip=toImg(px,py);view.zoom*=f;view.ox=px-ip.x*view.zoom;view.oy=py-ip.y*view.zoom;draw();}
 window.addEventListener('keydown',e=>{
-  if((e.key==='Delete'||e.key==='Backspace')&&selected){removeFeature(selected);}
-  if(e.key==='Enter'&&tool==='area'&&draft&&draft.pts.length>=3)finishArea();
+  const typing=/^(INPUT|SELECT|TEXTAREA)$/.test((e.target&&e.target.tagName)||'');
+  if(e.code==='Space'&&!typing){if(!spaceDown){spaceDown=true;cv.style.cursor='grab';}e.preventDefault();return;}
+  if((e.ctrlKey||e.metaKey)&&!typing){
+    if(e.key==='z'||e.key==='Z'){e.preventDefault();if(e.shiftKey)redo();else undo();return;}
+    if(e.key==='y'||e.key==='Y'){e.preventDefault();redo();return;}
+  }
+  if((e.key==='Delete'||e.key==='Backspace')&&selected&&!typing){e.preventDefault();removeFeature(selected);}
+  if(e.key==='Enter'&&tool==='area'&&draft){const need=(curGeom()==='line')?2:3;if(draft.pts.length>=need)finishArea();}
   if(e.key==="Escape"){cancelDraft();}
+});
+window.addEventListener('keyup',e=>{
+  if(e.code==='Space'){spaceDown=false;if(panning){panning=false;}cv.style.cursor=tool==='select'?'grab':'crosshair';}
 });
 
 /* ---------- 確定処理 ---------- */
 function finishCal(){
   const d=dist(draft.pts[0],draft.pts[1]);const real=parseFloat($('calDist').value)||0;
-  if(real>0&&d>0){state.scale=real/d;updateScaleBadge();
-    state.features.forEach(f=>{if(f.type==='area')f.area=areaM2(f.pts);});
-    renderAgg();}
+  if(real>0&&d>0){pushHistory();state.scale=real/d;updateScaleBadge();
+    state.features.forEach(f=>recalcAreaFeature(f));
+    renderAgg();renderSansha();}
   draft=null;calDragIdx=null;hover=null;refreshDraftBar();updateHint();draw();
 }
 function finishArea(){
   const cat=$('catSel').value,kind=$('kindSel').value;
-  const f={type:'area',cat,kind,pts:draft.pts.slice(),area:areaM2(draft.pts)};
-  state.features.push(f);draft=null;refreshDraftBar();renderAgg();draw();
+  const geom=curGeom(), h=curHeightVal();
+  if(geom==='line'){
+    if(draft.pts.length<2){return;}
+    pushHistory();
+    const f={type:'line',cat,kind,pts:draft.pts.slice(),height:h};
+    recalcAreaFeature(f);state.features.push(f);
+  }else{
+    if(draft.pts.length<3){return;}
+    pushHistory();
+    const f={type:'area',cat,kind,pts:draft.pts.slice(),calc:curCalc(),height:(curNeedsHeight()?h:0)};
+    recalcAreaFeature(f);state.features.push(f);
+  }
+  draft=null;refreshDraftBar();renderAgg();draw();
 }
 function placeTree(ip){
+  pushHistory();
   const cat=$('catSel').value,kind=$('kindSel').value;
   const f={type:'tree',cat,kind,pt:ip};
   if(curKindRanks())f.rank=$('rankSel').value;
@@ -639,9 +780,12 @@ function updateScaleBadge(){const b=$('scaleBadge');
 
 /* ---------- 選択・削除 ---------- */
 function hit(ip){
+  const tolPx=10, tol=tolPx/view.zoom;   // 線の近くでもつかめる許容
   for(let i=state.features.length-1;i>=0;i--){const f=state.features[i];
-    if(f.type==='tree'&&dist(f.pt,ip)<(treeRadius(f)+4)/view.zoom)return f;
-    if(f.type==='area'&&pointInPoly(ip,f.pts))return f;}
+    if(f.type==='tree'){if(dist(f.pt,ip)<(treeRadius(f)+5)/view.zoom)return f;}
+    else if(f.type==='box'){const wpx=state.scale?(f.L/state.scale):60,hpx=state.scale?(f.D/state.scale):40;if(Math.abs(ip.x-f.pt.x)<=wpx/2+tol&&Math.abs(ip.y-f.pt.y)<=hpx/2+tol)return f;}
+    else if(f.type==='line'){if(distToPoly(ip,f.pts,false)<tol+2/view.zoom)return f;}
+    else if(f.type==='area'){if(pointInPoly(ip,f.pts)||distToPoly(ip,f.pts,true)<tol)return f;}}
   return null;
 }
 function pointInPoly(p,pts){let c=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){
@@ -649,14 +793,50 @@ function pointInPoly(p,pts){let c=false;for(let i=0,j=pts.length-1;i<pts.length;
 function selectFeature(f){selected=f;renderSansha();draw();}
 function renderSansha(){
   const el=$('sansha');
+  // 刈込（長さ×奥行×高さ：投影＋側面4面）
+  if(selected&&selected.type==='box'){
+    const L=selected.L,D=selected.D,H=selected.H||0,fp=L*D,fb=2*L*H,lr=2*D*H,tot=selected.area;
+    if(selected.sides===false){
+      el.innerHTML=`<div class="legend" style="margin-bottom:6px">${selected.kind}（刈込：投影面積のみ）</div>`+
+        `<table><tr><th>項目</th><th class="num">値</th></tr>`+
+        `<tr><td>長さ × 奥行</td><td class="num">${L} × ${D} m</td></tr>`+
+        `<tr><td style="text-align:right">投影面積 ＝ 長さ × 奥行</td><td class="num" style="color:var(--acc);font-weight:700">${fp.toFixed(2)} ㎡</td></tr></table>`;
+      return;
+    }
+    el.innerHTML=`<div class="legend" style="margin-bottom:6px">${selected.kind}（刈込：投影＋側面4面）</div>`+
+      `<table><tr><th>項目</th><th class="num">値</th></tr>`+
+      `<tr><td>長さ × 奥行 × 高さ</td><td class="num">${L} × ${D} × ${H} m</td></tr>`+
+      `<tr><td>投影面積（長さ×奥行）</td><td class="num">${fp.toFixed(2)} ㎡</td></tr>`+
+      `<tr><td>側面・前後（長さ×高さ×2）</td><td class="num">${fb.toFixed(2)} ㎡</td></tr>`+
+      `<tr><td>側面・左右（奥行×高さ×2）</td><td class="num">${lr.toFixed(2)} ㎡</td></tr>`+
+      `<tr><td style="text-align:right">合計</td><td class="num" style="color:var(--acc);font-weight:700">${tot.toFixed(2)} ㎡</td></tr></table>`;
+    return;
+  }
+  // 管理柵（線×高さ）
+  if(selected&&selected.type==='line'){
+    const L=lengthM(selected.pts), H=selected.height||0, A=L*H;
+    el.innerHTML=`<div class="legend" style="margin-bottom:6px">${selected.kind}（つる：フェンス）</div>`+
+      `<table><tr><th>項目</th><th class="num">値</th></tr>`+
+      `<tr><td>柵の長さ</td><td class="num">${state.scale?L.toFixed(2)+' m':'縮尺未設定'}</td></tr>`+
+      `<tr><td>高さ</td><td class="num">${H.toFixed(2)} m</td></tr>`+
+      `<tr><td style="text-align:right">面積 ＝ 長さ × 高さ</td><td class="num" style="color:var(--acc);font-weight:700">${state.scale?A.toFixed(2)+' ㎡':'—'}</td></tr></table>`;
+    return;
+  }
   if(!(selected&&selected.type==='area')){el.innerHTML='<div class="empty">面積を選択モードでクリックすると、三斜法の根拠表が出ます</div>';return;}
   const t=sanshaTable(selected.pts), u=t.unit;
-  let h=`<div class="legend" style="margin-bottom:6px">${selected.kind}${state.scale?'':'（縮尺未設定のため px 表示）'}</div>`;
+  const trim=(selected.calc==='trim');
+  let h=`<div class="legend" style="margin-bottom:6px">${selected.kind}${trim?'（投影＋側面）':''}${state.scale?'':'（縮尺未設定のため px 表示）'}</div>`;
   h+='<table><tr><th>No</th><th class="num">底辺('+u+')</th><th class="num">高さ('+u+')</th><th class="num">倍面積</th></tr>';
   t.rows.forEach(r=>h+=`<tr><td>${r.no}</td><td class="num">${r.base.toFixed(3)}</td><td class="num">${r.height.toFixed(3)}</td><td class="num">${r.dbl.toFixed(3)}</td></tr>`);
   const sumDbl=t.rows.reduce((s,r)=>s+r.dbl,0);
   h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">倍面積 合計</td><td class="num">${sumDbl.toFixed(3)}</td></tr>`;
-  h+=`<tr><td colspan="3" style="text-align:right">面積 ＝ 合計 ÷ 2</td><td class="num" style="color:var(--acc);font-weight:700">${t.total.toFixed(3)} ${u}²</td></tr>`;
+  h+=`<tr><td colspan="3" style="text-align:right">投影面積 ＝ 合計 ÷ 2</td><td class="num"${trim?'':' style="color:var(--acc);font-weight:700"'}>${t.total.toFixed(3)} ${u}²</td></tr>`;
+  if(trim&&state.scale){
+    const fp=areaM2(selected.pts), per=perimeterM(selected.pts), side=per*(selected.height||0), tot=fp+side;
+    h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">周長</td><td class="num">${per.toFixed(2)} m</td></tr>`;
+    h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">側面 ＝ 周長 × 高さ(${(selected.height||0).toFixed(2)}m)</td><td class="num">${side.toFixed(2)} ㎡</td></tr>`;
+    h+=`<tr><td colspan="3" style="text-align:right">合計 ＝ 投影 ＋ 側面</td><td class="num" style="color:var(--acc);font-weight:700">${tot.toFixed(2)} ㎡</td></tr>`;
+  }
   h+='</table><button class="btn ghost" id="dlSansha" style="margin-top:8px">求積表をCSVで書き出す</button>';
   el.innerHTML=h;
   $('dlSansha').onclick=()=>{
@@ -666,7 +846,7 @@ function renderSansha(){
     dl('\uFEFF'+c,`${($('parkName').value||'求積')}_${selected.kind}_求積表.csv`,'text/csv');
   };
 }
-function removeFeature(f){state.features=state.features.filter(x=>x!==f);if(selected===f)selected=null;renderSansha();renderAgg();draw();}
+function removeFeature(f){pushHistory();state.features=state.features.filter(x=>x!==f);if(selected===f)selected=null;renderSansha();renderAgg();draw();}
 
 /* ---------- 集計 ---------- */
 function unitPrice(f){
@@ -678,18 +858,18 @@ function renderAgg(){
   // area: by cat+kind sum m2
   const am={},tm={};let cost=0;
   state.features.forEach(f=>{
-    if(f.type==='area'){const key=f.cat+' › '+f.kind;am[key]=am[key]||{m2:0,col:colorFor(f.cat+f.kind),price:unitPrice(f)};am[key].m2+=f.area||0;}
-    else{const key=f.cat+(f.rank?' › '+f.kind+' '+f.rank:' › '+f.kind);tm[key]=tm[key]||{n:0,col:featColor(f),price:unitPrice(f)};tm[key].n+=1;}
+    if(f.type==='area'||f.type==='line'||f.type==='box'){const key=f.cat+' › '+f.kind;am[key]=am[key]||{m2:0,col:colorFor(f.cat+f.kind),price:unitPrice(f),cat:f.cat,kind:f.kind,rank:''};am[key].m2+=f.area||0;}
+    else{const key=f.cat+(f.rank?' › '+f.kind+' '+f.rank:' › '+f.kind);tm[key]=tm[key]||{n:0,col:featColor(f),price:unitPrice(f),cat:f.cat,kind:f.kind,rank:f.rank||''};tm[key].n+=1;}
   });
   // area table
   const ae=$('aggArea');let h='';
-  const ak=Object.keys(am);
+  const ak=Object.keys(am).sort((x,y)=>cmpSpec(am[x],am[y]));
   if(!ak.length)h='<div class="empty">面積の注記なし</div>';
   else{h='<table><tr><th>工種</th><th class="num">㎡</th></tr>';
     ak.forEach(k=>{h+=`<tr><td><span class="swatch" style="background:${am[k].col}"></span>${k}</td><td class="num">${am[k].m2.toFixed(2)}</td></tr>`;cost+=am[k].m2*am[k].price;});h+='</table>';}
   ae.innerHTML=h;
   // tree table
-  const te=$('aggTree');const tk=Object.keys(tm);
+  const te=$('aggTree');const tk=Object.keys(tm).sort((x,y)=>cmpSpec(tm[x],tm[y]));
   if(!tk.length)te.innerHTML='<div class="empty">樹木の注記なし</div>';
   else{let t='<table><tr><th>工種・規格</th><th class="num">本</th></tr>';
     tk.forEach(k=>{t+=`<tr><td><span class="swatch" style="background:${tm[k].col}"></span>${k}</td><td class="num">${tm[k].n}</td></tr>`;cost+=tm[k].n*tm[k].price;});t+='</table>';te.innerHTML=t;}
@@ -698,10 +878,10 @@ function renderAgg(){
   if(!state.manual.length)me.innerHTML='';
   else{let t='<table>';state.manual.forEach((r,i)=>{const p=(MANUAL[r.kind]||{}).price||0;cost+=r.qty*p;
     t+=`<tr><td>${r.kind}</td><td class="num">${r.qty} ${MANUAL[r.kind].unit}</td><td class="x" style="cursor:pointer;color:var(--mut)" data-mi="${i}">✕</td></tr>`;});t+='</table>';me.innerHTML=t;
-    me.querySelectorAll('[data-mi]').forEach(b=>b.onclick=()=>{state.manual.splice(+b.dataset.mi,1);renderAgg();});}
+    me.querySelectorAll('[data-mi]').forEach(b=>b.onclick=()=>{pushHistory();state.manual.splice(+b.dataset.mi,1);renderAgg();});}
   $('costTotal').textContent='¥'+Math.round(cost).toLocaleString();
 }
-$('manAdd').onclick=()=>{const k=$('manKind').value,q=parseFloat($('manQty').value);if(k&&q>0){state.manual.push({kind:k,qty:q});$('manQty').value='';renderAgg();}};
+$('manAdd').onclick=()=>{const k=$('manKind').value,q=parseFloat($('manQty').value);if(k&&q>0){pushHistory();state.manual.push({kind:k,qty:q});$('manQty').value='';renderAgg();}};
 
 /* ---------- 保存/読込/書き出し ---------- */
 $('loadImg').onclick=()=>$('imgFile').click();$('imgFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{state.img=im;state.imgData=r.result;fit();updateHint();requestAnimationFrame(fit);};im.src=r.result;};r.readAsDataURL(f);};
@@ -718,23 +898,61 @@ function fit(){
 $('fit').onclick=fit;
 $('zoomIn').onclick=()=>zoomAt(cv.width/2,cv.height/2,1.2);
 $('zoomOut').onclick=()=>zoomAt(cv.width/2,cv.height/2,1/1.2);
-$('clearAll').onclick=()=>{if(confirm('注記をすべて消去しますか？')){state.features=[];state.manual=[];selected=null;renderAgg();draw();}};
+$('clearAll').onclick=()=>{if(confirm('注記をすべて消去しますか？')){pushHistory();state.features=[];state.manual=[];selected=null;renderAgg();renderSansha();draw();}};
+$('undoBtn').onclick=undo; $('redoBtn').onclick=redo;
 $('legendToggle').onclick=()=>{legend.show=!legend.show;$('legendToggle').classList.toggle('on',legend.show);$('legendToggle').firstChild.textContent=legend.show?'凡例を表示':'凡例は非表示';draw();};
 $('legendReset').onclick=()=>{legend.x=null;legend.y=null;draw();};
 
 $('saveJson').onclick=()=>{
-  const data={park:$('parkName').value||'未設定',contract:$('contractName').value||'',scale:state.scale,imgData:state.imgData||null,
-    features:state.features,manual:state.manual,saved:new Date().toISOString()};
-  dl(JSON.stringify(data),`${data.park}.json`,'application/json');
+  const order=$('orderNo').value||'';
+  const data={park:$('parkName').value||'未設定',contract:$('contractName').value||'',order,date:$('workDate').value||'',
+    scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,saved:new Date().toISOString()};
+  const base=(order?order+'_':'')+(data.park);
+  dl(JSON.stringify(data),`${base}.json`,'application/json');
 };
 $('openJson').onclick=()=>$('jsonFile').click();
 $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{
   const d=JSON.parse(r.result);$('parkName').value=d.park||'';state.scale=d.scale||null;
   if(d.contract!==undefined)$('contractName').value=d.contract||'';
-  state.features=d.features||[];state.manual=d.manual||[];updateScaleBadge();renderAgg();
+  $('orderNo').value=d.order||'';$('workDate').value=d.date||'';
+  state.features=d.features||[];state.manual=d.manual||[];state.features.forEach(recalcAreaFeature);
+  undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
 };r.readAsText(f);};
 $('exportPng').onclick=()=>{const url=cv.toDataURL('image/png');const a=document.createElement('a');a.href=url;a.download=($('parkName').value||'求積図')+'_注記.png';a.click();};
+
+/* ---------- 印刷／PDF保存（実績用：地図＋集計を1枚に） ---------- */
+function formatWareki(iso){if(!iso)return '';const [y,m,d]=iso.split('-').map(Number);const r=y-2018;return `令和${r===1?'元':r}年${m}月${d}日`;}
+function fullImageDataURL(){
+  if(!state.img)return null;
+  const z=view.zoom,ox=view.ox,oy=view.oy,sw=cv.width,sh=cv.height,lx=legend.x,ly=legend.y;
+  cv.width=state.img.width;cv.height=state.img.height;view.zoom=1;view.ox=0;view.oy=0;legend.x=null;legend.y=null;
+  draw();const url=cv.toDataURL('image/png');
+  cv.width=sw;cv.height=sh;view.zoom=z;view.ox=ox;view.oy=oy;legend.x=lx;legend.y=ly;draw();return url;
+}
+function aggHtmlForPrint(){
+  const {areas,trees}=aggregate();let h='';
+  const ar=Object.values(areas).sort(cmpSpec);
+  if(ar.length){h+='<table><tr><th>工種（面積系）</th><th class="num">数量</th></tr>';
+    ar.forEach(a=>h+=`<tr><td>${a.cat} › ${a.kind}</td><td class="num">${a.m2.toFixed(2)} ㎡</td></tr>`);h+='</table>';}
+  const tr=Object.values(trees).sort(cmpSpec);
+  if(tr.length){h+='<table><tr><th>工種・規格（本数系）</th><th class="num">数量</th></tr>';
+    tr.forEach(t=>h+=`<tr><td>${t.cat} › ${t.kind}${t.rank?' '+t.rank:''}</td><td class="num">${t.n} 本</td></tr>`);h+='</table>';}
+  if(state.manual.length){h+='<table><tr><th>その他（手入力）</th><th class="num">数量</th></tr>';
+    state.manual.forEach(m=>h+=`<tr><td>${m.kind}</td><td class="num">${m.qty} ${(MANUAL[m.kind]||{}).unit||''}</td></tr>`);h+='</table>';}
+  return h||'<p>記録なし</p>';
+}
+function printPDF(){
+  if(!state.img){alert('先に図面を読み込んでください。');return;}
+  const img=fullImageDataURL();
+  const park=$('parkName').value||'公園',contract=$('contractName').value||'',order=$('orderNo').value||'';
+  $('printArea').innerHTML=
+    `<h1>${park}　作業実績（求積・出来形）</h1>`+
+    `<div class="ph">委託：${contract}　／　指示番号：${order||'—'}　／　実施：${formatWareki($('workDate').value)||'—'}　／　出力：${formatWareki(new Date().toISOString().slice(0,10))}</div>`+
+    `<img src="${img}">`+aggHtmlForPrint();
+  setTimeout(()=>window.print(),150);
+}
+$('printPdf').onclick=printPDF;
 function dl(text,name,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
 
 /* ---------- 多公園集計 ---------- */
@@ -744,7 +962,7 @@ $('multiFile').onchange=e=>{
   files.forEach(f=>{const r=new FileReader();r.onload=()=>{
     try{const d=JSON.parse(r.result);(d.features||[]).forEach(ft=>{
       let key,val,unit;
-      if(ft.type==='area'){key=ft.cat+' › '+ft.kind;unit='㎡';val=ft.area||0;}
+      if(ft.type==='area'||ft.type==='line'||ft.type==='box'){key=ft.cat+' › '+ft.kind;unit='㎡';val=ft.area||0;}
       else{key=ft.cat+(ft.rank?' › '+ft.kind+' '+ft.rank:' › '+ft.kind);unit='本';val=1;}
       agg[key]=agg[key]||{v:0,unit,parks:new Set()};agg[key].v+=val;agg[key].parks.add(d.park);});
     (d.manual||[]).forEach(m=>{const key=m.kind;agg[key]=agg[key]||{v:0,unit:(MANUAL[m.kind]||{}).unit||'',parks:new Set()};agg[key].v+=m.qty;agg[key].parks.add(d.park);});
@@ -764,7 +982,8 @@ function showMulti(agg){
 /* ---------- 全面積の算出根拠（三斜） ---------- */
 function r3(x){return Math.round(x*1000)/1000;}
 function allAreaBlocks(){
-  return state.features.filter(f=>f.type==='area').map(f=>({f,t:sanshaTable(f.pts)}));
+  return state.features.filter(f=>f.type==='area').slice().sort((a,b)=>cmpSpec(a,b))   // 仕様書（工種）順
+    .map(f=>({f,t:sanshaTable(f.pts)}));
 }
 function buildSummary(blocks){
   const byKind={};let grand=0;
@@ -829,10 +1048,12 @@ function exportExcel(){
     Object.keys(ws2).forEach(k=>{if(k[0]!=='!'&&ws2[k].t==='n')ws2[k].z='0.000';});
     XLSX.utils.book_append_sheet(wb,ws2,'面積集計');
   }
-  // シート3：凡例・集計（地図記号の説明＋数量。Excel側で体裁調整できる素データ）
+  // シート3：凡例・集計（地図記号の説明＋数量。仕様書の工種順に整列）
   const leg=[[park+'　凡例・集計'],['記号','大分類','細別','規格','数量','単位']];
-  Object.values(areas).forEach(a=>leg.push(['■ 面積',a.cat,a.kind,'',Number(a.m2.toFixed(2)),'㎡']));
-  Object.values(trees).forEach(t=>leg.push(['● 樹木',t.cat,t.kind,t.rank||'',t.n,'本']));
+  const legItems=[];
+  Object.values(areas).forEach(a=>legItems.push({cat:a.cat,kind:a.kind,rank:'',row:[a.line?'― 柵':'■ 面積',a.cat,a.kind,'',Number(a.m2.toFixed(2)),'㎡']}));
+  Object.values(trees).forEach(t=>legItems.push({cat:t.cat,kind:t.kind,rank:t.rank||'',row:['● 樹木',t.cat,t.kind,t.rank||'',t.n,'本']}));
+  legItems.sort(cmpSpec).forEach(it=>leg.push(it.row));
   state.manual.forEach(m=>leg.push(['（手入力）',m.kind,'','',m.qty,(MANUAL[m.kind]||{}).unit||'']));
   const ws3=XLSX.utils.aoa_to_sheet(leg);
   ws3['!cols']=[{wch:9},{wch:18},{wch:16},{wch:18},{wch:8},{wch:6}];
@@ -866,7 +1087,7 @@ $('mCopy').onclick=()=>{
 /* ---------- init ---------- */
 $('hint').onclick=()=>$('hint').style.display='none';   // 邪魔なときはタップで一時的に隠す（ツール切替で再表示）
 buildTreeColors();
-fillCats();fillManual();renderAgg();renderSansha();setTool('area');updateHint();
+fillCats();fillManual();renderAgg();renderSansha();setTool('area');updateHint();updateUndoButtons();
 new ResizeObserver(resize).observe(cv.parentElement);resize();
 </script>
 </body>
