@@ -215,6 +215,19 @@
   </div>
 </div>
 
+<div class="modal" id="modal">
+  <div class="card">
+    <button class="close" id="modalClose">閉じる ✕</button>
+    <h2>面積 算出根拠（三斜求積法）</h2>
+    <div class="legend" id="modalSub"></div>
+    <div class="toolbar">
+      <button id="mXlsx">Excelで書き出す</button>
+      <button class="alt" id="mCsv">CSVで書き出す</button>
+      <button class="alt" id="mCopy">表をコピー</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
 <script>
 /* ---------- 工種マスタ（高津区 地区標準単価・2025.12） ---------- */
 const BANDS = ["30cm未満","30〜60cm","60〜90cm","90〜120cm","120〜150cm","150〜180cm","180〜210cm","210〜240cm","240〜270cm","270〜300cm"];
@@ -602,8 +615,17 @@ $('manAdd').onclick=()=>{const k=$('manKind').value,q=parseFloat($('manQty').val
 
 /* ---------- 保存/読込/書き出し ---------- */
 $('loadImg').onclick=()=>$('imgFile').click();
-$('imgFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{state.img=im;state.imgData=r.result;resize();fit();updateHint();};im.src=r.result;};r.readAsDataURL(f);};
-function fit(){if(!state.img)return;const W=cv.width,H=cv.height;const z=Math.min(W/state.img.width,H/state.img.height)*0.95;view.zoom=z;view.ox=(W-state.img.width*z)/2;view.oy=(H-state.img.height*z)/2;draw();}
+$('imgFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{state.img=im;state.imgData=r.result;fit();updateHint();requestAnimationFrame(fit);};im.src=r.result;};r.readAsDataURL(f);};
+function fit(){
+  if(!state.img)return;
+  // 表示領域の実サイズに合わせてバッファを更新（初期化状況に依存せず常に正しく全体表示）
+  const r=cv.parentElement.getBoundingClientRect();
+  if(r.width>1&&r.height>1){cv.width=Math.round(r.width);cv.height=Math.round(r.height);}
+  const W=cv.width,H=cv.height;
+  const z=Math.min(W/state.img.width,H/state.img.height)*0.95;
+  view.zoom=z;view.ox=(W-state.img.width*z)/2;view.oy=(H-state.img.height*z)/2;
+  draw();
+}
 $('fit').onclick=fit;
 $('zoomIn').onclick=()=>zoomAt(cv.width/2,cv.height/2,1.2);
 $('zoomOut').onclick=()=>zoomAt(cv.width/2,cv.height/2,1/1.2);
@@ -619,7 +641,7 @@ $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new Fi
   const d=JSON.parse(r.result);$('parkName').value=d.park||'';state.scale=d.scale||null;
   if(d.contract!==undefined)$('contractName').value=d.contract||'';
   state.features=d.features||[];state.manual=d.manual||[];updateScaleBadge();renderAgg();
-  if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;resize();fit();};im.src=d.imgData;}else draw();
+  if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
 };r.readAsText(f);};
 $('exportPng').onclick=()=>{const url=cv.toDataURL('image/png');const a=document.createElement('a');a.href=url;a.download=($('parkName').value||'求積図')+'_注記.png';a.click();};
 function dl(text,name,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
@@ -744,18 +766,5 @@ $('hint').onclick=()=>$('hint').style.display='none';   // 邪魔なときはタ
 fillCats();fillManual();renderAgg();renderSansha();setTool('area');updateHint();
 new ResizeObserver(resize).observe(cv.parentElement);resize();
 </script>
-<div class="modal" id="modal">
-  <div class="card">
-    <button class="close" id="modalClose">閉じる ✕</button>
-    <h2>面積 算出根拠（三斜求積法）</h2>
-    <div class="legend" id="modalSub"></div>
-    <div class="toolbar">
-      <button id="mXlsx">Excelで書き出す</button>
-      <button class="alt" id="mCsv">CSVで書き出す</button>
-      <button class="alt" id="mCopy">表をコピー</button>
-    </div>
-    <div id="modalBody"></div>
-  </div>
-</div>
 </body>
 </html>
