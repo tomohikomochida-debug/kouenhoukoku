@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>公園作業記録 — 求積＆出来形ツール（試作）</title>
+<style>
+  :root{
+    --bg:#10141a; --panel:#171d26; --panel2:#1f2733; --line:#2b3543;
+    --ink:#e8edf3; --mut:#8a97a8;
+    --acc:#3ddc97; --warn:#ffb454; --bad:#ff6b6b; --blue:#5aa9ff;
+    --mono:"SFMono-Regular",ui-monospace,"DejaVu Sans Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",sans-serif;
+    -webkit-text-size-adjust:100%;overscroll-behavior:none;}
+  .app{display:grid;grid-template-columns:300px 1fr 320px;grid-template-rows:48px 1fr;
+    height:100vh;width:100vw}
+  header{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 16px;
+    background:linear-gradient(180deg,#1b2330,#141a23);border-bottom:1px solid var(--line)}
+  header .logo{font-weight:800;letter-spacing:.5px}
+  header .logo b{color:var(--acc)}
+  header .meta{color:var(--mut);font-size:12px}
+  header .sp{flex:1}
+  header input.park{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:7px;padding:6px 10px;font-size:13px;width:180px}
+  .col{overflow-y:auto;padding:14px;border-right:1px solid var(--line)}
+  .col.r{border-right:none;border-left:1px solid var(--line)}
+  .sec{margin-bottom:18px}
+  .sec h3{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--mut);
+    margin:0 0 8px;font-weight:700}
+  .btn{display:block;width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);
+    color:var(--ink);border-radius:8px;padding:9px 11px;font-size:13px;cursor:pointer;margin-bottom:7px;
+    transition:.12s}
+  .btn:hover{border-color:var(--acc)}
+  .btn.on{background:var(--acc);color:#08110b;border-color:var(--acc);font-weight:700}
+  .btn small{display:block;color:var(--mut);font-size:11px;margin-top:2px}
+  .btn.on small{color:#0a3a26}
+  .row{display:flex;gap:7px}
+  .row .btn{margin-bottom:7px}
+  label.fld{display:block;font-size:11px;color:var(--mut);margin:8px 0 3px}
+  select,input.txt{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:7px;padding:8px;font-size:13px}
+  .mini{display:flex;gap:6px;flex-wrap:wrap}
+  .mini button{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:6px;padding:6px 4px;font-size:11px;cursor:pointer}
+  .mini button:hover{border-color:var(--blue)}
+  canvas{display:block;background:#0b0e13;cursor:crosshair;touch-action:none}
+  .stage{position:relative;overflow:hidden}
+  .hint{position:absolute;left:12px;top:12px;background:rgba(10,14,20,.85);border:1px solid var(--line);
+    padding:7px 11px;border-radius:8px;font-size:12px;color:var(--mut);max-width:60%;line-height:1.5}
+  .hint b{color:var(--acc)}
+  .scalebadge{position:absolute;right:12px;bottom:12px;background:rgba(10,14,20,.85);
+    border:1px solid var(--line);padding:6px 10px;border-radius:8px;font-size:12px;font-family:var(--mono)}
+  .scalebadge.no{color:var(--warn);border-color:var(--warn)}
+  .tot{font-family:var(--mono);font-size:20px;font-weight:700}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600;font-size:10px;letter-spacing:.5px;text-transform:uppercase}
+  td.num,th.num{text-align:right;font-family:var(--mono)}
+  .swatch{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:20px;
+    padding:2px 9px;font-size:11px;color:var(--mut);font-family:var(--mono)}
+  .danger{color:var(--bad)}
+  .ghost{background:none;border:1px dashed var(--line);color:var(--mut)}
+  .legend{font-size:11px;color:var(--mut);line-height:1.7}
+  .empty{color:var(--mut);font-size:12px;padding:8px;text-align:center;border:1px dashed var(--line);border-radius:8px}
+  .feat{font-size:12px;border-bottom:1px solid var(--line);padding:6px 2px;display:flex;align-items:center;gap:6px;cursor:pointer}
+  .feat:hover{background:var(--panel2)}
+  .feat .x{margin-left:auto;color:var(--mut)}
+  .feat .x:hover{color:var(--bad)}
+  .feat.sel{background:var(--panel2);outline:1px solid var(--acc)}
+  @media(max-width:980px){
+    .app{grid-template-columns:1fr;grid-template-rows:48px auto 44vh auto}
+    .col{border:none;border-bottom:1px solid var(--line);max-height:38vh}
+    .col.r{border-left:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">公園作業記録 <b>/</b> 求積＆出来形</div>
+    <input class="park" id="parkName" placeholder="公園名（例：久地さくら緑地）">
+    <span class="meta" id="contractMeta">高津区北部 業務委託</span>
+    <span class="sp"></span>
+    <span class="meta">試作版 — データは端末内のみ・JSONで保存/集計</span>
+  </header>
+
+  <!-- LEFT: tools -->
+  <div class="col">
+    <div class="sec">
+      <h3>図面</h3>
+      <button class="btn" id="loadImg">公園図面を読み込む<small>PNG / JPG（背景にする）</small></button>
+      <input type="file" id="imgFile" accept="image/*" hidden>
+      <div class="mini">
+        <button id="zoomIn">＋拡大</button><button id="zoomOut">－縮小</button><button id="fit">全体表示</button>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>① 縮尺合わせ</h3>
+      <button class="btn" id="toolCal" data-tool="cal">縮尺を設定（2点クリック）<small>図面上の既知距離を測る</small></button>
+      <label class="fld">その2点の実距離（m）</label>
+      <input class="txt" id="calDist" type="number" value="10" step="0.1">
+    </div>
+
+    <div class="sec">
+      <h3>② 記録モード</h3>
+      <button class="btn on" id="toolArea" data-tool="area">面積（㎡）<small>外周をクリック→ダブルクリックで確定</small></button>
+      <button class="btn" id="toolTree" data-tool="tree">樹木（本）<small>クリックで1本配置</small></button>
+      <button class="btn" id="toolSelect" data-tool="select">選択・移動・削除<small>ドラッグで地図移動 / クリックで選択</small></button>
+    </div>
+
+    <div class="sec">
+      <h3>③ 工種を選ぶ</h3>
+      <label class="fld">大分類</label>
+      <select id="catSel"></select>
+      <label class="fld">細別</label>
+      <select id="kindSel"></select>
+      <label class="fld" id="rankLbl" style="display:none">規格（幹周ランク）</label>
+      <select id="rankSel" style="display:none"></select>
+      <div id="rankLegend" style="display:none;margin-top:8px"></div>
+    </div>
+
+    <div class="sec">
+      <h3>保存 / 読込</h3>
+      <button class="btn ghost" id="saveJson">この公園を保存（.json）</button>
+      <button class="btn ghost" id="openJson">公園データを開く（.json）</button>
+      <input type="file" id="jsonFile" accept="application/json" hidden>
+      <button class="btn ghost" id="exportPng">注記図を画像で書き出す</button>
+      <button class="btn ghost danger" id="clearAll">全消去</button>
+    </div>
+  </div>
+
+  <!-- CENTER: canvas -->
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div class="hint" id="hint"></div>
+    <div class="scalebadge no" id="scaleBadge">縮尺：未設定</div>
+  </div>
+
+  <!-- RIGHT: aggregation -->
+  <div class="col r">
+    <div class="sec">
+      <h3>この公園の集計（出来形）</h3>
+      <div id="aggArea"></div>
+    </div>
+    <div class="sec">
+      <h3>求積表（選択中の面積・三斜法）</h3>
+      <div id="sansha"></div>
+    </div>
+    <div class="sec">
+      <h3>本数集計</h3>
+      <div id="aggTree"></div>
+    </div>
+    <div class="sec">
+      <h3>その他（手入力）</h3>
+      <div class="legend">巣撤去（個）・発生材運搬/処分（t）など、図面に置かないものはここで加算。</div>
+      <div id="manualRows"></div>
+      <div class="row" style="margin-top:6px">
+        <select id="manKind" style="flex:2"></select>
+        <input class="txt" id="manQty" type="number" placeholder="数量" style="flex:1">
+        <button class="btn" id="manAdd" style="width:auto;margin:0;padding:8px 12px">追加</button>
+      </div>
+    </div>
+    <div class="sec">
+      <h3>登録単価ベース概算（参考）</h3>
+      <div class="tot" id="costTotal">¥0</div>
+      <div class="legend">仕様書「登録単価」記載分のみ自動計上。未登録の規格は0円表示（単価は別途）。</div>
+    </div>
+    <div class="sec">
+      <h3>多公園の集計</h3>
+      <button class="btn ghost" id="aggMulti">複数の.jsonをまとめて集計</button>
+      <input type="file" id="multiFile" accept="application/json" multiple hidden>
+      <div id="multiOut" class="legend"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- 工種マスタ（仕様書 高津区北部 / 登録単価R7.12） ---------- */
+const BANDS = ["30cm未満","30〜60cm","60〜90cm","90〜120cm","120〜150cm","150〜180cm","180〜210cm","210〜240cm","240〜270cm","270〜300cm"];
+// 単価が分かっているものだけ price を入れる（仕様書 登録単価より）
+const P=(o)=>o;
+const MASTER = {
+  "中低木刈込工":{unit:"㎡",mode:"area",kinds:{
+    "低木刈込":{}, "中木刈込":{} }},
+  "除草工":{unit:"㎡",mode:"area",kinds:{
+    "機械除草Ⅰ（肩掛式）":{}, "集草":{}, "積込・運搬":{},
+    "刈草小運搬（15m以上50m未満）":{price:35} }},
+  "つる性植物除去":{unit:"㎡",mode:"area",kinds:{
+    "地表・寄植":{price:183}, "管理柵":{price:513} }},
+  "低木内除草清掃":{unit:"㎡",mode:"area",kinds:{ "植込み地":{} }},
+  "軽剪定（着葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "着葉木":{prices:{"30〜60cm":5950,"60〜90cm":10450,"90〜120cm":14270,"120〜150cm":21090,"150〜180cm":26650,"180〜210cm":28950,"210〜240cm":32510}} }},
+  "軽剪定（落葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "落葉木":{prices:{"120〜150cm":18200}} }},
+  "基本剪定（着葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "着葉木":{prices:{"30cm未満":7700,"30〜60cm":10650,"60〜90cm":18660,"90〜120cm":25820,"120〜150cm":37880,"150〜180cm":48260,"180〜210cm":51860,"210〜240cm":58490,"240〜270cm":94400,"270〜300cm":100200}} }},
+  "基本剪定（落葉木）":{unit:"本",mode:"tree",ranks:true,kinds:{ "落葉木":{prices:{"30〜60cm":7100,"60〜90cm":12950,"90〜120cm":17250,"120〜150cm":32640,"150〜180cm":35440,"180〜210cm":38590,"210〜240cm":43850}} }},
+  "胴ぶき剪除":{unit:"本",mode:"tree",ranks:false,kinds:{ "高さ2.0mまで":{}, "高さ4.5mまで":{} }},
+  "樹木撤去":{unit:"本",mode:"tree",ranks:true,kinds:{
+    "実生木（C=10cm程度）":{ranks:false},
+    "支障木":{prices:{}},
+    "枯損木":{prices:{"150〜180cm":92520}} }},
+  "竹伐採（斜面地）":{unit:"本",mode:"tree",ranks:false,kinds:{ "斜面地":{price:1750} }},
+};
+const MANUAL = {
+  "カラスの巣撤去":{unit:"個"}, "スズメバチの巣撤去":{unit:"個"},
+  "発生材運搬（10km程度）":{unit:"t",price:19050}, "発生材運搬（20km程度）":{unit:"t"},
+  "一般廃棄物処理手数料":{unit:"t",price:13630},
+};
+const COLORS=["#3ddc97","#5aa9ff","#ffb454","#ff6b6b","#c792ea","#7ee787","#ff9ec7","#56d4dc","#e3b341"];
+// 幹周ランク別の固定色（細い→太いで寒色→暖色）
+const RANK_COLORS={
+  "30cm未満":"#2dd4bf","30〜60cm":"#4ade80","60〜90cm":"#a3e635","90〜120cm":"#facc15",
+  "120〜150cm":"#fb923c","150〜180cm":"#f97316","180〜210cm":"#ef4444","210〜240cm":"#dc2626",
+  "240〜270cm":"#b91c1c","270〜300cm":"#7f1d1d"};
+
+/* ---------- 状態 ---------- */
+let state={img:null, scale:null /*m per imgpx*/, features:[], manual:[]};
+let view={zoom:1,ox:0,oy:0};
+let tool="area";
+let draft=null;            // 作成中ポリゴン or 校正点
+let selected=null;
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+
+/* ---------- 工種セレクト構築 ---------- */
+function fillCats(){
+  const c=$('catSel'); c.innerHTML='';
+  Object.keys(MASTER).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k+`（${MASTER[k].unit}）`;c.appendChild(o);});
+  fillKinds();
+}
+function fillKinds(){
+  const cat=$('catSel').value, m=MASTER[cat], s=$('kindSel'); s.innerHTML='';
+  Object.keys(m.kinds).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k;s.appendChild(o);});
+  fillRanks();
+}
+function curKindRanks(){
+  const m=MASTER[$('catSel').value]; const kd=m.kinds[$('kindSel').value]||{};
+  if(m.mode!=='tree') return false;
+  if(kd.ranks===false) return false;
+  return m.ranks!==false;
+}
+function fillRanks(){
+  const show=curKindRanks();
+  $('rankLbl').style.display=show?'block':'none';
+  $('rankSel').style.display=show?'block':'none';
+  const lg=$('rankLegend');lg.style.display=show?'block':'none';
+  if(show){const r=$('rankSel');r.innerHTML='';BANDS.forEach(b=>{const o=document.createElement('option');o.value=b;o.textContent=b;r.appendChild(o);});
+    lg.innerHTML='<div class="legend" style="margin-bottom:4px">幹周ランク別の色</div>'+
+      BANDS.map(b=>`<span style="display:inline-flex;align-items:center;gap:4px;margin:0 8px 4px 0;font-size:11px"><span class="swatch" style="background:${RANK_COLORS[b]};margin:0"></span>${b}</span>`).join('');}
+  syncToolForCat();
+}
+function syncToolForCat(){
+  const mode=MASTER[$('catSel').value].mode;
+  if(mode==='area'&&tool==='tree') setTool('area');
+  if(mode==='tree'&&tool==='area') setTool('tree');
+}
+$('catSel').onchange=fillKinds; $('kindSel').onchange=fillRanks;
+
+function fillManual(){
+  const s=$('manKind');s.innerHTML='';
+  Object.keys(MANUAL).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k+`（${MANUAL[k].unit}）`;s.appendChild(o);});
+}
+
+/* ---------- ツール切替 ---------- */
+function setTool(t){
+  tool=t; draft=null;
+  document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));
+  cv.style.cursor = t==='select'?'grab':'crosshair';
+  updateHint(); draw();
+}
+document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+
+function updateHint(){
+  const h=$('hint');
+  if(!state.img){h.innerHTML='まず <b>「公園図面を読み込む」</b> から地図画像を読み込んでください。';return;}
+  if(!state.scale&&tool!=='cal'){h.innerHTML='面積を出すには先に <b>① 縮尺合わせ</b> を。本数だけなら縮尺なしでもOK。';return;}
+  if(tool==='cal')h.innerHTML='図面上の<b>既知の距離</b>の両端を2回クリック。左の「実距離(m)」を合わせてから押すと正確です。';
+  else if(tool==='area')h.innerHTML='外周の角を順にクリック →<b>ダブルクリックで確定</b>。面積が自動計算されます。';
+  else if(tool==='tree')h.innerHTML='木のある場所を<b>クリック</b>で1本ずつ配置。左で工種と幹周ランクを選んでから。';
+  else h.innerHTML='注記を<b>クリックで選択</b>→そのまま<b>ドラッグで移動</b>。Deleteで削除。何もない所のドラッグで地図移動。';
+}
+
+/* ---------- 座標変換 ---------- */
+function toImg(px,py){return {x:(px-view.ox)/view.zoom,y:(py-view.oy)/view.zoom};}
+function evtPos(e){const r=cv.getBoundingClientRect();const t=e.touches?e.touches[0]:e;return {x:t.clientX-r.left,y:t.clientY-r.top};}
+
+/* ---------- 幾何 ---------- */
+function shoelace(pts){let a=0;for(let i=0;i<pts.length;i++){const p=pts[i],q=pts[(i+1)%pts.length];a+=p.x*q.y-q.x*p.y;}return Math.abs(a)/2;}
+function areaM2(pts){if(!state.scale)return null;return shoelace(pts)*state.scale*state.scale;}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+// 三斜求積法：頂点0を基点に扇状に三角形分割。各三角形は最長辺を底辺、高さ=2×面積÷底辺。
+function sanshaTable(pts){
+  const s=state.scale||1, hasScale=!!state.scale, rows=[]; let total=0;
+  for(let i=1;i<pts.length-1;i++){
+    const A=pts[0],B=pts[i],C=pts[i+1];
+    const areaPx=Math.abs((B.x-A.x)*(C.y-A.y)-(C.x-A.x)*(B.y-A.y))/2;
+    const sides=[dist(A,B),dist(B,C),dist(C,A)];
+    const basePx=Math.max(...sides);
+    const heightPx=basePx>0?2*areaPx/basePx:0;
+    const base=basePx*s, height=heightPx*s, dbl=base*height, area=dbl/2;
+    total+=area; rows.push({no:i,base,height,dbl,area});
+  }
+  return {rows,total,unit:hasScale?'m':'px'};
+}
+
+/* ---------- 描画 ---------- */
+function resize(){const s=cv.parentElement.getBoundingClientRect();cv.width=s.width;cv.height=s.height;draw();}
+function colorFor(label){let h=0;for(const c of label)h=(h*31+c.charCodeAt(0))>>>0;return COLORS[h%COLORS.length];}
+function featColor(f){if(f.type==='tree'&&f.rank&&RANK_COLORS[f.rank])return RANK_COLORS[f.rank];return colorFor(f.cat+f.kind);}
+function centroid(pts){let x=0,y=0;pts.forEach(p=>{x+=p.x;y+=p.y});return{x:x/pts.length,y:y/pts.length};}
+
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.save();ctx.translate(view.ox,view.oy);ctx.scale(view.zoom,view.zoom);
+  if(state.img)ctx.drawImage(state.img,0,0);
+  // features
+  const SEL='#ff2d2d';
+  state.features.forEach(f=>{
+    const col=featColor(f);
+    if(f.type==='area'){
+      ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();
+      ctx.fillStyle=col+'33';ctx.fill();
+      ctx.lineWidth=(f===selected?3:2)/view.zoom;ctx.strokeStyle=(f===selected?SEL:col);ctx.stroke();
+      if(f===selected)f.pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();});
+      const c=centroid(f.pts);label(c.x,c.y,`${f.kind}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+    }else{
+      ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,7/view.zoom,0,7);ctx.fillStyle=col;ctx.fill();
+      ctx.lineWidth=(f===selected?3:2)/view.zoom;ctx.strokeStyle=f===selected?SEL:'#0008';ctx.stroke();
+      if(view.zoom>0.4)label(f.pt.x,f.pt.y-14/view.zoom,(f.rank?f.rank:f.kind),col);
+    }
+  });
+  // draft（作図中：赤＋白フチで背景を問わず視認）
+  if(draft&&draft.pts){
+    ctx.beginPath();draft.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+    ctx.lineWidth=3/view.zoom;ctx.strokeStyle='#ff2d2d';ctx.setLineDash([6/view.zoom,4/view.zoom]);ctx.stroke();ctx.setLineDash([]);
+    draft.pts.forEach((p,i)=>{
+      ctx.beginPath();ctx.arc(p.x,p.y,6/view.zoom,0,7);
+      ctx.fillStyle=(i===0?'#ffd400':'#ff2d2d');ctx.fill();
+      ctx.lineWidth=2/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();
+    });
+    if(draft.pts.length>=2&&draft.cal){const m=midpoint(draft.pts[0],draft.pts[1]);label(m.x,m.y,'2点目をクリック','#ff2d2d');}
+  }
+  ctx.restore();
+}
+function midpoint(a,b){return{x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
+function label(x,y,txt,col){
+  ctx.save();ctx.scale(1,1);
+  const lines=txt.split('\n');const fs=12/view.zoom;ctx.font=`700 ${fs}px sans-serif`;
+  let w=0;lines.forEach(l=>w=Math.max(w,ctx.measureText(l).width));
+  const pad=4/view.zoom,h=lines.length*fs*1.25+pad*2;
+  ctx.fillStyle='rgba(10,14,20,.82)';ctx.fillRect(x-w/2-pad,y-h/2,w+pad*2,h);
+  ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='middle';
+  lines.forEach((l,i)=>ctx.fillText(l,x,y-h/2+pad+fs*0.7+i*fs*1.25));
+  ctx.restore();
+}
+
+/* ---------- 入力 ---------- */
+let panning=false,panStart=null,dragging=null,dragLast=null;
+function moveFeature(f,dx,dy){
+  if(f.type==='tree'){f.pt.x+=dx;f.pt.y+=dy;}
+  else f.pts.forEach(p=>{p.x+=dx;p.y+=dy;});
+}
+cv.addEventListener('mousedown',e=>{
+  const p=evtPos(e),ip=toImg(p.x,p.y);
+  if(tool==='select'){
+    const f=hit(ip); selectFeature(f);
+    if(f){dragging=f;dragLast=ip;cv.style.cursor='grabbing';}
+    else{panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};cv.style.cursor='grabbing';}
+    return;
+  }
+  if(tool==='cal'){
+    if(!draft)draft={pts:[],cal:true};
+    draft.pts.push(ip);
+    if(draft.pts.length===2){finishCal();}
+    draw();return;
+  }
+  if(tool==='area'){
+    if(!draft)draft={pts:[]};
+    draft.pts.push(ip);draw();return;
+  }
+  if(tool==='tree'){placeTree(ip);return;}
+});
+cv.addEventListener('mousemove',e=>{
+  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;draw();return;}
+  if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;draw();}
+});
+window.addEventListener('mouseup',()=>{
+  if(dragging){if(dragging.type==='area')dragging.area=areaM2(dragging.pts);dragging=null;renderAgg();renderSansha();}
+  if(panning)panning=false;
+  cv.style.cursor=tool==='select'?'grab':'crosshair';
+});
+cv.addEventListener('dblclick',()=>{if(tool==='area'&&draft&&draft.pts.length>=3)finishArea();});
+cv.addEventListener('wheel',e=>{e.preventDefault();const p=evtPos(e);const f=e.deltaY<0?1.12:1/1.12;zoomAt(p.x,p.y,f);},{passive:false});
+// touch
+let lastTouch=null,pinchD=null;
+cv.addEventListener('touchstart',e=>{
+  if(e.touches.length===2){pinchD=touchDist(e);dragging=null;return;}
+  const p=evtPos(e),ip=toImg(p.x,p.y);
+  if(tool==='select'){const f=hit(ip);selectFeature(f);
+    if(f){dragging=f;dragLast=ip;}else{panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};}}
+  lastTouch=p;
+},{passive:false});
+cv.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===2&&pinchD){const d=touchDist(e),c=touchMid(e);zoomAt(c.x,c.y,d/pinchD);pinchD=d;return;}
+  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;lastTouch=null;draw();return;}
+  if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;lastTouch=null;draw();}
+},{passive:false});
+cv.addEventListener('touchend',e=>{
+  if(pinchD&&e.touches.length<2){pinchD=null;return;}
+  if(dragging){if(dragging.type==='area')dragging.area=areaM2(dragging.pts);dragging=null;renderAgg();renderSansha();lastTouch=null;return;}
+  if(panning){panning=false;return;}
+  if(!lastTouch)return;const ip=toImg(lastTouch.x,lastTouch.y);
+  if(tool==='cal'){if(!draft)draft={pts:[],cal:true};draft.pts.push(ip);if(draft.pts.length===2)finishCal();draw();}
+  else if(tool==='area'){if(!draft)draft={pts:[]};draft.pts.push(ip);draw();}
+  else if(tool==='tree'){placeTree(ip);}
+  lastTouch=null;
+});
+function touchDist(e){const a=e.touches[0],b=e.touches[1];return Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);}
+function touchMid(e){const r=cv.getBoundingClientRect(),a=e.touches[0],b=e.touches[1];return{x:(a.clientX+b.clientX)/2-r.left,y:(a.clientY+b.clientY)/2-r.top};}
+function zoomAt(px,py,f){const ip=toImg(px,py);view.zoom*=f;view.ox=px-ip.x*view.zoom;view.oy=py-ip.y*view.zoom;draw();}
+window.addEventListener('keydown',e=>{
+  if((e.key==='Delete'||e.key==='Backspace')&&selected){removeFeature(selected);}
+  if(e.key==='Enter'&&tool==='area'&&draft&&draft.pts.length>=3)finishArea();
+  if(e.key==='Escape'){draft=null;draw();}
+});
+
+/* ---------- 確定処理 ---------- */
+function finishCal(){
+  const d=dist(draft.pts[0],draft.pts[1]);const real=parseFloat($('calDist').value)||0;
+  if(real>0&&d>0){state.scale=real/d;updateScaleBadge();
+    state.features.forEach(f=>{if(f.type==='area')f.area=areaM2(f.pts);});
+    renderAgg();}
+  draft=null;updateHint();draw();
+}
+function finishArea(){
+  const cat=$('catSel').value,kind=$('kindSel').value;
+  const f={type:'area',cat,kind,pts:draft.pts.slice(),area:areaM2(draft.pts)};
+  state.features.push(f);draft=null;renderAgg();draw();
+}
+function placeTree(ip){
+  const cat=$('catSel').value,kind=$('kindSel').value;
+  const f={type:'tree',cat,kind,pt:ip};
+  if(curKindRanks())f.rank=$('rankSel').value;
+  state.features.push(f);renderAgg();draw();
+}
+function updateScaleBadge(){const b=$('scaleBadge');
+  if(state.scale){b.classList.remove('no');b.textContent=`縮尺：1px ≈ ${state.scale.toFixed(4)} m`;}
+  else{b.classList.add('no');b.textContent='縮尺：未設定';}}
+
+/* ---------- 選択・削除 ---------- */
+function hit(ip){
+  for(let i=state.features.length-1;i>=0;i--){const f=state.features[i];
+    if(f.type==='tree'&&dist(f.pt,ip)<10/view.zoom)return f;
+    if(f.type==='area'&&pointInPoly(ip,f.pts))return f;}
+  return null;
+}
+function pointInPoly(p,pts){let c=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+  if(((pts[i].y>p.y)!=(pts[j].y>p.y))&&(p.x<(pts[j].x-pts[i].x)*(p.y-pts[i].y)/(pts[j].y-pts[i].y)+pts[i].x))c=!c;}return c;}
+function selectFeature(f){selected=f;renderSansha();draw();}
+function renderSansha(){
+  const el=$('sansha');
+  if(!(selected&&selected.type==='area')){el.innerHTML='<div class="empty">面積を選択モードでクリックすると、三斜法の根拠表が出ます</div>';return;}
+  const t=sanshaTable(selected.pts), u=t.unit;
+  let h=`<div class="legend" style="margin-bottom:6px">${selected.kind}${state.scale?'':'（縮尺未設定のため px 表示）'}</div>`;
+  h+='<table><tr><th>No</th><th class="num">底辺('+u+')</th><th class="num">高さ('+u+')</th><th class="num">倍面積</th></tr>';
+  t.rows.forEach(r=>h+=`<tr><td>${r.no}</td><td class="num">${r.base.toFixed(3)}</td><td class="num">${r.height.toFixed(3)}</td><td class="num">${r.dbl.toFixed(3)}</td></tr>`);
+  const sumDbl=t.rows.reduce((s,r)=>s+r.dbl,0);
+  h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">倍面積 合計</td><td class="num">${sumDbl.toFixed(3)}</td></tr>`;
+  h+=`<tr><td colspan="3" style="text-align:right">面積 ＝ 合計 ÷ 2</td><td class="num" style="color:var(--acc);font-weight:700">${t.total.toFixed(3)} ${u}²</td></tr>`;
+  h+='</table><button class="btn ghost" id="dlSansha" style="margin-top:8px">求積表をCSVで書き出す</button>';
+  el.innerHTML=h;
+  $('dlSansha').onclick=()=>{
+    let c='No,底辺('+u+'),高さ('+u+'),倍面積('+u+'²)\n';
+    t.rows.forEach(r=>c+=`${r.no},${r.base.toFixed(3)},${r.height.toFixed(3)},${r.dbl.toFixed(3)}\n`);
+    c+=`合計,,,${sumDbl.toFixed(3)}\n面積(=合計/2),,,${t.total.toFixed(3)}\n`;
+    dl('\uFEFF'+c,`${($('parkName').value||'求積')}_${selected.kind}_求積表.csv`,'text/csv');
+  };
+}
+function removeFeature(f){state.features=state.features.filter(x=>x!==f);if(selected===f)selected=null;renderSansha();renderAgg();draw();}
+
+/* ---------- 集計 ---------- */
+function unitPrice(f){
+  const m=MASTER[f.cat];if(!m)return 0;const kd=m.kinds[f.kind]||{};
+  if(f.rank&&kd.prices)return kd.prices[f.rank]||0;
+  return kd.price||0;
+}
+function renderAgg(){
+  // area: by cat+kind sum m2
+  const am={},tm={};let cost=0;
+  state.features.forEach(f=>{
+    if(f.type==='area'){const key=f.cat+' › '+f.kind;am[key]=am[key]||{m2:0,col:colorFor(f.cat+f.kind),price:unitPrice(f)};am[key].m2+=f.area||0;}
+    else{const key=f.cat+(f.rank?' › '+f.kind+' '+f.rank:' › '+f.kind);tm[key]=tm[key]||{n:0,col:featColor(f),price:unitPrice(f)};tm[key].n+=1;}
+  });
+  // area table
+  const ae=$('aggArea');let h='';
+  const ak=Object.keys(am);
+  if(!ak.length)h='<div class="empty">面積の注記なし</div>';
+  else{h='<table><tr><th>工種</th><th class="num">㎡</th></tr>';
+    ak.forEach(k=>{h+=`<tr><td><span class="swatch" style="background:${am[k].col}"></span>${k}</td><td class="num">${am[k].m2.toFixed(2)}</td></tr>`;cost+=am[k].m2*am[k].price;});h+='</table>';}
+  ae.innerHTML=h;
+  // tree table
+  const te=$('aggTree');const tk=Object.keys(tm);
+  if(!tk.length)te.innerHTML='<div class="empty">樹木の注記なし</div>';
+  else{let t='<table><tr><th>工種・規格</th><th class="num">本</th></tr>';
+    tk.forEach(k=>{t+=`<tr><td><span class="swatch" style="background:${tm[k].col}"></span>${k}</td><td class="num">${tm[k].n}</td></tr>`;cost+=tm[k].n*tm[k].price;});t+='</table>';te.innerHTML=t;}
+  // manual
+  const me=$('manualRows');
+  if(!state.manual.length)me.innerHTML='';
+  else{let t='<table>';state.manual.forEach((r,i)=>{const p=(MANUAL[r.kind]||{}).price||0;cost+=r.qty*p;
+    t+=`<tr><td>${r.kind}</td><td class="num">${r.qty} ${MANUAL[r.kind].unit}</td><td class="x" style="cursor:pointer;color:var(--mut)" data-mi="${i}">✕</td></tr>`;});t+='</table>';me.innerHTML=t;
+    me.querySelectorAll('[data-mi]').forEach(b=>b.onclick=()=>{state.manual.splice(+b.dataset.mi,1);renderAgg();});}
+  $('costTotal').textContent='¥'+Math.round(cost).toLocaleString();
+}
+$('manAdd').onclick=()=>{const k=$('manKind').value,q=parseFloat($('manQty').value);if(k&&q>0){state.manual.push({kind:k,qty:q});$('manQty').value='';renderAgg();}};
+
+/* ---------- 保存/読込/書き出し ---------- */
+$('loadImg').onclick=()=>$('imgFile').click();
+$('imgFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{state.img=im;state.imgData=r.result;fit();updateHint();};im.src=r.result;};r.readAsDataURL(f);};
+function fit(){if(!state.img)return;const s=cv.getBoundingClientRect();const z=Math.min(s.width/state.img.width,s.height/state.img.height)*0.95;view.zoom=z;view.ox=(s.width-state.img.width*z)/2;view.oy=(s.height-state.img.height*z)/2;draw();}
+$('fit').onclick=fit;
+$('zoomIn').onclick=()=>zoomAt(cv.width/2,cv.height/2,1.2);
+$('zoomOut').onclick=()=>zoomAt(cv.width/2,cv.height/2,1/1.2);
+$('clearAll').onclick=()=>{if(confirm('注記をすべて消去しますか？')){state.features=[];state.manual=[];selected=null;renderAgg();draw();}};
+
+$('saveJson').onclick=()=>{
+  const data={park:$('parkName').value||'未設定',scale:state.scale,imgData:state.imgData||null,
+    features:state.features,manual:state.manual,saved:new Date().toISOString()};
+  dl(JSON.stringify(data),`${data.park}.json`,'application/json');
+};
+$('openJson').onclick=()=>$('jsonFile').click();
+$('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{
+  const d=JSON.parse(r.result);$('parkName').value=d.park||'';state.scale=d.scale||null;
+  state.features=d.features||[];state.manual=d.manual||[];updateScaleBadge();renderAgg();
+  if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();};im.src=d.imgData;}else draw();
+};r.readAsText(f);};
+$('exportPng').onclick=()=>{const url=cv.toDataURL('image/png');const a=document.createElement('a');a.href=url;a.download=($('parkName').value||'求積図')+'_注記.png';a.click();};
+function dl(text,name,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
+
+/* ---------- 多公園集計 ---------- */
+$('aggMulti').onclick=()=>$('multiFile').click();
+$('multiFile').onchange=e=>{
+  const files=[...e.target.files];const agg={};let done=0;
+  files.forEach(f=>{const r=new FileReader();r.onload=()=>{
+    try{const d=JSON.parse(r.result);(d.features||[]).forEach(ft=>{
+      let key,val,unit;
+      if(ft.type==='area'){key=ft.cat+' › '+ft.kind;unit='㎡';val=ft.area||0;}
+      else{key=ft.cat+(ft.rank?' › '+ft.kind+' '+ft.rank:' › '+ft.kind);unit='本';val=1;}
+      agg[key]=agg[key]||{v:0,unit,parks:new Set()};agg[key].v+=val;agg[key].parks.add(d.park);});
+    (d.manual||[]).forEach(m=>{const key=m.kind;agg[key]=agg[key]||{v:0,unit:(MANUAL[m.kind]||{}).unit||'',parks:new Set()};agg[key].v+=m.qty;agg[key].parks.add(d.park);});
+    }catch(err){}
+    if(++done===files.length)showMulti(agg);
+  };r.readAsText(f);});
+};
+function showMulti(agg){
+  const keys=Object.keys(agg);if(!keys.length){$('multiOut').innerHTML='読み込めるデータがありません';return;}
+  let h='<table><tr><th>工種</th><th class="num">数量</th><th class="num">公園数</th></tr>';
+  keys.forEach(k=>{const v=agg[k].v;h+=`<tr><td>${k}</td><td class="num">${(agg[k].unit==='本'?v:v.toFixed(2))} ${agg[k].unit}</td><td class="num">${agg[k].parks.size}</td></tr>`;});
+  h+='</table><button class="btn ghost" id="dlCsv" style="margin-top:8px">CSVで書き出す</button>';
+  $('multiOut').innerHTML=h;
+  $('dlCsv').onclick=()=>{let c='工種,数量,単位,公園数\n';keys.forEach(k=>c+=`"${k}",${agg[k].v},${agg[k].unit},${agg[k].parks.size}\n`);dl('\uFEFF'+c,'多公園集計.csv','text/csv');};
+}
+
+/* ---------- init ---------- */
+fillCats();fillManual();renderAgg();renderSansha();setTool('area');updateHint();
+new ResizeObserver(resize).observe(cv.parentElement);resize();
+</script>
+</body>
+</html>
