@@ -536,17 +536,50 @@ function sanshaTable(pts){
   }
   return {rows,total,unit:hasScale?'m':'px'};
 }
-// ヘロンの公式：頂点1(=pts[0])を基点に扇状分割。各三角形を3辺の長さから面積算出。s=(a+b+c)/2, 面積=√(s(s-a)(s-b)(s-c))
+// 多角形の符号付き面積×2（向き判定用）
+function polyArea2(pts){let a=0;for(let i=0;i<pts.length;i++){const j=(i+1)%pts.length;a+=pts[i].x*pts[j].y-pts[j].x*pts[i].y;}return a/2;}
+function pointInTri(P,A,B,C){
+  const d=(B.y-C.y)*(A.x-C.x)+(C.x-B.x)*(A.y-C.y); if(Math.abs(d)<1e-12)return false;
+  const a=((B.y-C.y)*(P.x-C.x)+(C.x-B.x)*(P.y-C.y))/d;
+  const b=((C.y-A.y)*(P.x-C.x)+(A.x-C.x)*(P.y-C.y))/d;
+  const c=1-a-b; return a>1e-9&&b>1e-9&&c>1e-9;   // 三角形の内部のみ（頂点・辺上は除外）
+}
+// 耳切り三角形分割：単純多角形（凹凸OK）を“内側だけ”の三角形に分割。戻り値は頂点インデックスの三角形配列。
+function earClipTris(pts){
+  const n=pts.length; if(n<3)return [];
+  let idx=[...Array(n).keys()];
+  if(polyArea2(pts)<0) idx.reverse();                // 反時計回りに正規化
+  const tris=[]; let guard=0;
+  while(idx.length>3 && guard++<n*n+50){
+    const m=idx.length; let clipped=false;
+    for(let k=0;k<m;k++){
+      const i0=idx[(k-1+m)%m], i1=idx[k], i2=idx[(k+1)%m];
+      const A=pts[i0],B=pts[i1],C=pts[i2];
+      const cross=(B.x-A.x)*(C.y-A.y)-(B.y-A.y)*(C.x-A.x);
+      if(cross<=0) continue;                           // 反射（凹）頂点はスキップ
+      let ok=true;
+      for(let p=0;p<m;p++){const ip=idx[p]; if(ip===i0||ip===i1||ip===i2)continue; if(pointInTri(pts[ip],A,B,C)){ok=false;break;}}
+      if(!ok) continue;
+      tris.push([i0,i1,i2]); idx.splice(k,1); clipped=true; break;
+    }
+    if(!clipped) break;
+  }
+  if(idx.length===3) tris.push([idx[0],idx[1],idx[2]]);
+  if(tris.length<n-2){ const f=[]; for(let i=1;i<n-1;i++)f.push([0,i,i+1]); return f; }  // 退化時フォールバック
+  return tris;
+}
+// ヘロンの公式：耳切りで内側だけを三角形分割し、各三角形を3辺の長さから面積算出。s=(a+b+c)/2, 面積=√(s(s-a)(s-b)(s-c))
 function heronTable(pts){
   const sc=state.scale||1, hasScale=!!state.scale, rows=[]; let total=0;
-  for(let i=1;i<pts.length-1;i++){
-    const A=pts[0],B=pts[i],C=pts[i+1];
-    const a=dist(A,B)*sc, b=dist(B,C)*sc, c=dist(C,A)*sc;     // a:1-(i+1)  b:(i+1)-(i+2)  c:(i+2)-1
+  const tris=earClipTris(pts);
+  tris.forEach((t,n)=>{
+    const A=pts[t[0]],B=pts[t[1]],C=pts[t[2]];
+    const a=dist(A,B)*sc, b=dist(B,C)*sc, c=dist(C,A)*sc;     // a:t0-t1  b:t1-t2  c:t2-t0
     const sp=(a+b+c)/2;
     const ar=Math.sqrt(Math.max(0,sp*(sp-a)*(sp-b)*(sp-c)));
-    total+=ar; rows.push({no:i, v:[1,i+1,i+2], a,b,c, s:sp, area:ar});
-  }
-  return {rows,total,unit:hasScale?'m':'px'};
+    total+=ar; rows.push({no:n+1, idx:t.slice(), v:[t[0]+1,t[1]+1,t[2]+1], a,b,c, s:sp, area:ar});
+  });
+  return {rows,total,unit:hasScale?'m':'px',tris};
 }
 function roundRect(x,X,Y,W,H,r){x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+W,Y,X+W,Y+H,r);x.arcTo(X+W,Y+H,X,Y+H,r);x.arcTo(X,Y+H,X,Y,r);x.arcTo(X,Y,X+W,Y,r);x.closePath();}
 // 数字・ラベルに白い下地（チップ）を敷いて、重なっても読めるようにする
@@ -568,14 +601,14 @@ function drawTri(x,f,ox,oy,boxW,boxH){
   const X=p=>offx+(p.x-minx)*scale,Y=p=>offy+(p.y-miny)*scale;
   const sc=state.scale||null,un=sc?'m':'px';
   x.beginPath();pts.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.fillStyle='#f2f6f9';x.fill();
-  for(let i=1;i<pts.length-1;i++){const A=pts[0],B=pts[i],C=pts[i+1];x.beginPath();x.moveTo(X(A),Y(A));x.lineTo(X(B),Y(B));x.lineTo(X(C),Y(C));x.closePath();x.fillStyle=(i%2)?'#eaf3fb':'#fbf0ea';x.fill();}
-  x.strokeStyle='#7aa3c2';x.setLineDash([4,3]);x.lineWidth=1;for(let i=2;i<pts.length-1;i++){x.beginPath();x.moveTo(X(pts[0]),Y(pts[0]));x.lineTo(X(pts[i]),Y(pts[i]));x.stroke();}x.setLineDash([]);
+  const tris=earClipTris(pts), np=pts.length, isB=(i,j)=>{const d=Math.abs(i-j);return d===1||d===np-1;};
+  tris.forEach((t,n)=>{const A=pts[t[0]],B=pts[t[1]],C=pts[t[2]];x.beginPath();x.moveTo(X(A),Y(A));x.lineTo(X(B),Y(B));x.lineTo(X(C),Y(C));x.closePath();x.fillStyle=(n%2)?'#eaf3fb':'#fbf0ea';x.fill();});
+  const edgeMap={};tris.forEach(t=>[[t[0],t[1]],[t[1],t[2]],[t[2],t[0]]].forEach(([i,j])=>{edgeMap[i<j?i+'_'+j:j+'_'+i]={i,j};}));
+  Object.values(edgeMap).forEach(({i,j})=>{if(!isB(i,j)){x.beginPath();x.moveTo(X(pts[i]),Y(pts[i]));x.lineTo(X(pts[j]),Y(pts[j]));x.setLineDash([4,3]);x.lineWidth=1;x.strokeStyle='#7aa3c2';x.stroke();x.setLineDash([]);}});
   x.beginPath();pts.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.strokeStyle='#13324a';x.lineWidth=2;x.stroke();
-  for(let i=1;i<pts.length-1;i++){const A=pts[0],B=pts[i],C=pts[i+1];chip(x,(X(A)+X(B)+X(C))/3,(Y(A)+Y(B)+Y(C))/3,'△'+i,'#0b2a44',12);}
-  const seg=(p,q,col)=>{const L=dist(p,q)*(sc||1);chip(x,(X(p)+X(q))/2,(Y(p)+Y(q))/2,L.toFixed(1)+un,col,10);};
-  for(let i=0;i<pts.length;i++)seg(pts[i],pts[(i+1)%pts.length],'#1463c7');   // 外周辺＝青
-  for(let i=2;i<pts.length-1;i++)seg(pts[0],pts[i],'#0a8a6a');               // 対角線＝緑
-  pts.forEach((p,i)=>{x.beginPath();x.arc(X(p),Y(p),3.6,0,7);x.fillStyle=(i===0?'#0a7d33':'#13324a');x.fill();chip(x,X(p)+12,Y(p)-11,String(i+1)+(i===0?' 基点':''),(i===0?'#0a7d33':'#13324a'),10);});
+  tris.forEach((t,k)=>{const A=pts[t[0]],B=pts[t[1]],C=pts[t[2]];chip(x,(X(A)+X(B)+X(C))/3,(Y(A)+Y(B)+Y(C))/3,'△'+(k+1),'#0b2a44',12);});
+  Object.values(edgeMap).forEach(({i,j})=>{const p=pts[i],q=pts[j],L=dist(p,q)*(sc||1);chip(x,(X(p)+X(q))/2,(Y(p)+Y(q))/2,L.toFixed(1)+un,isB(i,j)?'#1463c7':'#0a8a6a',10);});
+  pts.forEach((p,i)=>{x.beginPath();x.arc(X(p),Y(p),3.6,0,7);x.fillStyle='#13324a';x.fill();chip(x,X(p)+12,Y(p)-11,String(i+1),'#13324a',10);});
   (f.holes||[]).forEach((h,hi)=>{x.beginPath();h.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.fillStyle='#fff';x.fill();x.setLineDash([5,4]);x.strokeStyle='#ff8c00';x.lineWidth=1.5;x.stroke();x.setLineDash([]);const hc=centroid(h);chip(x,X(hc),Y(hc),'除外'+(hi+1),'#cc6f00',10);});
 }
 // 三斜図のみPNG
@@ -637,7 +670,7 @@ function composeTriImage(f,W){
     x.textAlign='right';x.fillText(s[1],pad+tableW-6,y+rowH/2);y+=rowH;});
   x.strokeStyle='#cdd6dc';x.strokeRect(pad,pad+titleH+diaH+gap,tableW,headH+t.rows.length*rowH+8+sums.length*rowH);
   x.fillStyle='#5b6b78';x.font='10px sans-serif';x.textAlign='left';x.textBaseline='top';
-  x.fillText('ヘロンの公式  s=(a+b+c)/2、面積=√(s(s−a)(s−b)(s−c))　／　辺長＝小数1位・面積＝小数2位　／　頂点①が基点',pad,y+4);
+  x.fillText('ヘロンの公式  s=(a+b+c)/2、面積=√(s(s−a)(s−b)(s−c))　／　辺長＝小数1位・面積＝小数2位　／　内側だけを三角形分割',pad,y+4);
   return cvs.toDataURL('image/png');
 }
 function resize(){const s=cv.parentElement.getBoundingClientRect();cv.width=s.width;cv.height=s.height;draw();}
@@ -1339,7 +1372,7 @@ function aggHtmlForPrint(){
 function buildTriSection(){
   const blocks=allAreaBlocks(); if(!blocks.length)return '';
   let h='<h2 class="trh">求積図・求積表（ヘロンの公式／3辺による算出）</h2>';
-  h+='<div class="trnote">各三角形を3辺の長さ a・b・c からヘロンの公式で算出：s=(a+b+c)/2、面積=√(s(s−a)(s−b)(s−c))。図の<span style="color:#1463c7">青＝外周辺</span>・<span style="color:#0a8a6a">緑＝対角線</span>の数値が表の辺長に対応します（頂点①が基点）。</div>';
+  h+='<div class="trnote">各三角形を3辺の長さ a・b・c からヘロンの公式で算出：s=(a+b+c)/2、面積=√(s(s−a)(s−b)(s−c))。図の<span style="color:#1463c7">青＝外周辺</span>・<span style="color:#0a8a6a">緑＝対角線</span>の数値が表の辺長に対応します（多角形の内側だけを三角形分割）。</div>';
   blocks.forEach((b,idx)=>{
     const u=b.t.unit, d=triDiagramDataURL(b.f,520);
     h+='<div class="tri"><div class="tl">'+(idx+1)+'. '+b.f.cat+' › '+b.f.kind+((b.f.slopeK&&b.f.slopeK!==1)?'（'+b.f.slopeKind+' ×'+b.f.slopeK+'）':'')+'</div>';
