@@ -115,6 +115,24 @@
   .block table{width:100%}
   .block table tr:last-child td{font-weight:700}
   .grand{margin-top:18px;border-top:2px solid var(--acc);padding-top:10px}
+  /* 折りたたみセクション */
+  .sec.collapsible > h3{cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
+  .sec.collapsible > h3 .chev{margin-left:auto;font-size:11px;color:var(--mut);transition:transform .15s}
+  .sec.collapsed > h3 .chev{transform:rotate(-90deg)}
+  .sec.collapsed .secbody{display:none}
+  .sec .st{font-size:11px;color:var(--acc);font-weight:600}
+  /* 地図上の浮動コントロール（移動・ズーム） */
+  .mapctl{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:4}
+  .mapctl button{width:42px;height:42px;border-radius:10px;border:1px solid var(--line);
+    background:rgba(14,18,24,.82);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
+    color:var(--ink);font-size:18px;font-weight:700;cursor:pointer;touch-action:manipulation;box-shadow:0 3px 12px #0006}
+  .mapctl button:active{transform:scale(.94)}
+  .mapctl button.on{background:var(--acc);color:#08110b;border-color:var(--acc)}
+  /* 除外（穴）ボタン：橙系で目立たせる */
+  .btn.holebtn{border-color:#ff8c0099;color:#ffb066;background:linear-gradient(0deg,#ff8c0014,#ff8c0014),var(--panel2)}
+  .btn.holebtn:hover{border-color:#ff8c00}
+  .btn.holebtn.on{background:#ff8c00;color:#1a0e00;border-color:#ff8c00;font-weight:700}
+  .btn.holebtn.on small{color:#3a1f00}
   /* 印刷／PDF保存用 */
   #printArea{display:none}
   @media print{
@@ -148,32 +166,28 @@
 
   <!-- LEFT: tools -->
   <div class="col">
-    <div class="sec">
-      <h3>図面</h3>
-      <button class="btn" id="loadImg">公園図面を読み込む<small>PNG / JPG（背景にする）</small></button>
-      <input type="file" id="imgFile" accept="image/*" hidden>
-      <div class="mini">
-        <button id="zoomIn">＋拡大</button><button id="zoomOut">－縮小</button><button id="fit">全体表示</button>
+    <div class="sec collapsible" id="secMap">
+      <h3>図面 <span class="st" id="mapSt"></span><span class="chev">▾</span></h3>
+      <div class="secbody">
+        <button class="btn" id="loadImg">公園図面を読み込む<small>PNG / JPG（背景にする）</small></button>
+        <input type="file" id="imgFile" accept="image/*" hidden>
+        <div class="mini">
+          <button id="zoomIn">＋拡大</button><button id="zoomOut">－縮小</button><button id="fit">全体表示</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec collapsible" id="secCal">
+      <h3>① 縮尺合わせ <span class="st" id="calSt"></span><span class="chev">▾</span></h3>
+      <div class="secbody">
+        <button class="btn" id="toolCal" data-tool="cal">縮尺を設定（2点クリック）<small>図面上の既知距離を測る</small></button>
+        <label class="fld">その2点の実距離（m）</label>
+        <input class="txt" id="calDist" type="number" value="10" step="0.1">
       </div>
     </div>
 
     <div class="sec">
-      <h3>① 縮尺合わせ</h3>
-      <button class="btn" id="toolCal" data-tool="cal">縮尺を設定（2点クリック）<small>図面上の既知距離を測る</small></button>
-      <label class="fld">その2点の実距離（m）</label>
-      <input class="txt" id="calDist" type="number" value="10" step="0.1">
-    </div>
-
-    <div class="sec">
-      <h3>② 記録モード</h3>
-      <button class="btn on" id="toolArea" data-tool="area">面積（㎡）<small>外周をタップ→「✓確定」か始点をタップ</small></button>
-      <button class="btn" id="toolTree" data-tool="tree">樹木（本）<small>クリックで1本配置</small></button>
-      <button class="btn" id="toolSelect" data-tool="select">選択・移動・削除<small>ドラッグで地図移動 / クリックで選択</small></button>
-      <button class="btn" id="toolPan" data-tool="pan">✋ 地図を移動<small>ドラッグで表示位置だけずらす（iPad向け）</small></button>
-    </div>
-
-    <div class="sec">
-      <h3>③ 工種を選ぶ</h3>
+      <h3>② 工種を選ぶ</h3>
       <label class="fld">大分類</label>
       <select id="catSel"></select>
       <label class="fld">細別</label>
@@ -187,6 +201,14 @@
         <span id="htWrap">高さ <input id="htInput" type="number" value="1.0" step="0.1" style="width:62px"></span>
       </div>
       <div id="rankLegend" style="display:none;margin-top:8px"></div>
+    </div>
+
+    <div class="sec">
+      <h3>③ 記録モード <span class="st" style="color:var(--mut);font-weight:400">工種で自動選択</span></h3>
+      <button class="btn on" id="toolArea" data-tool="area">面積（㎡）<small>外周をタップ→「✓確定」か始点をタップ</small></button>
+      <button class="btn" id="toolTree" data-tool="tree">樹木（本）<small>クリックで1本配置</small></button>
+      <button class="btn" id="toolSelect" data-tool="select">選択・編集・削除<small>クリックで選択／頂点ドラッグ移動・辺の○で追加・頂点ダブルタップで削除</small></button>
+      <button class="btn" id="toolPan" data-tool="pan">✋ 地図を移動<small>地図右上の✋でも切替できます</small></button>
     </div>
 
     <div class="sec">
@@ -213,6 +235,12 @@
   <!-- CENTER: canvas -->
   <div class="stage">
     <canvas id="cv"></canvas>
+    <div class="mapctl" id="mapctl">
+      <button id="mPan" title="地図を移動（タップで切替）">✋</button>
+      <button id="mIn" title="拡大">＋</button>
+      <button id="mOut" title="縮小">－</button>
+      <button id="mFit" title="全体表示">⤢</button>
+    </div>
     <div class="hint" id="hint"></div>
     <div class="scalebadge no" id="scaleBadge">縮尺：未設定</div>
     <div class="draftbar" id="draftbar">
@@ -325,7 +353,7 @@ const $=id=>document.getElementById(id);
 let undoStack=[], redoStack=[];
 function snapshot(){return JSON.stringify({features:state.features,manual:state.manual,scale:state.scale});}
 function restore(s){const o=JSON.parse(s);state.features=o.features;state.manual=o.manual;state.scale=o.scale;
-  selected=null;draft=null;updateScaleBadge();renderAgg();renderSansha();refreshDraftBar();draw();updateUndoButtons();}
+  recalcAll();selected=null;draft=null;updateScaleBadge();renderAgg();renderSansha();refreshDraftBar();draw();updateUndoButtons();}
 function pushHistory(){undoStack.push(snapshot());if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();}
 function undo(){if(!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop());}
 function redo(){if(!redoStack.length)return;undoStack.push(snapshot());restore(redoStack.pop());}
@@ -390,9 +418,9 @@ function fillRanks(){
   syncToolForCat();
 }
 function syncToolForCat(){
-  const mode=MASTER[$('catSel').value].mode;
-  if(mode==='area'&&tool==='tree') setTool('area');
-  if(mode==='tree'&&tool==='area') setTool('tree');
+  const mode=MASTER[$('catSel').value].mode;   // 'area' or 'tree'
+  // 工種を選んだら記録モードを自動選択。校正・地図移動中は邪魔しない。作図中で同モードなら維持。
+  if(tool!=='cal'&&tool!=='pan'&&tool!==mode&&!holeMode) setTool(mode);
 }
 $('catSel').onchange=fillKinds; $('kindSel').onchange=()=>{fillRanks();updateHint();refreshDraftBar();};
 
@@ -406,22 +434,31 @@ function setTool(t){
   tool=t; draft=null; if(typeof refreshDraftBar==="function")refreshDraftBar();
   document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));
   cv.style.cursor = (t==='select'||t==='pan')?'grab':'crosshair';
+  const mp=$('mPan'); if(mp)mp.classList.toggle('on',t==='pan');
   updateHint(); draw();
 }
-document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>{holeMode=null;setTool(b.dataset.tool);});
+// 地図上の浮動コントロール（移動・ズーム）
+$('mIn').onclick=()=>zoomAt(cv.width/2,cv.height/2,1.2);
+$('mOut').onclick=()=>zoomAt(cv.width/2,cv.height/2,1/1.2);
+$('mFit').onclick=()=>{ if(typeof fit==='function')fit(); };
+$('mPan').onclick=()=>{ holeMode=null; if(tool==='pan'){setTool(prevToolForPan||'area');} else {prevToolForPan=tool;setTool('pan');} };
+// 折りたたみセクション（ヘッダータップで開閉）
+document.querySelectorAll('.sec.collapsible > h3').forEach(h=>h.addEventListener('click',()=>h.parentElement.classList.toggle('collapsed')));
 
 function updateHint(){
   const h=$('hint');h.style.display='';
   if(!state.img){h.innerHTML='まず <b>「公園図面を読み込む」</b> から地図画像を読み込んでください。';return;}
+  if(holeMode){h.innerHTML='＜除外エリア＞刈らない部分（木・ベンチ等）の外周を<b>タップ</b>→<b>「✓ 確定」</b>。全体面積から差し引きます（やめるは✕）。';return;}
   if(!state.scale&&tool!=='cal'){h.innerHTML='面積を出すには先に <b>① 縮尺合わせ</b> を。本数だけなら縮尺なしでもOK。';return;}
   if(tool==='cal')h.innerHTML='既知の長さの<b>一端を押して、もう一端までドラッグ</b>（タップ2回でもOK）。置いた点は<b>離さず動かせば微調整</b>できます。先に左の「実距離(m)」を合わせて。';
   else if(tool==='pan')h.innerHTML='<b>地図移動モード</b>：ドラッグ（iPadは指1本）で<b>表示位置だけ</b>を動かします。記録に戻るには上で別のモードを選択。';
   else if(tool==='area'){
     if(curGeom()==='line')h.innerHTML='＜つる：管理柵＞フェンスに沿って<b>端から端へタップ</b>→<b>「✓ 確定」</b>。左の<b>高さ(m)</b>を掛けて面積にします。';
-    else h.innerHTML='外周の角を順に<b>タップ</b>→<b>「✓ 確定」</b>か<b>始点（黄色）をタップ</b>で閉じます。'+(curCalc()==='trim'?'中木は左の<b>高さ(m)</b>で側面も加算。':'');
+    else h.innerHTML='外周の角を順に<b>タップ</b>→<b>「✓ 確定」</b>か<b>始点（黄色）をタップ</b>で閉じます。<b>除草など既存の面積の上からでも描き始められます</b>。'+(curCalc()==='trim'?'中木は<b>高さ(m)</b>で側面も加算（確定後も求積表で変更可）。':'');
   }
-  else if(tool==='tree')h.innerHTML='木のある場所を<b>クリック</b>で1本ずつ配置。左で工種と幹周ランクを選んでから。';
-  else h.innerHTML='注記を<b>クリックで選択</b>（外周線の近くでもOK）→<b>ドラッグで移動</b>。Deleteで削除。<b>Space＋ドラッグ</b>か「✋地図を移動」で表示位置を移動。';
+  else if(tool==='tree')h.innerHTML='木のある場所を<b>クリック</b>で配置（<b>面積の上にも置けます</b>）。既存の<b>木をクリックで選択・移動</b>。';
+  else h.innerHTML='図形を<b>クリックで選択</b>。面積/線は<b>赤い頂点をドラッグ＝移動／辺の＋をタップ＝追加／頂点をダブルタップ＝削除</b>。本体ドラッグで全体移動、Deleteで削除。重なりは<b>同じ場所を続けてタップで切替</b>。';
 }
 
 /* ---------- 座標変換 ---------- */
@@ -440,11 +477,40 @@ function distToPoly(p,pts,closed){let m=Infinity;const n=pts.length;for(let i=0;
 function trimAreaM2(f){const fp=areaM2(f.pts);if(fp==null)return null;return fp + perimeterM(f.pts)*(f.height||0);}
 // 管理柵（線×高さ）の面積：長さ×高さ
 function lineAreaM2(f){return lengthM(f.pts)*(f.height||0);}
+// 除外エリア（穴）の合計面積
+function holesAreaM2(f){if(!state.scale||!f.holes||!f.holes.length)return 0;let a=0;f.holes.forEach(h=>{if(h.length>=3)a+=shoelace(h);});return a*state.scale*state.scale;}
+// 外周−穴 の正味投影面積
+function netFootprintM2(f){const o=areaM2(f.pts);if(o==null)return null;return Math.max(0,o-holesAreaM2(f));}
 // featureの計上面積（㎡）を再計算
 function recalcAreaFeature(f){
   if(f.type==='box'){const fp=f.L*f.D;f.area=(f.sides===false)?fp:(fp+2*(f.H||0)*(f.L+f.D));}  // 低木=投影のみ／中木=投影+側面4面
   else if(f.type==='line'){f.length=lengthM(f.pts);f.area=lineAreaM2(f);}
-  else if(f.type==='area'){f.footprint=areaM2(f.pts);f.area=(f.calc==='trim')?trimAreaM2(f):f.footprint;}
+  else if(f.type==='area'){f.footprint=netFootprintM2(f);
+    const side=(f.calc==='trim')?perimeterM(f.pts)*(f.height||0):0;
+    f.area=(f.footprint==null)?null:f.footprint+side;}   // 穴を差し引いた投影＋（中木は側面）
+}
+// 除草工か（自動控除の対象＝ベース面積）
+function isWeeding(f){return f.type==='area'&&f.cat==='除草工';}
+// 除草の内側にある“他工種の面積”（刈込・低木等）＝自動的に除外する対象の一覧
+function autoDeductList(f){
+  const out=[]; if(!state.scale||f.type!=='area')return out;
+  state.features.forEach(g=>{
+    if(g!==f&&g.type==='area'&&g.cat!=='除草工'){
+      const c=centroid(g.pts);
+      if(pointInPoly(c,f.pts)){const nf=netFootprintM2(g);out.push({kind:g.kind,cat:g.cat,area:(nf==null?0:nf)});}
+    }
+  });
+  return out;
+}
+function autoDeductM2(f){return autoDeductList(f).reduce((s,d)=>s+d.area,0);}
+// 全featureを再計算。除草は内側の刈込・低木面積を自動控除して計上面積にする。
+function recalcAll(){
+  state.features.forEach(f=>recalcAreaFeature(f));            // まず各自の投影/面積
+  state.features.forEach(f=>{
+    if(f.type==='area'&&isWeeding(f)){const d=autoDeductM2(f);f.autoDeduct=d;
+      if(f.footprint!=null)f.area=Math.max(0,(f.footprint||0)-d);}     // 除草＝（外周−穴）−内側の刈込等
+    else if(f.type==='area')f.autoDeduct=0;
+  });
 }
 // 三斜求積法：頂点0を基点に扇状に三角形分割。各三角形は最長辺を底辺、高さ=2×面積÷底辺。
 function sanshaTable(pts){
@@ -476,6 +542,35 @@ function treeColor(f){return TREE_COLORS[f.cat+'/'+f.kind]||colorFor(f.cat+f.kin
 function treeRadius(f){return f.rank?(5+Math.max(0,BANDS.indexOf(f.rank))*1.0):6.5;}
 function featColor(f){if(f.type==='tree')return treeColor(f);return colorFor(f.cat+f.kind);}
 function centroid(pts){let x=0,y=0;pts.forEach(p=>{x+=p.x;y+=p.y});return{x:x/pts.length,y:y/pts.length};}
+// 選択中の面積/線：頂点（赤）＝移動・ダブルタップ削除／辺中点（＋黄）＝タップで頂点追加
+function drawHandles(f){
+  const vr=6/view.zoom,er=5/view.zoom;
+  const rings=[['outer',f.pts,'#ff2d2d']]; if(f.type==='area'&&f.holes)f.holes.forEach((h,i)=>rings.push([i,h,'#ff8c00']));
+  rings.forEach(([ring,pts,vcol])=>{
+    const closed=(f.type==='area'),n=pts.length;ctx.lineWidth=1.8/view.zoom;
+    for(let i=0;i<(closed?n:n-1);i++){const a=pts[i],b=pts[(i+1)%n],m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      ctx.beginPath();ctx.arc(m.x,m.y,er,0,7);ctx.fillStyle='#0a0e14cc';ctx.fill();ctx.strokeStyle='#ffd400';ctx.stroke();
+      ctx.beginPath();ctx.moveTo(m.x-er*0.55,m.y);ctx.lineTo(m.x+er*0.55,m.y);ctx.moveTo(m.x,m.y-er*0.55);ctx.lineTo(m.x,m.y+er*0.55);ctx.strokeStyle='#ffd400';ctx.stroke();}
+    pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,vr,0,7);ctx.fillStyle=vcol;ctx.fill();ctx.lineWidth=1.6/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();});
+  });
+}
+// 選択中のみ：各辺の長さを辺の外側に表示（縮尺あり=m／なし=px）
+function drawEdgeLengths(f){
+  if(!f||!f.pts||f.pts.length<2)return;
+  const closed=f.type==='area', n=f.pts.length, off=15/view.zoom, fs=11/view.zoom, c=centroid(f.pts);
+  ctx.save();ctx.font=`700 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.lineJoin='round';ctx.lineWidth=Math.max(3/view.zoom,fs*0.32);
+  for(let i=0;i<(closed?n:n-1);i++){
+    const a=f.pts[i],b=f.pts[(i+1)%n],dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1;
+    const m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};let nx=-dy/L,ny=dx/L;
+    if((m.x-c.x)*nx+(m.y-c.y)*ny<0){nx=-nx;ny=-ny;}      // 外側へ
+    const tx=m.x+nx*off,ty=m.y+ny*off;
+    const txt=state.scale?(L*state.scale).toFixed(2)+' m':Math.round(L)+' px';
+    ctx.strokeStyle='rgba(8,11,16,.92)';ctx.strokeText(txt,tx,ty);
+    ctx.fillStyle='#ffd400';ctx.fillText(txt,tx,ty);
+  }
+  ctx.restore();
+}
 
 function draw(){
   ctx.clearRect(0,0,cv.width,cv.height);
@@ -496,13 +591,24 @@ function draw(){
     }else if(f.type==='line'){
       ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
       ctx.lineWidth=(f===selected?5:3.5)/view.zoom;ctx.strokeStyle=(f===selected?SEL:col);ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();ctx.lineCap='butt';
-      if(f===selected)f.pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();});
+      if(f===selected){drawHandles(f);drawEdgeLengths(f);}
       const c=centroid(f.pts);label(c.x,c.y,`${f.kind}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
     }else if(f.type==='area'){
+      // 本体（穴があれば even-odd でくり抜き）
       ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();
-      ctx.fillStyle=col+'33';ctx.fill();
+      (f.holes||[]).forEach(h=>{h.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();});
+      ctx.fillStyle=col+'33';ctx.fill('evenodd');
+      // 外周線
+      ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();
       ctx.lineWidth=(f===selected?3:2)/view.zoom;ctx.strokeStyle=(f===selected?SEL:col);ctx.stroke();
-      if(f===selected)f.pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();});
+      // 穴の輪郭（橙の破線）＋面積ラベル
+      (f.holes||[]).forEach((h,hi)=>{
+        ctx.beginPath();h.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();
+        ctx.setLineDash([6/view.zoom,4/view.zoom]);ctx.lineWidth=2/view.zoom;ctx.strokeStyle='#ff8c00';ctx.stroke();ctx.setLineDash([]);
+        const hc=centroid(h),ha=areaM2(h);label(hc.x,hc.y,`除外${hi+1}\n${ha!=null?'-'+ha.toFixed(2):''} ㎡`,'#ff8c00');
+      });
+      if(f===selected)drawHandles(f);
+      if(f===selected)drawEdgeLengths(f);
       const c=centroid(f.pts);const tag=(f.calc==='trim')?'（投影＋側面）':'';label(c.x,c.y,`${f.kind}${tag}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
     }else{
       const rad=treeRadius(f)/view.zoom;
@@ -513,7 +619,7 @@ function draw(){
   });
   // draft（作図中：破線＋点で視認。面積=赤、縮尺=青） 
   if(draft&&draft.pts){
-    const isCal=!!draft.cal, lineCol=isCal?'#5aa9ff':'#ff2d2d';
+    const isCal=!!draft.cal, lineCol=isCal?'#5aa9ff':(draft.hole?'#ff8c00':'#ff2d2d');
     // 確定済みの点を結ぶ破線（縮尺で2点目待ちのときは hover までラバーバンド）
     ctx.beginPath();draft.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
     if(isCal&&draft.pts.length===1&&calDragIdx===null&&hover)ctx.lineTo(hover.x,hover.y);
@@ -617,22 +723,92 @@ function legendHit(p){const b=legend._box;return !!(legend.show&&b&&p.x>=b.x&&p.
 
 /* ---------- 入力 ---------- */
 let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null,draggingLegend=false,legDragOff=null,spaceDown=false,dragSnap=null;
+let editV=null,lastPick=null,pickIdx=0,lastVtxTap=null,prevToolForPan='area',holeMode=null,dragRing=null;
+function ringPts(f,ring){return ring==='outer'?f.pts:(f.holes||[])[ring];}
+function nearestTree(ip){let best=null,bd=Infinity;state.features.forEach(f=>{if(f.type==='tree'){const d=dist(f.pt,ip);if(d<(treeRadius(f)+8)/view.zoom&&d<bd){bd=d;best=f;}}});return best;}
+// 重なり対応：クリック地点の全ヒットを上から返す
+function hitAll(ip){
+  const tol=12/view.zoom,out=[];
+  state.features.forEach(f=>{let h=false;
+    if(f.type==='tree')h=dist(f.pt,ip)<(treeRadius(f)+6)/view.zoom;
+    else if(f.type==='box'){const w=state.scale?f.L/state.scale:60,hh=state.scale?f.D/state.scale:40;h=Math.abs(ip.x-f.pt.x)<=w/2+tol&&Math.abs(ip.y-f.pt.y)<=hh/2+tol;}
+    else if(f.type==='line')h=distToPoly(ip,f.pts,false)<tol+2/view.zoom;
+    else if(f.type==='area')h=pointInPoly(ip,f.pts)||distToPoly(ip,f.pts,true)<tol;
+    if(h)out.push(f);});
+  return out.reverse();   // 上に描かれた物（後勝ち）から
+}
+// 同じ場所を連続クリックすると重なりを順番に選択（選択できない状態をなくす）
+function pickHit(ip){
+  const all=hitAll(ip);if(!all.length){lastPick=null;return null;}
+  const near=lastPick&&dist(lastPick,ip)<14/view.zoom;
+  if(near&&all.length>1)pickIdx=(pickIdx+1)%all.length;
+  else{const si=all.indexOf(selected);pickIdx=si>=0?si:0;}
+  lastPick=ip;return all[pickIdx];
+}
+// 選択中の面積/線の頂点・辺中点ハンドル判定（外周＝'outer'、穴＝index）
+function hitHandle(ip){
+  const f=selected;if(!f||!(f.type==='area'||f.type==='line'))return null;
+  const r=10/view.zoom, closed=(f.type==='area');
+  const rings=[['outer',f.pts]]; if(f.type==='area'&&f.holes)f.holes.forEach((h,i)=>rings.push([i,h]));
+  for(const [ring,pts] of rings){for(let i=0;i<pts.length;i++)if(dist(pts[i],ip)<r)return {ring,kind:'vertex',idx:i};}
+  for(const [ring,pts] of rings){const n=pts.length;for(let i=0;i<(closed?n:n-1);i++){const a=pts[i],b=pts[(i+1)%n],m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};if(dist(m,ip)<r)return {ring,kind:'edge',idx:i};}}
+  return null;
+}
+function deleteVertex(f,ring,idx){
+  const pts=ringPts(f,ring);if(!pts)return;const min=(f.type==='line')?2:3;
+  if(pts.length<=min){if(ring!=='outer'){pushHistory();f.holes.splice(ring,1);recalcAll();renderAgg();renderSansha();draw();}return;}
+  pushHistory();pts.splice(idx,1);recalcAll();renderAgg();renderSansha();draw();
+}
+// マウス/タッチ共通の押下処理。'pan'|'legend'|'vertex'|'edge'|'drag' を返したら=操作開始（タップ配置しない）／null=描画or配置
+function downCommon(p,ip){
+  if(spaceDown||tool==='pan'){panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};return 'pan';}
+  if(legendHit(p)){startLegendDrag(p);return 'legend';}
+  if(holeMode)return null;                       // 除外エリア描画中は常にポチ追加
+  if(tool!=='tree'){                             // 樹木モードでは頂点編集を拾わない（面積の上に木を置けるように）
+    const hnd=hitHandle(ip);
+    if(hnd){
+      if(hnd.kind==='vertex'){
+        const now=Date.now();
+        if(lastVtxTap&&lastVtxTap.f===selected&&lastVtxTap.ring===hnd.ring&&lastVtxTap.idx===hnd.idx&&now-lastVtxTap.t<360){deleteVertex(selected,hnd.ring,hnd.idx);lastVtxTap=null;return 'vertex';}
+        lastVtxTap={f:selected,ring:hnd.ring,idx:hnd.idx,t:now};editV={f:selected,ring:hnd.ring,idx:hnd.idx};dragLast=ip;dragSnap=snapshot();return 'vertex';
+      }else{ // 辺の中点 → 頂点を挿入してそのままドラッグ
+        pushHistory();const pts=ringPts(selected,hnd.ring);pts.splice(hnd.idx+1,0,{x:ip.x,y:ip.y});recalcAreaFeature(selected);editV={f:selected,ring:hnd.ring,idx:hnd.idx+1};dragLast=ip;return 'edge';
+      }
+    }
+  }
+  if(tool==='cal')return null;
+  if(tool==='area')return null;                 // 面積モードは常に描画（樹木と同様、既存図形の上でも開始可）。編集は選択中図形のハンドル or 選択モードで。
+  const f=(tool==='tree')?nearestTree(ip):pickHit(ip);   // 樹木モードは既存の木だけ拾う／選択モードは全部（重なり巡回）
+  if(f){
+    selected=f;renderSansha();dragging=f;dragLast=ip;dragSnap=snapshot();dragRing=null;
+    if(f.type==='area'&&f.holes){for(let i=0;i<f.holes.length;i++){if(pointInPoly(ip,f.holes[i])){dragRing=i;break;}}}  // 穴の中なら穴だけ移動
+    return 'drag';
+  }
+  if(tool==='select'){panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};return 'pan';}
+  return null;                                   // 空クリック → 描画/配置へ
+}
 function startLegendDrag(p){legend.x=legend._box.x;legend.y=legend._box.y;draggingLegend=true;legDragOff={x:p.x-legend._box.x,y:p.y-legend._box.y};}
 function moveFeature(f,dx,dy){
   if(f.pt){f.pt.x+=dx;f.pt.y+=dy;}
-  else f.pts.forEach(p=>{p.x+=dx;p.y+=dy;});
+  else{f.pts.forEach(p=>{p.x+=dx;p.y+=dy;});(f.holes||[]).forEach(h=>h.forEach(p=>{p.x+=dx;p.y+=dy;}));}
 }
+function moveDrag(f,ring,dx,dy){ if(ring==null)moveFeature(f,dx,dy); else if(f.holes&&f.holes[ring])f.holes[ring].forEach(p=>{p.x+=dx;p.y+=dy;}); }
 function refreshDraftBar(){
   const bar=$('draftbar'),active=!!(draft&&(tool==='area'||tool==='cal'));
   bar.classList.toggle('on',active);
   if(active){
-    const isArea=tool==='area', need=(curGeom()==='line')?2:3;
+    const isArea=tool==='area', need=holeMode?3:((curGeom()==='line')?2:3);
     $('dbFinish').style.display=isArea?'':'none';
     $('dbFinish').disabled=!(isArea&&draft.pts.length>=need);
     $('dbUndo').disabled=draft.pts.length===0;
   }
 }
 function addAreaPoint(ip){
+  if(holeMode){ // 除外エリア（穴）＝多角形固定
+    if(!draft)draft={pts:[],hole:true};
+    if(draft.pts.length>=3&&dist(ip,draft.pts[0])<16/view.zoom){finishArea();return;}
+    draft.pts.push(ip);refreshDraftBar();draw();return;
+  }
   if(curGeom()==='box'){placeBox(ip);return;}   // 刈込：寸法入力でタップ配置
   if(!draft)draft={pts:[]};
   // 多角形のみ：始点付近のタップで閉じる（線＝管理柵は閉じない）
@@ -645,7 +821,7 @@ function placeBox(ip){
   pushHistory();
   const cat=$('catSel').value,kind=$('kindSel').value;
   const f={type:'box',cat,kind,pt:ip,L,D,H:sides?curHeightVal():0,sides};
-  recalcAreaFeature(f);state.features.push(f);renderAgg();draw();
+  state.features.push(f);recalcAll();renderAgg();draw();
 }
 // 縮尺：押した位置に点を置き、指/マウスを離すまでドラッグで微調整。離した位置で確定。
 function calDown(ip){
@@ -661,20 +837,14 @@ function calUp(){
 function undoDraftPoint(){
   if(!draft)return;draft.pts.pop();calDragIdx=null;hover=null;if(!draft.pts.length)draft=null;refreshDraftBar();draw();
 }
-function cancelDraft(){draft=null;calDragIdx=null;hover=null;refreshDraftBar();draw();}
-$('dbFinish').onclick=()=>{const need=(curGeom()==='line')?2:3;if(tool==='area'&&draft&&draft.pts.length>=need)finishArea();};
+function cancelDraft(){draft=null;calDragIdx=null;hover=null;holeMode=null;refreshDraftBar();updateHint();draw();}
+$('dbFinish').onclick=()=>{const need=holeMode?3:((curGeom()==='line')?2:3);if(tool==='area'&&draft&&draft.pts.length>=need)finishArea();};
 $('dbUndo').onclick=undoDraftPoint;
 $('dbCancel').onclick=cancelDraft;
 cv.addEventListener('mousedown',e=>{
   const p=evtPos(e),ip=toImg(p.x,p.y);
-  if(spaceDown||tool==='pan'){panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};cv.style.cursor='grabbing';return;} // Space or ✋ツール＝表示位置だけ移動
-  if(legendHit(p)){startLegendDrag(p);cv.style.cursor='grabbing';return;}
-  if(tool==='select'){
-    const f=hit(ip); selectFeature(f);
-    if(f){dragging=f;dragLast=ip;dragSnap=snapshot();cv.style.cursor='grabbing';}
-    else{panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};cv.style.cursor='grabbing';}
-    return;
-  }
+  const r=downCommon(p,ip);
+  if(r){cv.style.cursor='grabbing';draw();return;}
   if(tool==='cal'){calDown(ip);return;}
   if(tool==='area'){addAreaPoint(ip);return;}
   if(tool==='tree'){placeTree(ip);return;}
@@ -682,43 +852,49 @@ cv.addEventListener('mousedown',e=>{
 cv.addEventListener('mousemove',e=>{
   if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;draw();return;}
   if(tool==='cal'){const p=evtPos(e),ip=toImg(p.x,p.y);if(calDragIdx!==null)draft.pts[calDragIdx]=ip;else if(draft)hover=ip;draw();return;}
-  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;draw();return;}
+  if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}ringPts(editV.f,editV.ring)[editV.idx]={x:ip.x,y:ip.y};recalcAreaFeature(editV.f);draw();return;}
+  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;draw();}
 });
 window.addEventListener('mouseup',()=>{
   if(draggingLegend){draggingLegend=false;cv.style.cursor=tool==='select'?'grab':'crosshair';return;}
   if(tool==='cal'&&calDragIdx!==null){calUp();return;}
-  if(dragging){recalcAreaFeature(dragging);dragging=null;dragSnap=null;renderAgg();renderSansha();}
+  if(editV){recalcAll();editV=null;dragSnap=null;renderAgg();renderSansha();}
+  if(dragging){recalcAll();dragging=null;dragSnap=null;dragRing=null;renderAgg();renderSansha();}
   if(panning)panning=false;
-  cv.style.cursor=spaceDown?'grab':(tool==='select'?'grab':'crosshair');
+  cv.style.cursor=(spaceDown||tool==='pan')?'grab':(tool==='select'?'grab':'crosshair');
 });
-cv.addEventListener('dblclick',()=>{const need=(curGeom()==='line')?2:3;if(tool==='area'&&draft&&draft.pts.length>=need)finishArea();});
+cv.addEventListener('dblclick',e=>{
+  const p=evtPos(e),ip=toImg(p.x,p.y),hnd=hitHandle(ip);
+  if(hnd&&hnd.kind==='vertex'){deleteVertex(selected,hnd.ring,hnd.idx);return;}
+  if(tool==='area'&&draft){const need=holeMode?3:((curGeom()==='line')?2:3);if(draft.pts.length>=need)finishArea();}
+});
 cv.addEventListener('wheel',e=>{e.preventDefault();const p=evtPos(e);const f=e.deltaY<0?1.12:1/1.12;zoomAt(p.x,p.y,f);},{passive:false});
 // touch
 let lastTouch=null,pinchD=null;
 cv.addEventListener('touchstart',e=>{
-  if(e.touches.length===2){pinchD=touchDist(e);dragging=null;calDragIdx=null;draggingLegend=false;return;}
+  if(e.touches.length===2){pinchD=touchDist(e);dragging=null;editV=null;calDragIdx=null;draggingLegend=false;lastTouch=null;return;}
   const p=evtPos(e),ip=toImg(p.x,p.y);
-  if(legendHit(p)){startLegendDrag(p);lastTouch=null;return;}
-  if(tool==='pan'){panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};lastTouch=null;return;} // ✋地図移動（iPad指1本）
+  const r=downCommon(p,ip);
+  if(r){lastTouch=null;draw();return;}          // 操作開始（配置しない）
   if(tool==='cal'){calDown(ip);lastTouch=null;return;}
-  if(tool==='select'){const f=hit(ip);selectFeature(f);
-    if(f){dragging=f;dragLast=ip;dragSnap=snapshot();}else{panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};}}
-  lastTouch=p;
+  lastTouch=p;                                   // 空タップ → touchendで配置（面積/樹木）
 },{passive:false});
 cv.addEventListener('touchmove',e=>{
   e.preventDefault();
   if(e.touches.length===2&&pinchD){const d=touchDist(e),c=touchMid(e);zoomAt(c.x,c.y,d/pinchD);pinchD=d;return;}
   if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;lastTouch=null;draw();return;}
   if(tool==='cal'&&calDragIdx!==null){const p=evtPos(e),ip=toImg(p.x,p.y);draft.pts[calDragIdx]=ip;lastTouch=null;draw();return;}
-  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;lastTouch=null;draw();return;}
+  if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}ringPts(editV.f,editV.ring)[editV.idx]={x:ip.x,y:ip.y};recalcAreaFeature(editV.f);lastTouch=null;draw();return;}
+  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;lastTouch=null;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;lastTouch=null;draw();}
 },{passive:false});
 cv.addEventListener('touchend',e=>{
   if(pinchD&&e.touches.length<2){pinchD=null;return;}
   if(draggingLegend){draggingLegend=false;lastTouch=null;return;}
   if(tool==='cal'){if(calDragIdx!==null)calUp();lastTouch=null;return;}
-  if(dragging){recalcAreaFeature(dragging);dragging=null;dragSnap=null;renderAgg();renderSansha();lastTouch=null;return;}
+  if(editV){recalcAll();editV=null;dragSnap=null;renderAgg();renderSansha();lastTouch=null;return;}
+  if(dragging){recalcAll();dragging=null;dragSnap=null;dragRing=null;renderAgg();renderSansha();lastTouch=null;return;}
   if(panning){panning=false;return;}
   if(!lastTouch)return;const ip=toImg(lastTouch.x,lastTouch.y);
   if(tool==='area'){addAreaPoint(ip);}
@@ -736,7 +912,7 @@ window.addEventListener('keydown',e=>{
     if(e.key==='y'||e.key==='Y'){e.preventDefault();redo();return;}
   }
   if((e.key==='Delete'||e.key==='Backspace')&&selected&&!typing){e.preventDefault();removeFeature(selected);}
-  if(e.key==='Enter'&&tool==='area'&&draft){const need=(curGeom()==='line')?2:3;if(draft.pts.length>=need)finishArea();}
+  if(e.key==='Enter'&&tool==='area'&&draft){const need=holeMode?3:((curGeom()==='line')?2:3);if(draft.pts.length>=need)finishArea();}
   if(e.key==="Escape"){cancelDraft();}
 });
 window.addEventListener('keyup',e=>{
@@ -747,11 +923,22 @@ window.addEventListener('keyup',e=>{
 function finishCal(){
   const d=dist(draft.pts[0],draft.pts[1]);const real=parseFloat($('calDist').value)||0;
   if(real>0&&d>0){pushHistory();state.scale=real/d;updateScaleBadge();
-    state.features.forEach(f=>recalcAreaFeature(f));
-    renderAgg();renderSansha();}
+    recalcAll();
+    renderAgg();renderSansha();
+    $('secCal').classList.add('collapsed');$('calSt').textContent='設定済';
+    if(tool==='cal')setTool('area');}
   draft=null;calDragIdx=null;hover=null;refreshDraftBar();updateHint();draw();
 }
 function finishArea(){
+  if(holeMode){ // 除外エリア（穴）を確定して選択中の面積に追加。モードは継続。
+    if(!draft||draft.pts.length<3){return;}
+    pushHistory();
+    holeMode.holes=holeMode.holes||[];
+    holeMode.holes.push(draft.pts.slice());
+    recalcAll();
+    selected=holeMode;draft=null;refreshDraftBar();renderAgg();renderSansha();updateHint();draw();
+    return;
+  }
   const cat=$('catSel').value,kind=$('kindSel').value;
   const geom=curGeom(), h=curHeightVal();
   if(geom==='line'){
@@ -765,7 +952,7 @@ function finishArea(){
     const f={type:'area',cat,kind,pts:draft.pts.slice(),calc:curCalc(),height:(curNeedsHeight()?h:0)};
     recalcAreaFeature(f);state.features.push(f);
   }
-  draft=null;refreshDraftBar();renderAgg();draw();
+  draft=null;selected=state.features[state.features.length-1]||null;recalcAll();refreshDraftBar();renderAgg();renderSansha();draw();
 }
 function placeTree(ip){
   pushHistory();
@@ -818,35 +1005,69 @@ function renderSansha(){
     el.innerHTML=`<div class="legend" style="margin-bottom:6px">${selected.kind}（つる：フェンス）</div>`+
       `<table><tr><th>項目</th><th class="num">値</th></tr>`+
       `<tr><td>柵の長さ</td><td class="num">${state.scale?L.toFixed(2)+' m':'縮尺未設定'}</td></tr>`+
-      `<tr><td>高さ</td><td class="num">${H.toFixed(2)} m</td></tr>`+
+      `<tr><td>高さ(m)<span style="color:var(--mut);font-size:11px">／後から変更可</span></td><td class="num"><input id="editHt" type="number" value="${H}" step="0.1" style="width:74px;text-align:right"></td></tr>`+
       `<tr><td style="text-align:right">面積 ＝ 長さ × 高さ</td><td class="num" style="color:var(--acc);font-weight:700">${state.scale?A.toFixed(2)+' ㎡':'—'}</td></tr></table>`;
+    attachHeightEditor(selected);
     return;
   }
   if(!(selected&&selected.type==='area')){el.innerHTML='<div class="empty">面積を選択モードでクリックすると、三斜法の根拠表が出ます</div>';return;}
   const t=sanshaTable(selected.pts), u=t.unit;
   const trim=(selected.calc==='trim');
-  let h=`<div class="legend" style="margin-bottom:6px">${selected.kind}${trim?'（投影＋側面）':''}${state.scale?'':'（縮尺未設定のため px 表示）'}</div>`;
+  const holes=selected.holes||[];
+  let h=`<div class="legend" style="margin-bottom:6px">${selected.kind}${trim?'（投影＋側面）':''}${holes.length?'（除外'+holes.length+'か所）':''}${state.scale?'':'（縮尺未設定のため px 表示）'}</div>`;
   h+='<table><tr><th>No</th><th class="num">底辺('+u+')</th><th class="num">高さ('+u+')</th><th class="num">倍面積</th></tr>';
   t.rows.forEach(r=>h+=`<tr><td>${r.no}</td><td class="num">${r.base.toFixed(3)}</td><td class="num">${r.height.toFixed(3)}</td><td class="num">${r.dbl.toFixed(3)}</td></tr>`);
   const sumDbl=t.rows.reduce((s,r)=>s+r.dbl,0);
   h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">倍面積 合計</td><td class="num">${sumDbl.toFixed(3)}</td></tr>`;
-  h+=`<tr><td colspan="3" style="text-align:right">投影面積 ＝ 合計 ÷ 2</td><td class="num"${trim?'':' style="color:var(--acc);font-weight:700"'}>${t.total.toFixed(3)} ${u}²</td></tr>`;
-  if(trim&&state.scale){
-    const fp=areaM2(selected.pts), per=perimeterM(selected.pts), side=per*(selected.height||0), tot=fp+side;
-    h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">周長</td><td class="num">${per.toFixed(2)} m</td></tr>`;
-    h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">側面 ＝ 周長 × 高さ(${(selected.height||0).toFixed(2)}m)</td><td class="num">${side.toFixed(2)} ㎡</td></tr>`;
-    h+=`<tr><td colspan="3" style="text-align:right">合計 ＝ 投影 ＋ 側面</td><td class="num" style="color:var(--acc);font-weight:700">${tot.toFixed(2)} ㎡</td></tr>`;
+  h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">外周 投影 ＝ 合計 ÷ 2</td><td class="num">${t.total.toFixed(3)} ${u}²</td></tr>`;
+  if(holes.length){
+    const hSum=state.scale?holesAreaM2(selected):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);
+    h+=`<tr><td colspan="3" style="text-align:right;color:#ff8c00">除外（穴）${holes.length}か所</td><td class="num" style="color:#ff8c00">-${hSum.toFixed(3)} ${u}²</td></tr>`;
   }
-  h+='</table><button class="btn ghost" id="dlSansha" style="margin-top:8px">求積表をCSVで書き出す</button>';
+  if(trim){
+    const per=perimeterM(selected.pts), side=per*(selected.height||0);
+    h+=`<tr><td colspan="3" style="text-align:right">高さ(m)<span style="color:var(--mut);font-size:11px">／後から変更可</span></td><td class="num"><input id="editHt" type="number" value="${selected.height||0}" step="0.1" style="width:74px;text-align:right"></td></tr>`;
+    h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">側面 ＝ 周長 ${state.scale?per.toFixed(2)+'m':'—'} × 高さ</td><td class="num">${state.scale?side.toFixed(2)+' ㎡':'—'}</td></tr>`;
+  }
+  const ded=isWeeding(selected)?autoDeductList(selected):[];
+  if(ded.length){
+    h+=`<tr><td colspan="4" style="text-align:left;color:#ff8c00;padding-top:6px">内側の他工種を自動控除（除草対象外）</td></tr>`;
+    ded.forEach(d=>h+=`<tr><td colspan="3" style="text-align:right;color:#ff8c00">　− ${d.kind}</td><td class="num" style="color:#ff8c00">-${d.area.toFixed(3)} ㎡</td></tr>`);
+  }
+  h+=`<tr><td colspan="3" style="text-align:right">計上面積（積算に使用）</td><td class="num" style="color:var(--acc);font-weight:700">${selected.area!=null?selected.area.toFixed(2)+' ㎡':'—'}</td></tr>`;
+  h+='</table>';
+  const inHole=(holeMode===selected);
+  if(holes.length){
+    h+='<div style="margin-top:8px;font-size:12px"><div style="color:#ff8c00;font-weight:600;margin-bottom:4px">除外エリア（穴）一覧</div>';
+    holes.forEach((hh,i)=>{const a=state.scale?(shoelace(hh)*state.scale*state.scale):shoelace(hh);
+      h+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="flex:1;color:#ffb066">除外${i+1}：-${a.toFixed(2)} ${state.scale?'㎡':'px²'}</span><button class="btn ghost holedel" data-hi="${i}" style="width:auto;padding:4px 10px;margin:0;font-size:12px">この除外を削除</button></div>`;});
+    h+='</div>';
+  }
+  h+=`<button class="btn holebtn ${inHole?'on':''}" id="addHole" style="margin-top:8px">${inHole?'■ 除外モードを終了':'⊘ 除外エリア（穴）を追加'}<small>${inHole?'続けて別の場所をポチポチ→「✓確定」で次々追加できます':'木・ベンチなど刈らない部分を全体から差し引く'}</small></button>`;
+  if(holes.length)h+='<button class="btn ghost" id="clrHole" style="margin-top:6px">除外エリアをすべて消去</button>';
+  h+='<button class="btn ghost" id="dlSansha" style="margin-top:6px">求積表をCSVで書き出す</button>';
   el.innerHTML=h;
+  if(trim)attachHeightEditor(selected);
+  el.querySelectorAll('.holedel').forEach(b=>b.onclick=()=>deleteHole(selected,parseInt(b.dataset.hi)));
+  $('addHole').onclick=inHole?endHole:startHole;
+  if(holes.length)$('clrHole').onclick=clearHoles;
   $('dlSansha').onclick=()=>{
     let c='No,底辺('+u+'),高さ('+u+'),倍面積('+u+'²)\n';
     t.rows.forEach(r=>c+=`${r.no},${r.base.toFixed(3)},${r.height.toFixed(3)},${r.dbl.toFixed(3)}\n`);
-    c+=`合計,,,${sumDbl.toFixed(3)}\n面積(=合計/2),,,${t.total.toFixed(3)}\n`;
+    c+=`外周投影(=合計/2),,,${t.total.toFixed(3)}\n`;
+    if(holes.length){const hSum=state.scale?holesAreaM2(selected):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);c+=`除外(穴)合計,,,-${hSum.toFixed(3)}\n`;}
+    ded.forEach(d=>c+=`内側控除 ${d.kind},,,-${d.area.toFixed(3)}\n`);
+    c+=`計上面積,,,${selected.area!=null?selected.area.toFixed(3):''}\n`;
     dl('\uFEFF'+c,`${($('parkName').value||'求積')}_${selected.kind}_求積表.csv`,'text/csv');
   };
 }
-function removeFeature(f){pushHistory();state.features=state.features.filter(x=>x!==f);if(selected===f)selected=null;renderSansha();renderAgg();draw();}
+function attachHeightEditor(f){const inp=document.getElementById('editHt');if(!inp)return;
+  inp.onchange=()=>{const v=parseFloat(inp.value);if(isNaN(v)||v<0)return;pushHistory();f.height=v;recalcAll();renderAgg();renderSansha();draw();};}
+function startHole(){ if(!selected||selected.type!=='area')return; holeMode=selected; draft=null; if(tool!=='area')setTool('area'); refreshDraftBar(); renderSansha(); updateHint(); draw(); }
+function endHole(){ holeMode=null; draft=null; refreshDraftBar(); renderSansha(); updateHint(); draw(); }
+function clearHoles(){ if(!selected||!selected.holes||!selected.holes.length)return; pushHistory(); selected.holes=[]; recalcAll(); renderAgg(); renderSansha(); draw(); }
+function deleteHole(f,i){ if(!f||!f.holes||i<0||i>=f.holes.length)return; pushHistory(); f.holes.splice(i,1); recalcAll(); renderAgg(); renderSansha(); draw(); }
+function removeFeature(f){pushHistory();state.features=state.features.filter(x=>x!==f);if(selected===f)selected=null;recalcAll();renderSansha();renderAgg();draw();}
 
 /* ---------- 集計 ---------- */
 function unitPrice(f){
@@ -884,7 +1105,7 @@ function renderAgg(){
 $('manAdd').onclick=()=>{const k=$('manKind').value,q=parseFloat($('manQty').value);if(k&&q>0){pushHistory();state.manual.push({kind:k,qty:q});$('manQty').value='';renderAgg();}};
 
 /* ---------- 保存/読込/書き出し ---------- */
-$('loadImg').onclick=()=>$('imgFile').click();$('imgFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{state.img=im;state.imgData=r.result;fit();updateHint();requestAnimationFrame(fit);};im.src=r.result;};r.readAsDataURL(f);};
+$('loadImg').onclick=()=>$('imgFile').click();$('imgFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{state.img=im;state.imgData=r.result;fit();updateHint();requestAnimationFrame(fit);$('secMap').classList.add('collapsed');$('mapSt').textContent='読込済';};im.src=r.result;};r.readAsDataURL(f);};
 function fit(){
   if(!state.img)return;
   // 表示領域の実サイズに合わせてバッファを更新（初期化状況に依存せず常に正しく全体表示）
@@ -915,7 +1136,7 @@ $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new Fi
   const d=JSON.parse(r.result);$('parkName').value=d.park||'';state.scale=d.scale||null;
   if(d.contract!==undefined)$('contractName').value=d.contract||'';
   $('orderNo').value=d.order||'';$('workDate').value=d.date||'';
-  state.features=d.features||[];state.manual=d.manual||[];state.features.forEach(recalcAreaFeature);
+  state.features=d.features||[];state.manual=d.manual||[];recalcAll();
   undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
 };r.readAsText(f);};
@@ -985,9 +1206,10 @@ function allAreaBlocks(){
   return state.features.filter(f=>f.type==='area').slice().sort((a,b)=>cmpSpec(a,b))   // 仕様書（工種）順
     .map(f=>({f,t:sanshaTable(f.pts)}));
 }
+function blockHoleSum(f){const holes=f.holes||[];return state.scale?holesAreaM2(f):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);}
 function buildSummary(blocks){
   const byKind={};let grand=0;
-  blocks.forEach(b=>{byKind[b.f.kind]=(byKind[b.f.kind]||0)+b.t.total;grand+=b.t.total;});
+  blocks.forEach(b=>{const net=b.t.total-blockHoleSum(b.f)-(b.f.autoDeduct||0);byKind[b.f.kind]=(byKind[b.f.kind]||0)+net;grand+=net;});  // 穴＋内側控除を差し引いた投影
   return {byKind,grand,unit:blocks[0]?blocks[0].t.unit:'m'};
 }
 function showAllSansha(){
@@ -998,10 +1220,16 @@ function showAllSansha(){
   let h='';
   blocks.forEach((b,idx)=>{
     const sumDbl=b.t.rows.reduce((a,r)=>a+r.dbl,0),col=featColor(b.f);
-    h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.kind} ＃${idx+1}<span class="a">${r3(b.t.total)} ${u}²</span></div><table><tr><th>No</th><th class="num">底辺(${u})</th><th class="num">高さ(${u})</th><th class="num">倍面積(${u}²)</th></tr>`;
+    h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.kind} ＃${idx+1}<span class="a">${r3(b.f.area!=null?b.f.area:b.t.total)} ${u}²</span></div><table><tr><th>No</th><th class="num">底辺(${u})</th><th class="num">高さ(${u})</th><th class="num">倍面積(${u}²)</th></tr>`;
     b.t.rows.forEach(r=>h+=`<tr><td>${r.no}</td><td class="num">${r3(r.base)}</td><td class="num">${r3(r.height)}</td><td class="num">${r3(r.dbl)}</td></tr>`);
     h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">倍面積 合計</td><td class="num">${r3(sumDbl)}</td></tr>`;
-    h+=`<tr><td colspan="3" style="text-align:right">面積 ＝ 合計 ÷ 2</td><td class="num">${r3(b.t.total)} ${u}²</td></tr></table></div>`;
+    h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">外周 投影 ＝ 合計 ÷ 2</td><td class="num">${r3(b.t.total)} ${u}²</td></tr>`;
+    const hs=blockHoleSum(b.f);
+    if(hs>0)h+=`<tr><td colspan="3" style="text-align:right;color:#ff8c00">除外（穴）${(b.f.holes||[]).length}か所</td><td class="num" style="color:#ff8c00">-${r3(hs)} ${u}²</td></tr>`;
+    if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">側面 ＝ 周長×高さ(${(b.f.height||0).toFixed(2)}m)</td><td class="num">${state.scale?r3(side)+' ㎡':'—'}</td></tr>`;}
+    const ded=isWeeding(b.f)?autoDeductList(b.f):[];
+    ded.forEach(d=>h+=`<tr><td colspan="3" style="text-align:right;color:#ff8c00">内側控除 − ${d.kind}</td><td class="num" style="color:#ff8c00">-${r3(d.area)} ㎡</td></tr>`);
+    h+=`<tr><td colspan="3" style="text-align:right">計上面積</td><td class="num" style="color:var(--acc);font-weight:700">${b.f.area!=null?r3(b.f.area)+' ㎡':'—'}</td></tr></table></div>`;
   });
   h+='<div class="grand"><h2>工種別 面積集計</h2><table><tr><th>工種</th><th class="num">面積('+u+'²)</th></tr>';
   Object.entries(s.byKind).forEach(([k,v])=>h+=`<tr><td>${k}</td><td class="num">${r3(v)}</td></tr>`);
@@ -1034,7 +1262,12 @@ function exportExcel(){
       aoa.push(['No',`底辺(${u})`,`高さ(${u})`,`倍面積(${u}²)`]);
       b.t.rows.forEach(r=>aoa.push([r.no,r3(r.base),r3(r.height),r3(r.dbl)]));
       aoa.push(['合計','','',r3(sumDbl)]);
-      aoa.push(['面積（＝合計÷2）','','',r3(b.t.total)]);
+      aoa.push(['外周投影（＝合計÷2）','','',r3(b.t.total)]);
+      const hSum=blockHoleSum(b.f);
+      if(hSum>0)aoa.push([`除外（穴）${(b.f.holes||[]).length}か所`,'','',r3(-hSum)]);
+      const ded=isWeeding(b.f)?autoDeductList(b.f):[];
+      ded.forEach(d=>aoa.push([`内側控除 ${d.kind}`,'','',r3(-d.area)]));
+      if(hSum>0||ded.length)aoa.push(['計上面積','','',r3(b.f.area!=null?b.f.area:b.t.total)]);
       aoa.push([]);
     });
     const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:16},{wch:12},{wch:12},{wch:14}];ws['!merges']=merges;
