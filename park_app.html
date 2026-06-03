@@ -146,6 +146,12 @@
     #printArea table{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0}
     #printArea th,#printArea td{border:1px solid #999;padding:3px 6px;text-align:left}
     #printArea td.num,#printArea th.num{text-align:right}
+    #printArea h2.trh{font-size:14px;margin:16px 0 4px;border-bottom:2px solid #2f9e57;padding-bottom:3px;page-break-before:always}
+    #printArea .trnote{font-size:10px;color:#333;margin-bottom:8px}
+    #printArea .tri{page-break-inside:avoid;margin:8px 0 14px;border:1px solid #ccc;border-radius:4px;padding:8px}
+    #printArea .tri .tl{font-weight:bold;font-size:12px;margin-bottom:6px}
+    #printArea img.trimg{display:block;border:1px solid #bbb;margin-bottom:6px}
+    #printArea table.trtab{width:auto;min-width:70%;font-size:10px}
   }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -527,8 +533,50 @@ function sanshaTable(pts){
   }
   return {rows,total,unit:hasScale?'m':'px'};
 }
-
-/* ---------- 描画 ---------- */
+// ヘロンの公式：頂点1(=pts[0])を基点に扇状分割。各三角形を3辺の長さから面積算出。s=(a+b+c)/2, 面積=√(s(s-a)(s-b)(s-c))
+function heronTable(pts){
+  const sc=state.scale||1, hasScale=!!state.scale, rows=[]; let total=0;
+  for(let i=1;i<pts.length-1;i++){
+    const A=pts[0],B=pts[i],C=pts[i+1];
+    const a=dist(A,B)*sc, b=dist(B,C)*sc, c=dist(C,A)*sc;     // a:1-(i+1)  b:(i+1)-(i+2)  c:(i+2)-1
+    const sp=(a+b+c)/2;
+    const ar=Math.sqrt(Math.max(0,sp*(sp-a)*(sp-b)*(sp-c)));
+    total+=ar; rows.push({no:i, v:[1,i+1,i+2], a,b,c, s:sp, area:ar});
+  }
+  return {rows,total,unit:hasScale?'m':'px'};
+}
+function labelLen(x,px,py,t,col){x.save();x.textAlign='center';x.textBaseline='middle';x.lineWidth=3;x.strokeStyle='rgba(255,255,255,0.92)';x.strokeText(t,px,py);x.fillStyle=col;x.fillText(t,px,py);x.restore();}
+// 三斜図：頂点番号・各辺の長さ・三角形番号を描いたPNGを返す（監督員が3辺で検算できる図）
+function triDiagramDataURL(f,W){
+  W=W||540; const pts=f.pts; if(!pts||pts.length<3)return null;
+  const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+  let minx=Math.min(...xs),maxx=Math.max(...xs),miny=Math.min(...ys),maxy=Math.max(...ys);
+  (f.holes||[]).forEach(h=>h.forEach(p=>{minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);miny=Math.min(miny,p.y);maxy=Math.max(maxy,p.y);}));
+  const bw=Math.max(1,maxx-minx),bh=Math.max(1,maxy-miny),pad=30;
+  let scale=(W-2*pad)/bw; const maxH=Math.round(W*1.25); if(bh*scale>maxH-2*pad)scale=(maxH-2*pad)/bh;
+  const cW=Math.round(bw*scale+2*pad),cH=Math.round(bh*scale+2*pad),DPR=2;
+  const cvs=document.createElement('canvas');cvs.width=cW*DPR;cvs.height=cH*DPR;
+  const x=cvs.getContext('2d');x.scale(DPR,DPR);
+  const X=p=>pad+(p.x-minx)*scale,Y=p=>pad+(p.y-miny)*scale;
+  const sc=state.scale||null,un=sc?'m':'px';
+  x.fillStyle='#fff';x.fillRect(0,0,cW,cH);
+  x.beginPath();pts.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.fillStyle='#f2f6f9';x.fill();
+  for(let i=1;i<pts.length-1;i++){const A=pts[0],B=pts[i],C=pts[i+1];
+    x.beginPath();x.moveTo(X(A),Y(A));x.lineTo(X(B),Y(B));x.lineTo(X(C),Y(C));x.closePath();x.fillStyle=(i%2)?'#eaf3fb':'#fbf0ea';x.fill();}
+  x.strokeStyle='#7aa3c2';x.setLineDash([4,3]);x.lineWidth=1;
+  for(let i=2;i<pts.length-1;i++){x.beginPath();x.moveTo(X(pts[0]),Y(pts[0]));x.lineTo(X(pts[i]),Y(pts[i]));x.stroke();}
+  x.setLineDash([]);
+  x.beginPath();pts.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.strokeStyle='#13324a';x.lineWidth=2;x.stroke();
+  for(let i=1;i<pts.length-1;i++){const A=pts[0],B=pts[i],C=pts[i+1];const cx=(X(A)+X(B)+X(C))/3,cy=(Y(A)+Y(B)+Y(C))/3;x.font='bold 13px sans-serif';x.fillStyle='#0b2a44';x.textAlign='center';x.textBaseline='middle';x.fillText('△'+i,cx,cy);}
+  x.font='10px sans-serif';
+  const seg=(p,q,col)=>{const mx=(X(p)+X(q))/2,my=(Y(p)+Y(q))/2,L=dist(p,q)*(sc||1);labelLen(x,mx,my,L.toFixed(2)+un,col);};
+  for(let i=0;i<pts.length;i++)seg(pts[i],pts[(i+1)%pts.length],'#1463c7');   // 外周辺（青）
+  for(let i=2;i<pts.length-1;i++)seg(pts[0],pts[i],'#0a8a6a');               // 対角線（緑）
+  pts.forEach((p,i)=>{x.beginPath();x.arc(X(p),Y(p),3.6,0,7);x.fillStyle=(i===0?'#0a7d33':'#13324a');x.fill();
+    x.fillStyle='#0a0e14';x.font='bold 11px sans-serif';x.textAlign='left';x.textBaseline='bottom';x.fillText(String(i+1)+(i===0?'(基点)':''),X(p)+4,Y(p)-2);});
+  (f.holes||[]).forEach((h,hi)=>{x.beginPath();h.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.fillStyle='#fff';x.fill();x.setLineDash([5,4]);x.strokeStyle='#ff8c00';x.lineWidth=1.5;x.stroke();x.setLineDash([]);const hc=centroid(h);x.fillStyle='#cc6f00';x.font='10px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('除外'+(hi+1),X(hc),Y(hc));});
+  return {url:cvs.toDataURL('image/png'),w:cW,h:cH};
+}
 function resize(){const s=cv.parentElement.getBoundingClientRect();cv.width=s.width;cv.height=s.height;draw();}
 function colorFor(label){let h=0;for(const c of label)h=(h*31+c.charCodeAt(0))>>>0;return COLORS[h%COLORS.length];}
 // 樹木の点：色＝工種（大分類＋細別）。黄金角で工種ごとに色相を割り当て、被りにくくする
@@ -1013,42 +1061,32 @@ function renderSansha(){
     attachHeightEditor(selected);
     return;
   }
-  if(!(selected&&selected.type==='area')){el.innerHTML='<div class="empty">面積を選択モードでクリックすると、三斜法の根拠表が出ます</div>';return;}
-  const t=sanshaTable(selected.pts), u=t.unit;
+  if(!(selected&&selected.type==='area')){el.innerHTML='<div class="empty">面積を選択モードでクリックすると、3辺（ヘロン）の根拠表が出ます</div>';return;}
+  const t=heronTable(selected.pts), u=t.unit;
   const trim=(selected.calc==='trim');
   const holes=selected.holes||[];
   let h=`<div class="legend" style="margin-bottom:6px">${selected.kind}${trim?'（投影＋側面）':''}${holes.length?'（除外'+holes.length+'か所）':''}${state.scale?'':'（縮尺未設定のため px 表示）'}</div>`;
-  h+='<table><tr><th>No</th><th class="num">底辺('+u+')</th><th class="num">高さ('+u+')</th><th class="num">倍面積</th></tr>';
-  t.rows.forEach(r=>h+=`<tr><td>${r.no}</td><td class="num">${r.base.toFixed(3)}</td><td class="num">${r.height.toFixed(3)}</td><td class="num">${r.dbl.toFixed(3)}</td></tr>`);
-  const sumDbl=t.rows.reduce((s,r)=>s+r.dbl,0);
-  h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">倍面積 合計</td><td class="num">${sumDbl.toFixed(3)}</td></tr>`;
-  h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">外周 投影 ＝ 合計 ÷ 2</td><td class="num">${t.total.toFixed(3)} ${u}²</td></tr>`;
-  if(holes.length){
-    const hSum=state.scale?holesAreaM2(selected):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);
-    h+=`<tr><td colspan="3" style="text-align:right;color:#ff8c00">除外（穴）${holes.length}か所</td><td class="num" style="color:#ff8c00">-${hSum.toFixed(3)} ${u}²</td></tr>`;
-  }
-  if(trim){
-    const per=perimeterM(selected.pts), side=per*(selected.height||0);
-    h+=`<tr><td colspan="3" style="text-align:right">高さ(m)<span style="color:var(--mut);font-size:11px">／後から変更可</span></td><td class="num"><input id="editHt" type="number" value="${selected.height||0}" step="0.1" style="width:74px;text-align:right"></td></tr>`;
-    h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">側面 ＝ 周長 ${state.scale?per.toFixed(2)+'m':'—'} × 高さ</td><td class="num">${state.scale?side.toFixed(2)+' ㎡':'—'}</td></tr>`;
-  }
+  const dg=triDiagramDataURL(selected,300); if(dg)h+=`<img src="${dg.url}" style="display:block;max-width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;margin:0 0 4px">`;
+  h+=`<div style="font-size:11px;color:var(--mut);margin-bottom:4px">各三角形を3辺 a・b・c からヘロンの公式で算出（辺は頂点番号で対応）</div>`;
+  h+='<table><tr><th>△</th><th class="num">a('+u+')</th><th class="num">b('+u+')</th><th class="num">c('+u+')</th><th class="num">面積</th></tr>';
+  t.rows.forEach(r=>{const v=r.v;h+=`<tr><td>△${r.no}<br><span style="color:var(--mut);font-size:10px">${v[0]}-${v[1]}・${v[1]}-${v[2]}・${v[2]}-${v[0]}</span></td><td class="num">${r.a.toFixed(2)}</td><td class="num">${r.b.toFixed(2)}</td><td class="num">${r.c.toFixed(2)}</td><td class="num">${r.area.toFixed(2)}</td></tr>`;});
+  h+=`<tr><td colspan="4" style="text-align:right;color:var(--mut)">外周投影 ＝ 三角形の合計</td><td class="num">${t.total.toFixed(2)} ${u}²</td></tr>`;
+  h+='</table>';
+  h+='<table style="margin-top:6px"><tr><th>項目</th><th class="num">値</th></tr>';
+  if(holes.length){const hSum=state.scale?holesAreaM2(selected):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);
+    h+=`<tr><td style="color:#ff8c00">除外（穴）${holes.length}か所</td><td class="num" style="color:#ff8c00">-${hSum.toFixed(2)} ${u}²</td></tr>`;}
+  if(trim){const per=perimeterM(selected.pts), side=per*(selected.height||0);
+    h+=`<tr><td>高さ(m)<span style="color:var(--mut);font-size:11px">／後から変更可</span></td><td class="num"><input id="editHt" type="number" value="${selected.height||0}" step="0.1" style="width:74px;text-align:right"></td></tr>`;
+    h+=`<tr><td style="color:var(--mut)">側面 ＝ 周長${state.scale?per.toFixed(2)+'m':'—'}×高さ</td><td class="num">${state.scale?side.toFixed(2)+' ㎡':'—'}</td></tr>`;}
   const ded=isWeeding(selected)?autoDeductList(selected):[];
-  if(ded.length){
-    h+=`<tr><td colspan="4" style="text-align:left;color:#ff8c00;padding-top:6px">内側の刈込（中低木刈込）を自動控除（除草対象外）</td></tr>`;
-    ded.forEach(d=>h+=`<tr><td colspan="3" style="text-align:right;color:#ff8c00">　− ${d.kind}</td><td class="num" style="color:#ff8c00">-${d.area.toFixed(3)} ㎡</td></tr>`);
-  }
-  // 斜面補正
+  ded.forEach(d=>h+=`<tr><td style="color:#ff8c00">内側控除 − ${d.kind}</td><td class="num" style="color:#ff8c00">-${d.area.toFixed(2)} ㎡</td></tr>`);
   const sk=selected.slopeK||1, skind=selected.slopeKind||'平坦';
   const svalsel=(skind==='緩斜面'?'gentle':skind==='急斜面'?'steep':skind==='直接入力'?'custom':'flat');
-  h+=`<tr><td colspan="3" style="text-align:right">斜面区分</td><td class="num"><select id="slopeSel" style="width:100%">`+
-     `<option value="flat"${svalsel==='flat'?' selected':''}>平坦 (×1.00)</option>`+
-     `<option value="gentle"${svalsel==='gentle'?' selected':''}>緩斜面 (×1.15)</option>`+
-     `<option value="steep"${svalsel==='steep'?' selected':''}>急斜面 (×1.30)</option>`+
-     `<option value="custom"${svalsel==='custom'?' selected':''}>直接入力</option></select></td></tr>`;
-  h+=`<tr><td colspan="3" style="text-align:right">斜面係数 ×<span style="color:var(--mut);font-size:11px">／投影面積に掛ける（仕様に合わせ変更可）</span></td><td class="num"><input id="slopeKin" type="number" value="${sk}" step="0.01" min="1" style="width:74px;text-align:right"></td></tr>`;
+  h+=`<tr><td>斜面区分</td><td class="num"><select id="slopeSel" style="width:100%"><option value="flat"${svalsel==='flat'?' selected':''}>平坦 (×1.00)</option><option value="gentle"${svalsel==='gentle'?' selected':''}>緩斜面 (×1.15)</option><option value="steep"${svalsel==='steep'?' selected':''}>急斜面 (×1.30)</option><option value="custom"${svalsel==='custom'?' selected':''}>直接入力</option></select></td></tr>`;
+  h+=`<tr><td>斜面係数 ×<span style="color:var(--mut);font-size:11px">／仕様に合わせ変更可</span></td><td class="num"><input id="slopeKin" type="number" value="${sk}" step="0.01" min="1" style="width:74px;text-align:right"></td></tr>`;
   if(sk!==1){const base=(selected.footprint!=null?(selected.footprint-(isWeeding(selected)?(selected.autoDeduct||0):0)):null);
-    h+=`<tr><td colspan="3" style="text-align:right;color:#2f9e57">斜面補正：投影 ${base!=null?base.toFixed(2):'—'} × ${sk}（${skind}）</td><td class="num" style="color:#2f9e57">${base!=null?(base*sk).toFixed(2)+' ㎡':'—'}</td></tr>`;}
-  h+=`<tr><td colspan="3" style="text-align:right">計上面積（積算に使用）</td><td class="num" style="color:var(--acc);font-weight:700">${selected.area!=null?selected.area.toFixed(2)+' ㎡':'—'}</td></tr>`;
+    h+=`<tr><td style="color:#2f9e57">斜面補正 投影${base!=null?base.toFixed(2):'—'}×${sk}</td><td class="num" style="color:#2f9e57">${base!=null?(base*sk).toFixed(2)+' ㎡':'—'}</td></tr>`;}
+  h+=`<tr><td>計上面積（積算に使用）</td><td class="num" style="color:var(--acc);font-weight:700">${selected.area!=null?selected.area.toFixed(2)+' ㎡':'—'}</td></tr>`;
   h+='</table>';
   const inHole=(holeMode===selected);
   if(holes.length){
@@ -1077,13 +1115,13 @@ function renderSansha(){
   if(holes.length)$('clrHole').onclick=clearHoles;
   if(canCopy&&document.getElementById('copyAsCur'))$('copyAsCur').onclick=duplicateAsCurrent;
   $('dlSansha').onclick=()=>{
-    let c='No,底辺('+u+'),高さ('+u+'),倍面積('+u+'²)\n';
-    t.rows.forEach(r=>c+=`${r.no},${r.base.toFixed(3)},${r.height.toFixed(3)},${r.dbl.toFixed(3)}\n`);
-    c+=`外周投影(=合計/2),,,${t.total.toFixed(3)}\n`;
-    if(holes.length){const hSum=state.scale?holesAreaM2(selected):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);c+=`除外(穴)合計,,,-${hSum.toFixed(3)}\n`;}
-    ded.forEach(d=>c+=`内側控除 ${d.kind},,,-${d.area.toFixed(3)}\n`);
-    if((selected.slopeK||1)!==1)c+=`斜面補正 ×${selected.slopeK}（${selected.slopeKind||''}）,,,\n`;
-    c+=`計上面積,,,${selected.area!=null?selected.area.toFixed(3):''}\n`;
+    let c='三角形,辺a,a('+u+'),辺b,b('+u+'),辺c,c('+u+'),面積('+u+'²)\n';
+    t.rows.forEach(r=>{const v=r.v;c+=`△${r.no},${v[0]}-${v[1]},${r.a.toFixed(3)},${v[1]}-${v[2]},${r.b.toFixed(3)},${v[2]}-${v[0]},${r.c.toFixed(3)},${r.area.toFixed(3)}\n`;});
+    c+=`外周投影,,,,,,,${t.total.toFixed(3)}\n`;
+    if(holes.length){const hSum=state.scale?holesAreaM2(selected):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);c+=`除外(穴)合計,,,,,,,-${hSum.toFixed(3)}\n`;}
+    ded.forEach(d=>c+=`内側控除 ${d.kind},,,,,,,-${d.area.toFixed(3)}\n`);
+    if((selected.slopeK||1)!==1)c+=`斜面補正 ×${selected.slopeK}（${selected.slopeKind||''}）,,,,,,,\n`;
+    c+=`計上面積,,,,,,,${selected.area!=null?selected.area.toFixed(3):''}\n`;
     dl('\uFEFF'+c,`${($('parkName').value||'求積')}_${selected.kind}_求積表.csv`,'text/csv');
   };
 }
@@ -1203,6 +1241,26 @@ function aggHtmlForPrint(){
     state.manual.forEach(m=>h+=`<tr><td>${m.kind}</td><td class="num">${m.qty} ${(MANUAL[m.kind]||{}).unit||''}</td></tr>`);h+='</table>';}
   return h||'<p>記録なし</p>';
 }
+function buildTriSection(){
+  const blocks=allAreaBlocks(); if(!blocks.length)return '';
+  let h='<h2 class="trh">求積図・求積表（ヘロンの公式／3辺による算出）</h2>';
+  h+='<div class="trnote">各三角形を3辺の長さ a・b・c からヘロンの公式で算出：s=(a+b+c)/2、面積=√(s(s−a)(s−b)(s−c))。図の<span style="color:#1463c7">青＝外周辺</span>・<span style="color:#0a8a6a">緑＝対角線</span>の数値が表の辺長に対応します（頂点①が基点）。</div>';
+  blocks.forEach((b,idx)=>{
+    const u=b.t.unit, d=triDiagramDataURL(b.f,520);
+    h+='<div class="tri"><div class="tl">'+(idx+1)+'. '+b.f.cat+' › '+b.f.kind+((b.f.slopeK&&b.f.slopeK!==1)?'（'+b.f.slopeKind+' ×'+b.f.slopeK+'）':'')+'</div>';
+    if(d)h+='<img class="trimg" src="'+d.url+'" style="width:'+Math.min(520,d.w)+'px">';
+    h+='<table class="trtab"><tr><th>三角形</th><th>辺a</th><th class="num">a('+u+')</th><th>辺b</th><th class="num">b('+u+')</th><th>辺c</th><th class="num">c('+u+')</th><th class="num">面積('+u+'²)</th></tr>';
+    b.t.rows.forEach(r=>{const v=r.v;h+='<tr><td>△'+r.no+'</td><td>'+v[0]+'–'+v[1]+'</td><td class="num">'+r3(r.a)+'</td><td>'+v[1]+'–'+v[2]+'</td><td class="num">'+r3(r.b)+'</td><td>'+v[2]+'–'+v[0]+'</td><td class="num">'+r3(r.c)+'</td><td class="num">'+r3(r.area)+'</td></tr>';});
+    h+='<tr><td colspan="7" style="text-align:right">三角形の合計 ＝ 外周投影</td><td class="num">'+r3(b.t.total)+' '+u+'²</td></tr>';
+    const hs=blockHoleSum(b.f); if(hs>0)h+='<tr><td colspan="7" style="text-align:right">除外（穴）'+(b.f.holes||[]).length+'か所</td><td class="num">-'+r3(hs)+'</td></tr>';
+    const ded=isWeeding(b.f)?autoDeductList(b.f):[]; ded.forEach(dd=>h+='<tr><td colspan="7" style="text-align:right">内側控除 − '+dd.kind+'</td><td class="num">-'+r3(dd.area)+'</td></tr>');
+    if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);h+='<tr><td colspan="7" style="text-align:right">側面 ＝ 周長×高さ('+(b.f.height||0).toFixed(2)+'m)</td><td class="num">'+r3(side)+'</td></tr>';}
+    if(b.f.slopeK&&b.f.slopeK!==1)h+='<tr><td colspan="7" style="text-align:right">斜面補正 ×'+b.f.slopeK+'（'+b.f.slopeKind+'）</td><td class="num">投影×係数</td></tr>';
+    h+='<tr><td colspan="7" style="text-align:right"><b>計上面積</b></td><td class="num"><b>'+(b.f.area!=null?r3(b.f.area):'—')+' ㎡</b></td></tr>';
+    h+='</table></div>';
+  });
+  return h;
+}
 function printPDF(){
   if(!state.img){alert('先に図面を読み込んでください。');return;}
   const img=fullImageDataURL();
@@ -1210,7 +1268,7 @@ function printPDF(){
   $('printArea').innerHTML=
     `<h1>${park}　作業実績（求積・出来形）</h1>`+
     `<div class="ph">委託：${contract}　／　指示番号：${order||'—'}　／　実施：${formatWareki($('workDate').value)||'—'}　／　出力：${formatWareki(new Date().toISOString().slice(0,10))}</div>`+
-    `<img src="${img}">`+aggHtmlForPrint();
+    `<img src="${img}">`+aggHtmlForPrint()+buildTriSection();
   setTimeout(()=>window.print(),150);
 }
 $('printPdf').onclick=printPDF;
@@ -1244,7 +1302,7 @@ function showMulti(agg){
 function r3(x){return Math.round(x*1000)/1000;}
 function allAreaBlocks(){
   return state.features.filter(f=>f.type==='area').slice().sort((a,b)=>cmpSpec(a,b))   // 仕様書（工種）順
-    .map(f=>({f,t:sanshaTable(f.pts)}));
+    .map(f=>({f,t:heronTable(f.pts)}));
 }
 function blockHoleSum(f){const holes=f.holes||[];return state.scale?holesAreaM2(f):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);}
 function buildSummary(blocks){
@@ -1257,20 +1315,21 @@ function showAllSansha(){
   if(!blocks.length){alert('面積の注記がありません。先に面積（㎡）を作図してください。');return;}
   const s=buildSummary(blocks),u=s.unit;
   $('modalSub').innerHTML=`${$('parkName').value||'（公園名未設定）'} ／ 面積 ${blocks.length} 件${state.scale?'':' ・縮尺未設定のためpx表示'}`;
-  let h='';
+  let h='<div style="font-size:12px;color:#5b6b78;margin-bottom:8px">各三角形を<b>3辺の長さ</b>からヘロンの公式で算出（s=(a+b+c)/2、面積=√(s(s-a)(s-b)(s-c))）。図の<span style="color:#1463c7">青＝外周辺</span>・<span style="color:#0a8a6a">緑＝対角線</span>の数値が表の辺長に対応します。</div>';
   blocks.forEach((b,idx)=>{
-    const sumDbl=b.t.rows.reduce((a,r)=>a+r.dbl,0),col=featColor(b.f);
-    h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.kind} ＃${idx+1}<span class="a">${r3(b.f.area!=null?b.f.area:b.t.total)} ${u}²</span></div><table><tr><th>No</th><th class="num">底辺(${u})</th><th class="num">高さ(${u})</th><th class="num">倍面積(${u}²)</th></tr>`;
-    b.t.rows.forEach(r=>h+=`<tr><td>${r.no}</td><td class="num">${r3(r.base)}</td><td class="num">${r3(r.height)}</td><td class="num">${r3(r.dbl)}</td></tr>`);
-    h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">倍面積 合計</td><td class="num">${r3(sumDbl)}</td></tr>`;
-    h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">外周 投影 ＝ 合計 ÷ 2</td><td class="num">${r3(b.t.total)} ${u}²</td></tr>`;
+    const col=featColor(b.f);
+    h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.kind} ＃${idx+1}<span class="a">${r3(b.f.area!=null?b.f.area:b.t.total)} ${u}²</span></div>`;
+    const dg=triDiagramDataURL(b.f,460); if(dg)h+=`<img src="${dg.url}" style="display:block;max-width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;margin:0 0 6px">`;
+    h+=`<table><tr><th>三角形</th><th>辺a (頂点)</th><th class="num">a(${u})</th><th>辺b</th><th class="num">b(${u})</th><th>辺c</th><th class="num">c(${u})</th><th class="num">面積(${u}²)</th></tr>`;
+    b.t.rows.forEach(r=>{const v=r.v;h+=`<tr><td>△${r.no}</td><td>${v[0]}–${v[1]}</td><td class="num">${r3(r.a)}</td><td>${v[1]}–${v[2]}</td><td class="num">${r3(r.b)}</td><td>${v[2]}–${v[0]}</td><td class="num">${r3(r.c)}</td><td class="num">${r3(r.area)}</td></tr>`;});
+    h+=`<tr><td colspan="7" style="text-align:right;color:var(--mut)">三角形の合計 ＝ 外周投影面積</td><td class="num">${r3(b.t.total)} ${u}²</td></tr>`;
     const hs=blockHoleSum(b.f);
-    if(hs>0)h+=`<tr><td colspan="3" style="text-align:right;color:#ff8c00">除外（穴）${(b.f.holes||[]).length}か所</td><td class="num" style="color:#ff8c00">-${r3(hs)} ${u}²</td></tr>`;
-    if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);h+=`<tr><td colspan="3" style="text-align:right;color:var(--mut)">側面 ＝ 周長×高さ(${(b.f.height||0).toFixed(2)}m)</td><td class="num">${state.scale?r3(side)+' ㎡':'—'}</td></tr>`;}
+    if(hs>0)h+=`<tr><td colspan="7" style="text-align:right;color:#ff8c00">除外（穴）${(b.f.holes||[]).length}か所</td><td class="num" style="color:#ff8c00">-${r3(hs)} ${u}²</td></tr>`;
+    if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);h+=`<tr><td colspan="7" style="text-align:right;color:var(--mut)">側面 ＝ 周長×高さ(${(b.f.height||0).toFixed(2)}m)</td><td class="num">${state.scale?r3(side)+' ㎡':'—'}</td></tr>`;}
     const ded=isWeeding(b.f)?autoDeductList(b.f):[];
-    ded.forEach(d=>h+=`<tr><td colspan="3" style="text-align:right;color:#ff8c00">内側控除 − ${d.kind}</td><td class="num" style="color:#ff8c00">-${r3(d.area)} ㎡</td></tr>`);
-    if((b.f.slopeK||1)!==1)h+=`<tr><td colspan="3" style="text-align:right;color:#2f9e57">斜面補正 ×${b.f.slopeK}（${b.f.slopeKind||''}）</td><td class="num" style="color:#2f9e57">投影×係数</td></tr>`;
-    h+=`<tr><td colspan="3" style="text-align:right">計上面積</td><td class="num" style="color:var(--acc);font-weight:700">${b.f.area!=null?r3(b.f.area)+' ㎡':'—'}</td></tr></table></div>`;
+    ded.forEach(d=>h+=`<tr><td colspan="7" style="text-align:right;color:#ff8c00">内側控除 − ${d.kind}</td><td class="num" style="color:#ff8c00">-${r3(d.area)} ㎡</td></tr>`);
+    if((b.f.slopeK||1)!==1)h+=`<tr><td colspan="7" style="text-align:right;color:#2f9e57">斜面補正 ×${b.f.slopeK}（${b.f.slopeKind||''}）</td><td class="num" style="color:#2f9e57">投影×係数</td></tr>`;
+    h+=`<tr><td colspan="7" style="text-align:right">計上面積</td><td class="num" style="color:var(--acc);font-weight:700">${b.f.area!=null?r3(b.f.area)+' ㎡':'—'}</td></tr></table></div>`;
   });
   h+='<div class="grand"><h2>工種別 面積集計</h2><table><tr><th>工種</th><th class="num">面積('+u+'²)</th></tr>';
   Object.entries(s.byKind).forEach(([k,v])=>h+=`<tr><td>${k}</td><td class="num">${r3(v)}</td></tr>`);
@@ -1294,26 +1353,26 @@ function exportExcel(){
   if(blocks.length){
     const s=buildSummary(blocks),u=s.unit;
     // シート1：求積表（ブロック展開）
-    const aoa=[[park+'　求積表（三斜求積法）'],['委託：公園緑地等定期維持管理（'+($('contractName').value||'')+'）'],[]];
-    const merges=[{s:{r:0,c:0},e:{r:0,c:3}}];
+    const aoa=[[park+'　求積表（ヘロンの公式・3辺による算出）'],['委託：公園緑地等定期維持管理（'+($('contractName').value||'')+'）　／　s=(a+b+c)/2、面積=√(s(s-a)(s-b)(s-c))'],[]];
+    const merges=[{s:{r:0,c:0},e:{r:0,c:7}}];
     blocks.forEach((b,idx)=>{
-      const sumDbl=b.t.rows.reduce((a,r)=>a+r.dbl,0);
-      merges.push({s:{r:aoa.length,c:0},e:{r:aoa.length,c:3}});
+      merges.push({s:{r:aoa.length,c:0},e:{r:aoa.length,c:7}});
       aoa.push([`${b.f.kind}　＃${idx+1}`]);
-      aoa.push(['No',`底辺(${u})`,`高さ(${u})`,`倍面積(${u}²)`]);
-      b.t.rows.forEach(r=>aoa.push([r.no,r3(r.base),r3(r.height),r3(r.dbl)]));
-      aoa.push(['合計','','',r3(sumDbl)]);
-      aoa.push(['外周投影（＝合計÷2）','','',r3(b.t.total)]);
+      aoa.push(['三角形',`辺a`,`a(${u})`,`辺b`,`b(${u})`,`辺c`,`c(${u})`,`面積(${u}²)`]);
+      b.t.rows.forEach(r=>{const v=r.v;aoa.push(['△'+r.no,`${v[0]}-${v[1]}`,r3(r.a),`${v[1]}-${v[2]}`,r3(r.b),`${v[2]}-${v[0]}`,r3(r.c),r3(r.area)]);});
+      aoa.push(['合計','','','','','','',r3(b.t.total)]);
+      aoa.push(['外周投影面積','','','','','','',r3(b.t.total)]);
       const hSum=blockHoleSum(b.f);
-      if(hSum>0)aoa.push([`除外（穴）${(b.f.holes||[]).length}か所`,'','',r3(-hSum)]);
+      if(hSum>0)aoa.push([`除外（穴）${(b.f.holes||[]).length}か所`,'','','','','','',r3(-hSum)]);
       const ded=isWeeding(b.f)?autoDeductList(b.f):[];
-      ded.forEach(d=>aoa.push([`内側控除 ${d.kind}`,'','',r3(-d.area)]));
+      ded.forEach(d=>aoa.push([`内側控除 ${d.kind}`,'','','','','','',r3(-d.area)]));
       const sk=b.f.slopeK||1;
-      if(sk!==1)aoa.push([`斜面補正 ×${sk}（${b.f.slopeKind||''}）`,'','','']);
-      if(hSum>0||ded.length||sk!==1)aoa.push(['計上面積','','',r3(b.f.area!=null?b.f.area:b.t.total)]);
+      if(sk!==1)aoa.push([`斜面補正 ×${sk}（${b.f.slopeKind||''}）`,'','','','','','','']);
+      if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);aoa.push([`側面（周長×高さ${(b.f.height||0).toFixed(2)}m）`,'','','','','','',r3(side)]);}
+      aoa.push(['計上面積','','','','','','',r3(b.f.area!=null?b.f.area:b.t.total)]);
       aoa.push([]);
     });
-    const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:16},{wch:12},{wch:12},{wch:14}];ws['!merges']=merges;
+    const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:14},{wch:8},{wch:10},{wch:8},{wch:10},{wch:8},{wch:10},{wch:12}];ws['!merges']=merges;
     Object.keys(ws).forEach(k=>{if(k[0]!=='!'&&ws[k].t==='n')ws[k].z='0.000';});
     XLSX.utils.book_append_sheet(wb,ws,'求積表');
     // シート2：面積集計
@@ -1341,22 +1400,25 @@ $('xlsxBtn').onclick=exportExcel;$('mXlsx').onclick=exportExcel;
 
 function allSanshaCsv(){
   const blocks=allAreaBlocks();if(!blocks.length){alert('面積の注記がありません。');return;}
-  const u=blocks[0].t.unit;let c=`\uFEFF${$('parkName').value||'公園'} 求積表（三斜法）\n`;
+  const u=blocks[0].t.unit;let c=`\uFEFF${$('parkName').value||'公園'} 求積表（ヘロンの公式・3辺）\ns=(a+b+c)/2, 面積=√(s(s-a)(s-b)(s-c))\n`;
   blocks.forEach((b,idx)=>{
-    const sumDbl=b.t.rows.reduce((a,r)=>a+r.dbl,0);
-    c+=`\n${b.f.kind} ＃${idx+1}\nNo,底辺(${u}),高さ(${u}),倍面積(${u}²)\n`;
-    b.t.rows.forEach(r=>c+=`${r.no},${r3(r.base)},${r3(r.height)},${r3(r.dbl)}\n`);
-    c+=`合計,,,${r3(sumDbl)}\n面積(=合計/2),,,${r3(b.t.total)}\n`;
+    c+=`\n${b.f.kind} ＃${idx+1}\n三角形,辺a,a(${u}),辺b,b(${u}),辺c,c(${u}),面積(${u}²)\n`;
+    b.t.rows.forEach(r=>{const v=r.v;c+=`△${r.no},${v[0]}-${v[1]},${r3(r.a)},${v[1]}-${v[2]},${r3(r.b)},${v[2]}-${v[0]},${r3(r.c)},${r3(r.area)}\n`;});
+    c+=`外周投影,,,,,,,${r3(b.t.total)}\n`;
+    const hSum=blockHoleSum(b.f);if(hSum>0)c+=`除外(穴),,,,,,,-${r3(hSum)}\n`;
+    (isWeeding(b.f)?autoDeductList(b.f):[]).forEach(d=>c+=`内側控除 ${d.kind},,,,,,,-${r3(d.area)}\n`);
+    if((b.f.slopeK||1)!==1)c+=`斜面補正 ×${b.f.slopeK}（${b.f.slopeKind||''}）,,,,,,,\n`;
+    c+=`計上面積,,,,,,,${r3(b.f.area!=null?b.f.area:b.t.total)}\n`;
   });
   dl(c,`${$('parkName').value||'公園'}_求積表.csv`,'text/csv');
 }
 $('mCsv').onclick=allSanshaCsv;
 $('mCopy').onclick=()=>{
   const blocks=allAreaBlocks();if(!blocks.length)return;const u=blocks[0].t.unit;let txt='';
-  blocks.forEach((b,idx)=>{const sumDbl=b.t.rows.reduce((a,r)=>a+r.dbl,0);
-    txt+=`${b.f.kind} ＃${idx+1}\nNo\t底辺(${u})\t高さ(${u})\t倍面積\n`;
-    b.t.rows.forEach(r=>txt+=`${r.no}\t${r3(r.base)}\t${r3(r.height)}\t${r3(r.dbl)}\n`);
-    txt+=`合計\t\t\t${r3(sumDbl)}\n面積\t\t\t${r3(b.t.total)}\n\n`;});
+  blocks.forEach((b,idx)=>{
+    txt+=`${b.f.kind} ＃${idx+1}\n三角形\t辺a\ta(${u})\t辺b\tb(${u})\t辺c\tc(${u})\t面積\n`;
+    b.t.rows.forEach(r=>{const v=r.v;txt+=`△${r.no}\t${v[0]}-${v[1]}\t${r3(r.a)}\t${v[1]}-${v[2]}\t${r3(r.b)}\t${v[2]}-${v[0]}\t${r3(r.c)}\t${r3(r.area)}\n`;});
+    txt+=`外周投影\t\t\t\t\t\t\t${r3(b.t.total)}\n計上面積\t\t\t\t\t\t\t${r3(b.f.area!=null?b.f.area:b.t.total)}\n\n`;});
   navigator.clipboard.writeText(txt).then(()=>{$('mCopy').textContent='コピーしました';setTimeout(()=>$('mCopy').textContent='表をコピー',1500);});
 };
 
