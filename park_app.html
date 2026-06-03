@@ -154,6 +154,12 @@
     </div>
 
     <div class="sec">
+      <h3>凡例（地図上）</h3>
+      <button class="btn on" id="legendToggle">凡例を表示<small>記号＋工種＋集計数を地図に表示・ドラッグで移動</small></button>
+      <button class="btn ghost" id="legendReset">位置を右下に戻す</button>
+    </div>
+
+    <div class="sec">
       <h3>保存 / 読込</h3>
       <button class="btn ghost" id="saveJson">この公園を保存（.json）</button>
       <button class="btn ghost" id="openJson">公園データを開く（.json）</button>
@@ -433,6 +439,7 @@ function draw(){
     }
   }
   ctx.restore();
+  drawLegend();   // 凡例（地図の手前・スクリーン座標）
 }
 function midpoint(a,b){return{x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
 function label(x,y,txt,col){
@@ -448,8 +455,60 @@ function label(x,y,txt,col){
   ctx.restore();
 }
 
+/* ---------- 凡例（記号＋工種＋集計数） ---------- */
+let legend={x:null,y:null,show:true,_box:null};
+// 図面に置いた要素を集計（面積=cat›kind、樹木=cat›kind+規格）
+function aggregate(){
+  const areas={},trees={};
+  state.features.forEach(f=>{
+    if(f.type==='area'){const k=f.cat+' › '+f.kind;(areas[k]=areas[k]||{cat:f.cat,kind:f.kind,col:colorFor(f.cat+f.kind),m2:0}).m2+=f.area||0;}
+    else{const k=f.cat+' › '+f.kind+(f.rank?' '+f.rank:'');(trees[k]=trees[k]||{cat:f.cat,kind:f.kind,rank:f.rank||'',col:treeColor(f),rad:treeRadius(f),n:0}).n+=1;}
+  });
+  return {areas,trees};
+}
+function legendRows(){
+  const {areas,trees}=aggregate(),rows=[];
+  Object.values(areas).forEach(a=>rows.push({type:'area',col:a.col,label:a.kind,val:a.m2.toFixed(2)+' ㎡'}));
+  Object.values(trees).forEach(t=>rows.push({type:'tree',col:t.col,rad:t.rad,label:t.kind+(t.rank?' '+t.rank:''),val:t.n+' 本'}));
+  return rows;
+}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function drawLegend(){
+  legend._box=null;
+  if(!legend.show)return;
+  const rows=legendRows(); if(!rows.length)return;
+  const pad=10,rowH=21,symW=26,titleH=22;
+  ctx.save();ctx.font='12px sans-serif';
+  let textW=0; rows.forEach(r=>{const w=ctx.measureText(r.label).width+ctx.measureText(r.val).width;if(w>textW)textW=w;});
+  const title='凡例（'+rows.length+'種）';
+  const boxW=Math.max(textW+symW+pad*2+26, ctx.measureText(title).width+pad*2, 150);
+  const boxH=pad*2+titleH+rows.length*rowH;
+  let x=legend.x==null?cv.width-boxW-16:legend.x;
+  let y=legend.y==null?cv.height-boxH-16:legend.y;
+  x=Math.max(4,Math.min(x,cv.width-boxW-4));y=Math.max(4,Math.min(y,cv.height-boxH-4));
+  legend._box={x,y,w:boxW,h:boxH};
+  // 背景
+  ctx.fillStyle='rgba(255,255,255,.93)';ctx.strokeStyle='rgba(40,52,68,.55)';ctx.lineWidth=1;
+  roundRect(x,y,boxW,boxH,8);ctx.fill();ctx.stroke();
+  // タイトル
+  ctx.fillStyle='#16202c';ctx.font='700 13px sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';
+  ctx.fillText(title,x+pad,y+pad+10);
+  ctx.strokeStyle='rgba(40,52,68,.2)';ctx.beginPath();ctx.moveTo(x+pad,y+pad+titleH-2);ctx.lineTo(x+boxW-pad,y+pad+titleH-2);ctx.stroke();
+  // 行
+  rows.forEach((r,i)=>{
+    const ry=y+pad+titleH+i*rowH+rowH/2-1, cx=x+pad+9;
+    if(r.type==='area'){ctx.fillStyle=r.col+'55';ctx.fillRect(cx-7,ry-7,14,14);ctx.strokeStyle=r.col;ctx.lineWidth=2;ctx.strokeRect(cx-7,ry-7,14,14);}
+    else{const rr=Math.max(4,Math.min(9,r.rad));ctx.beginPath();ctx.arc(cx,ry,rr,0,7);ctx.fillStyle=r.col;ctx.fill();ctx.strokeStyle='#0007';ctx.lineWidth=1;ctx.stroke();}
+    ctx.fillStyle='#16202c';ctx.font='12px sans-serif';ctx.textAlign='left';ctx.fillText(r.label,x+symW+2,ry);
+    ctx.textAlign='right';ctx.fillStyle='#3a4757';ctx.fillText(r.val,x+boxW-pad,ry);ctx.textAlign='left';
+  });
+  ctx.restore();
+}
+function legendHit(p){const b=legend._box;return !!(legend.show&&b&&p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h);}
+
 /* ---------- 入力 ---------- */
-let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null;
+let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null,draggingLegend=false,legDragOff=null;
+function startLegendDrag(p){legend.x=legend._box.x;legend.y=legend._box.y;draggingLegend=true;legDragOff={x:p.x-legend._box.x,y:p.y-legend._box.y};}
 function moveFeature(f,dx,dy){
   if(f.type==='tree'){f.pt.x+=dx;f.pt.y+=dy;}
   else f.pts.forEach(p=>{p.x+=dx;p.y+=dy;});
@@ -490,6 +549,7 @@ $('dbUndo').onclick=undoDraftPoint;
 $('dbCancel').onclick=cancelDraft;
 cv.addEventListener('mousedown',e=>{
   const p=evtPos(e),ip=toImg(p.x,p.y);
+  if(legendHit(p)){startLegendDrag(p);cv.style.cursor='grabbing';return;}
   if(tool==='select'){
     const f=hit(ip); selectFeature(f);
     if(f){dragging=f;dragLast=ip;cv.style.cursor='grabbing';}
@@ -501,11 +561,13 @@ cv.addEventListener('mousedown',e=>{
   if(tool==='tree'){placeTree(ip);return;}
 });
 cv.addEventListener('mousemove',e=>{
+  if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;draw();return;}
   if(tool==='cal'){const p=evtPos(e),ip=toImg(p.x,p.y);if(calDragIdx!==null)draft.pts[calDragIdx]=ip;else if(draft)hover=ip;draw();return;}
   if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;draw();}
 });
 window.addEventListener('mouseup',()=>{
+  if(draggingLegend){draggingLegend=false;cv.style.cursor=tool==='select'?'grab':'crosshair';return;}
   if(tool==='cal'&&calDragIdx!==null){calUp();return;}
   if(dragging){if(dragging.type==='area')dragging.area=areaM2(dragging.pts);dragging=null;renderAgg();renderSansha();}
   if(panning)panning=false;
@@ -516,8 +578,9 @@ cv.addEventListener('wheel',e=>{e.preventDefault();const p=evtPos(e);const f=e.d
 // touch
 let lastTouch=null,pinchD=null;
 cv.addEventListener('touchstart',e=>{
-  if(e.touches.length===2){pinchD=touchDist(e);dragging=null;calDragIdx=null;return;}
+  if(e.touches.length===2){pinchD=touchDist(e);dragging=null;calDragIdx=null;draggingLegend=false;return;}
   const p=evtPos(e),ip=toImg(p.x,p.y);
+  if(legendHit(p)){startLegendDrag(p);lastTouch=null;return;}
   if(tool==='cal'){calDown(ip);lastTouch=null;return;}
   if(tool==='select'){const f=hit(ip);selectFeature(f);
     if(f){dragging=f;dragLast=ip;}else{panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};}}
@@ -526,12 +589,14 @@ cv.addEventListener('touchstart',e=>{
 cv.addEventListener('touchmove',e=>{
   e.preventDefault();
   if(e.touches.length===2&&pinchD){const d=touchDist(e),c=touchMid(e);zoomAt(c.x,c.y,d/pinchD);pinchD=d;return;}
+  if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;lastTouch=null;draw();return;}
   if(tool==='cal'&&calDragIdx!==null){const p=evtPos(e),ip=toImg(p.x,p.y);draft.pts[calDragIdx]=ip;lastTouch=null;draw();return;}
   if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);moveFeature(dragging,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;lastTouch=null;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;lastTouch=null;draw();}
 },{passive:false});
 cv.addEventListener('touchend',e=>{
   if(pinchD&&e.touches.length<2){pinchD=null;return;}
+  if(draggingLegend){draggingLegend=false;lastTouch=null;return;}
   if(tool==='cal'){if(calDragIdx!==null)calUp();lastTouch=null;return;}
   if(dragging){if(dragging.type==='area')dragging.area=areaM2(dragging.pts);dragging=null;renderAgg();renderSansha();lastTouch=null;return;}
   if(panning){panning=false;return;}
@@ -639,8 +704,7 @@ function renderAgg(){
 $('manAdd').onclick=()=>{const k=$('manKind').value,q=parseFloat($('manQty').value);if(k&&q>0){state.manual.push({kind:k,qty:q});$('manQty').value='';renderAgg();}};
 
 /* ---------- 保存/読込/書き出し ---------- */
-$('loadImg').onclick=()=>$('imgFile').click();
-$('imgFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{state.img=im;state.imgData=r.result;fit();updateHint();requestAnimationFrame(fit);};im.src=r.result;};r.readAsDataURL(f);};
+$('loadImg').onclick=()=>$('imgFile').click();$('imgFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{state.img=im;state.imgData=r.result;fit();updateHint();requestAnimationFrame(fit);};im.src=r.result;};r.readAsDataURL(f);};
 function fit(){
   if(!state.img)return;
   // 表示領域の実サイズに合わせてバッファを更新（初期化状況に依存せず常に正しく全体表示）
@@ -655,6 +719,8 @@ $('fit').onclick=fit;
 $('zoomIn').onclick=()=>zoomAt(cv.width/2,cv.height/2,1.2);
 $('zoomOut').onclick=()=>zoomAt(cv.width/2,cv.height/2,1/1.2);
 $('clearAll').onclick=()=>{if(confirm('注記をすべて消去しますか？')){state.features=[];state.manual=[];selected=null;renderAgg();draw();}};
+$('legendToggle').onclick=()=>{legend.show=!legend.show;$('legendToggle').classList.toggle('on',legend.show);$('legendToggle').firstChild.textContent=legend.show?'凡例を表示':'凡例は非表示';draw();};
+$('legendReset').onclick=()=>{legend.x=null;legend.y=null;draw();};
 
 $('saveJson').onclick=()=>{
   const data={park:$('parkName').value||'未設定',contract:$('contractName').value||'',scale:state.scale,imgData:state.imgData||null,
@@ -731,36 +797,47 @@ $('modal').onclick=e=>{if(e.target.id==='modal')$('modal').classList.remove('on'
 /* ---------- Excel（面積計算を別シート展開・SheetJS） ---------- */
 function exportExcel(){
   const blocks=allAreaBlocks();
-  if(!blocks.length){alert('面積の注記がありません。');return;}
+  const {areas,trees}=aggregate();
+  const hasAny=blocks.length||Object.keys(trees).length||state.manual.length;
+  if(!hasAny){alert('記録がありません。面積・樹木・手入力のいずれかを入力してください。');return;}
   if(typeof XLSX==='undefined'){alert('Excel出力ライブラリが読み込めませんでした。オンライン接続のうえ再度お試しください（CSVは利用できます）。');return;}
-  const s=buildSummary(blocks),u=s.unit,park=$('parkName').value||'公園';
-  // シート1：求積表（ブロック展開）
-  const aoa=[[park+'　求積表（三斜求積法）'],['委託：公園緑地等定期維持管理（'+($('contractName').value||'')+'）'],[]];
-  const merges=[{s:{r:0,c:0},e:{r:0,c:3}}];
-  blocks.forEach((b,idx)=>{
-    const sumDbl=b.t.rows.reduce((a,r)=>a+r.dbl,0);
-    merges.push({s:{r:aoa.length,c:0},e:{r:aoa.length,c:3}});
-    aoa.push([`${b.f.kind}　＃${idx+1}`]);
-    aoa.push(['No',`底辺(${u})`,`高さ(${u})`,`倍面積(${u}²)`]);
-    b.t.rows.forEach(r=>aoa.push([r.no,r3(r.base),r3(r.height),r3(r.dbl)]));
-    aoa.push(['合計','','',r3(sumDbl)]);
-    aoa.push(['面積（＝合計÷2）','','',r3(b.t.total)]);
-    aoa.push([]);
-  });
-  const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:16},{wch:12},{wch:12},{wch:14}];
-  ws['!merges']=merges;
-  // 数値セルに小数3桁書式
-  Object.keys(ws).forEach(k=>{if(k[0]!=='!'&&ws[k].t==='n')ws[k].z='0.000';});
-  // シート2：面積集計
-  const sum=[['工種',`面積(${u}²)`]];
-  Object.entries(s.byKind).forEach(([k,v])=>sum.push([k,r3(v)]));
-  sum.push(['総合計',r3(s.grand)]);
-  const ws2=XLSX.utils.aoa_to_sheet(sum);ws2['!cols']=[{wch:30},{wch:14}];
-  Object.keys(ws2).forEach(k=>{if(k[0]!=='!'&&ws2[k].t==='n')ws2[k].z='0.000';});
+  const park=$('parkName').value||'公園';
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'求積表');
-  XLSX.utils.book_append_sheet(wb,ws2,'面積集計');
+  if(blocks.length){
+    const s=buildSummary(blocks),u=s.unit;
+    // シート1：求積表（ブロック展開）
+    const aoa=[[park+'　求積表（三斜求積法）'],['委託：公園緑地等定期維持管理（'+($('contractName').value||'')+'）'],[]];
+    const merges=[{s:{r:0,c:0},e:{r:0,c:3}}];
+    blocks.forEach((b,idx)=>{
+      const sumDbl=b.t.rows.reduce((a,r)=>a+r.dbl,0);
+      merges.push({s:{r:aoa.length,c:0},e:{r:aoa.length,c:3}});
+      aoa.push([`${b.f.kind}　＃${idx+1}`]);
+      aoa.push(['No',`底辺(${u})`,`高さ(${u})`,`倍面積(${u}²)`]);
+      b.t.rows.forEach(r=>aoa.push([r.no,r3(r.base),r3(r.height),r3(r.dbl)]));
+      aoa.push(['合計','','',r3(sumDbl)]);
+      aoa.push(['面積（＝合計÷2）','','',r3(b.t.total)]);
+      aoa.push([]);
+    });
+    const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:16},{wch:12},{wch:12},{wch:14}];ws['!merges']=merges;
+    Object.keys(ws).forEach(k=>{if(k[0]!=='!'&&ws[k].t==='n')ws[k].z='0.000';});
+    XLSX.utils.book_append_sheet(wb,ws,'求積表');
+    // シート2：面積集計
+    const sum=[['工種',`面積(${u}²)`]];
+    Object.entries(s.byKind).forEach(([k,v])=>sum.push([k,r3(v)]));
+    sum.push(['総合計',r3(s.grand)]);
+    const ws2=XLSX.utils.aoa_to_sheet(sum);ws2['!cols']=[{wch:30},{wch:14}];
+    Object.keys(ws2).forEach(k=>{if(k[0]!=='!'&&ws2[k].t==='n')ws2[k].z='0.000';});
+    XLSX.utils.book_append_sheet(wb,ws2,'面積集計');
+  }
+  // シート3：凡例・集計（地図記号の説明＋数量。Excel側で体裁調整できる素データ）
+  const leg=[[park+'　凡例・集計'],['記号','大分類','細別','規格','数量','単位']];
+  Object.values(areas).forEach(a=>leg.push(['■ 面積',a.cat,a.kind,'',Number(a.m2.toFixed(2)),'㎡']));
+  Object.values(trees).forEach(t=>leg.push(['● 樹木',t.cat,t.kind,t.rank||'',t.n,'本']));
+  state.manual.forEach(m=>leg.push(['（手入力）',m.kind,'','',m.qty,(MANUAL[m.kind]||{}).unit||'']));
+  const ws3=XLSX.utils.aoa_to_sheet(leg);
+  ws3['!cols']=[{wch:9},{wch:18},{wch:16},{wch:18},{wch:8},{wch:6}];
+  ws3['!merges']=[{s:{r:0,c:0},e:{r:0,c:5}}];
+  XLSX.utils.book_append_sheet(wb,ws3,'凡例・集計');
   XLSX.writeFile(wb,`${park}_求積表.xlsx`);
 }
 $('xlsxBtn').onclick=exportExcel;$('mXlsx').onclick=exportExcel;
