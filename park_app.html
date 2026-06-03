@@ -48,8 +48,8 @@
   .mini button:hover{border-color:var(--blue)}
   canvas{display:block;background:#0b0e13;cursor:crosshair;touch-action:none}
   .stage{position:relative;overflow:hidden}
-  .hint{position:absolute;left:12px;top:12px;background:rgba(10,14,20,.85);border:1px solid var(--line);
-    padding:7px 11px;border-radius:8px;font-size:12px;color:var(--mut);max-width:60%;line-height:1.5}
+  .hint{position:absolute;left:10px;top:10px;background:rgba(14,18,24,.5);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
+    border:1px solid rgba(130,150,170,.22);padding:6px 10px;border-radius:8px;font-size:11px;color:var(--ink);max-width:52%;line-height:1.45;cursor:pointer}
   .hint b{color:var(--acc)}
   .scalebadge{position:absolute;right:12px;bottom:12px;background:rgba(10,14,20,.85);
     border:1px solid var(--line);padding:6px 10px;border-radius:8px;font-size:12px;font-family:var(--mono)}
@@ -79,10 +79,14 @@
   .feat .x{margin-left:auto;color:var(--mut)}
   .feat .x:hover{color:var(--bad)}
   .feat.sel{background:var(--panel2);outline:1px solid var(--acc)}
-  @media(max-width:980px){
-    .app{grid-template-columns:1fr;grid-template-rows:48px auto 44vh auto}
-    .col{border:none;border-bottom:1px solid var(--line);max-height:38vh}
-    .col.r{border-left:none}
+  @media(max-width:1200px){
+    html,body{overflow:auto}
+    .app{display:flex;flex-direction:column;min-height:100dvh;width:100vw}
+    header{position:sticky;top:0;z-index:5;flex:0 0 auto;flex-wrap:wrap;height:auto;min-height:48px;gap:8px;padding:8px 12px}
+    header .park{flex:1 1 120px;width:auto;min-width:96px}
+    .stage{order:1;flex:0 0 58vh;height:58vh}
+    .col{order:2;flex:0 0 auto;max-height:none;border:none;border-top:1px solid var(--line)}
+    .col.r{order:3;border-left:none}
   }
   .modal{position:fixed;inset:0;background:rgba(5,8,12,.88);display:none;z-index:50;padding:24px;overflow:auto}
   .modal.on{display:block}
@@ -306,7 +310,7 @@ function setTool(t){
 document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
 
 function updateHint(){
-  const h=$('hint');
+  const h=$('hint');h.style.display='';
   if(!state.img){h.innerHTML='まず <b>「公園図面を読み込む」</b> から地図画像を読み込んでください。';return;}
   if(!state.scale&&tool!=='cal'){h.innerHTML='面積を出すには先に <b>① 縮尺合わせ</b> を。本数だけなら縮尺なしでもOK。';return;}
   if(tool==='cal')h.innerHTML='既知の長さの<b>一端を押して、もう一端までドラッグ</b>（タップ2回でもOK）。置いた点は<b>離さず動かせば微調整</b>できます。先に左の「実距離(m)」を合わせて。';
@@ -394,13 +398,15 @@ function draw(){
 }
 function midpoint(a,b){return{x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
 function label(x,y,txt,col){
-  ctx.save();ctx.scale(1,1);
-  const lines=txt.split('\n');const fs=12/view.zoom;ctx.font=`700 ${fs}px sans-serif`;
-  let w=0;lines.forEach(l=>w=Math.max(w,ctx.measureText(l).width));
-  const pad=4/view.zoom,h=lines.length*fs*1.25+pad*2;
-  ctx.fillStyle='rgba(10,14,20,.82)';ctx.fillRect(x-w/2-pad,y-h/2,w+pad*2,h);
-  ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='middle';
-  lines.forEach((l,i)=>ctx.fillText(l,x,y-h/2+pad+fs*0.7+i*fs*1.25));
+  const lines=txt.split('\n');const fs=12/view.zoom,lh=fs*1.25;
+  ctx.save();
+  ctx.font=`700 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.lineJoin='round';ctx.miterLimit=2;ctx.lineWidth=Math.max(3/view.zoom,fs*0.3);
+  ctx.strokeStyle='rgba(8,11,16,.92)';            // 文字の縁取り（黒背景は廃止）
+  const y0=y-(lines.length-1)*lh/2;
+  lines.forEach((l,i)=>ctx.strokeText(l,x,y0+i*lh));
+  ctx.fillStyle=col;
+  lines.forEach((l,i)=>ctx.fillText(l,x,y0+i*lh));
   ctx.restore();
 }
 
@@ -596,8 +602,8 @@ $('manAdd').onclick=()=>{const k=$('manKind').value,q=parseFloat($('manQty').val
 
 /* ---------- 保存/読込/書き出し ---------- */
 $('loadImg').onclick=()=>$('imgFile').click();
-$('imgFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{state.img=im;state.imgData=r.result;fit();updateHint();};im.src=r.result;};r.readAsDataURL(f);};
-function fit(){if(!state.img)return;const s=cv.getBoundingClientRect();const z=Math.min(s.width/state.img.width,s.height/state.img.height)*0.95;view.zoom=z;view.ox=(s.width-state.img.width*z)/2;view.oy=(s.height-state.img.height*z)/2;draw();}
+$('imgFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{state.img=im;state.imgData=r.result;resize();fit();updateHint();};im.src=r.result;};r.readAsDataURL(f);};
+function fit(){if(!state.img)return;const W=cv.width,H=cv.height;const z=Math.min(W/state.img.width,H/state.img.height)*0.95;view.zoom=z;view.ox=(W-state.img.width*z)/2;view.oy=(H-state.img.height*z)/2;draw();}
 $('fit').onclick=fit;
 $('zoomIn').onclick=()=>zoomAt(cv.width/2,cv.height/2,1.2);
 $('zoomOut').onclick=()=>zoomAt(cv.width/2,cv.height/2,1/1.2);
@@ -613,7 +619,7 @@ $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new Fi
   const d=JSON.parse(r.result);$('parkName').value=d.park||'';state.scale=d.scale||null;
   if(d.contract!==undefined)$('contractName').value=d.contract||'';
   state.features=d.features||[];state.manual=d.manual||[];updateScaleBadge();renderAgg();
-  if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();};im.src=d.imgData;}else draw();
+  if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;resize();fit();};im.src=d.imgData;}else draw();
 };r.readAsText(f);};
 $('exportPng').onclick=()=>{const url=cv.toDataURL('image/png');const a=document.createElement('a');a.href=url;a.download=($('parkName').value||'求積図')+'_注記.png';a.click();};
 function dl(text,name,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
@@ -734,6 +740,7 @@ $('mCopy').onclick=()=>{
 };
 
 /* ---------- init ---------- */
+$('hint').onclick=()=>$('hint').style.display='none';   // 邪魔なときはタップで一時的に隠す（ツール切替で再表示）
 fillCats();fillManual();renderAgg();renderSansha();setTool('area');updateHint();
 new ResizeObserver(resize).observe(cv.parentElement);resize();
 </script>
