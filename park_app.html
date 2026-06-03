@@ -332,9 +332,9 @@ const MASTER = {
     "支障木":{prices:{"30cm未満":2590,"30〜60cm":7910,"60〜90cm":17140,"90〜120cm":49380,"120〜150cm":73310,"150〜180cm":129600,"180〜210cm":164500,"210〜240cm":187700,"240〜270cm":210500,"270〜300cm":250400}},
     "枯損木":{prices:{"30cm未満":1990,"30〜60cm":5930,"60〜90cm":12930,"90〜120cm":36570,"120〜150cm":51430,"150〜180cm":92520,"180〜210cm":118000,"210〜240cm":138600,"240〜270cm":155500,"270〜300cm":198600}} }},
   "竹伐採（斜面地）":{unit:"本",mode:"tree",ranks:false,kinds:{ "斜面地":{price:1750} }},
+  "巣撤去":{unit:"個",mode:"tree",ranks:false,kinds:{ "カラスの巣":{price:18440}, "スズメバチの巣":{price:44030} }},
 };
 const MANUAL = {
-  "カラスの巣撤去":{unit:"個",price:18440}, "スズメバチの巣撤去":{unit:"個",price:44030},
   "トラック2t 公園外運搬":{unit:"台",price:2141},
   "発生材運搬（10km程度）":{unit:"t",price:19050}, "発生材運搬（20km程度）":{unit:"t"},
   "一般廃棄物処理手数料":{unit:"t",price:13630},
@@ -463,7 +463,10 @@ function updateHint(){
     if(curGeom()==='line')h.innerHTML='＜つる：管理柵＞フェンスに沿って<b>端から端へタップ</b>→<b>「✓ 確定」</b>。左の<b>高さ(m)</b>を掛けて面積にします。';
     else h.innerHTML='外周の角を順に<b>タップ</b>→<b>「✓ 確定」</b>か<b>始点（黄色）をタップ</b>で閉じます。<b>除草など既存の面積の上からでも描き始められます</b>。'+(curCalc()==='trim'?'中木は<b>高さ(m)</b>で側面も加算（確定後も求積表で変更可）。':'');
   }
-  else if(tool==='tree')h.innerHTML='木のある場所を<b>クリック</b>で配置（<b>面積の上にも置けます</b>）。既存の<b>木をクリックで選択・移動</b>。';
+  else if(tool==='tree'){
+    if($('catSel').value==='巣撤去')h.innerHTML='<b>巣の位置をクリック</b>で配置（カラス／スズメバチ）。位置は出力画像・印刷にも丸＋名称で残ります。既存の<b>巣をクリックで選択・移動</b>。';
+    else h.innerHTML='木のある場所を<b>クリック</b>で配置（<b>面積の上にも置けます</b>）。既存の<b>木をクリックで選択・移動</b>。';
+  }
   else h.innerHTML='図形を<b>クリックで選択</b>。面積/線は<b>赤い頂点をドラッグ＝移動／辺の＋をタップ＝追加／頂点をダブルタップ＝削除</b>。本体ドラッグで全体移動、Deleteで削除。重なりは<b>同じ場所を続けてタップで切替</b>。';
 }
 
@@ -545,37 +548,97 @@ function heronTable(pts){
   }
   return {rows,total,unit:hasScale?'m':'px'};
 }
-function labelLen(x,px,py,t,col){x.save();x.textAlign='center';x.textBaseline='middle';x.lineWidth=3;x.strokeStyle='rgba(255,255,255,0.92)';x.strokeText(t,px,py);x.fillStyle=col;x.fillText(t,px,py);x.restore();}
-// 三斜図：頂点番号・各辺の長さ・三角形番号を描いたPNGを返す（監督員が3辺で検算できる図）
+function roundRect(x,X,Y,W,H,r){x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+W,Y,X+W,Y+H,r);x.arcTo(X+W,Y+H,X,Y+H,r);x.arcTo(X,Y+H,X,Y,r);x.arcTo(X,Y,X+W,Y,r);x.closePath();}
+// 数字・ラベルに白い下地（チップ）を敷いて、重なっても読めるようにする
+function chip(x,px,py,text,col,fs){
+  fs=fs||10; x.save(); x.font='bold '+fs+'px sans-serif'; x.textAlign='center'; x.textBaseline='middle';
+  const w=x.measureText(text).width+7, hh=fs+6;
+  x.fillStyle='rgba(255,255,255,0.95)'; roundRect(x,px-w/2,py-hh/2,w,hh,4); x.fill();
+  x.strokeStyle='rgba(20,40,60,0.12)'; x.lineWidth=1; roundRect(x,px-w/2,py-hh/2,w,hh,4); x.stroke();
+  x.fillStyle=col; x.fillText(text,px,py); x.restore();
+}
+// 三斜図を指定ボックスに収めて描画（頂点番号・各辺長＝小数1位・三角形番号、数字は下地付き）
+function drawTri(x,f,ox,oy,boxW,boxH){
+  const pts=f.pts; if(!pts||pts.length<3)return;
+  let minx=Math.min(...pts.map(p=>p.x)),maxx=Math.max(...pts.map(p=>p.x)),miny=Math.min(...pts.map(p=>p.y)),maxy=Math.max(...pts.map(p=>p.y));
+  (f.holes||[]).forEach(h=>h.forEach(p=>{minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);miny=Math.min(miny,p.y);maxy=Math.max(maxy,p.y);}));
+  const bw=Math.max(1,maxx-minx),bh=Math.max(1,maxy-miny),m=14;
+  const scale=Math.min((boxW-2*m)/bw,(boxH-2*m)/bh);
+  const dw=bw*scale,dh=bh*scale,offx=ox+(boxW-dw)/2,offy=oy+(boxH-dh)/2;
+  const X=p=>offx+(p.x-minx)*scale,Y=p=>offy+(p.y-miny)*scale;
+  const sc=state.scale||null,un=sc?'m':'px';
+  x.beginPath();pts.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.fillStyle='#f2f6f9';x.fill();
+  for(let i=1;i<pts.length-1;i++){const A=pts[0],B=pts[i],C=pts[i+1];x.beginPath();x.moveTo(X(A),Y(A));x.lineTo(X(B),Y(B));x.lineTo(X(C),Y(C));x.closePath();x.fillStyle=(i%2)?'#eaf3fb':'#fbf0ea';x.fill();}
+  x.strokeStyle='#7aa3c2';x.setLineDash([4,3]);x.lineWidth=1;for(let i=2;i<pts.length-1;i++){x.beginPath();x.moveTo(X(pts[0]),Y(pts[0]));x.lineTo(X(pts[i]),Y(pts[i]));x.stroke();}x.setLineDash([]);
+  x.beginPath();pts.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.strokeStyle='#13324a';x.lineWidth=2;x.stroke();
+  for(let i=1;i<pts.length-1;i++){const A=pts[0],B=pts[i],C=pts[i+1];chip(x,(X(A)+X(B)+X(C))/3,(Y(A)+Y(B)+Y(C))/3,'△'+i,'#0b2a44',12);}
+  const seg=(p,q,col)=>{const L=dist(p,q)*(sc||1);chip(x,(X(p)+X(q))/2,(Y(p)+Y(q))/2,L.toFixed(1)+un,col,10);};
+  for(let i=0;i<pts.length;i++)seg(pts[i],pts[(i+1)%pts.length],'#1463c7');   // 外周辺＝青
+  for(let i=2;i<pts.length-1;i++)seg(pts[0],pts[i],'#0a8a6a');               // 対角線＝緑
+  pts.forEach((p,i)=>{x.beginPath();x.arc(X(p),Y(p),3.6,0,7);x.fillStyle=(i===0?'#0a7d33':'#13324a');x.fill();chip(x,X(p)+12,Y(p)-11,String(i+1)+(i===0?' 基点':''),(i===0?'#0a7d33':'#13324a'),10);});
+  (f.holes||[]).forEach((h,hi)=>{x.beginPath();h.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.fillStyle='#fff';x.fill();x.setLineDash([5,4]);x.strokeStyle='#ff8c00';x.lineWidth=1.5;x.stroke();x.setLineDash([]);const hc=centroid(h);chip(x,X(hc),Y(hc),'除外'+(hi+1),'#cc6f00',10);});
+}
+// 三斜図のみPNG
 function triDiagramDataURL(f,W){
   W=W||540; const pts=f.pts; if(!pts||pts.length<3)return null;
-  const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
-  let minx=Math.min(...xs),maxx=Math.max(...xs),miny=Math.min(...ys),maxy=Math.max(...ys);
+  let minx=Math.min(...pts.map(p=>p.x)),maxx=Math.max(...pts.map(p=>p.x)),miny=Math.min(...pts.map(p=>p.y)),maxy=Math.max(...pts.map(p=>p.y));
   (f.holes||[]).forEach(h=>h.forEach(p=>{minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);miny=Math.min(miny,p.y);maxy=Math.max(maxy,p.y);}));
-  const bw=Math.max(1,maxx-minx),bh=Math.max(1,maxy-miny),pad=30;
+  const bw=Math.max(1,maxx-minx),bh=Math.max(1,maxy-miny),pad=8;
   let scale=(W-2*pad)/bw; const maxH=Math.round(W*1.25); if(bh*scale>maxH-2*pad)scale=(maxH-2*pad)/bh;
   const cW=Math.round(bw*scale+2*pad),cH=Math.round(bh*scale+2*pad),DPR=2;
-  const cvs=document.createElement('canvas');cvs.width=cW*DPR;cvs.height=cH*DPR;
-  const x=cvs.getContext('2d');x.scale(DPR,DPR);
-  const X=p=>pad+(p.x-minx)*scale,Y=p=>pad+(p.y-miny)*scale;
-  const sc=state.scale||null,un=sc?'m':'px';
+  const cvs=document.createElement('canvas');cvs.width=cW*DPR;cvs.height=cH*DPR;const x=cvs.getContext('2d');x.scale(DPR,DPR);
   x.fillStyle='#fff';x.fillRect(0,0,cW,cH);
-  x.beginPath();pts.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.fillStyle='#f2f6f9';x.fill();
-  for(let i=1;i<pts.length-1;i++){const A=pts[0],B=pts[i],C=pts[i+1];
-    x.beginPath();x.moveTo(X(A),Y(A));x.lineTo(X(B),Y(B));x.lineTo(X(C),Y(C));x.closePath();x.fillStyle=(i%2)?'#eaf3fb':'#fbf0ea';x.fill();}
-  x.strokeStyle='#7aa3c2';x.setLineDash([4,3]);x.lineWidth=1;
-  for(let i=2;i<pts.length-1;i++){x.beginPath();x.moveTo(X(pts[0]),Y(pts[0]));x.lineTo(X(pts[i]),Y(pts[i]));x.stroke();}
-  x.setLineDash([]);
-  x.beginPath();pts.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.strokeStyle='#13324a';x.lineWidth=2;x.stroke();
-  for(let i=1;i<pts.length-1;i++){const A=pts[0],B=pts[i],C=pts[i+1];const cx=(X(A)+X(B)+X(C))/3,cy=(Y(A)+Y(B)+Y(C))/3;x.font='bold 13px sans-serif';x.fillStyle='#0b2a44';x.textAlign='center';x.textBaseline='middle';x.fillText('△'+i,cx,cy);}
-  x.font='10px sans-serif';
-  const seg=(p,q,col)=>{const mx=(X(p)+X(q))/2,my=(Y(p)+Y(q))/2,L=dist(p,q)*(sc||1);labelLen(x,mx,my,L.toFixed(2)+un,col);};
-  for(let i=0;i<pts.length;i++)seg(pts[i],pts[(i+1)%pts.length],'#1463c7');   // 外周辺（青）
-  for(let i=2;i<pts.length-1;i++)seg(pts[0],pts[i],'#0a8a6a');               // 対角線（緑）
-  pts.forEach((p,i)=>{x.beginPath();x.arc(X(p),Y(p),3.6,0,7);x.fillStyle=(i===0?'#0a7d33':'#13324a');x.fill();
-    x.fillStyle='#0a0e14';x.font='bold 11px sans-serif';x.textAlign='left';x.textBaseline='bottom';x.fillText(String(i+1)+(i===0?'(基点)':''),X(p)+4,Y(p)-2);});
-  (f.holes||[]).forEach((h,hi)=>{x.beginPath();h.forEach((p,i)=>i?x.lineTo(X(p),Y(p)):x.moveTo(X(p),Y(p)));x.closePath();x.fillStyle='#fff';x.fill();x.setLineDash([5,4]);x.strokeStyle='#ff8c00';x.lineWidth=1.5;x.stroke();x.setLineDash([]);const hc=centroid(h);x.fillStyle='#cc6f00';x.font='10px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('除外'+(hi+1),X(hc),Y(hc));});
+  drawTri(x,f,0,0,cW,cH);
   return {url:cvs.toDataURL('image/png'),w:cW,h:cH};
+}
+// 三斜図＋求積表を1枚にまとめたPNG（Excel貼付用）。図と表は重ならないよう上下に配置。
+function composeTriImage(f,W){
+  W=W||780; const t=heronTable(f.pts),u=t.unit,DPR=2,pad=18;
+  let minx=Math.min(...f.pts.map(p=>p.x)),maxx=Math.max(...f.pts.map(p=>p.x)),miny=Math.min(...f.pts.map(p=>p.y)),maxy=Math.max(...f.pts.map(p=>p.y));
+  (f.holes||[]).forEach(h=>h.forEach(p=>{minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);miny=Math.min(miny,p.y);maxy=Math.max(maxy,p.y);}));
+  const bw=Math.max(1,maxx-minx),bh=Math.max(1,maxy-miny),tableW=W-2*pad;
+  let ds=(tableW)/bw; const diaMaxH=Math.round(W*0.6); if(bh*ds>diaMaxH)ds=diaMaxH/bh; const diaH=Math.round(bh*ds)+20;
+  const titleH=28,gap=10,headH=24,rowH=22;
+  const sums=[]; sums.push(['外周投影面積', t.total.toFixed(2)+' '+u+'²']);
+  const hs=blockHoleSum(f); if(hs>0)sums.push(['除外（穴）'+(f.holes||[]).length+'か所','-'+hs.toFixed(2)+' '+u+'²']);
+  (isWeeding(f)?autoDeductList(f):[]).forEach(d=>sums.push(['内側控除 − '+d.kind,'-'+d.area.toFixed(2)+' ㎡']));
+  if(f.calc==='trim'){const per=perimeterM(f.pts),side=per*(f.height||0);sums.push(['側面（周長×高さ'+(f.height||0).toFixed(1)+'m）',side.toFixed(2)+' ㎡']);}
+  if(f.slopeK&&f.slopeK!==1)sums.push(['斜面補正 ×'+f.slopeK+'（'+f.slopeKind+'）','投影×係数']);
+  sums.push(['計上面積', (f.area!=null?f.area.toFixed(2):'—')+' ㎡']);
+  const tableH=headH+t.rows.length*rowH+8+sums.length*rowH;
+  const cH=pad+titleH+diaH+gap+tableH+22+pad;
+  const cvs=document.createElement('canvas');cvs.width=W*DPR;cvs.height=cH*DPR;const x=cvs.getContext('2d');x.scale(DPR,DPR);
+  x.fillStyle='#fff';x.fillRect(0,0,W,cH);
+  // title
+  x.fillStyle='#0b2a44';x.font='bold 15px sans-serif';x.textAlign='left';x.textBaseline='middle';
+  x.fillText(f.cat+' › '+f.kind+(f.slopeK&&f.slopeK!==1?'（'+f.slopeKind+'×'+f.slopeK+'）':''),pad,pad+titleH/2);
+  let y=pad+titleH;
+  // diagram box
+  x.strokeStyle='#e0e6ea';x.lineWidth=1;x.strokeRect(pad,y,tableW,diaH);
+  drawTri(x,f,pad,y,tableW,diaH);
+  y+=diaH+gap;
+  // table
+  const c0=Math.round(tableW*0.34),restW=(tableW-c0)/4;
+  const colR=[pad+c0+restW,pad+c0+2*restW,pad+c0+3*restW,pad+c0+4*restW];
+  x.fillStyle='#2f9e57';x.fillRect(pad,y,tableW,headH);
+  x.fillStyle='#fff';x.font='bold 11px sans-serif';x.textBaseline='middle';
+  x.textAlign='left';x.fillText('三角形（辺の頂点）',pad+6,y+headH/2);
+  x.textAlign='right';x.fillText('辺a('+u+')',colR[0]-6,y+headH/2);x.fillText('辺b('+u+')',colR[1]-6,y+headH/2);x.fillText('辺c('+u+')',colR[2]-6,y+headH/2);x.fillText('面積('+u+'²)',colR[3]-6,y+headH/2);
+  y+=headH;
+  x.font='11px sans-serif';
+  t.rows.forEach((r,ri)=>{const v=r.v;x.fillStyle=(ri%2)?'#f4f7f9':'#fff';x.fillRect(pad,y,tableW,rowH);
+    x.fillStyle='#13324a';x.textAlign='left';x.fillText('△'+r.no+'  ('+v[0]+'-'+v[1]+', '+v[1]+'-'+v[2]+', '+v[2]+'-'+v[0]+')',pad+6,y+rowH/2);
+    x.textAlign='right';x.fillText(r.a.toFixed(1),colR[0]-6,y+rowH/2);x.fillText(r.b.toFixed(1),colR[1]-6,y+rowH/2);x.fillText(r.c.toFixed(1),colR[2]-6,y+rowH/2);x.fillText(r.area.toFixed(2),colR[3]-6,y+rowH/2);
+    y+=rowH;});
+  y+=8;
+  sums.forEach((s,si)=>{const last=(si===sums.length-1);x.fillStyle=last?'#eafaf0':'#fff';x.fillRect(pad,y,tableW,rowH);
+    x.fillStyle=last?'#0a7d33':'#33424d';x.font=(last?'bold ':'')+'11px sans-serif';
+    x.textAlign='left';x.textBaseline='middle';x.fillText(s[0],pad+6,y+rowH/2);
+    x.textAlign='right';x.fillText(s[1],pad+tableW-6,y+rowH/2);y+=rowH;});
+  x.strokeStyle='#cdd6dc';x.strokeRect(pad,pad+titleH+diaH+gap,tableW,headH+t.rows.length*rowH+8+sums.length*rowH);
+  x.fillStyle='#5b6b78';x.font='10px sans-serif';x.textAlign='left';x.textBaseline='top';
+  x.fillText('ヘロンの公式  s=(a+b+c)/2、面積=√(s(s−a)(s−b)(s−c))　／　辺長＝小数1位・面積＝小数2位　／　頂点①が基点',pad,y+4);
+  return cvs.toDataURL('image/png');
 }
 function resize(){const s=cv.parentElement.getBoundingClientRect();cv.width=s.width;cv.height=s.height;draw();}
 function colorFor(label){let h=0;for(const c of label)h=(h*31+c.charCodeAt(0))>>>0;return COLORS[h%COLORS.length];}
@@ -586,9 +649,9 @@ function buildTreeColors(){
   Object.keys(MASTER).forEach(cat=>{const m=MASTER[cat];if(m.mode!=='tree')return;
     Object.keys(m.kinds).forEach(kind=>{TREE_COLORS[cat+'/'+kind]=`hsl(${Math.round((i*137.508)%360)} 72% 56%)`;i++;});});
 }
-function treeColor(f){return TREE_COLORS[f.cat+'/'+f.kind]||colorFor(f.cat+f.kind);}
+function treeColor(f){if(f.cat==='巣撤去')return f.kind==='スズメバチの巣'?'#e11d48':'#111827';return TREE_COLORS[f.cat+'/'+f.kind]||colorFor(f.cat+f.kind);}
 // 樹木の点：大きさ＝規格（幹周ランク）。細い→小さい、太い→大きい。規格なしは中サイズ
-function treeRadius(f){return f.rank?(5+Math.max(0,BANDS.indexOf(f.rank))*1.0):6.5;}
+function treeRadius(f){if(f.cat==='巣撤去')return 9;return f.rank?(5+Math.max(0,BANDS.indexOf(f.rank))*1.0):6.5;}
 function featColor(f){if(f.type==='tree')return treeColor(f);return colorFor(f.cat+f.kind);}
 function centroid(pts){let x=0,y=0;pts.forEach(p=>{x+=p.x;y+=p.y});return{x:x/pts.length,y:y/pts.length};}
 // 選択中の面積/線：頂点（赤）＝移動・ダブルタップ削除／辺中点（＋黄）＝タップで頂点追加
@@ -627,6 +690,7 @@ function draw(){
   if(state.img)ctx.drawImage(state.img,0,0);
   // features
   const SEL='#ff2d2d';
+  _labels=[];
   state.features.forEach(f=>{
     const col=featColor(f);
     if(f.type==='box'){
@@ -662,12 +726,15 @@ function draw(){
       if(f===selected)drawEdgeLengths(f);
       const c=centroid(f.pts);const tag=(f.calc==='trim')?'（投影＋側面）':'';const stag=(f.slopeK&&f.slopeK!==1)?` ${f.slopeKind||''}×${f.slopeK}`:'';label(c.x,c.y,`${f.kind}${tag}${stag}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
     }else{
-      const rad=treeRadius(f)/view.zoom;
+      const isNest=(f.cat==='巣撤去'), rad=treeRadius(f)/view.zoom;
       ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad,0,7);ctx.fillStyle=col;ctx.fill();
-      ctx.lineWidth=(f===selected?3:2)/view.zoom;ctx.strokeStyle=f===selected?SEL:'#0008';ctx.stroke();
-      if(view.zoom>0.4)label(f.pt.x,f.pt.y-rad-9/view.zoom,(f.rank?f.rank:f.kind),col);
+      ctx.lineWidth=(f===selected?3:2)/view.zoom;ctx.strokeStyle=f===selected?SEL:(isNest?'#fff':'#0008');ctx.stroke();
+      if(isNest){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad+3/view.zoom,0,7);ctx.lineWidth=1.8/view.zoom;ctx.strokeStyle=col;ctx.stroke();}
+      if(isNest) label(f.pt.x,f.pt.y-rad-10/view.zoom,f.kind,col);   // 巣は位置が重要：出力でも常に表示
+      else if(!exporting && (f===selected || view.zoom>1.4)) label(f.pt.x,f.pt.y-rad-9/view.zoom,(f.rank?f.rank:f.kind),col);
     }
   });
+  flushLabels(); _labels=null;
   // draft（作図中：破線＋点で視認。面積=赤、縮尺=青） 
   if(draft&&draft.pts){
     const isCal=!!draft.cal, lineCol=isCal?'#5aa9ff':(draft.hole?'#ff8c00':'#ff2d2d');
@@ -698,16 +765,44 @@ function draw(){
   drawLegend();   // 凡例（地図の手前・スクリーン座標）
 }
 function midpoint(a,b){return{x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
+// ラベル：_labels収集中は後でまとめて配置（重なり回避）。即時のときはその場に描画。
 function label(x,y,txt,col){
-  const lines=txt.split('\n');const fs=12/view.zoom,lh=fs*1.25;
+  if(_labels){_labels.push({x,y,txt,col});return;}
+  flushLabels([{x,y,txt,col}]);
+}
+function flushLabels(list){
+  const arr=list||_labels||[]; if(!arr.length){return;}
+  const fs=12/view.zoom, lh=fs*1.28, pad=4/view.zoom, gap=3/view.zoom;
   ctx.save();
   ctx.font=`700 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.lineJoin='round';ctx.miterLimit=2;ctx.lineWidth=Math.max(3/view.zoom,fs*0.3);
-  ctx.strokeStyle='rgba(8,11,16,.92)';            // 文字の縁取り（黒背景は廃止）
-  const y0=y-(lines.length-1)*lh/2;
-  lines.forEach((l,i)=>ctx.strokeText(l,x,y0+i*lh));
-  ctx.fillStyle=col;
-  lines.forEach((l,i)=>ctx.fillText(l,x,y0+i*lh));
+  const items=arr.map(L=>{const lines=String(L.txt).split('\n');let w=0;lines.forEach(l=>{const m=ctx.measureText(l).width;if(m>w)w=m;});
+    return {x:L.x,y:L.y,ox:L.x,oy:L.y,col:L.col,lines,bw:w+pad*2,bh:lines.length*lh+pad*1.4};});
+  // 重なり回避：y昇順に、既配置と重なるものは下へずらす
+  items.sort((a,b)=>a.y-b.y);
+  const placed=[];
+  items.forEach(it=>{let guard=0,moved=true;
+    while(moved&&guard++<300){moved=false;
+      for(const p of placed){
+        if(Math.abs(it.x-p.x)*2<(it.bw+p.bw)&&Math.abs(it.y-p.y)*2<(it.bh+p.bh)+gap*2){
+          it.y=p.y+p.bh/2+it.bh/2+gap; moved=true;
+        }
+      }
+    }
+    placed.push(it);
+  });
+  // リーダー線（ずれた分だけ）
+  placed.forEach(it=>{if(Math.abs(it.y-it.oy)>1.5/view.zoom||Math.abs(it.x-it.ox)>1.5/view.zoom){
+    ctx.beginPath();ctx.moveTo(it.ox,it.oy);ctx.lineTo(it.x,it.y);ctx.lineWidth=1/view.zoom;ctx.strokeStyle='rgba(20,40,60,.45)';ctx.setLineDash([3/view.zoom,2/view.zoom]);ctx.stroke();ctx.setLineDash([]);
+    ctx.beginPath();ctx.arc(it.ox,it.oy,2.4/view.zoom,0,7);ctx.fillStyle='rgba(20,40,60,.55)';ctx.fill();}});
+  // チップ＋文字
+  placed.forEach(it=>{
+    roundRect(ctx,it.x-it.bw/2,it.y-it.bh/2,it.bw,it.bh,5/view.zoom);
+    ctx.fillStyle='rgba(255,255,255,.92)';ctx.fill();
+    ctx.lineWidth=1/view.zoom;ctx.strokeStyle='rgba(20,40,60,.28)';ctx.stroke();
+    ctx.fillStyle=it.col;
+    const y0=it.y-(it.lines.length-1)*lh/2;
+    it.lines.forEach((l,i)=>ctx.fillText(l,it.x,y0+i*lh));
+  });
   ctx.restore();
 }
 
@@ -718,7 +813,7 @@ function aggregate(){
   const areas={},trees={};
   state.features.forEach(f=>{
     if(f.type==='area'||f.type==='line'||f.type==='box'){const k=f.cat+' › '+f.kind;(areas[k]=areas[k]||{cat:f.cat,kind:f.kind,col:colorFor(f.cat+f.kind),m2:0,line:f.type==='line'}).m2+=f.area||0;}
-    else{const k=f.cat+' › '+f.kind+(f.rank?' '+f.rank:'');(trees[k]=trees[k]||{cat:f.cat,kind:f.kind,rank:f.rank||'',col:treeColor(f),rad:treeRadius(f),n:0}).n+=1;}
+    else{const k=f.cat+' › '+f.kind+(f.rank?' '+f.rank:'');(trees[k]=trees[k]||{cat:f.cat,kind:f.kind,rank:f.rank||'',col:treeColor(f),rad:treeRadius(f),unit:(MASTER[f.cat]||{}).unit||'本',n:0}).n+=1;}
   });
   return {areas,trees};
 }
@@ -733,11 +828,11 @@ function cmpSpec(a,b){return specOrder(a.cat,a.kind,a.rank)-specOrder(b.cat,b.ki
 function legendRows(){
   const {areas,trees}=aggregate(),items=[];
   Object.values(areas).forEach(a=>items.push({cat:a.cat,kind:a.kind,rank:'',type:a.line?'line':'area',col:a.col,label:a.kind,val:a.m2.toFixed(2)+' ㎡'}));
-  Object.values(trees).forEach(t=>items.push({cat:t.cat,kind:t.kind,rank:t.rank,type:'tree',col:t.col,rad:t.rad,label:t.kind+(t.rank?' '+t.rank:''),val:t.n+' 本'}));
+  Object.values(trees).forEach(t=>items.push({cat:t.cat,kind:t.kind,rank:t.rank,type:'tree',col:t.col,rad:t.rad,label:t.kind+(t.rank?' '+t.rank:''),val:t.n+' '+(t.unit||'本')}));
   items.sort(cmpSpec);   // 仕様書（工種）順に自動整列
   return items;
 }
-function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function roundRect2(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 function drawLegend(){
   legend._box=null;
   if(!legend.show)return;
@@ -754,7 +849,7 @@ function drawLegend(){
   legend._box={x,y,w:boxW,h:boxH};
   // 背景
   ctx.fillStyle='rgba(255,255,255,.93)';ctx.strokeStyle='rgba(40,52,68,.55)';ctx.lineWidth=1;
-  roundRect(x,y,boxW,boxH,8);ctx.fill();ctx.stroke();
+  roundRect2(x,y,boxW,boxH,8);ctx.fill();ctx.stroke();
   // タイトル
   ctx.fillStyle='#16202c';ctx.font='700 13px sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';
   ctx.fillText(title,x+pad,y+pad+10);
@@ -774,7 +869,7 @@ function legendHit(p){const b=legend._box;return !!(legend.show&&b&&p.x>=b.x&&p.
 
 /* ---------- 入力 ---------- */
 let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null,draggingLegend=false,legDragOff=null,spaceDown=false,dragSnap=null;
-let editV=null,lastPick=null,pickIdx=0,lastVtxTap=null,prevToolForPan='area',holeMode=null,dragRing=null,hlHole=null;
+let editV=null,lastPick=null,pickIdx=0,lastVtxTap=null,prevToolForPan='area',holeMode=null,dragRing=null,hlHole=null,_labels=null,exporting=false;
 function ringPts(f,ring){return ring==='outer'?f.pts:(f.holes||[])[ring];}
 function nearestTree(ip){let best=null,bd=Infinity;state.features.forEach(f=>{if(f.type==='tree'){const d=dist(f.pt,ip);if(d<(treeRadius(f)+8)/view.zoom&&d<bd){bd=d;best=f;}}});return best;}
 // 重なり対応：クリック地点の全ヒットを上から返す
@@ -1069,7 +1164,7 @@ function renderSansha(){
   const dg=triDiagramDataURL(selected,300); if(dg)h+=`<img src="${dg.url}" style="display:block;max-width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;margin:0 0 4px">`;
   h+=`<div style="font-size:11px;color:var(--mut);margin-bottom:4px">各三角形を3辺 a・b・c からヘロンの公式で算出（辺は頂点番号で対応）</div>`;
   h+='<table><tr><th>△</th><th class="num">a('+u+')</th><th class="num">b('+u+')</th><th class="num">c('+u+')</th><th class="num">面積</th></tr>';
-  t.rows.forEach(r=>{const v=r.v;h+=`<tr><td>△${r.no}<br><span style="color:var(--mut);font-size:10px">${v[0]}-${v[1]}・${v[1]}-${v[2]}・${v[2]}-${v[0]}</span></td><td class="num">${r.a.toFixed(2)}</td><td class="num">${r.b.toFixed(2)}</td><td class="num">${r.c.toFixed(2)}</td><td class="num">${r.area.toFixed(2)}</td></tr>`;});
+  t.rows.forEach(r=>{const v=r.v;h+=`<tr><td>△${r.no}<br><span style="color:var(--mut);font-size:10px">${v[0]}-${v[1]}・${v[1]}-${v[2]}・${v[2]}-${v[0]}</span></td><td class="num">${r.a.toFixed(1)}</td><td class="num">${r.b.toFixed(1)}</td><td class="num">${r.c.toFixed(1)}</td><td class="num">${r.area.toFixed(2)}</td></tr>`;});
   h+=`<tr><td colspan="4" style="text-align:right;color:var(--mut)">外周投影 ＝ 三角形の合計</td><td class="num">${t.total.toFixed(2)} ${u}²</td></tr>`;
   h+='</table>';
   h+='<table style="margin-top:6px"><tr><th>項目</th><th class="num">値</th></tr>';
@@ -1116,12 +1211,12 @@ function renderSansha(){
   if(canCopy&&document.getElementById('copyAsCur'))$('copyAsCur').onclick=duplicateAsCurrent;
   $('dlSansha').onclick=()=>{
     let c='三角形,辺a,a('+u+'),辺b,b('+u+'),辺c,c('+u+'),面積('+u+'²)\n';
-    t.rows.forEach(r=>{const v=r.v;c+=`△${r.no},${v[0]}-${v[1]},${r.a.toFixed(3)},${v[1]}-${v[2]},${r.b.toFixed(3)},${v[2]}-${v[0]},${r.c.toFixed(3)},${r.area.toFixed(3)}\n`;});
-    c+=`外周投影,,,,,,,${t.total.toFixed(3)}\n`;
-    if(holes.length){const hSum=state.scale?holesAreaM2(selected):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);c+=`除外(穴)合計,,,,,,,-${hSum.toFixed(3)}\n`;}
-    ded.forEach(d=>c+=`内側控除 ${d.kind},,,,,,,-${d.area.toFixed(3)}\n`);
+    t.rows.forEach(r=>{const v=r.v;c+=`△${r.no},${v[0]}-${v[1]},${r.a.toFixed(1)},${v[1]}-${v[2]},${r.b.toFixed(1)},${v[2]}-${v[0]},${r.c.toFixed(1)},${r.area.toFixed(2)}\n`;});
+    c+=`外周投影,,,,,,,${t.total.toFixed(2)}\n`;
+    if(holes.length){const hSum=state.scale?holesAreaM2(selected):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);c+=`除外(穴)合計,,,,,,,-${hSum.toFixed(2)}\n`;}
+    ded.forEach(d=>c+=`内側控除 ${d.kind},,,,,,,-${d.area.toFixed(2)}\n`);
     if((selected.slopeK||1)!==1)c+=`斜面補正 ×${selected.slopeK}（${selected.slopeKind||''}）,,,,,,,\n`;
-    c+=`計上面積,,,,,,,${selected.area!=null?selected.area.toFixed(3):''}\n`;
+    c+=`計上面積,,,,,,,${selected.area!=null?selected.area.toFixed(2):''}\n`;
     dl('\uFEFF'+c,`${($('parkName').value||'求積')}_${selected.kind}_求積表.csv`,'text/csv');
   };
 }
@@ -1158,7 +1253,7 @@ function renderAgg(){
   const am={},tm={};let cost=0;
   state.features.forEach(f=>{
     if(f.type==='area'||f.type==='line'||f.type==='box'){const key=f.cat+' › '+f.kind;am[key]=am[key]||{m2:0,col:colorFor(f.cat+f.kind),price:unitPrice(f),cat:f.cat,kind:f.kind,rank:''};am[key].m2+=f.area||0;}
-    else{const key=f.cat+(f.rank?' › '+f.kind+' '+f.rank:' › '+f.kind);tm[key]=tm[key]||{n:0,col:featColor(f),price:unitPrice(f),cat:f.cat,kind:f.kind,rank:f.rank||''};tm[key].n+=1;}
+    else{const key=f.cat+(f.rank?' › '+f.kind+' '+f.rank:' › '+f.kind);tm[key]=tm[key]||{n:0,col:featColor(f),price:unitPrice(f),cat:f.cat,kind:f.kind,rank:f.rank||'',unit:(MASTER[f.cat]||{}).unit||'本'};tm[key].n+=1;}
   });
   // area table
   const ae=$('aggArea');let h='';
@@ -1170,8 +1265,8 @@ function renderAgg(){
   // tree table
   const te=$('aggTree');const tk=Object.keys(tm).sort((x,y)=>cmpSpec(tm[x],tm[y]));
   if(!tk.length)te.innerHTML='<div class="empty">樹木の注記なし</div>';
-  else{let t='<table><tr><th>工種・規格</th><th class="num">本</th></tr>';
-    tk.forEach(k=>{t+=`<tr><td><span class="swatch" style="background:${tm[k].col}"></span>${k}</td><td class="num">${tm[k].n}</td></tr>`;cost+=tm[k].n*tm[k].price;});t+='</table>';te.innerHTML=t;}
+  else{let t='<table><tr><th>工種・規格</th><th class="num">数量</th></tr>';
+    tk.forEach(k=>{t+=`<tr><td><span class="swatch" style="background:${tm[k].col}"></span>${k}</td><td class="num">${tm[k].n} ${tm[k].unit||'本'}</td></tr>`;cost+=tm[k].n*tm[k].price;});t+='</table>';te.innerHTML=t;}
   // manual
   const me=$('manualRows');
   if(!state.manual.length)me.innerHTML='';
@@ -1218,7 +1313,7 @@ $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new Fi
   undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
 };r.readAsText(f);};
-$('exportPng').onclick=()=>{const url=cv.toDataURL('image/png');const a=document.createElement('a');a.href=url;a.download=($('parkName').value||'求積図')+'_注記.png';a.click();};
+$('exportPng').onclick=()=>{const url=fullImageDataURL();if(!url){alert('先に図面を読み込んでください。');return;}const a=document.createElement('a');a.href=url;a.download=($('parkName').value||'求積図')+'_注記.png';a.click();};
 
 /* ---------- 印刷／PDF保存（実績用：地図＋集計を1枚に） ---------- */
 function formatWareki(iso){if(!iso)return '';const [y,m,d]=iso.split('-').map(Number);const r=y-2018;return `令和${r===1?'元':r}年${m}月${d}日`;}
@@ -1226,7 +1321,7 @@ function fullImageDataURL(){
   if(!state.img)return null;
   const z=view.zoom,ox=view.ox,oy=view.oy,sw=cv.width,sh=cv.height,lx=legend.x,ly=legend.y;
   cv.width=state.img.width;cv.height=state.img.height;view.zoom=1;view.ox=0;view.oy=0;legend.x=null;legend.y=null;
-  draw();const url=cv.toDataURL('image/png');
+  exporting=true; draw(); exporting=false; const url=cv.toDataURL('image/png');
   cv.width=sw;cv.height=sh;view.zoom=z;view.ox=ox;view.oy=oy;legend.x=lx;legend.y=ly;draw();return url;
 }
 function aggHtmlForPrint(){
@@ -1236,7 +1331,7 @@ function aggHtmlForPrint(){
     ar.forEach(a=>h+=`<tr><td>${a.cat} › ${a.kind}</td><td class="num">${a.m2.toFixed(2)} ㎡</td></tr>`);h+='</table>';}
   const tr=Object.values(trees).sort(cmpSpec);
   if(tr.length){h+='<table><tr><th>工種・規格（本数系）</th><th class="num">数量</th></tr>';
-    tr.forEach(t=>h+=`<tr><td>${t.cat} › ${t.kind}${t.rank?' '+t.rank:''}</td><td class="num">${t.n} 本</td></tr>`);h+='</table>';}
+    tr.forEach(t=>h+=`<tr><td>${t.cat} › ${t.kind}${t.rank?' '+t.rank:''}</td><td class="num">${t.n} ${t.unit||'本'}</td></tr>`);h+='</table>';}
   if(state.manual.length){h+='<table><tr><th>その他（手入力）</th><th class="num">数量</th></tr>';
     state.manual.forEach(m=>h+=`<tr><td>${m.kind}</td><td class="num">${m.qty} ${(MANUAL[m.kind]||{}).unit||''}</td></tr>`);h+='</table>';}
   return h||'<p>記録なし</p>';
@@ -1250,13 +1345,13 @@ function buildTriSection(){
     h+='<div class="tri"><div class="tl">'+(idx+1)+'. '+b.f.cat+' › '+b.f.kind+((b.f.slopeK&&b.f.slopeK!==1)?'（'+b.f.slopeKind+' ×'+b.f.slopeK+'）':'')+'</div>';
     if(d)h+='<img class="trimg" src="'+d.url+'" style="width:'+Math.min(520,d.w)+'px">';
     h+='<table class="trtab"><tr><th>三角形</th><th>辺a</th><th class="num">a('+u+')</th><th>辺b</th><th class="num">b('+u+')</th><th>辺c</th><th class="num">c('+u+')</th><th class="num">面積('+u+'²)</th></tr>';
-    b.t.rows.forEach(r=>{const v=r.v;h+='<tr><td>△'+r.no+'</td><td>'+v[0]+'–'+v[1]+'</td><td class="num">'+r3(r.a)+'</td><td>'+v[1]+'–'+v[2]+'</td><td class="num">'+r3(r.b)+'</td><td>'+v[2]+'–'+v[0]+'</td><td class="num">'+r3(r.c)+'</td><td class="num">'+r3(r.area)+'</td></tr>';});
-    h+='<tr><td colspan="7" style="text-align:right">三角形の合計 ＝ 外周投影</td><td class="num">'+r3(b.t.total)+' '+u+'²</td></tr>';
-    const hs=blockHoleSum(b.f); if(hs>0)h+='<tr><td colspan="7" style="text-align:right">除外（穴）'+(b.f.holes||[]).length+'か所</td><td class="num">-'+r3(hs)+'</td></tr>';
-    const ded=isWeeding(b.f)?autoDeductList(b.f):[]; ded.forEach(dd=>h+='<tr><td colspan="7" style="text-align:right">内側控除 − '+dd.kind+'</td><td class="num">-'+r3(dd.area)+'</td></tr>');
-    if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);h+='<tr><td colspan="7" style="text-align:right">側面 ＝ 周長×高さ('+(b.f.height||0).toFixed(2)+'m)</td><td class="num">'+r3(side)+'</td></tr>';}
+    b.t.rows.forEach(r=>{const v=r.v;h+='<tr><td>△'+r.no+'</td><td>'+v[0]+'–'+v[1]+'</td><td class="num">'+r.a.toFixed(1)+'</td><td>'+v[1]+'–'+v[2]+'</td><td class="num">'+r.b.toFixed(1)+'</td><td>'+v[2]+'–'+v[0]+'</td><td class="num">'+r.c.toFixed(1)+'</td><td class="num">'+r.area.toFixed(2)+'</td></tr>';});
+    h+='<tr><td colspan="7" style="text-align:right">三角形の合計 ＝ 外周投影</td><td class="num">'+b.t.total.toFixed(2)+' '+u+'²</td></tr>';
+    const hs=blockHoleSum(b.f); if(hs>0)h+='<tr><td colspan="7" style="text-align:right">除外（穴）'+(b.f.holes||[]).length+'か所</td><td class="num">-'+hs.toFixed(2)+'</td></tr>';
+    const ded=isWeeding(b.f)?autoDeductList(b.f):[]; ded.forEach(dd=>h+='<tr><td colspan="7" style="text-align:right">内側控除 − '+dd.kind+'</td><td class="num">-'+dd.area.toFixed(2)+'</td></tr>');
+    if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);h+='<tr><td colspan="7" style="text-align:right">側面 ＝ 周長×高さ('+(b.f.height||0).toFixed(1)+'m)</td><td class="num">'+side.toFixed(2)+'</td></tr>';}
     if(b.f.slopeK&&b.f.slopeK!==1)h+='<tr><td colspan="7" style="text-align:right">斜面補正 ×'+b.f.slopeK+'（'+b.f.slopeKind+'）</td><td class="num">投影×係数</td></tr>';
-    h+='<tr><td colspan="7" style="text-align:right"><b>計上面積</b></td><td class="num"><b>'+(b.f.area!=null?r3(b.f.area):'—')+' ㎡</b></td></tr>';
+    h+='<tr><td colspan="7" style="text-align:right"><b>計上面積</b></td><td class="num"><b>'+(b.f.area!=null?b.f.area.toFixed(2):'—')+' ㎡</b></td></tr>';
     h+='</table></div>';
   });
   return h;
@@ -1282,7 +1377,7 @@ $('multiFile').onchange=e=>{
     try{const d=JSON.parse(r.result);(d.features||[]).forEach(ft=>{
       let key,val,unit;
       if(ft.type==='area'||ft.type==='line'||ft.type==='box'){key=ft.cat+' › '+ft.kind;unit='㎡';val=ft.area||0;}
-      else{key=ft.cat+(ft.rank?' › '+ft.kind+' '+ft.rank:' › '+ft.kind);unit='本';val=1;}
+      else{key=ft.cat+(ft.rank?' › '+ft.kind+' '+ft.rank:' › '+ft.kind);unit=(MASTER[ft.cat]||{}).unit||'本';val=1;}
       agg[key]=agg[key]||{v:0,unit,parks:new Set()};agg[key].v+=val;agg[key].parks.add(d.park);});
     (d.manual||[]).forEach(m=>{const key=m.kind;agg[key]=agg[key]||{v:0,unit:(MANUAL[m.kind]||{}).unit||'',parks:new Set()};agg[key].v+=m.qty;agg[key].parks.add(d.park);});
     }catch(err){}
@@ -1318,23 +1413,29 @@ function showAllSansha(){
   let h='<div style="font-size:12px;color:#5b6b78;margin-bottom:8px">各三角形を<b>3辺の長さ</b>からヘロンの公式で算出（s=(a+b+c)/2、面積=√(s(s-a)(s-b)(s-c))）。図の<span style="color:#1463c7">青＝外周辺</span>・<span style="color:#0a8a6a">緑＝対角線</span>の数値が表の辺長に対応します。</div>';
   blocks.forEach((b,idx)=>{
     const col=featColor(b.f);
-    h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.kind} ＃${idx+1}<span class="a">${r3(b.f.area!=null?b.f.area:b.t.total)} ${u}²</span></div>`;
+    h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.kind} ＃${idx+1}<span class="a">${b.f.area!=null?b.f.area.toFixed(2):b.t.total.toFixed(2)} ${u}²</span></div>`;
     const dg=triDiagramDataURL(b.f,460); if(dg)h+=`<img src="${dg.url}" style="display:block;max-width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;margin:0 0 6px">`;
     h+=`<table><tr><th>三角形</th><th>辺a (頂点)</th><th class="num">a(${u})</th><th>辺b</th><th class="num">b(${u})</th><th>辺c</th><th class="num">c(${u})</th><th class="num">面積(${u}²)</th></tr>`;
-    b.t.rows.forEach(r=>{const v=r.v;h+=`<tr><td>△${r.no}</td><td>${v[0]}–${v[1]}</td><td class="num">${r3(r.a)}</td><td>${v[1]}–${v[2]}</td><td class="num">${r3(r.b)}</td><td>${v[2]}–${v[0]}</td><td class="num">${r3(r.c)}</td><td class="num">${r3(r.area)}</td></tr>`;});
-    h+=`<tr><td colspan="7" style="text-align:right;color:var(--mut)">三角形の合計 ＝ 外周投影面積</td><td class="num">${r3(b.t.total)} ${u}²</td></tr>`;
+    b.t.rows.forEach(r=>{const v=r.v;h+=`<tr><td>△${r.no}</td><td>${v[0]}–${v[1]}</td><td class="num">${r.a.toFixed(1)}</td><td>${v[1]}–${v[2]}</td><td class="num">${r.b.toFixed(1)}</td><td>${v[2]}–${v[0]}</td><td class="num">${r.c.toFixed(1)}</td><td class="num">${r.area.toFixed(2)}</td></tr>`;});
+    h+=`<tr><td colspan="7" style="text-align:right;color:var(--mut)">三角形の合計 ＝ 外周投影面積</td><td class="num">${b.t.total.toFixed(2)} ${u}²</td></tr>`;
     const hs=blockHoleSum(b.f);
-    if(hs>0)h+=`<tr><td colspan="7" style="text-align:right;color:#ff8c00">除外（穴）${(b.f.holes||[]).length}か所</td><td class="num" style="color:#ff8c00">-${r3(hs)} ${u}²</td></tr>`;
-    if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);h+=`<tr><td colspan="7" style="text-align:right;color:var(--mut)">側面 ＝ 周長×高さ(${(b.f.height||0).toFixed(2)}m)</td><td class="num">${state.scale?r3(side)+' ㎡':'—'}</td></tr>`;}
+    if(hs>0)h+=`<tr><td colspan="7" style="text-align:right;color:#ff8c00">除外（穴）${(b.f.holes||[]).length}か所</td><td class="num" style="color:#ff8c00">-${hs.toFixed(2)} ${u}²</td></tr>`;
+    if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);h+=`<tr><td colspan="7" style="text-align:right;color:var(--mut)">側面 ＝ 周長×高さ(${(b.f.height||0).toFixed(1)}m)</td><td class="num">${state.scale?side.toFixed(2)+' ㎡':'—'}</td></tr>`;}
     const ded=isWeeding(b.f)?autoDeductList(b.f):[];
-    ded.forEach(d=>h+=`<tr><td colspan="7" style="text-align:right;color:#ff8c00">内側控除 − ${d.kind}</td><td class="num" style="color:#ff8c00">-${r3(d.area)} ㎡</td></tr>`);
+    ded.forEach(d=>h+=`<tr><td colspan="7" style="text-align:right;color:#ff8c00">内側控除 − ${d.kind}</td><td class="num" style="color:#ff8c00">-${d.area.toFixed(2)} ㎡</td></tr>`);
     if((b.f.slopeK||1)!==1)h+=`<tr><td colspan="7" style="text-align:right;color:#2f9e57">斜面補正 ×${b.f.slopeK}（${b.f.slopeKind||''}）</td><td class="num" style="color:#2f9e57">投影×係数</td></tr>`;
-    h+=`<tr><td colspan="7" style="text-align:right">計上面積</td><td class="num" style="color:var(--acc);font-weight:700">${b.f.area!=null?r3(b.f.area)+' ㎡':'—'}</td></tr></table></div>`;
+    h+=`<tr><td colspan="7" style="text-align:right">計上面積</td><td class="num" style="color:var(--acc);font-weight:700">${b.f.area!=null?b.f.area.toFixed(2)+' ㎡':'—'}</td></tr></table>`;
+    h+=`<button class="btn ghost imgsave" data-i="${idx}" style="margin-top:6px;width:auto;padding:6px 12px">この図＋表を画像で保存（PNG）</button></div>`;
   });
   h+='<div class="grand"><h2>工種別 面積集計</h2><table><tr><th>工種</th><th class="num">面積('+u+'²)</th></tr>';
-  Object.entries(s.byKind).forEach(([k,v])=>h+=`<tr><td>${k}</td><td class="num">${r3(v)}</td></tr>`);
-  h+=`<tr><td style="font-weight:700">総合計</td><td class="num" style="font-weight:700;color:var(--acc)">${r3(s.grand)} ${u}²</td></tr></table></div>`;
+  Object.entries(s.byKind).forEach(([k,v])=>h+=`<tr><td>${k}</td><td class="num">${v.toFixed(2)}</td></tr>`);
+  h+=`<tr><td style="font-weight:700">総合計</td><td class="num" style="font-weight:700;color:var(--acc)">${s.grand.toFixed(2)} ${u}²</td></tr></table></div>`;
   $('modalBody').innerHTML=h;
+  $('modalBody').querySelectorAll('.imgsave').forEach(btn=>btn.onclick=()=>{
+    const b=blocks[parseInt(btn.dataset.i)]; if(!b)return;
+    const url=composeTriImage(b.f,800);
+    const a=document.createElement('a');a.href=url;a.download=`${($('parkName').value||'公園')}_${b.f.kind}_求積図表.png`;a.click();
+  });
   $('modal').classList.add('on');
 }
 $('showAll').onclick=showAllSansha;
@@ -1359,41 +1460,44 @@ function exportExcel(){
       merges.push({s:{r:aoa.length,c:0},e:{r:aoa.length,c:7}});
       aoa.push([`${b.f.kind}　＃${idx+1}`]);
       aoa.push(['三角形',`辺a`,`a(${u})`,`辺b`,`b(${u})`,`辺c`,`c(${u})`,`面積(${u}²)`]);
-      b.t.rows.forEach(r=>{const v=r.v;aoa.push(['△'+r.no,`${v[0]}-${v[1]}`,r3(r.a),`${v[1]}-${v[2]}`,r3(r.b),`${v[2]}-${v[0]}`,r3(r.c),r3(r.area)]);});
-      aoa.push(['合計','','','','','','',r3(b.t.total)]);
-      aoa.push(['外周投影面積','','','','','','',r3(b.t.total)]);
+      b.t.rows.forEach(r=>{const v=r.v;aoa.push(['△'+r.no,`${v[0]}-${v[1]}`,Math.round(r.a*10)/10,`${v[1]}-${v[2]}`,Math.round(r.b*10)/10,`${v[2]}-${v[0]}`,Math.round(r.c*10)/10,Math.round(r.area*100)/100]);});
+      aoa.push(['合計','','','','','','',Math.round(b.t.total*100)/100]);
+      aoa.push(['外周投影面積','','','','','','',Math.round(b.t.total*100)/100]);
       const hSum=blockHoleSum(b.f);
-      if(hSum>0)aoa.push([`除外（穴）${(b.f.holes||[]).length}か所`,'','','','','','',r3(-hSum)]);
+      if(hSum>0)aoa.push([`除外（穴）${(b.f.holes||[]).length}か所`,'','','','','','',-Math.round(hSum*100)/100]);
       const ded=isWeeding(b.f)?autoDeductList(b.f):[];
-      ded.forEach(d=>aoa.push([`内側控除 ${d.kind}`,'','','','','','',r3(-d.area)]));
+      ded.forEach(d=>aoa.push([`内側控除 ${d.kind}`,'','','','','','',-Math.round(d.area*100)/100]));
       const sk=b.f.slopeK||1;
       if(sk!==1)aoa.push([`斜面補正 ×${sk}（${b.f.slopeKind||''}）`,'','','','','','','']);
-      if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);aoa.push([`側面（周長×高さ${(b.f.height||0).toFixed(2)}m）`,'','','','','','',r3(side)]);}
-      aoa.push(['計上面積','','','','','','',r3(b.f.area!=null?b.f.area:b.t.total)]);
+      if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);aoa.push([`側面（周長×高さ${(b.f.height||0).toFixed(1)}m）`,'','','','','','',Math.round(side*100)/100]);}
+      aoa.push(['計上面積','','','','','','',Math.round((b.f.area!=null?b.f.area:b.t.total)*100)/100]);
       aoa.push([]);
     });
-    const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:14},{wch:8},{wch:10},{wch:8},{wch:10},{wch:8},{wch:10},{wch:12}];ws['!merges']=merges;
-    Object.keys(ws).forEach(k=>{if(k[0]!=='!'&&ws[k].t==='n')ws[k].z='0.000';});
+    const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:16},{wch:8},{wch:10},{wch:8},{wch:10},{wch:8},{wch:10},{wch:12}];ws['!merges']=merges;
+    Object.keys(ws).forEach(k=>{if(k[0]!=='!'&&ws[k].t==='n'){const cc=XLSX.utils.decode_cell(k).c;ws[k].z=([2,4,6].indexOf(cc)>=0)?'0.0':'0.00';}});
     XLSX.utils.book_append_sheet(wb,ws,'求積表');
-    // シート2：面積集計
-    const sum=[['工種',`面積(${u}²)`]];
-    Object.entries(s.byKind).forEach(([k,v])=>sum.push([k,r3(v)]));
-    sum.push(['総合計',r3(s.grand)]);
-    const ws2=XLSX.utils.aoa_to_sheet(sum);ws2['!cols']=[{wch:30},{wch:14}];
-    Object.keys(ws2).forEach(k=>{if(k[0]!=='!'&&ws2[k].t==='n')ws2[k].z='0.000';});
-    XLSX.utils.book_append_sheet(wb,ws2,'面積集計');
+    // （面積の内訳は「数量集計（報告用）」シートに統合）
   }
-  // シート3：凡例・集計（地図記号の説明＋数量。仕様書の工種順に整列）
-  const leg=[[park+'　凡例・集計'],['記号','大分類','細別','規格','数量','単位']];
+  // シート：数量集計（報告用）— 面積㎡・樹木/点（本・個）・その他（手入力）を反映。報告書の数量根拠用。
+  const rep=[[park+'　数量集計（報告用）'],['大分類','細別・規格','数量','単位','参考金額(円)']];
+  let amtTotal=0;
+  Object.values(areas).slice().sort(cmpSpec).forEach(a=>{const price=(((MASTER[a.cat]||{}).kinds||{})[a.kind]||{}).price||0;const amt=a.m2*price;amtTotal+=amt;rep.push([a.cat,a.kind+(a.line?'（柵）':''),Math.round(a.m2*100)/100,'㎡',Math.round(amt)]);});
+  Object.values(trees).slice().sort(cmpSpec).forEach(t=>{const kd=((MASTER[t.cat]||{}).kinds||{})[t.kind]||{};const price=(t.rank&&kd.prices)?(kd.prices[t.rank]||0):(kd.price||0);const amt=t.n*price;amtTotal+=amt;rep.push([t.cat,t.kind+(t.rank?' '+t.rank:''),t.n,(t.unit||'本'),Math.round(amt)]);});
+  state.manual.forEach(m=>{const price=(MANUAL[m.kind]||{}).price||0;const amt=m.qty*price;amtTotal+=amt;rep.push(['その他',m.kind,m.qty,(MANUAL[m.kind]||{}).unit||'',Math.round(amt)]);});
+  rep.push([]);rep.push(['','','','参考合計(円)',Math.round(amtTotal)]);
+  const wsR=XLSX.utils.aoa_to_sheet(rep);wsR['!cols']=[{wch:20},{wch:26},{wch:10},{wch:7},{wch:14}];wsR['!merges']=[{s:{r:0,c:0},e:{r:0,c:4}}];
+  Object.keys(wsR).forEach(k=>{if(k[0]!=='!'&&wsR[k].t==='n'){const cc=XLSX.utils.decode_cell(k).c;if(cc===2)wsR[k].z='0.00';else if(cc===4)wsR[k].z='#,##0';}});
+  XLSX.utils.book_append_sheet(wb,wsR,'数量集計（報告用）');
+  // シート：凡例（地図記号の説明。※「その他＝手入力」は地図に置かないので含めない）
+  const leg=[[park+'　凡例（地図記号）'],['記号','大分類','細別','規格','数量','単位']];
   const legItems=[];
   Object.values(areas).forEach(a=>legItems.push({cat:a.cat,kind:a.kind,rank:'',row:[a.line?'― 柵':'■ 面積',a.cat,a.kind,'',Number(a.m2.toFixed(2)),'㎡']}));
-  Object.values(trees).forEach(t=>legItems.push({cat:t.cat,kind:t.kind,rank:t.rank||'',row:['● 樹木',t.cat,t.kind,t.rank||'',t.n,'本']}));
+  Object.values(trees).forEach(t=>legItems.push({cat:t.cat,kind:t.kind,rank:t.rank||'',row:['● 点',t.cat,t.kind,t.rank||'',t.n,(t.unit||'本')]}));
   legItems.sort(cmpSpec).forEach(it=>leg.push(it.row));
-  state.manual.forEach(m=>leg.push(['（手入力）',m.kind,'','',m.qty,(MANUAL[m.kind]||{}).unit||'']));
   const ws3=XLSX.utils.aoa_to_sheet(leg);
   ws3['!cols']=[{wch:9},{wch:18},{wch:16},{wch:18},{wch:8},{wch:6}];
   ws3['!merges']=[{s:{r:0,c:0},e:{r:0,c:5}}];
-  XLSX.utils.book_append_sheet(wb,ws3,'凡例・集計');
+  XLSX.utils.book_append_sheet(wb,ws3,'凡例');
   XLSX.writeFile(wb,`${park}_求積表.xlsx`);
 }
 $('xlsxBtn').onclick=exportExcel;$('mXlsx').onclick=exportExcel;
@@ -1403,12 +1507,12 @@ function allSanshaCsv(){
   const u=blocks[0].t.unit;let c=`\uFEFF${$('parkName').value||'公園'} 求積表（ヘロンの公式・3辺）\ns=(a+b+c)/2, 面積=√(s(s-a)(s-b)(s-c))\n`;
   blocks.forEach((b,idx)=>{
     c+=`\n${b.f.kind} ＃${idx+1}\n三角形,辺a,a(${u}),辺b,b(${u}),辺c,c(${u}),面積(${u}²)\n`;
-    b.t.rows.forEach(r=>{const v=r.v;c+=`△${r.no},${v[0]}-${v[1]},${r3(r.a)},${v[1]}-${v[2]},${r3(r.b)},${v[2]}-${v[0]},${r3(r.c)},${r3(r.area)}\n`;});
-    c+=`外周投影,,,,,,,${r3(b.t.total)}\n`;
-    const hSum=blockHoleSum(b.f);if(hSum>0)c+=`除外(穴),,,,,,,-${r3(hSum)}\n`;
-    (isWeeding(b.f)?autoDeductList(b.f):[]).forEach(d=>c+=`内側控除 ${d.kind},,,,,,,-${r3(d.area)}\n`);
+    b.t.rows.forEach(r=>{const v=r.v;c+=`△${r.no},${v[0]}-${v[1]},${r.a.toFixed(1)},${v[1]}-${v[2]},${r.b.toFixed(1)},${v[2]}-${v[0]},${r.c.toFixed(1)},${r.area.toFixed(2)}\n`;});
+    c+=`外周投影,,,,,,,${b.t.total.toFixed(2)}\n`;
+    const hSum=blockHoleSum(b.f);if(hSum>0)c+=`除外(穴),,,,,,,-${hSum.toFixed(2)}\n`;
+    (isWeeding(b.f)?autoDeductList(b.f):[]).forEach(d=>c+=`内側控除 ${d.kind},,,,,,,-${d.area.toFixed(2)}\n`);
     if((b.f.slopeK||1)!==1)c+=`斜面補正 ×${b.f.slopeK}（${b.f.slopeKind||''}）,,,,,,,\n`;
-    c+=`計上面積,,,,,,,${r3(b.f.area!=null?b.f.area:b.t.total)}\n`;
+    c+=`計上面積,,,,,,,${(b.f.area!=null?b.f.area:b.t.total).toFixed(2)}\n`;
   });
   dl(c,`${$('parkName').value||'公園'}_求積表.csv`,'text/csv');
 }
@@ -1417,8 +1521,8 @@ $('mCopy').onclick=()=>{
   const blocks=allAreaBlocks();if(!blocks.length)return;const u=blocks[0].t.unit;let txt='';
   blocks.forEach((b,idx)=>{
     txt+=`${b.f.kind} ＃${idx+1}\n三角形\t辺a\ta(${u})\t辺b\tb(${u})\t辺c\tc(${u})\t面積\n`;
-    b.t.rows.forEach(r=>{const v=r.v;txt+=`△${r.no}\t${v[0]}-${v[1]}\t${r3(r.a)}\t${v[1]}-${v[2]}\t${r3(r.b)}\t${v[2]}-${v[0]}\t${r3(r.c)}\t${r3(r.area)}\n`;});
-    txt+=`外周投影\t\t\t\t\t\t\t${r3(b.t.total)}\n計上面積\t\t\t\t\t\t\t${r3(b.f.area!=null?b.f.area:b.t.total)}\n\n`;});
+    b.t.rows.forEach(r=>{const v=r.v;txt+=`△${r.no}\t${v[0]}-${v[1]}\t${r.a.toFixed(1)}\t${v[1]}-${v[2]}\t${r.b.toFixed(1)}\t${v[2]}-${v[0]}\t${r.c.toFixed(1)}\t${r.area.toFixed(2)}\n`;});
+    txt+=`外周投影\t\t\t\t\t\t\t${b.t.total.toFixed(2)}\n計上面積\t\t\t\t\t\t\t${(b.f.area!=null?b.f.area:b.t.total).toFixed(2)}\n\n`;});
   navigator.clipboard.writeText(txt).then(()=>{$('mCopy').textContent='コピーしました';setTimeout(()=>$('mCopy').textContent='表をコピー',1500);});
 };
 
