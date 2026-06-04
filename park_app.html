@@ -394,24 +394,26 @@ function curDepVal(){return parseFloat($('depInput').value)||0;}
 function fillRanks(){
   const isTree=MASTER[$('catSel').value].mode==='tree';
   const show=curKindRanks();
-  $('rankLbl').style.display=show?'block':'none';
-  $('rankSel').style.display=show?'block':'none';
-  if(show){const r=$('rankSel');r.innerHTML='';BANDS.forEach(b=>{const o=document.createElement('option');o.value=b;o.textContent=b;r.appendChild(o);});}
+  $('rankLbl').style.display='none';
+  $('rankSel').style.display='none';                 // 丸タップで選ぶためプルダウンは隠す（値の保持用に残す）
+  if(show){const r=$('rankSel');const prev=r.value;r.innerHTML='';BANDS.forEach(b=>{const o=document.createElement('option');o.value=b;o.textContent=b;r.appendChild(o);});r.value=(prev&&BANDS.indexOf(prev)>=0)?prev:BANDS[0];}
   const lg=$('rankLegend');
   if(isTree){
     lg.style.display='block';
     const cat=$('catSel').value,kind=$('kindSel').value,col=treeColor({cat,kind});
     let h=`<div class="legend" style="margin-bottom:4px">点の色＝工種　<span class="swatch" style="background:${col};margin:0 2px 0 4px"></span>${kind}</div>`;
     if(show){
-      h+='<div class="legend" style="margin:8px 0 4px">大きさ＝規格（幹周）</div>'+
-        '<div style="display:flex;align-items:flex-end;gap:9px;flex-wrap:wrap">'+
-        BANDS.map(b=>{const d=Math.round((5+BANDS.indexOf(b))*2);
-          return `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:3px;font-size:9px;color:var(--mut)"><span style="width:${d}px;height:${d}px;border-radius:50%;background:${col};border:1px solid #ffffff55"></span>${b.replace(/cm/g,'')}</span>`;}).join('')+
+      const sel=$('rankSel').value;
+      h+='<div class="legend" style="margin:8px 0 4px">規格（幹周）＝丸をタップして選択</div>'+
+        '<div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">'+
+        BANDS.map(b=>{const d=Math.round((5+BANDS.indexOf(b))*2);const on=(b===sel);
+          return `<span data-band="${b}" style="cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;gap:3px;font-size:9px;color:${on?'#0a7d33':'var(--mut)'};font-weight:${on?'700':'400'};padding:4px 5px;border-radius:9px;background:${on?'#e7f6ec':'transparent'};border:1px solid ${on?'#0a7d33':'#00000000'}"><span style="width:${d}px;height:${d}px;border-radius:50%;background:${col};border:2px solid ${on?'#0a7d33':'#ffffff55'};box-shadow:${on?'0 0 0 2px #0a7d3344':'none'}"></span>${b.replace(/cm/g,'')}</span>`;}).join('')+
         '</div>';
     }else{
       h+='<div class="legend" style="margin-top:4px">この工種は規格区分なし（一定サイズ）</div>';
     }
     lg.innerHTML=h;
+    lg.querySelectorAll('[data-band]').forEach(el=>{el.onclick=()=>{$('rankSel').value=el.dataset.band;fillRanks();};});
   }else{lg.style.display='none';}
   // 寸法欄（低木＝なし／中木＝高さ／管理柵＝高さ）多角形でも高さを表示
   const g=curGeom(), box=(g==='box'), line=(g==='line'), needH=curNeedsHeight();
@@ -1387,7 +1389,7 @@ $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new Fi
   undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
 };r.readAsText(f);};
-$('exportPng').onclick=()=>{const url=fullImageDataURL();if(!url){alert('先に図面を読み込んでください。');return;}const a=document.createElement('a');a.href=url;a.download=($('parkName').value||'求積図')+'_注記.png';a.click();};
+$('exportPng').onclick=()=>{const url=fullImageDataURL();if(!url){alert('先に図面を読み込んでください。');return;}saveFile(dataURLtoBlob(url),($('parkName').value||'求積図')+'_注記.png');};
 
 /* ---------- 印刷／PDF保存（実績用：地図＋集計を1枚に） ---------- */
 function formatWareki(iso){if(!iso)return '';const [y,m,d]=iso.split('-').map(Number);const r=y-2018;return `令和${r===1?'元':r}年${m}月${d}日`;}
@@ -1441,7 +1443,19 @@ function printPDF(){
   setTimeout(()=>window.print(),150);
 }
 $('printPdf').onclick=printPDF;
-function dl(text,name,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
+function dataURLtoBlob(durl){const c=durl.split(',');const mime=(c[0].match(/:(.*?);/)||[])[1]||'application/octet-stream';const bin=atob(c[1]);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:mime});}
+// 保存：iOS等では共有シート（ファイルに保存→保存先を選べる／LINE送信も可）。非対応はダウンロード。
+function saveFile(blob,name){
+  try{
+    const file=new File([blob],name,{type:blob.type||'application/octet-stream'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file],title:name}).catch(()=>{});
+      return;
+    }
+  }catch(e){}
+  const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);
+}
+function dl(text,name,type){ saveFile(new Blob([text],{type:type||'application/octet-stream'}),name); }
 
 /* ---------- 多公園集計 ---------- */
 $('aggMulti').onclick=()=>$('multiFile').click();
@@ -1508,7 +1522,7 @@ function showAllSansha(){
   $('modalBody').querySelectorAll('.imgsave').forEach(btn=>btn.onclick=()=>{
     const b=blocks[parseInt(btn.dataset.i)]; if(!b)return;
     const url=composeTriImage(b.f,800);
-    const a=document.createElement('a');a.href=url;a.download=`${($('parkName').value||'公園')}_${b.f.kind}_求積図表.png`;a.click();
+    saveFile(dataURLtoBlob(url),`${($('parkName').value||'公園')}_${b.f.kind}_求積図表.png`);
   });
   $('modal').classList.add('on');
 }
