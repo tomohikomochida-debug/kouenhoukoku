@@ -260,11 +260,21 @@
       <button id="multiToggle" title="複数選択（タップで追加／解除）">多</button>
       <button id="grpToggle" class="on" title="×Nまとめ表示（近接の同一中木をまとめ）">×N</button>
     </div>
+    <div id="copyPop" style="position:absolute;left:50%;transform:translateX(-50%);bottom:64px;display:none;background:rgba(10,14,20,.96);border:1px solid var(--line);border-radius:12px;padding:12px 14px;z-index:31;box-shadow:0 8px 28px #0009;color:#fff;font-size:14px;text-align:left">
+      <div style="font-weight:700;margin-bottom:8px">この範囲を別工種に計上（投影面積）</div>
+      <label style="display:block;margin:5px 0"><input type="checkbox" id="cpTsuru" checked> つる性植物除去（地表・寄植）</label>
+      <label style="display:block;margin:5px 0"><input type="checkbox" id="cpTeiboku" checked> 低木内除草清掃（植込み地）</label>
+      <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+        <button id="cpCancel" style="background:#475569;color:#fff;border:none;border-radius:18px;padding:8px 14px;font-weight:700">閉じる</button>
+        <button id="cpMake" style="background:#0f766e;color:#fff;border:none;border-radius:18px;padding:8px 14px;font-weight:700">作成</button>
+      </div>
+    </div>
     <div id="selActions" style="position:absolute;left:50%;transform:translateX(-50%);bottom:16px;display:none;gap:8px;z-index:30">
       <span id="selCount" style="display:none;align-items:center;color:#fff;background:#334155;border-radius:22px;padding:11px 12px;font-size:13px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)"></span>
       <button id="dupSelBtn" style="display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;border:none;border-radius:22px;padding:11px 16px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">⧉ 複製</button>
       <button id="delSelBtn" style="display:inline-flex;align-items:center;gap:6px;background:#e11d48;color:#fff;border:none;border-radius:22px;padding:11px 16px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">🗑 削除</button>
       <button id="clearSelBtn" style="display:inline-flex;align-items:center;background:#64748b;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">選択解除</button>
+      <button id="copyRangeBtn" style="display:none;align-items:center;background:#7c3aed;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">📋 範囲コピー</button>
       <button id="rotL" style="display:none;align-items:center;background:#475569;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:16px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">↺</button>
       <button id="rotR" style="display:none;align-items:center;background:#475569;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:16px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">↻</button>
       <button id="symSel" style="display:none;align-items:center;background:#0f766e;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">実寸/記号</button>
@@ -285,7 +295,7 @@
       <div id="aggArea"></div>
     </div>
     <div class="sec">
-      <h3>求積表（選択中の面積・三斜法）</h3>
+      <h3>求積表（選択中の面積・三斜求積／ヘロンの公式）</h3>
       <div id="sansha"></div>
       <button class="btn ghost" id="showAll" style="margin-top:8px">全面積の算出根拠を画面表示</button>
       <button class="btn ghost" id="xlsxBtn">Excelで求積表を書き出す（別シート展開）</button>
@@ -321,7 +331,7 @@
 <div class="modal" id="modal">
   <div class="card">
     <button class="close" id="modalClose">閉じる ✕</button>
-    <h2>面積 算出根拠（三斜求積法）</h2>
+    <h2>面積 算出根拠（三斜求積：各三角形はヘロンの公式）</h2>
     <div class="legend" id="modalSub"></div>
     <div class="toolbar">
       <button id="mXlsx">Excelで書き出す</button>
@@ -533,9 +543,15 @@ function isWeeding(f){return f.type==='area'&&f.cat==='除草工';}
 function autoDeductList(f){
   const out=[]; if(!state.scale||f.type!=='area')return out;
   state.features.forEach(g=>{
-    if(g!==f&&g.type==='area'&&g.cat==='中低木刈込工'){
+    if(g===f)return;
+    if(g.type==='area'&&g.cat==='中低木刈込工'){
       const c=centroid(g.pts);
       if(pointInPoly(c,f.pts)){const nf=netFootprintM2(g);out.push({kind:g.kind,cat:g.cat,area:(nf==null?0:nf)});}
+    }else if(g.type==='box'&&g.cat==='中低木刈込工'){   // 中木（円柱/生垣）も投影面積を控除：中心が除草内なら
+      if(g.pt&&pointInPoly(g.pt,f.pts)){
+        const fp=g.round?(Math.PI*Math.pow((g.L||0)/2,2)):((g.L||0)*(g.D||0));   // 円柱=πr²／生垣=L·D（投影のみ）
+        out.push({kind:g.kind,cat:g.cat,area:fp});
+      }
     }
   });
   return out;
@@ -550,20 +566,7 @@ function recalcAll(){
     else if(f.type==='area')f.autoDeduct=0;
   });
 }
-// 三斜求積法：頂点0を基点に扇状に三角形分割。各三角形は最長辺を底辺、高さ=2×面積÷底辺。
-function sanshaTable(pts){
-  const s=state.scale||1, hasScale=!!state.scale, rows=[]; let total=0;
-  for(let i=1;i<pts.length-1;i++){
-    const A=pts[0],B=pts[i],C=pts[i+1];
-    const areaPx=Math.abs((B.x-A.x)*(C.y-A.y)-(C.x-A.x)*(B.y-A.y))/2;
-    const sides=[dist(A,B),dist(B,C),dist(C,A)];
-    const basePx=Math.max(...sides);
-    const heightPx=basePx>0?2*areaPx/basePx:0;
-    const base=basePx*s, height=heightPx*s, dbl=base*height, area=dbl/2;
-    total+=area; rows.push({no:i,base,height,dbl,area});
-  }
-  return {rows,total,unit:hasScale?'m':'px'};
-}
+// （旧 sanshaTable は未使用のため削除。求積は全て heronTable＝ヘロンの公式で算出）
 // 多角形の符号付き面積×2（向き判定用）
 function polyArea2(pts){let a=0;for(let i=0;i<pts.length;i++){const j=(i+1)%pts.length;a+=pts[i].x*pts[j].y-pts[j].x*pts[i].y;}return a/2;}
 function pointInTri(P,A,B,C){
@@ -603,6 +606,19 @@ function earClipTris(pts){
   return out;
 }
 // ヘロンの公式：耳切りで内側だけを三角形分割し、各三角形を3辺の長さから面積算出。s=(a+b+c)/2, 面積=√(s(s-a)(s-b)(s-c))
+function _segHit(p1,p2,p3,p4){
+  const cr=(o,a,b)=>(a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);
+  const d1=cr(p3,p4,p1),d2=cr(p3,p4,p2),d3=cr(p1,p2,p3),d4=cr(p1,p2,p4);
+  return ((d1>0&&d2<0)||(d1<0&&d2>0))&&((d3>0&&d4<0)||(d3<0&&d4>0));
+}
+function selfIntersects(pts){            // 単純多角形か（隣接辺は除外し、非隣接辺の交差を検出）
+  if(!pts||pts.length<4)return false; const n=pts.length;
+  for(let i=0;i<n;i++){ const a=pts[i],b=pts[(i+1)%n];
+    for(let j=i+1;j<n;j++){
+      if(j===i||(i+1)%n===j||(j+1)%n===i)continue;
+      if(_segHit(a,b,pts[j],pts[(j+1)%n]))return true; } }
+  return false;
+}
 function heronTable(pts){
   const sc=state.scale||1, hasScale=!!state.scale, rows=[]; let total=0;
   const tris=earClipTris(pts);
@@ -706,6 +722,7 @@ function composeTriImage(f,W){
   // title
   x.fillStyle='#0b2a44';x.font='bold 15px sans-serif';x.textAlign='left';x.textBaseline='middle';
   x.fillText(f.cat+' › '+f.kind+(f.slopeK&&f.slopeK!==1?'（'+f.slopeKind+'×'+f.slopeK+'）':''),pad,pad+titleH/2);
+  if(selfIntersects(f.pts)){x.fillStyle='#b91c1c';x.textAlign='right';x.fillText('⚠ 形状要確認（頂点交差の可能性）',W-pad,pad+titleH/2);x.textAlign='left';x.fillStyle='#0b2a44';}
   let y=pad+titleH;
   // diagram box
   x.strokeStyle='#e0e6ea';x.lineWidth=1;x.strokeRect(pad,y,tableW,diaH);
@@ -788,6 +805,8 @@ function syncDelBtn(){const n=multiSel.length,any=(n>0||selected),single=(n<=1);
   if(rl)rl.style.display=isBox?'inline-flex':'none'; if(rr)rr.style.display=isBox?'inline-flex':'none';
   const sel=multiSel.length?multiSel:(selected?[selected]:[]); const hasBox=sel.some(f=>f&&f.type==='box');
   if(sy)sy.style.display=hasBox?'inline-flex':'none';
+  const cb=$('copyRangeBtn'); if(cb)cb.style.display=hasBox?'inline-flex':'none';
+  if(!any&&$('copyPop'))$('copyPop').style.display='none';
   if(sc){sc.style.display=n>1?'inline-flex':'none'; sc.textContent=n>1?(n+'個'):'';}}
 function computeGroups(){
   const R=90/view.zoom;
@@ -825,7 +844,7 @@ function draw(){
         ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rpx,0,7);ctx.fillStyle=col+'33';ctx.fill();
         ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=(isSel(f)?SEL:col);ctx.stroke();
         if(isSel(f)){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();}
-        if(!(_grouped&&_grouped.has(f))) label(f.pt.x,f.pt.y+((state.scale?(f.L/state.scale):60)/2)+30/view.zoom,`${f.kind}\nφ${f.L}×H${f.H}m\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+        if(!(_grouped&&_grouped.has(f))) label(f.pt.x,f.pt.y+((state.scale?(f.L/state.scale):60)/2)+30/view.zoom,`${f.kind}\nφ${f.L}${f.sides===false?'':('×H'+f.H)}m\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
       } else {
         const wpx=state.scale?(f.L/state.scale):60, hpx=state.scale?(f.D/state.scale):40;
         ctx.save();ctx.translate(f.pt.x,f.pt.y);ctx.rotate(f.rot||0);
@@ -1243,6 +1262,7 @@ function finishArea(){
     if(draft.pts.length<3){return;}
     pushHistory();
     const f={type:'area',cat,kind,pts:draft.pts.slice(),calc:curCalc(),height:(curNeedsHeight()?h:0)};
+    if(selfIntersects(f.pts))setTimeout(()=>alert('⚠ 頂点が交差しています。形状（頂点の順序）を確認してください。交差したままだと求積表が実面積と一致しない場合があります。'),0);
     recalcAreaFeature(f);state.features.push(f);
   }
   draft=null;multiSel=[];selected=state.features[state.features.length-1]||null;recalcAll();refreshDraftBar();renderAgg();renderSansha();draw();
@@ -1486,9 +1506,10 @@ $('openMap').onclick=()=>{
   window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q),'_blank');
 };
 $('reportExport').onclick=()=>{
+  if(state.features.some(f=>f.type!=='tree')&&!state.scale){alert('先に「縮尺合わせ」を行ってください。面積が0のまま書き出されます。');return;}
   const {areas,trees}=aggregate();
   const A=[],T=[],N=[];
-  Object.values(areas).forEach(a=>{ if(!a.line) A.push({cat:a.cat,kind:a.kind,m2:Math.round((a.m2||0)*100)/100}); });
+  Object.values(areas).forEach(a=>{ A.push({cat:a.cat,kind:a.kind,m2:Math.round((a.m2||0)*100)/100,geom:a.line?'line':'poly'}); });
   Object.values(trees).forEach(t=>{ if(t.cat==='巣撤去') N.push({kind:t.kind,n:t.n}); else T.push({cat:t.cat,kind:t.kind,rank:t.rank||null,n:t.n}); });
   const M=state.manual.map(m=>({kind:m.kind,qty:m.qty,unit:(MANUAL[m.kind]||{}).unit||''}));
   const annotated=fullImageDataURL();
@@ -1508,7 +1529,8 @@ $('reportExport').onclick=()=>{
 };
 $('openJson').onclick=()=>$('jsonFile').click();
 $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{
-  const d=JSON.parse(r.result);$('parkName').value=d.park||'';state.scale=d.scale||null;
+  let d; try{ d=JSON.parse(r.result); }catch(err){ alert('このファイルは読み込めませんでした（JSON破損の可能性）。'); return; }
+  $('parkName').value=d.park||'';state.scale=d.scale||null;
   if(d.contract!==undefined)$('contractName').value=d.contract||'';
   $('orderNo').value=d.order||'';$('workDate').value=d.date||'';
   if($('startDate'))$('startDate').value=d.start||'';if($('finishDate'))$('finishDate').value=d.finish||'';
@@ -1524,6 +1546,24 @@ $('rotL').onclick=()=>rotateSelected(-15);
 $('rotR').onclick=()=>rotateSelected(15);
 $('symSel').onclick=()=>{const sel=multiSel.length?multiSel:(selected?[selected]:[]);const boxes=sel.filter(f=>f&&f.type==='box');if(!boxes.length)return;const allSym=boxes.every(f=>f.sym);boxes.forEach(f=>f.sym=!allSym);draw();};
 $('multiToggle').onclick=()=>{multiMode=!multiMode;$('multiToggle').classList.toggle('on',multiMode);};
+function selectedBoxes(){const sel=multiSel.length?multiSel:(selected?[selected]:[]);return sel.filter(f=>f&&f.type==='box');}
+$('copyRangeBtn').onclick=()=>{const pop=$('copyPop');const open=(pop.style.display!=='block');pop.style.display=open?'block':'none';};
+$('cpCancel').onclick=()=>{$('copyPop').style.display='none';};
+$('cpMake').onclick=()=>{
+  const boxes=selectedBoxes(); const pop=$('copyPop');
+  if(!boxes.length){pop.style.display='none';return;}
+  const targets=[];
+  if($('cpTsuru').checked)targets.push({cat:'つる性植物除去',kind:'地表・寄植'});
+  if($('cpTeiboku').checked)targets.push({cat:'低木内除草清掃',kind:'植込み地'});
+  if(!targets.length){pop.style.display='none';return;}
+  pushHistory(); const made=[];
+  boxes.forEach(b=>{ targets.forEach((t,ti)=>{ const g=JSON.parse(JSON.stringify(b));
+    g.cat=t.cat; g.kind=t.kind; g.sides=false; g.sym=false; g.H=0;   // 投影面積のみ（側面なし）
+    const off=(8+ti*8)/(view.zoom||1); if(g.pt){g.pt.x+=off;g.pt.y+=off;}
+    state.features.push(g); made.push(g); }); });
+  recalcAll(); multiSel=made; selected=made[made.length-1]||null;
+  renderSansha(); renderAgg(); draw(); pop.style.display='none';
+};
 $('grpToggle').onclick=()=>{groupLabels=!groupLabels;$('grpToggle').classList.toggle('on',groupLabels);draw();};
 $('clearSelBtn').onclick=()=>{multiSel=[];selected=null;hlHole=null;renderSansha();renderAgg();draw();};
 
@@ -1570,6 +1610,7 @@ function buildTriSection(){
 }
 function printPDF(){
   if(!state.img){alert('先に図面を読み込んでください。');return;}
+  if(state.features.some(f=>f.type!=='tree')&&!state.scale){alert('先に「縮尺合わせ」を行ってください。面積が0のまま書き出されます。');return;}
   const img=fullImageDataURL();
   const park=$('parkName').value||'公園',contract=$('contractName').value||'',order=$('orderNo').value||'';
   $('printArea').innerHTML=
@@ -1622,7 +1663,6 @@ function showMulti(agg){
 }
 
 /* ---------- 全面積の算出根拠（三斜） ---------- */
-function r3(x){return Math.round(x*1000)/1000;}
 function allAreaBlocks(){
   return state.features.filter(f=>f.type==='area').slice().sort((a,b)=>cmpSpec(a,b))   // 仕様書（工種）順
     .map(f=>({f,t:heronTable(f.pts)}));
@@ -1630,7 +1670,7 @@ function allAreaBlocks(){
 function blockHoleSum(f){const holes=f.holes||[];return state.scale?holesAreaM2(f):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);}
 function buildSummary(blocks){
   const byKind={};let grand=0;
-  blocks.forEach(b=>{const k=b.f.slopeK||1;const net=(b.t.total-blockHoleSum(b.f)-(b.f.autoDeduct||0))*k;byKind[b.f.kind]=(byKind[b.f.kind]||0)+net;grand+=net;});  // 穴＋内側控除を差引、斜面係数を反映
+  blocks.forEach(b=>{const a=(b.f.area!=null)?b.f.area:((b.t.total-blockHoleSum(b.f)-(b.f.autoDeduct||0))*(b.f.slopeK||1));byKind[b.f.kind]=(byKind[b.f.kind]||0)+a;grand+=a;});  // 計上面積(f.area=穴・控除・斜面・側面を反映済み)を一次ソースに
   return {byKind,grand,unit:blocks[0]?blocks[0].t.unit:'m'};
 }
 function showAllSansha(){
@@ -1642,6 +1682,7 @@ function showAllSansha(){
   blocks.forEach((b,idx)=>{
     const col=featColor(b.f);
     h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.cat}　${b.f.kind} ＃${idx+1}<span class="a">${b.f.area!=null?b.f.area.toFixed(2):b.t.total.toFixed(2)} ${u}²</span></div>`;
+    if(selfIntersects(b.f.pts))h+='<div style="color:#b91c1c;font-weight:700;font-size:12px;margin:4px 0">⚠ 頂点が交差している可能性。形状を確認してください（求積表が実面積と一致しない場合があります）。</div>';
     const dg=triDiagramDataURL(b.f,560); if(dg)h+=`<img src="${dg.url}" style="display:block;max-width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;margin:0 0 6px">`;
     h+=`<table><tr><th>三角形</th><th>辺a＝頂点</th><th class="num">長さa(${u})</th><th>辺b＝頂点</th><th class="num">長さb(${u})</th><th>辺c＝頂点</th><th class="num">長さc(${u})</th><th class="num">面積(${u}²)</th></tr>`;
     b.t.rows.forEach(r=>{const v=r.v;h+=`<tr><td>△${r.no}</td><td>${v[0]}–${v[1]}</td><td class="num">${r.a.toFixed(1)}</td><td>${v[1]}–${v[2]}</td><td class="num">${r.b.toFixed(1)}</td><td>${v[2]}–${v[0]}</td><td class="num">${r.c.toFixed(1)}</td><td class="num">${r.area.toFixed(2)}</td></tr>`;});
@@ -1680,6 +1721,7 @@ function exportExcel(){
   const {areas,trees}=aggregate();
   const hasAny=blocks.length||Object.keys(trees).length||state.manual.length;
   if(!hasAny){alert('記録がありません。面積・樹木・手入力のいずれかを入力してください。');return;}
+  if(state.features.some(f=>f.type!=='tree')&&!state.scale){alert('先に「縮尺合わせ」を行ってください。面積が0のまま書き出されます。');return;}
   if(typeof XLSX==='undefined'){alert('Excel出力ライブラリが読み込めませんでした。オンライン接続のうえ再度お試しください（CSVは利用できます）。');return;}
   const park=$('parkName').value||'公園';
   const wb=XLSX.utils.book_new();
