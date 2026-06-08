@@ -692,8 +692,8 @@ function composeTriImage(f,W){
   const colR=[pad+c0+restW,pad+c0+2*restW,pad+c0+3*restW,pad+c0+4*restW];
   x.fillStyle='#2f9e57';x.fillRect(pad,y,tableW,headH);
   x.fillStyle='#fff';x.font='bold 11px sans-serif';x.textBaseline='middle';
-  x.textAlign='left';x.fillText('三角形（辺の頂点）',pad+6,y+headH/2);
-  x.textAlign='right';x.fillText('辺a('+u+')',colR[0]-6,y+headH/2);x.fillText('辺b('+u+')',colR[1]-6,y+headH/2);x.fillText('辺c('+u+')',colR[2]-6,y+headH/2);x.fillText('面積('+u+'²)',colR[3]-6,y+headH/2);
+  x.textAlign='left';x.fillText('三角形（辺＝頂点番号）',pad+6,y+headH/2);
+  x.textAlign='right';x.fillText('長さa('+u+')',colR[0]-6,y+headH/2);x.fillText('長さb('+u+')',colR[1]-6,y+headH/2);x.fillText('長さc('+u+')',colR[2]-6,y+headH/2);x.fillText('面積('+u+'²)',colR[3]-6,y+headH/2);
   y+=headH;
   x.font='11px sans-serif';
   t.rows.forEach((r,ri)=>{const v=r.v;x.fillStyle=(ri%2)?'#f4f7f9':'#fff';x.fillRect(pad,y,tableW,rowH);
@@ -1286,7 +1286,7 @@ function renderSansha(){
   if(holes.length)$('clrHole').onclick=clearHoles;
   if(canCopy&&document.getElementById('copyAsCur'))$('copyAsCur').onclick=duplicateAsCurrent;
   $('dlSansha').onclick=()=>{
-    let c='三角形,辺a,a('+u+'),辺b,b('+u+'),辺c,c('+u+'),面積('+u+'²)\n';
+    let c='三角形,辺a＝頂点,長さa('+u+'),辺b＝頂点,長さb('+u+'),辺c＝頂点,長さc('+u+'),面積('+u+'²)\n';
     t.rows.forEach(r=>{const v=r.v;c+=`△${r.no},${v[0]}-${v[1]},${r.a.toFixed(1)},${v[1]}-${v[2]},${r.b.toFixed(1)},${v[2]}-${v[0]},${r.c.toFixed(1)},${r.area.toFixed(2)}\n`;});
     c+=`外周投影,,,,,,,${t.total.toFixed(2)}\n`;
     if(holes.length){const hSum=state.scale?holesAreaM2(selected):holes.reduce((a,hh)=>a+(hh.length>=3?shoelace(hh):0),0);c+=`除外(穴)合計,,,,,,,-${hSum.toFixed(2)}\n`;}
@@ -1439,7 +1439,7 @@ function buildTriSection(){
     const u=b.t.unit, d=triDiagramDataURL(b.f,520);
     h+='<div class="tri"><div class="tl">'+(idx+1)+'. '+b.f.cat+' › '+b.f.kind+((b.f.slopeK&&b.f.slopeK!==1)?'（'+b.f.slopeKind+' ×'+b.f.slopeK+'）':'')+'</div>';
     if(d)h+='<img class="trimg" src="'+d.url+'" style="width:'+Math.min(520,d.w)+'px">';
-    h+='<table class="trtab"><tr><th>三角形</th><th>辺a</th><th class="num">a('+u+')</th><th>辺b</th><th class="num">b('+u+')</th><th>辺c</th><th class="num">c('+u+')</th><th class="num">面積('+u+'²)</th></tr>';
+    h+='<table class="trtab"><tr><th>三角形</th><th>辺a＝頂点</th><th class="num">長さa('+u+')</th><th>辺b＝頂点</th><th class="num">長さb('+u+')</th><th>辺c＝頂点</th><th class="num">長さc('+u+')</th><th class="num">面積('+u+'²)</th></tr>';
     b.t.rows.forEach(r=>{const v=r.v;h+='<tr><td>△'+r.no+'</td><td>'+v[0]+'–'+v[1]+'</td><td class="num">'+r.a.toFixed(1)+'</td><td>'+v[1]+'–'+v[2]+'</td><td class="num">'+r.b.toFixed(1)+'</td><td>'+v[2]+'–'+v[0]+'</td><td class="num">'+r.c.toFixed(1)+'</td><td class="num">'+r.area.toFixed(2)+'</td></tr>';});
     h+='<tr><td colspan="7" style="text-align:right">三角形の合計 ＝ 外周投影</td><td class="num">'+b.t.total.toFixed(2)+' '+u+'²</td></tr>';
     const hs=blockHoleSum(b.f); if(hs>0)h+='<tr><td colspan="7" style="text-align:right">除外（穴）'+(b.f.holes||[]).length+'か所</td><td class="num">-'+hs.toFixed(2)+'</td></tr>';
@@ -1517,12 +1517,12 @@ function showAllSansha(){
   if(!blocks.length){alert('面積の注記がありません。先に面積（㎡）を作図してください。');return;}
   const s=buildSummary(blocks),u=s.unit;
   $('modalSub').innerHTML=`${$('parkName').value||'（公園名未設定）'} ／ 面積 ${blocks.length} 件${state.scale?'':' ・縮尺未設定のためpx表示'}`;
-  let h='<div style="font-size:12px;color:#5b6b78;margin-bottom:8px">各三角形を<b>3辺の長さ</b>からヘロンの公式で算出（s=(a+b+c)/2、面積=√(s(s-a)(s-b)(s-c))）。図の<span style="color:#1463c7">青＝外周辺</span>・<span style="color:#0a8a6a">緑＝対角線</span>の数値が表の辺長に対応します。</div>';
+  let h='<div style="font-size:12px;color:#5b6b78;margin-bottom:8px">各三角形を<b>3辺の長さ</b>からヘロンの公式で算出（s=(a+b+c)/2、面積=√(s(s-a)(s-b)(s-c))）。図の<span style="color:#1463c7">青＝外周辺</span>・<span style="color:#0a8a6a">緑＝対角線</span>の数値が表の辺長に対応します。<b>「辺a＝頂点1–2」は、辺aが頂点1と頂点2を結ぶ辺という意味</b>です（図の角の番号と対応）。</div>';
   blocks.forEach((b,idx)=>{
     const col=featColor(b.f);
     h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.cat}　${b.f.kind} ＃${idx+1}<span class="a">${b.f.area!=null?b.f.area.toFixed(2):b.t.total.toFixed(2)} ${u}²</span></div>`;
     const dg=triDiagramDataURL(b.f,560); if(dg)h+=`<img src="${dg.url}" style="display:block;max-width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;margin:0 0 6px">`;
-    h+=`<table><tr><th>三角形</th><th>辺a (頂点)</th><th class="num">a(${u})</th><th>辺b</th><th class="num">b(${u})</th><th>辺c</th><th class="num">c(${u})</th><th class="num">面積(${u}²)</th></tr>`;
+    h+=`<table><tr><th>三角形</th><th>辺a＝頂点</th><th class="num">長さa(${u})</th><th>辺b＝頂点</th><th class="num">長さb(${u})</th><th>辺c＝頂点</th><th class="num">長さc(${u})</th><th class="num">面積(${u}²)</th></tr>`;
     b.t.rows.forEach(r=>{const v=r.v;h+=`<tr><td>△${r.no}</td><td>${v[0]}–${v[1]}</td><td class="num">${r.a.toFixed(1)}</td><td>${v[1]}–${v[2]}</td><td class="num">${r.b.toFixed(1)}</td><td>${v[2]}–${v[0]}</td><td class="num">${r.c.toFixed(1)}</td><td class="num">${r.area.toFixed(2)}</td></tr>`;});
     h+=`<tr><td colspan="7" style="text-align:right;color:var(--mut)">三角形の合計 ＝ 外周投影面積</td><td class="num">${b.t.total.toFixed(2)} ${u}²</td></tr>`;
     (b.f.holes||[]).forEach((hh,hi)=>{ if(!hh||hh.length<3)return; const hht=heronTable(hh);
@@ -1570,7 +1570,7 @@ function exportExcel(){
     blocks.forEach((b,idx)=>{
       merges.push({s:{r:aoa.length,c:0},e:{r:aoa.length,c:7}});
       aoa.push([`${b.f.cat}　${b.f.kind}　＃${idx+1}`]);
-      aoa.push(['三角形',`辺a`,`a(${u})`,`辺b`,`b(${u})`,`辺c`,`c(${u})`,`面積(${u}²)`]);
+      aoa.push(['三角形','辺a＝頂点',`長さa(${u})`,'辺b＝頂点',`長さb(${u})`,'辺c＝頂点',`長さc(${u})`,`面積(${u}²)`]);
       b.t.rows.forEach(r=>{const v=r.v;aoa.push(['△'+r.no,`${v[0]}-${v[1]}`,Math.round(r.a*10)/10,`${v[1]}-${v[2]}`,Math.round(r.b*10)/10,`${v[2]}-${v[0]}`,Math.round(r.c*10)/10,Math.round(r.area*100)/100]);});
       aoa.push(['合計','','','','','','',Math.round(b.t.total*100)/100]);
       aoa.push(['外周投影面積','','','','','','',Math.round(b.t.total*100)/100]);
@@ -1617,7 +1617,7 @@ function allSanshaCsv(){
   const blocks=allAreaBlocks();if(!blocks.length){alert('面積の注記がありません。');return;}
   const u=blocks[0].t.unit;let c=`\uFEFF${$('parkName').value||'公園'} 求積表（ヘロンの公式・3辺）\ns=(a+b+c)/2, 面積=√(s(s-a)(s-b)(s-c))\n`;
   blocks.forEach((b,idx)=>{
-    c+=`\n${b.f.cat}　${b.f.kind} ＃${idx+1}\n三角形,辺a,a(${u}),辺b,b(${u}),辺c,c(${u}),面積(${u}²)\n`;
+    c+=`\n${b.f.cat}　${b.f.kind} ＃${idx+1}\n三角形,辺a＝頂点,長さa(${u}),辺b＝頂点,長さb(${u}),辺c＝頂点,長さc(${u}),面積(${u}²)\n`;
     b.t.rows.forEach(r=>{const v=r.v;c+=`△${r.no},${v[0]}-${v[1]},${r.a.toFixed(1)},${v[1]}-${v[2]},${r.b.toFixed(1)},${v[2]}-${v[0]},${r.c.toFixed(1)},${r.area.toFixed(2)}\n`;});
     c+=`外周投影,,,,,,,${b.t.total.toFixed(2)}\n`;
     const hSum=blockHoleSum(b.f);if(hSum>0)c+=`除外(穴),,,,,,,-${hSum.toFixed(2)}\n`;
@@ -1631,7 +1631,7 @@ $('mCsv').onclick=allSanshaCsv;
 $('mCopy').onclick=()=>{
   const blocks=allAreaBlocks();if(!blocks.length)return;const u=blocks[0].t.unit;let txt='';
   blocks.forEach((b,idx)=>{
-    txt+=`${b.f.cat}　${b.f.kind} ＃${idx+1}\n三角形\t辺a\ta(${u})\t辺b\tb(${u})\t辺c\tc(${u})\t面積\n`;
+    txt+=`${b.f.cat}　${b.f.kind} ＃${idx+1}\n三角形\t辺a＝頂点\t長さa(${u})\t辺b＝頂点\t長さb(${u})\t辺c＝頂点\t長さc(${u})\t面積\n`;
     b.t.rows.forEach(r=>{const v=r.v;txt+=`△${r.no}\t${v[0]}-${v[1]}\t${r.a.toFixed(1)}\t${v[1]}-${v[2]}\t${r.b.toFixed(1)}\t${v[2]}-${v[0]}\t${r.c.toFixed(1)}\t${r.area.toFixed(2)}\n`;});
     txt+=`外周投影\t\t\t\t\t\t\t${b.t.total.toFixed(2)}\n計上面積\t\t\t\t\t\t\t${(b.f.area!=null?b.f.area:b.t.total).toFixed(2)}\n\n`;});
   navigator.clipboard.writeText(txt).then(()=>{$('mCopy').textContent='コピーしました';setTimeout(()=>$('mCopy').textContent='表をコピー',1500);});
