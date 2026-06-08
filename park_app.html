@@ -1463,15 +1463,19 @@ function printPDF(){
 }
 $('printPdf').onclick=printPDF;
 function dataURLtoBlob(durl){const c=durl.split(',');const mime=(c[0].match(/:(.*?);/)||[])[1]||'application/octet-stream';const bin=atob(c[1]);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:mime});}
-// 保存：iOS等では共有シート（ファイルに保存→保存先を選べる／LINE送信も可）。非対応はダウンロード。
+// 保存：iPhone/iPadは共有シート（保存先を選べる）／PC(Win・Mac)・Androidはダウンロード（ブラウザの保存先＝通常ダウンロードフォルダ）
 function saveFile(blob,name){
-  try{
-    const file=new File([blob],name,{type:blob.type||'application/octet-stream'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      navigator.share({files:[file],title:name}).catch(()=>{});
-      return;
-    }
-  }catch(e){}
+  const ua=navigator.userAgent||'';
+  const isIOS=/iP(hone|od|ad)/.test(ua) || (navigator.platform==='MacIntel' && (navigator.maxTouchPoints||0)>1);
+  if(isIOS){
+    try{
+      const file=new File([blob],name,{type:blob.type||'application/octet-stream'});
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        navigator.share({files:[file],title:name}).catch(()=>{});
+        return;
+      }
+    }catch(e){}
+  }
   const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);
 }
 function dl(text,name,type){ saveFile(new Blob([text],{type:type||'application/octet-stream'}),name); }
