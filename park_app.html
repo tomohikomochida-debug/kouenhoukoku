@@ -806,7 +806,11 @@ function syncDelBtn(){const n=multiSel.length,any=(n>0||selected),single=(n<=1);
   if(sc){sc.style.display=n>1?'inline-flex':'none'; sc.textContent=n>1?(n+'個'):'';}}
 function computeGroups(){
   const R=90/view.zoom;
-  const items=state.features.filter(f=>f.type==='box'&&!f.sym).map(f=>({f,key:f.cat+'|'+f.kind+'|'+(f.round?'c':'b')+'|'+((f.area||0).toFixed(2)),x:f.pt.x,y:f.pt.y}));
+  const items=[];
+  state.features.forEach(f=>{
+    if(f.type==='box'&&!f.sym){ items.push({f,mode:'area',unit:'',key:'b|'+f.cat+'|'+f.kind+'|'+(f.round?'c':'b')+'|'+((f.area||0).toFixed(2)),x:f.pt.x,y:f.pt.y}); }
+    else if(f.type==='tree'&&f.cat!=='巣撤去'){ items.push({f,mode:'count',unit:'本',key:'t|'+f.cat+'|'+f.kind+'|'+(f.rank||''),x:f.pt.x,y:f.pt.y}); }
+  });
   const byKey={}; items.forEach(it=>{(byKey[it.key]=byKey[it.key]||[]).push(it);});
   const clusters=[], memberSet=new Set();
   Object.keys(byKey).forEach(k=>{ const arr=byKey[k], used=new Array(arr.length).fill(false);
@@ -814,8 +818,11 @@ function computeGroups(){
       while(stack.length){ const j=stack.pop(); comp.push(arr[j]);
         for(let m=0;m<arr.length;m++){ if(!used[m]&&Math.hypot(arr[m].x-arr[j].x,arr[m].y-arr[j].y)<=R){used[m]=true;stack.push(m);} } }
       if(comp.length>=2){ const cx=comp.reduce((a,c)=>a+c.x,0)/comp.length, cy=comp.reduce((a,c)=>a+c.y,0)/comp.length;
-        const f0=comp[0].f, dim=f0.round?`φ${f0.L}×H${f0.H}m`:`${f0.sides===false?(f0.L+'×'+f0.D):(f0.L+'×'+f0.D+'×'+f0.H)}m`;
-        clusters.push({members:comp.map(c=>c.f),cx,cy,kind:f0.kind,dim,area:f0.area||0,col:featColor(f0)});
+        const f0=comp[0].f, mode=comp[0].mode, unit=comp[0].unit;
+        let dim;
+        if(mode==='area'){ dim=f0.round?`φ${f0.L}×H${f0.H}m`:`${f0.sides===false?(f0.L+'×'+f0.D):(f0.L+'×'+f0.D+'×'+f0.H)}m`; }
+        else { dim=f0.rank||''; }
+        clusters.push({members:comp.map(c=>c.f),cx,cy,kind:f0.kind,dim,area:f0.area||0,mode,unit,col:featColor(f0)});
         comp.forEach(c=>memberSet.add(c.f)); } } });
   return {clusters,memberSet};
 }
@@ -826,7 +833,7 @@ function draw(){
   if(state.img)ctx.drawImage(state.img,0,0);
   // features
   const SEL='#ff2d2d';
-  _labels=[];
+  _labels=[]; _labelHit=[];
   const _gmap=groupLabels?computeGroups():null, _grouped=_gmap?_gmap.memberSet:null;
   state.features.forEach(f=>{
     const col=featColor(f);
@@ -834,26 +841,26 @@ function draw(){
       if(f.sym){
         const rr=7/view.zoom; ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rr,0,7);ctx.fillStyle=col;ctx.fill();
         if(isSel(f)){ctx.lineWidth=2/view.zoom;ctx.strokeStyle=SEL;ctx.stroke();}
-        if(!exporting&&(isSel(f)||view.zoom>1.4)) label(f.pt.x,f.pt.y-rr-9/view.zoom,f.kind,col);
+        if(!exporting&&(isSel(f)||view.zoom>1.4)) label(f.pt.x,f.pt.y-rr-9/view.zoom,f.kind,col,f);
       } else if(f.round){
         const rpx=(state.scale?(f.L/state.scale):60)/2;
         ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rpx,0,7);ctx.fillStyle=col+'33';ctx.fill();
         ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=(isSel(f)?SEL:col);ctx.stroke();
         if(isSel(f)){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();}
-        if(!(_grouped&&_grouped.has(f))) label(f.pt.x,f.pt.y+((state.scale?(f.L/state.scale):60)/2)+30/view.zoom,`${f.kind}\nφ${f.L}${f.sides===false?'':('×H'+f.H)}m\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+        if(!(_grouped&&_grouped.has(f))) label(f.pt.x,f.pt.y+((state.scale?(f.L/state.scale):60)/2),`${f.kind}\nφ${f.L}${f.sides===false?'':('×H'+f.H)}m\n${f.area?f.area.toFixed(2):'—'} ㎡`,col,f);
       } else {
         const wpx=state.scale?(f.L/state.scale):60, hpx=state.scale?(f.D/state.scale):40;
         ctx.save();ctx.translate(f.pt.x,f.pt.y);ctx.rotate(f.rot||0);
         ctx.beginPath();ctx.rect(-wpx/2,-hpx/2,wpx,hpx);ctx.fillStyle=col+'33';ctx.fill();
         ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=(isSel(f)?SEL:col);ctx.stroke();ctx.restore();
         if(isSel(f)){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();}
-        if(!(_grouped&&_grouped.has(f))) label(f.pt.x,f.pt.y+((state.scale?(Math.max(f.L,f.D)/state.scale):60)/2)+30/view.zoom,`${f.kind}\n${f.sides===false?(f.L+'×'+f.D):(f.L+'×'+f.D+'×'+f.H)}m\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+        if(!(_grouped&&_grouped.has(f))) label(f.pt.x,f.pt.y+((state.scale?(Math.max(f.L,f.D)/state.scale):60)/2),`${f.kind}\n${f.sides===false?(f.L+'×'+f.D):(f.L+'×'+f.D+'×'+f.H)}m\n${f.area?f.area.toFixed(2):'—'} ㎡`,col,f);
       }
     }else if(f.type==='line'){
       ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
       ctx.lineWidth=(isSel(f)?5:3.5)/view.zoom;ctx.strokeStyle=(isSel(f)?SEL:col);ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();ctx.lineCap='butt';
       if(!exporting&&f===selected){drawHandles(f);drawEdgeLengths(f);}
-      const c=centroid(f.pts);label(c.x,c.y,`${f.kind}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+      const c=centroid(f.pts);label(c.x,c.y,`${f.kind}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col,f);
     }else if(f.type==='area'){
       // 本体（穴があれば even-odd でくり抜き）
       ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();
@@ -868,26 +875,29 @@ function draw(){
         ctx.beginPath();h.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();
         if(hot){ctx.fillStyle='#ff8c0038';ctx.fill();}
         ctx.setLineDash([6/view.zoom,4/view.zoom]);ctx.lineWidth=(hot?4:2)/view.zoom;ctx.strokeStyle=hot?'#ff5e00':'#ff8c00';ctx.stroke();ctx.setLineDash([]);
-        const hc=centroid(h),ha=areaM2(h);label(hc.x,hc.y,`${hot?'▶ ':''}除外${hi+1}\n${ha!=null?'-'+ha.toFixed(2):''} ㎡`,hot?'#ff5e00':'#ff8c00');
+        const hc=centroid(h),ha=areaM2(h);label(hc.x,hc.y,`${hot?'▶ ':''}除外${hi+1}\n${ha!=null?'-'+ha.toFixed(2):''} ㎡`,hot?'#ff5e00':'#ff8c00',f);
       });
       if(!exporting&&f===selected)drawHandles(f);
       if(!exporting&&f===selected)drawEdgeLengths(f);
-      const c=centroid(f.pts);const tag=(f.calc==='trim')?'（投影＋側面）':'';const stag=(f.slopeK&&f.slopeK!==1)?` ${f.slopeKind||''}×${f.slopeK}`:'';label(c.x,c.y,`${f.kind}${tag}${stag}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+      const c=centroid(f.pts);const _maxY=f.pts.reduce((a,p)=>Math.max(a,p.y),-Infinity);const tag=(f.calc==='trim')?'（投影＋側面）':'';const stag=(f.slopeK&&f.slopeK!==1)?` ${f.slopeKind||''}×${f.slopeK}`:'';label(c.x,_maxY,`${f.kind}${tag}${stag}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col,f);
     }else{
       const isNest=(f.cat==='巣撤去'), rad=treeRadius(f)/view.zoom;
       ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad,0,7);ctx.fillStyle=col;ctx.fill();
       ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=isSel(f)?SEL:(isNest?'#fff':'#0008');ctx.stroke();
       if(isNest){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad+3/view.zoom,0,7);ctx.lineWidth=1.8/view.zoom;ctx.strokeStyle=col;ctx.stroke();}
-      if(isNest) label(f.pt.x,f.pt.y-rad-10/view.zoom,f.kind,col);   // 巣は位置が重要：出力でも常に表示
-      else if(!exporting && (isSel(f) || view.zoom>1.4)) label(f.pt.x,f.pt.y-rad-9/view.zoom,(f.rank?f.rank:f.kind),col);
+      if(isNest) label(f.pt.x,f.pt.y+rad+2/view.zoom,f.kind,col,f);   // 巣は位置が重要：出力でも常に表示
+      else if(!exporting && (isSel(f) || view.zoom>1.4) && !(_grouped&&_grouped.has(f))) label(f.pt.x,f.pt.y+rad+2/view.zoom,(f.rank?f.rank:f.kind),col,f);
     }
   });
   if(_gmap){ _gmap.clusters.forEach(cl=>{
     ctx.save();ctx.lineWidth=1/view.zoom;ctx.strokeStyle='rgba(20,40,60,.5)';ctx.setLineDash([4/view.zoom,3/view.zoom]);
     cl.members.forEach(m=>{ctx.beginPath();ctx.moveTo(cl.cx,cl.cy);ctx.lineTo(m.pt.x,m.pt.y);ctx.stroke();});
     ctx.setLineDash([]);ctx.restore();
-    const N=cl.members.length, a=Math.round(cl.area*100)/100;
-    label(cl.cx,cl.cy,`${cl.kind} ${cl.dim}\n${a.toFixed(2)}㎡ × ${N} ＝ ${(a*N).toFixed(2)}㎡`,cl.col);
+    const N=cl.members.length;
+    let _gt;
+    if(cl.mode==='count'){ _gt=`${cl.kind}${cl.dim?' '+cl.dim:''}\n× ${N}${cl.unit||'本'}`; }
+    else { const a=Math.round(cl.area*100)/100; _gt=`${cl.kind} ${cl.dim}\n${a.toFixed(2)}㎡ × ${N} ＝ ${(a*N).toFixed(2)}㎡`; }
+    label(cl.cx,cl.cy,_gt,cl.col);
   }); }
   flushLabels(); _labels=null;
   // draft（作図中：破線＋点で視認。面積=赤、縮尺=青） 
@@ -921,9 +931,9 @@ function draw(){
 }
 function midpoint(a,b){return{x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
 // ラベル：_labels収集中は後でまとめて配置（重なり回避）。即時のときはその場に描画。
-function label(x,y,txt,col){
-  if(_labels){_labels.push({x,y,txt,col});return;}
-  flushLabels([{x,y,txt,col}]);
+function label(x,y,txt,col,f){
+  if(_labels){_labels.push({x,y,txt,col,f});return;}
+  flushLabels([{x,y,txt,col,f}]);
 }
 function flushLabels(list){
   const arr=list||_labels||[]; if(!arr.length){return;}
@@ -931,7 +941,7 @@ function flushLabels(list){
   ctx.save();
   ctx.font=`700 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
   const items=arr.map(L=>{const lines=String(L.txt).split('\n');let w=0;lines.forEach(l=>{const m=ctx.measureText(l).width;if(m>w)w=m;});
-    return {x:L.x,y:L.y,ox:L.x,oy:L.y,col:L.col,lines,bw:w+pad*2,bh:lines.length*lh+pad*1.4};});
+    const bh=lines.length*lh+pad*1.4; return {x:L.x,y:L.y+bh/2+gap+6/view.zoom,ox:L.x,oy:L.y,col:L.col,f:L.f,lines,bw:w+pad*2,bh};});
   // 重なり回避：y昇順に、既配置と重なるものは下へずらす
   items.sort((a,b)=>a.y-b.y);
   const placed=[];
@@ -945,6 +955,7 @@ function flushLabels(list){
     }
     placed.push(it);
   });
+  _labelHit=placed.filter(it=>it.f).map(it=>({f:it.f,x:it.x,y:it.y,bw:it.bw,bh:it.bh}));
   // リーダー線（ずれた分だけ）
   placed.forEach(it=>{if(Math.abs(it.y-it.oy)>1.5/view.zoom||Math.abs(it.x-it.ox)>1.5/view.zoom){
     ctx.beginPath();ctx.moveTo(it.ox,it.oy);ctx.lineTo(it.x,it.y);ctx.lineWidth=1/view.zoom;ctx.strokeStyle='rgba(20,40,60,.45)';ctx.setLineDash([3/view.zoom,2/view.zoom]);ctx.stroke();ctx.setLineDash([]);
@@ -1024,7 +1035,7 @@ function legendHit(p){const b=legend._box;return !!(legend.show&&b&&p.x>=b.x&&p.
 
 /* ---------- 入力 ---------- */
 let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null,draggingLegend=false,legDragOff=null,spaceDown=false,dragSnap=null;
-let editV=null,lastPick=null,pickIdx=0,lastVtxTap=null,prevToolForPan='area',holeMode=null,dragRing=null,hlHole=null,_labels=null,exporting=false;
+let editV=null,lastPick=null,pickIdx=0,lastVtxTap=null,prevToolForPan='area',holeMode=null,dragRing=null,hlHole=null,_labels=null,_labelHit=[],exporting=false;
 function ringPts(f,ring){return ring==='outer'?f.pts:(f.holes||[])[ring];}
 function hitBox(f,ip,tol){ if(f.round){const rpx=(state.scale?(f.L/state.scale):60)/2;return dist(f.pt,ip)<=rpx+tol;} const wpx=state.scale?(f.L/state.scale):60,hpx=state.scale?(f.D/state.scale):40,dx=ip.x-f.pt.x,dy=ip.y-f.pt.y,c=Math.cos(f.rot||0),sn=Math.sin(f.rot||0),rx=dx*c+dy*sn,ry=-dx*sn+dy*c; return Math.abs(rx)<=wpx/2+tol&&Math.abs(ry)<=hpx/2+tol; }
 function nearestTree(ip){let best=null,bd=Infinity;state.features.forEach(f=>{if(f.type==='tree'){const d=dist(f.pt,ip);if(d<(treeRadius(f)+8)/view.zoom&&d<bd){bd=d;best=f;}}});return best;}
@@ -1062,6 +1073,7 @@ function deleteVertex(f,ring,idx){
   pushHistory();pts.splice(idx,1);recalcAll();renderAgg();renderSansha();draw();
 }
 // マウス/タッチ共通の押下処理。'pan'|'legend'|'vertex'|'edge'|'drag' を返したら=操作開始（タップ配置しない）／null=描画or配置
+function labelHitFeature(ip){ for(let i=_labelHit.length-1;i>=0;i--){const b=_labelHit[i]; if(Math.abs(ip.x-b.x)<=b.bw/2&&Math.abs(ip.y-b.y)<=b.bh/2) return b.f;} return null; }
 function downCommon(p,ip){
   if(spaceDown||tool==='pan'){panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};return 'pan';}
   if(legendHit(p)){startLegendDrag(p);return 'legend';}
@@ -1080,7 +1092,7 @@ function downCommon(p,ip){
   }
   if(tool==='cal')return null;
   if(tool==='area')return null;                 // 面積モードは常に描画（樹木と同様、既存図形の上でも開始可）。編集は選択中図形のハンドル or 選択モードで。
-  const f=(tool==='tree')?nearestTree(ip):pickHit(ip);   // 樹木モードは既存の木だけ拾う／選択モードは全部（重なり巡回）
+  let f=(tool==='tree')?nearestTree(ip):pickHit(ip); if(!f){const lf=labelHitFeature(ip); if(lf&&state.features.indexOf(lf)>=0)f=lf;}   // 図形が外れたらラベルでも選択
   if(f){
     hlHole=null;
     if(selMod){toggleSel(f);renderSansha();dragGroup=false;dragging=null;return 'sel';}
