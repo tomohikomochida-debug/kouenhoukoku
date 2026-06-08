@@ -204,6 +204,7 @@
       <div id="dimRow" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px">
         <span id="lenWrap" style="display:none">長さ <input id="lenInput" type="number" value="2.0" step="0.1" style="width:62px"></span>
         <span id="depWrap" style="display:none">奥行 <input id="depInput" type="number" value="0.8" step="0.1" style="width:62px"></span>
+        <span id="diaWrap" style="display:none">径 <input id="diaInput" type="number" value="0.6" step="0.1" style="width:56px"><select id="diaMode" style="width:60px"><option value="d">直径</option><option value="r">半径</option></select></span>
         <span id="htWrap">高さ <input id="htInput" type="number" value="1.0" step="0.1" style="width:62px"></span>
       </div>
       <div id="rankLegend" style="display:none;margin-top:8px"></div>
@@ -239,6 +240,10 @@
       <input id="startDate" type="date" style="width:100%">
       <label class="fld">完成年月日（報告書用・別日のとき）</label>
       <input id="finishDate" type="date" style="width:100%">
+      <label class="fld">現場代理人氏名（報告書用）</label>
+      <input id="agentName" placeholder="氏名" style="width:100%">
+      <label class="fld">監督員職氏名（報告書用）</label>
+      <input id="supervisorName" placeholder="職・氏名" style="width:100%">
       <button class="btn" id="printPdf">🖨 印刷／PDFで保存<small>実績用：地図＋集計を1枚に</small></button>
       <button class="btn ghost danger" id="clearAll">全消去</button>
     </div>
@@ -252,8 +257,18 @@
       <button id="mIn" title="拡大">＋</button>
       <button id="mOut" title="縮小">－</button>
       <button id="mFit" title="全体表示">⤢</button>
+      <button id="multiToggle" title="複数選択（タップで追加／解除）">多</button>
+      <button id="grpToggle" class="on" title="×Nまとめ表示（近接の同一中木をまとめ）">×N</button>
     </div>
-    <button id="delSelBtn" style="position:absolute;left:50%;transform:translateX(-50%);bottom:16px;display:none;align-items:center;gap:6px;z-index:30;background:#e11d48;color:#fff;border:none;border-radius:22px;padding:11px 18px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">🗑 選択を削除</button>
+    <div id="selActions" style="position:absolute;left:50%;transform:translateX(-50%);bottom:16px;display:none;gap:8px;z-index:30">
+      <span id="selCount" style="display:none;align-items:center;color:#fff;background:#334155;border-radius:22px;padding:11px 12px;font-size:13px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)"></span>
+      <button id="dupSelBtn" style="display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;border:none;border-radius:22px;padding:11px 16px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">⧉ 複製</button>
+      <button id="delSelBtn" style="display:inline-flex;align-items:center;gap:6px;background:#e11d48;color:#fff;border:none;border-radius:22px;padding:11px 16px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">🗑 削除</button>
+      <button id="clearSelBtn" style="display:inline-flex;align-items:center;background:#64748b;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">選択解除</button>
+      <button id="rotL" style="display:none;align-items:center;background:#475569;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:16px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">↺</button>
+      <button id="rotR" style="display:none;align-items:center;background:#475569;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:16px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">↻</button>
+      <button id="symSel" style="display:none;align-items:center;background:#0f766e;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">実寸/記号</button>
+    </div>
     <div class="hint" id="hint"></div>
     <div class="scalebadge no" id="scaleBadge">縮尺：未設定</div>
     <div class="draftbar" id="draftbar">
@@ -323,7 +338,8 @@ const BANDS = ["30cm未満","30〜60cm","60〜90cm","90〜120cm","120〜150cm","
    単価は高津区の地区標準（単価地区高津区・歩2025.12単2025.12）。price/prices 未記載は単価不明＝概算0。 */
 const MASTER = {
   "中低木刈込工":{unit:"㎡",mode:"area",kinds:{
-    "低木刈込":{price:195}, "中木刈込":{price:295,height:true,calc:'trim'} }},
+    "低木刈込":{price:195}, "中木刈込":{price:295,height:true,calc:'trim'},
+    "中木刈込（円柱）":{price:295,geom:'box',sides:true,round:true}, "中木刈込（生垣）":{price:295,geom:'box',sides:true} }},
   "除草工":{unit:"㎡",mode:"area",kinds:{
     "機械除草Ⅰ（肩掛式）":{price:46}, "集草":{price:23}, "積込・運搬":{price:24},
     "刈草小運搬（15m以上50m未満）":{price:35} }},
@@ -358,7 +374,7 @@ let state={img:null, scale:null /*m per imgpx*/, features:[], manual:[]};
 let view={zoom:1,ox:0,oy:0};
 let tool="area";
 let draft=null;            // 作成中ポリゴン or 校正点
-let selected=null;
+let selected=null,multiSel=[],multiMode=false,selMod=false,dragGroup=false,groupLabels=true;
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 const $=id=>document.getElementById(id);
 
@@ -366,7 +382,7 @@ const $=id=>document.getElementById(id);
 let undoStack=[], redoStack=[];
 function snapshot(){return JSON.stringify({features:state.features,manual:state.manual,scale:state.scale});}
 function restore(s){const o=JSON.parse(s);state.features=o.features;state.manual=o.manual;state.scale=o.scale;
-  recalcAll();selected=null;draft=null;updateScaleBadge();renderAgg();renderSansha();refreshDraftBar();draw();updateUndoButtons();}
+  recalcAll();multiSel=[];selected=null;draft=null;updateScaleBadge();renderAgg();renderSansha();refreshDraftBar();draw();updateUndoButtons();}
 function pushHistory(){undoStack.push(snapshot());if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();}
 function undo(){if(!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop());}
 function redo(){if(!redoStack.length)return;undoStack.push(snapshot());restore(redoStack.pop());}
@@ -395,6 +411,7 @@ function curBoxSides(){return curKindDef().sides!==false;}                   // 
 function curNeedsHeight(){const g=curGeom();return (g==='box'&&curBoxSides())||g==='line'||!!curKindDef().height;}
 function curCalc(){return curKindDef().calc||'flat';}
 function curHeightVal(){return parseFloat($('htInput').value)||0;}
+  function curDiaVal(){const v=parseFloat($('diaInput').value)||0;return ($('diaMode')&&$('diaMode').value==='r')?v*2:v;}
 function curLenVal(){return parseFloat($('lenInput').value)||0;}
 function curDepVal(){return parseFloat($('depInput').value)||0;}
 function fillRanks(){
@@ -426,10 +443,12 @@ function fillRanks(){
   const showDim=box||line||needH;
   $('dimLbl').style.display=showDim?'block':'none';
   $('dimRow').style.display=showDim?'flex':'none';
-  $('lenWrap').style.display=box?'inline':'none';
-  $('depWrap').style.display=box?'inline':'none';
+  const round=box&&!!curKindDef().round;
+  $('lenWrap').style.display=(box&&!round)?'inline':'none';
+  $('depWrap').style.display=(box&&!round)?'inline':'none';
+  $('diaWrap').style.display=round?'inline':'none';
   $('htWrap').style.display=needH?'inline':'none';
-  $('dimNote').textContent= line?'：柵の長さ×高さ' : box?(curBoxSides()?'：投影＋側面4面':'：投影のみ') : (needH?'：投影面積＋側面（周長×高さ）':'');
+  $('dimNote').textContent= line?'：柵の長さ×高さ' : round?'：円柱（投影＝円＋側面）' : box?(curBoxSides()?'：投影＋側面4面':'：投影のみ') : (needH?'：投影面積＋側面（周長×高さ）':'');
   syncToolForCat();
 }
 function syncToolForCat(){
@@ -501,7 +520,7 @@ function holesAreaM2(f){if(!state.scale||!f.holes||!f.holes.length)return 0;let 
 function netFootprintM2(f){const o=areaM2(f.pts);if(o==null)return null;return Math.max(0,o-holesAreaM2(f));}
 // featureの計上面積（㎡）を再計算
 function recalcAreaFeature(f){
-  if(f.type==='box'){const fp=f.L*f.D;f.area=(f.sides===false)?fp:(fp+2*(f.H||0)*(f.L+f.D));}  // 低木=投影のみ／中木=投影+側面4面
+  if(f.type==='box'){ if(f.round){const r=(f.L||0)/2; f.area=(f.sides===false)?(Math.PI*r*r):(Math.PI*r*r+Math.PI*(f.L||0)*(f.H||0));} else {const fp=f.L*f.D; f.area=(f.sides===false)?fp:(fp+2*(f.H||0)*(f.L+f.D));} }  // 円柱=π(d/2)²(+π·d·h)／生垣=投影+側面4面
   else if(f.type==='line'){f.length=lengthM(f.pts);f.area=lineAreaM2(f);}
   else if(f.type==='area'){f.footprint=netFootprintM2(f);
     const k=f.slopeK||1, side=(f.calc==='trim')?perimeterM(f.pts)*(f.height||0):0;
@@ -763,7 +782,28 @@ function drawEdgeLengths(f){
   ctx.restore();
 }
 
-function syncDelBtn(){const d=$('delSelBtn');if(d)d.style.display=selected?'inline-flex':'none';}
+function syncDelBtn(){const n=multiSel.length,any=(n>0||selected),single=(n<=1);
+  const d=$('selActions');if(d)d.style.display=any?'flex':'none';
+  const isBox=single&&selected&&selected.type==='box'&&!selected.round,rl=$('rotL'),rr=$('rotR'),sy=$('symSel'),sc=$('selCount');
+  if(rl)rl.style.display=isBox?'inline-flex':'none'; if(rr)rr.style.display=isBox?'inline-flex':'none';
+  const sel=multiSel.length?multiSel:(selected?[selected]:[]); const hasBox=sel.some(f=>f&&f.type==='box');
+  if(sy)sy.style.display=hasBox?'inline-flex':'none';
+  if(sc){sc.style.display=n>1?'inline-flex':'none'; sc.textContent=n>1?(n+'個'):'';}}
+function computeGroups(){
+  const R=90/view.zoom;
+  const items=state.features.filter(f=>f.type==='box'&&!f.sym).map(f=>({f,key:f.cat+'|'+f.kind+'|'+(f.round?'c':'b')+'|'+((f.area||0).toFixed(2)),x:f.pt.x,y:f.pt.y}));
+  const byKey={}; items.forEach(it=>{(byKey[it.key]=byKey[it.key]||[]).push(it);});
+  const clusters=[], memberSet=new Set();
+  Object.keys(byKey).forEach(k=>{ const arr=byKey[k], used=new Array(arr.length).fill(false);
+    for(let i=0;i<arr.length;i++){ if(used[i])continue; const stack=[i], comp=[]; used[i]=true;
+      while(stack.length){ const j=stack.pop(); comp.push(arr[j]);
+        for(let m=0;m<arr.length;m++){ if(!used[m]&&Math.hypot(arr[m].x-arr[j].x,arr[m].y-arr[j].y)<=R){used[m]=true;stack.push(m);} } }
+      if(comp.length>=2){ const cx=comp.reduce((a,c)=>a+c.x,0)/comp.length, cy=comp.reduce((a,c)=>a+c.y,0)/comp.length;
+        const f0=comp[0].f, dim=f0.round?`φ${f0.L}×H${f0.H}m`:`${f0.sides===false?(f0.L+'×'+f0.D):(f0.L+'×'+f0.D+'×'+f0.H)}m`;
+        clusters.push({members:comp.map(c=>c.f),cx,cy,kind:f0.kind,dim,area:f0.area||0,col:featColor(f0)});
+        comp.forEach(c=>memberSet.add(c.f)); } } });
+  return {clusters,memberSet};
+}
 function draw(){
   syncDelBtn();
   ctx.clearRect(0,0,cv.width,cv.height);
@@ -772,19 +812,31 @@ function draw(){
   // features
   const SEL='#ff2d2d';
   _labels=[];
+  const _gmap=groupLabels?computeGroups():null, _grouped=_gmap?_gmap.memberSet:null;
   state.features.forEach(f=>{
     const col=featColor(f);
     if(f.type==='box'){
-      const wpx=state.scale?(f.L/state.scale):60, hpx=state.scale?(f.D/state.scale):40;
-      const x=f.pt.x-wpx/2,y=f.pt.y-hpx/2;
-      ctx.beginPath();ctx.rect(x,y,wpx,hpx);
-      ctx.fillStyle=col+'33';ctx.fill();
-      ctx.lineWidth=(f===selected?3:2)/view.zoom;ctx.strokeStyle=(f===selected?SEL:col);ctx.stroke();
-      if(f===selected){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();}
-      label(f.pt.x,f.pt.y,`${f.kind}\n${f.sides===false?(f.L+'×'+f.D):(f.L+'×'+f.D+'×'+f.H)}m\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+      if(f.sym){
+        const rr=7/view.zoom; ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rr,0,7);ctx.fillStyle=col;ctx.fill();
+        if(isSel(f)){ctx.lineWidth=2/view.zoom;ctx.strokeStyle=SEL;ctx.stroke();}
+        if(!exporting&&(isSel(f)||view.zoom>1.4)) label(f.pt.x,f.pt.y-rr-9/view.zoom,f.kind,col);
+      } else if(f.round){
+        const rpx=(state.scale?(f.L/state.scale):60)/2;
+        ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rpx,0,7);ctx.fillStyle=col+'33';ctx.fill();
+        ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=(isSel(f)?SEL:col);ctx.stroke();
+        if(isSel(f)){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();}
+        if(!(_grouped&&_grouped.has(f))) label(f.pt.x,f.pt.y+((state.scale?(f.L/state.scale):60)/2)+30/view.zoom,`${f.kind}\nφ${f.L}×H${f.H}m\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+      } else {
+        const wpx=state.scale?(f.L/state.scale):60, hpx=state.scale?(f.D/state.scale):40;
+        ctx.save();ctx.translate(f.pt.x,f.pt.y);ctx.rotate(f.rot||0);
+        ctx.beginPath();ctx.rect(-wpx/2,-hpx/2,wpx,hpx);ctx.fillStyle=col+'33';ctx.fill();
+        ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=(isSel(f)?SEL:col);ctx.stroke();ctx.restore();
+        if(isSel(f)){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,5/view.zoom,0,7);ctx.fillStyle=SEL;ctx.fill();ctx.lineWidth=1.5/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();}
+        if(!(_grouped&&_grouped.has(f))) label(f.pt.x,f.pt.y+((state.scale?(Math.max(f.L,f.D)/state.scale):60)/2)+30/view.zoom,`${f.kind}\n${f.sides===false?(f.L+'×'+f.D):(f.L+'×'+f.D+'×'+f.H)}m\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
+      }
     }else if(f.type==='line'){
       ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
-      ctx.lineWidth=(f===selected?5:3.5)/view.zoom;ctx.strokeStyle=(f===selected?SEL:col);ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();ctx.lineCap='butt';
+      ctx.lineWidth=(isSel(f)?5:3.5)/view.zoom;ctx.strokeStyle=(isSel(f)?SEL:col);ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();ctx.lineCap='butt';
       if(f===selected){drawHandles(f);drawEdgeLengths(f);}
       const c=centroid(f.pts);label(c.x,c.y,`${f.kind}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col);
     }else if(f.type==='area'){
@@ -794,7 +846,7 @@ function draw(){
       ctx.fillStyle=col+'33';ctx.fill('evenodd');
       // 外周線
       ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();
-      ctx.lineWidth=(f===selected?3:2)/view.zoom;ctx.strokeStyle=(f===selected?SEL:col);ctx.stroke();
+      ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=(isSel(f)?SEL:col);ctx.stroke();
       // 穴の輪郭（橙の破線）＋面積ラベル
       (f.holes||[]).forEach((h,hi)=>{
         const hot=(f===selected&&hi===hlHole);
@@ -809,12 +861,19 @@ function draw(){
     }else{
       const isNest=(f.cat==='巣撤去'), rad=treeRadius(f)/view.zoom;
       ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad,0,7);ctx.fillStyle=col;ctx.fill();
-      ctx.lineWidth=(f===selected?3:2)/view.zoom;ctx.strokeStyle=f===selected?SEL:(isNest?'#fff':'#0008');ctx.stroke();
+      ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=isSel(f)?SEL:(isNest?'#fff':'#0008');ctx.stroke();
       if(isNest){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad+3/view.zoom,0,7);ctx.lineWidth=1.8/view.zoom;ctx.strokeStyle=col;ctx.stroke();}
       if(isNest) label(f.pt.x,f.pt.y-rad-10/view.zoom,f.kind,col);   // 巣は位置が重要：出力でも常に表示
-      else if(!exporting && (f===selected || view.zoom>1.4)) label(f.pt.x,f.pt.y-rad-9/view.zoom,(f.rank?f.rank:f.kind),col);
+      else if(!exporting && (isSel(f) || view.zoom>1.4)) label(f.pt.x,f.pt.y-rad-9/view.zoom,(f.rank?f.rank:f.kind),col);
     }
   });
+  if(_gmap){ _gmap.clusters.forEach(cl=>{
+    ctx.save();ctx.lineWidth=1/view.zoom;ctx.strokeStyle='rgba(20,40,60,.5)';ctx.setLineDash([4/view.zoom,3/view.zoom]);
+    cl.members.forEach(m=>{ctx.beginPath();ctx.moveTo(cl.cx,cl.cy);ctx.lineTo(m.pt.x,m.pt.y);ctx.stroke();});
+    ctx.setLineDash([]);ctx.restore();
+    const N=cl.members.length, a=Math.round(cl.area*100)/100;
+    label(cl.cx,cl.cy,`${cl.kind} ${cl.dim}\n${a.toFixed(2)}㎡ × ${N} ＝ ${(a*N).toFixed(2)}㎡`,cl.col);
+  }); }
   flushLabels(); _labels=null;
   // draft（作図中：破線＋点で視認。面積=赤、縮尺=青） 
   if(draft&&draft.pts){
@@ -952,13 +1011,14 @@ function legendHit(p){const b=legend._box;return !!(legend.show&&b&&p.x>=b.x&&p.
 let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null,draggingLegend=false,legDragOff=null,spaceDown=false,dragSnap=null;
 let editV=null,lastPick=null,pickIdx=0,lastVtxTap=null,prevToolForPan='area',holeMode=null,dragRing=null,hlHole=null,_labels=null,exporting=false;
 function ringPts(f,ring){return ring==='outer'?f.pts:(f.holes||[])[ring];}
+function hitBox(f,ip,tol){ if(f.round){const rpx=(state.scale?(f.L/state.scale):60)/2;return dist(f.pt,ip)<=rpx+tol;} const wpx=state.scale?(f.L/state.scale):60,hpx=state.scale?(f.D/state.scale):40,dx=ip.x-f.pt.x,dy=ip.y-f.pt.y,c=Math.cos(f.rot||0),sn=Math.sin(f.rot||0),rx=dx*c+dy*sn,ry=-dx*sn+dy*c; return Math.abs(rx)<=wpx/2+tol&&Math.abs(ry)<=hpx/2+tol; }
 function nearestTree(ip){let best=null,bd=Infinity;state.features.forEach(f=>{if(f.type==='tree'){const d=dist(f.pt,ip);if(d<(treeRadius(f)+8)/view.zoom&&d<bd){bd=d;best=f;}}});return best;}
 // 重なり対応：クリック地点の全ヒットを上から返す
 function hitAll(ip){
   const tol=12/view.zoom,out=[];
   state.features.forEach(f=>{let h=false;
     if(f.type==='tree')h=dist(f.pt,ip)<(treeRadius(f)+6)/view.zoom;
-    else if(f.type==='box'){const w=state.scale?f.L/state.scale:60,hh=state.scale?f.D/state.scale:40;h=Math.abs(ip.x-f.pt.x)<=w/2+tol&&Math.abs(ip.y-f.pt.y)<=hh/2+tol;}
+    else if(f.type==='box'){h=hitBox(f,ip,6/view.zoom);}
     else if(f.type==='line')h=distToPoly(ip,f.pts,false)<tol+2/view.zoom;
     else if(f.type==='area')h=pointInPoly(ip,f.pts)||distToPoly(ip,f.pts,true)<tol;
     if(h)out.push(f);});
@@ -1007,7 +1067,10 @@ function downCommon(p,ip){
   if(tool==='area')return null;                 // 面積モードは常に描画（樹木と同様、既存図形の上でも開始可）。編集は選択中図形のハンドル or 選択モードで。
   const f=(tool==='tree')?nearestTree(ip):pickHit(ip);   // 樹木モードは既存の木だけ拾う／選択モードは全部（重なり巡回）
   if(f){
-    selected=f;hlHole=null;renderSansha();dragging=f;dragLast=ip;dragSnap=snapshot();dragRing=null;
+    hlHole=null;
+    if(selMod){toggleSel(f);renderSansha();dragGroup=false;dragging=null;return 'sel';}
+    if(multiSel.length>1&&multiSel.indexOf(f)>=0){selected=f;dragGroup=true;dragging=f;dragLast=ip;dragSnap=snapshot();dragRing=null;renderSansha();return 'drag';}
+    setSingle(f);renderSansha();dragGroup=false;dragging=f;dragLast=ip;dragSnap=snapshot();dragRing=null;
     if(f.type==='area'&&f.holes){for(let i=0;i<f.holes.length;i++){if(pointInPoly(ip,f.holes[i])){dragRing=i;break;}}}  // 穴の中なら穴だけ移動
     return 'drag';
   }
@@ -1043,11 +1106,12 @@ function addAreaPoint(ip){
   draft.pts.push(ip);refreshDraftBar();draw();
 }
 function placeBox(ip){
-  const L=curLenVal(),D=curDepVal(),sides=curBoxSides();
-  if(L<=0||D<=0){alert('刈込は左で「長さ」と「奥行」を入力してください。');return;}
+  const sides=curBoxSides(), round=!!curKindDef().round; let L,D;
+  if(round){const d=curDiaVal(); if(d<=0){alert('円柱は「径」を入力してください。');return;} L=D=d;}
+  else {L=curLenVal();D=curDepVal(); if(L<=0||D<=0){alert('刈込は左で「長さ」と「奥行」を入力してください。');return;}}
   pushHistory();
   const cat=$('catSel').value,kind=$('kindSel').value;
-  const f={type:'box',cat,kind,pt:ip,L,D,H:sides?curHeightVal():0,sides};
+  const f={type:'box',cat,kind,pt:ip,L,D,H:sides?curHeightVal():0,sides,round,rot:0};
   state.features.push(f);recalcAll();renderAgg();draw();
 }
 // 縮尺：押した位置に点を置き、指/マウスを離すまでドラッグで微調整。離した位置で確定。
@@ -1070,6 +1134,7 @@ $('dbUndo').onclick=undoDraftPoint;
 $('dbCancel').onclick=cancelDraft;
 cv.addEventListener('mousedown',e=>{
   const p=evtPos(e),ip=toImg(p.x,p.y);
+  selMod=(e.ctrlKey||e.metaKey||multiMode);
   const r=downCommon(p,ip);
   if(r){cv.style.cursor='grabbing';draw();return;}
   if(tool==='cal'){calDown(ip);return;}
@@ -1080,14 +1145,14 @@ cv.addEventListener('mousemove',e=>{
   if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;draw();return;}
   if(tool==='cal'){const p=evtPos(e),ip=toImg(p.x,p.y);if(calDragIdx!==null)draft.pts[calDragIdx]=ip;else if(draft)hover=ip;draw();return;}
   if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}ringPts(editV.f,editV.ring)[editV.idx]={x:ip.x,y:ip.y};recalcAreaFeature(editV.f);draw();return;}
-  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;draw();return;}
+  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(dragGroup?multiSel.forEach(g=>moveFeature(g,ip.x-dragLast.x,ip.y-dragLast.y)):moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y));dragLast=ip;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;draw();}
 });
 window.addEventListener('mouseup',()=>{
   if(draggingLegend){draggingLegend=false;cv.style.cursor=tool==='select'?'grab':'crosshair';return;}
   if(tool==='cal'&&calDragIdx!==null){calUp();return;}
   if(editV){recalcAll();editV=null;dragSnap=null;renderAgg();renderSansha();}
-  if(dragging){recalcAll();dragging=null;dragSnap=null;dragRing=null;renderAgg();renderSansha();}
+  if(dragging){recalcAll();dragging=null;dragGroup=false;dragSnap=null;dragRing=null;renderAgg();renderSansha();}
   if(panning)panning=false;
   cv.style.cursor=(spaceDown||tool==='pan')?'grab':(tool==='select'?'grab':'crosshair');
 });
@@ -1102,6 +1167,7 @@ let lastTouch=null,pinchD=null;
 cv.addEventListener('touchstart',e=>{
   if(e.touches.length===2){pinchD=touchDist(e);dragging=null;editV=null;calDragIdx=null;draggingLegend=false;lastTouch=null;return;}
   const p=evtPos(e),ip=toImg(p.x,p.y);
+  selMod=multiMode;
   const r=downCommon(p,ip);
   if(r){lastTouch=null;draw();return;}          // 操作開始（配置しない）
   if(tool==='cal'){calDown(ip);lastTouch=null;return;}
@@ -1113,7 +1179,7 @@ cv.addEventListener('touchmove',e=>{
   if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;lastTouch=null;draw();return;}
   if(tool==='cal'&&calDragIdx!==null){const p=evtPos(e),ip=toImg(p.x,p.y);draft.pts[calDragIdx]=ip;lastTouch=null;draw();return;}
   if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}ringPts(editV.f,editV.ring)[editV.idx]={x:ip.x,y:ip.y};recalcAreaFeature(editV.f);lastTouch=null;draw();return;}
-  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y);dragLast=ip;lastTouch=null;draw();return;}
+  if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(dragGroup?multiSel.forEach(g=>moveFeature(g,ip.x-dragLast.x,ip.y-dragLast.y)):moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y));dragLast=ip;lastTouch=null;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;lastTouch=null;draw();}
 },{passive:false});
 cv.addEventListener('touchend',e=>{
@@ -1121,7 +1187,7 @@ cv.addEventListener('touchend',e=>{
   if(draggingLegend){draggingLegend=false;lastTouch=null;return;}
   if(tool==='cal'){if(calDragIdx!==null)calUp();lastTouch=null;return;}
   if(editV){recalcAll();editV=null;dragSnap=null;renderAgg();renderSansha();lastTouch=null;return;}
-  if(dragging){recalcAll();dragging=null;dragSnap=null;dragRing=null;renderAgg();renderSansha();lastTouch=null;return;}
+  if(dragging){recalcAll();dragging=null;dragGroup=false;dragSnap=null;dragRing=null;renderAgg();renderSansha();lastTouch=null;return;}
   if(panning){panning=false;return;}
   if(!lastTouch)return;const ip=toImg(lastTouch.x,lastTouch.y);
   if(tool==='area'){addAreaPoint(ip);}
@@ -1179,7 +1245,7 @@ function finishArea(){
     const f={type:'area',cat,kind,pts:draft.pts.slice(),calc:curCalc(),height:(curNeedsHeight()?h:0)};
     recalcAreaFeature(f);state.features.push(f);
   }
-  draft=null;selected=state.features[state.features.length-1]||null;recalcAll();refreshDraftBar();renderAgg();renderSansha();draw();
+  draft=null;multiSel=[];selected=state.features[state.features.length-1]||null;recalcAll();refreshDraftBar();renderAgg();renderSansha();draw();
 }
 function placeTree(ip){
   pushHistory();
@@ -1197,7 +1263,7 @@ function hit(ip){
   const tolPx=10, tol=tolPx/view.zoom;   // 線の近くでもつかめる許容
   for(let i=state.features.length-1;i>=0;i--){const f=state.features[i];
     if(f.type==='tree'){if(dist(f.pt,ip)<(treeRadius(f)+5)/view.zoom)return f;}
-    else if(f.type==='box'){const wpx=state.scale?(f.L/state.scale):60,hpx=state.scale?(f.D/state.scale):40;if(Math.abs(ip.x-f.pt.x)<=wpx/2+tol&&Math.abs(ip.y-f.pt.y)<=hpx/2+tol)return f;}
+    else if(f.type==='box'){if(hitBox(f,ip,5/view.zoom))return f;}
     else if(f.type==='line'){if(distToPoly(ip,f.pts,false)<tol+2/view.zoom)return f;}
     else if(f.type==='area'){if(pointInPoly(ip,f.pts)||distToPoly(ip,f.pts,true)<tol)return f;}}
   return null;
@@ -1208,7 +1274,15 @@ function selectFeature(f){selected=f;hlHole=null;renderSansha();draw();}
 function renderSansha(){
   const el=$('sansha');
   // 刈込（長さ×奥行×高さ：投影＋側面4面）
-  if(selected&&selected.type==='box'){
+  if(selected&&selected.type==='box'&&selected.round){
+    const d=selected.L,r=d/2,H=selected.H||0,top=Math.PI*r*r,side=Math.PI*d*H,tot=selected.area;
+    el.innerHTML=`<div class="legend" style="margin-bottom:6px">${selected.kind}（円柱：投影＋側面）</div>`+
+      `<table><tr><th>項目</th><th class="num">値</th></tr>`+
+      `<tr><td>径 × 高さ</td><td class="num">φ${d} × ${H} m</td></tr>`+
+      `<tr><td>投影（円）＝π(d/2)²</td><td class="num">${top.toFixed(2)} ㎡</td></tr>`+
+      (selected.sides!==false?`<tr><td>側面＝π·d·h</td><td class="num">${side.toFixed(2)} ㎡</td></tr>`:'')+
+      `<tr><td style="text-align:right">合計</td><td class="num" style="color:var(--acc);font-weight:700">${tot.toFixed(2)} ㎡</td></tr></table>`;
+  } else if(selected&&selected.type==='box'){
     const L=selected.L,D=selected.D,H=selected.H||0,fp=L*D,fb=2*L*H,lr=2*D*H,tot=selected.area;
     if(selected.sides===false){
       el.innerHTML=`<div class="legend" style="margin-bottom:6px">${selected.kind}（刈込：投影面積のみ）</div>`+
@@ -1321,7 +1395,28 @@ function duplicateAsCurrent(){
   recalcAreaFeature(f); state.features.push(f); selected=f; hlHole=null;
   recalcAll(); renderAgg(); renderSansha(); draw();
 }
-function removeFeature(f){pushHistory();state.features=state.features.filter(x=>x!==f);if(selected===f)selected=null;recalcAll();renderSansha();renderAgg();draw();}
+function removeFeature(f){pushHistory();state.features=state.features.filter(x=>x!==f);{const k=multiSel.indexOf(f);if(k>=0)multiSel.splice(k,1);}if(selected===f)selected=null;recalcAll();renderSansha();renderAgg();draw();}
+function isSel(f){return multiSel.length?(multiSel.indexOf(f)>=0):(f===selected);}
+function setSingle(f){multiSel=[];selected=f;}
+function toggleSel(f){ if(multiSel.length===0&&selected)multiSel=[selected]; const i=multiSel.indexOf(f); if(i>=0)multiSel.splice(i,1); else multiSel.push(f); selected=multiSel[multiSel.length-1]||null;}
+function removeSelected(){ if(multiSel.length>1){pushHistory();const set=multiSel.slice();state.features=state.features.filter(x=>set.indexOf(x)<0);multiSel=[];selected=null;recalcAll();renderSansha();renderAgg();draw();} else if(selected){removeFeature(selected);} }
+function cloneFeature(f){
+  const g=JSON.parse(JSON.stringify(f));
+  const off=16/(view.zoom||1);
+  if(g.pt){g.pt.x+=off;g.pt.y+=off;}
+  if(g.pts){g.pts=g.pts.map(p=>({x:p.x+off,y:p.y+off}));}
+  if(g.holes){g.holes=g.holes.map(h=>h.map(p=>({x:p.x+off,y:p.y+off})));}
+  return g;
+}
+function duplicateSelected(){
+  if(multiSel.length>1){pushHistory();const set=multiSel.slice();const cl=set.map(f=>{const g=cloneFeature(f);state.features.push(g);return g;});multiSel=cl;selected=cl[cl.length-1];recalcAll();renderSansha();renderAgg();draw();return;}
+  if(!selected)return;
+  pushHistory();
+  const g=cloneFeature(selected);
+  state.features.push(g); setSingle(g);
+  recalcAll();renderSansha();renderAgg();draw();
+}
+function rotateSelected(deg){if(!selected||selected.type!=='box'||selected.round)return;pushHistory();selected.rot=(selected.rot||0)+deg*Math.PI/180;draw();}
 
 /* ---------- 集計 ---------- */
 function unitPrice(f){
@@ -1380,7 +1475,7 @@ $('legendReset').onclick=()=>{legend.x=null;legend.y=null;draw();};
 
 $('saveJson').onclick=()=>{
   const order=$('orderNo').value||'';
-  const data={park:$('parkName').value||'未設定',contract:$('contractName').value||'',order,date:$('workDate').value||'',
+  const data={park:$('parkName').value||'未設定',contract:$('contractName').value||'',order,date:$('workDate').value||'',start:$('startDate').value||'',finish:$('finishDate').value||'',agent:$('agentName')?($('agentName').value||''):'',supervisor:$('supervisorName')?($('supervisorName').value||''):'',
     scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,saved:new Date().toISOString()};
   const base=(order?order+'_':'')+(data.park);
   dl(JSON.stringify(data),`${base}.json`,'application/json');
@@ -1399,9 +1494,12 @@ $('reportExport').onclick=()=>{
   const annotated=fullImageDataURL();
   const sansha=[];
   state.features.forEach(f=>{ if(f.type==='area'&&f.pts&&f.pts.length>=3){ sansha.push({cat:f.cat,kind:f.kind,label:f.cat+' › '+f.kind,png:composeTriImage(f,780)}); } });
+  const mokucut=[];   // 中木の円柱・生垣の明細（求積表の根拠用）
+  state.features.forEach(f=>{ if(f.type==='box'&&f.cat==='中低木刈込工'){ mokucut.push({shape:f.round?'cyl':'box', d:f.round?f.L:null, L:f.round?null:f.L, D:f.round?null:f.D, H:f.H||0, sides:(f.sides!==false), area:f.area||0}); } });
   const bundle={
-    meta:{park:$('parkName').value||'',contractName:$('contractName').value||'',orderNo:$('orderNo').value||'',workDate:$('workDate').value||'',startDate:$('startDate').value||'',finishDate:$('finishDate').value||'',scale:state.scale||null,exportedAt:new Date().toISOString()},
+    meta:{park:$('parkName').value||'',contractName:$('contractName').value||'',orderNo:$('orderNo').value||'',workDate:$('workDate').value||'',startDate:$('startDate').value||'',finishDate:$('finishDate').value||'',agent:$('agentName')?($('agentName').value||''):'',supervisor:$('supervisorName')?($('supervisorName').value||''):'',scale:state.scale||null,exportedAt:new Date().toISOString()},
     rows_source:{areas:A,trees:T,nests:N,manual:M},
+    mokucut:mokucut,
     images:{annotated:annotated||null,sansha}
   };
   const base=($('orderNo').value?$('orderNo').value+'_':'')+($('parkName').value||'公園');
@@ -1413,12 +1511,21 @@ $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new Fi
   const d=JSON.parse(r.result);$('parkName').value=d.park||'';state.scale=d.scale||null;
   if(d.contract!==undefined)$('contractName').value=d.contract||'';
   $('orderNo').value=d.order||'';$('workDate').value=d.date||'';
+  if($('startDate'))$('startDate').value=d.start||'';if($('finishDate'))$('finishDate').value=d.finish||'';
+  if($('agentName'))$('agentName').value=d.agent||'';if($('supervisorName'))$('supervisorName').value=d.supervisor||'';
   state.features=d.features||[];state.manual=d.manual||[];recalcAll();
   undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
 };r.readAsText(f);};
 $('exportPng').onclick=()=>{const url=fullImageDataURL();if(!url){alert('先に図面を読み込んでください。');return;}saveFile(dataURLtoBlob(url),($('parkName').value||'求積図')+'_注記.png');};
-$('delSelBtn').onclick=()=>{if(selected){removeFeature(selected);}};
+$('delSelBtn').onclick=()=>{removeSelected();};
+$('dupSelBtn').onclick=()=>{duplicateSelected();};
+$('rotL').onclick=()=>rotateSelected(-15);
+$('rotR').onclick=()=>rotateSelected(15);
+$('symSel').onclick=()=>{const sel=multiSel.length?multiSel:(selected?[selected]:[]);const boxes=sel.filter(f=>f&&f.type==='box');if(!boxes.length)return;const allSym=boxes.every(f=>f.sym);boxes.forEach(f=>f.sym=!allSym);draw();};
+$('multiToggle').onclick=()=>{multiMode=!multiMode;$('multiToggle').classList.toggle('on',multiMode);};
+$('grpToggle').onclick=()=>{groupLabels=!groupLabels;$('grpToggle').classList.toggle('on',groupLabels);draw();};
+$('clearSelBtn').onclick=()=>{multiSel=[];selected=null;hlHole=null;renderSansha();renderAgg();draw();};
 
 /* ---------- 印刷／PDF保存（実績用：地図＋集計を1枚に） ---------- */
 function formatWareki(iso){if(!iso)return '';const [y,m,d]=iso.split('-').map(Number);const r=y-2018;return `令和${r===1?'元':r}年${m}月${d}日`;}
