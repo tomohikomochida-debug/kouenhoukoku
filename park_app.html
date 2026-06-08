@@ -227,6 +227,7 @@
       <h3>保存 / 読込</h3>
       <button class="btn ghost" id="saveJson">この公園を保存（.json）</button>
       <button class="btn" id="reportExport">報告書用に書き出す（.json）<small>数量＋注記図＋求積図を1ファイルに（PCで報告書Excelへ）</small></button>
+      <button class="btn ghost" id="openMap">📍 位置図用にGoogleマップを開く<small>公園名で地図を表示→スクショして報告書の履行場所へ貼付（丸・施工位置は手書き）</small></button>
       <button class="btn ghost" id="openJson">公園データを開く（.json）</button>
       <input type="file" id="jsonFile" accept="application/json" hidden>
       <button class="btn ghost" id="exportPng">注記図を画像で書き出す</button>
@@ -234,6 +235,10 @@
       <input id="orderNo" placeholder="例：5082000633-3" style="width:100%">
       <label class="fld">実施年月日</label>
       <input id="workDate" type="date" style="width:100%">
+      <label class="fld">着手年月日（報告書用・別日のとき）</label>
+      <input id="startDate" type="date" style="width:100%">
+      <label class="fld">完成年月日（報告書用・別日のとき）</label>
+      <input id="finishDate" type="date" style="width:100%">
       <button class="btn" id="printPdf">🖨 印刷／PDFで保存<small>実績用：地図＋集計を1枚に</small></button>
       <button class="btn ghost danger" id="clearAll">全消去</button>
     </div>
@@ -1380,6 +1385,11 @@ $('saveJson').onclick=()=>{
   const base=(order?order+'_':'')+(data.park);
   dl(JSON.stringify(data),`${base}.json`,'application/json');
 };
+$('openMap').onclick=()=>{
+  const q=($('parkName').value||'').trim();
+  if(!q){alert('先に公園名を入力してください。');return;}
+  window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q),'_blank');
+};
 $('reportExport').onclick=()=>{
   const {areas,trees}=aggregate();
   const A=[],T=[],N=[];
@@ -1390,7 +1400,7 @@ $('reportExport').onclick=()=>{
   const sansha=[];
   state.features.forEach(f=>{ if(f.type==='area'&&f.pts&&f.pts.length>=3){ sansha.push({cat:f.cat,kind:f.kind,label:f.cat+' › '+f.kind,png:composeTriImage(f,780)}); } });
   const bundle={
-    meta:{park:$('parkName').value||'',contractName:$('contractName').value||'',orderNo:$('orderNo').value||'',workDate:$('workDate').value||'',scale:state.scale||null,exportedAt:new Date().toISOString()},
+    meta:{park:$('parkName').value||'',contractName:$('contractName').value||'',orderNo:$('orderNo').value||'',workDate:$('workDate').value||'',startDate:$('startDate').value||'',finishDate:$('finishDate').value||'',scale:state.scale||null,exportedAt:new Date().toISOString()},
     rows_source:{areas:A,trees:T,nests:N,manual:M},
     images:{annotated:annotated||null,sansha}
   };
