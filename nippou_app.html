@@ -226,6 +226,7 @@
    GAS接続。スプレッドシートのマスタを読み、日報を保存します。
    ========================================================= */
 const GAS_URL='https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
+function todayStr(){const t=new Date();return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');}
 async function loadMasters(){
   try{
     const res=await fetch(GAS_URL+'?action=masters');
@@ -596,7 +597,7 @@ document.addEventListener('change', scheduleDraft);
 
 function restoreDraft(dr){
   setAuthor(dr.author||author);
-  document.getElementById('date').value=dr.date||new Date().toISOString().slice(0,10);
+  document.getElementById('date').value=dr.date||todayStr();
   document.getElementById('weather').value=dr.weather||'';
   document.getElementById('done').value=dr.done||'';
   document.getElementById('learn').value=dr.learn||'';
@@ -623,7 +624,7 @@ function buildRows(){
 function resetForm(){
   Object.keys(sites).forEach(id=>{ const e=document.getElementById('site-'+id); if(e) e.remove(); delete sites[id]; });
   document.getElementById('weather').value=''; document.getElementById('done').value=''; document.getElementById('learn').value='';
-  document.getElementById('date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('date').value=todayStr();
   addSite(); updateSummary(); clearDraft();
 }
 
@@ -671,7 +672,7 @@ document.getElementById('draftDiscard').onclick=()=>{ clearDraft(); document.get
 
 /* ===== 初期化 ===== */
 (async function init(){
-  document.getElementById('date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('date').value=todayStr();
   document.getElementById('addSite').onclick=()=>addSite();
   await loadMasters();   // スプレッドシートのマスタを取得（失敗時は仮マスタ）
   loadCustom();
