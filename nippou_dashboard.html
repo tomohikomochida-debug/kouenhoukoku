@@ -190,7 +190,11 @@ function render(){
   document.getElementById('rankH').textContent=lbl+'現場別 延べ人工';
   document.getElementById('monthH').textContent=lbl+'月別 延べ人工';
   document.getElementById('catH').textContent=lbl+'種類別 延べ人工';
-  calYM=cur.length?cur.map(x=>x.date.slice(0,7)).sort()[0]:(curFY!=null?`${curFY}-04`:calYM);
+  const _t=new Date(); const _tym=_t.getFullYear()+'-'+String(_t.getMonth()+1).padStart(2,'0');
+  const _tfy=(_t.getMonth()+1<4)?_t.getFullYear()-1:_t.getFullYear();
+  if(curFY===_tfy) calYM=_tym;
+  else if(cur.length) calYM=cur.map(x=>x.date.slice(0,7)).sort().reverse()[0];
+  else calYM=`${curFY}-04`;
   drawCal(); renderMissing();
 }
 function bindOnce(){
@@ -224,7 +228,7 @@ async function fetchYear(fy){
 async function boot(){
   let d=null;
   try{ const res=await fetch(GAS_URL+'?action=dashboard'); d=await res.json(); }catch(e){ console.warn('GAS取得に失敗。埋め込みデータを表示します。',e); }
-  if(d&&d.cur){ cur=d.cur; search=d.search||{}; years=d.years||[]; curFY=d.fy; }
+  if(d&&d.cur){ cur=d.cur; search=d.search||{}; years=(d.years||[]).filter(y=>y!=null&&!isNaN(y)); curFY=d.fy; }
   else { cur=FALLBACK.cur; search=FALLBACK.search||{};
     years=[...new Set(Object.values(search).flatMap(o=>Object.keys(o).map(Number)))].sort((a,b)=>b-a);
     curFY=years.length?years[0]:2026; }
