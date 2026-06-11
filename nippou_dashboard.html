@@ -25,6 +25,14 @@ main{max-width:920px;margin:0 auto;padding:18px 14px 60px}
 .bar .tr{flex:1;background:var(--soft);border-radius:6px;overflow:hidden;height:22px}
 .bar .fill{height:100%;background:var(--leaf2);border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;color:#fff;font-size:12px;font-weight:700;min-width:36px}
 .bar.alt .fill{background:var(--tape)}
+.period{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--bark);margin:14px 0 0;flex-wrap:wrap}
+.period input{font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;background:var(--field)}
+.period button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:6px 12px;cursor:pointer;font-family:inherit;font-size:13px}
+.period .quick{display:flex;gap:6px;flex-wrap:wrap}
+.period .quick button.on{background:var(--leaf);color:#fff;border-color:var(--leaf);font-weight:700}
+.bar.clk-bar{cursor:pointer}
+.bar.clk-bar:hover .fill{filter:brightness(1.12)}
+.bar.clk-bar:hover .nm{color:var(--leaf);font-weight:700}
 .cal-head{display:flex;align-items:center;gap:14px;margin-bottom:12px}
 .cal-head button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit;font-size:14px}
 .cal-head .m{font-size:16px;font-weight:700}
@@ -68,6 +76,11 @@ main{max-width:920px;margin:0 auto;padding:18px 14px 60px}
 .dl-title{font-size:15px;font-weight:800;margin:0 0 12px}
 .dl-row{padding:11px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:7px;cursor:pointer;display:flex;justify-content:space-between;gap:10px;align-items:center}
 .dl-row:hover{background:var(--soft)}
+.sh-sec{margin-bottom:16px}
+.sh-h{font-size:12px;font-weight:800;color:var(--leaf);border-bottom:1px solid var(--line);padding-bottom:4px;margin-bottom:6px}
+.cmsel{font-size:13px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;font-family:inherit;background:#fff;font-weight:400}
+.res .row.clk-site{cursor:pointer;border-radius:8px;padding:8px;margin:0 -8px}
+.res .row.clk-site:hover{background:var(--soft)}
 .dl-row .dls{font-weight:700}
 .dl-row .dlm{font-size:12px;color:var(--bark)}
 @media(max-width:680px){.cards{grid-template-columns:repeat(2,1fr)}.bar .nm{width:110px}}
@@ -76,6 +89,14 @@ main{max-width:920px;margin:0 auto;padding:18px 14px 60px}
   <select class="fysel" id="fySel"></select></header>
 <main>
   <div class="cards" id="kpis"></div>
+  <div class="period">
+    <span class="quick">
+      <button data-q="all" class="on">年度全体</button>
+      <button data-q="thismonth">今月</button>
+      <button data-q="lastmonth">先月</button>
+    </span>
+    <span>期間 <input type="date" id="pFrom"> 〜 <input type="date" id="pTo"></span>
+  </div>
   <div class="tabs">
     <button class="tab on" data-p="rank">現場別 人工</button>
     <button class="tab" data-p="month">月別 推移</button>
@@ -111,9 +132,23 @@ const GAS_URL='https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9r
 let cur=[], search={}, years=[], curFY=null, calYM='2026-04';
 const sum=(a,f)=>a.reduce((s,x)=>s+(f?f(x):x),0);
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-function aggBy(key){const m={};cur.forEach(x=>{const k=key(x);if(!k)return;m[k]=(m[k]||0)+x.ninku});return Object.entries(m).sort((a,b)=>b[1]-a[1])}
-function bars(el,data,alt){const max=Math.max(...data.map(d=>d[1]),1);
-  el.innerHTML=data.length?data.map(([nm,v],i)=>`<div class="bar ${alt&&i%2?'alt':''}"><div class="nm" title="${nm}">${nm}</div><div class="tr"><div class="fill" style="width:${Math.max(v/max*100,8)}%">${Math.round(v*100)/100}</div></div></div>`).join(''):'<div class="note">この年度のデータはありません。</div>'}
+function aggBy(records,key){const m={};records.forEach(x=>{const k=key(x);if(!k)return;m[k]=(m[k]||0)+x.ninku});return Object.entries(m).sort((a,b)=>b[1]-a[1])}
+function bars(el,data,alt,clickable){const max=Math.max(...data.map(d=>d[1]),1);
+  el.innerHTML=data.length?data.map(([nm,v],i)=>`<div class="bar ${alt&&i%2?'alt':''} ${clickable?'clk-bar':''}" ${clickable?`data-key="${nm}"`:''}><div class="nm" title="${nm}">${nm}</div><div class="tr"><div class="fill" style="width:${Math.max(v/max*100,8)}%">${Math.round(v*100)/100}</div></div></div>`).join(''):'<div class="note">この期間のデータはありません。</div>'}
+function filterPeriod(records){
+  const f=document.getElementById('pFrom').value, t=document.getElementById('pTo').value;
+  if(!f && !t) return records;
+  return records.filter(r=>{const d=r.date.slice(0,10); if(f&&d<f)return false; if(t&&d>t)return false; return true;});
+}
+function openSiteList(site){
+  const list=cur.filter(x=>x.site===site).sort((a,b)=>a.date<b.date?1:-1);
+  const inView=filterPeriod(list);
+  const use=inView.length?inView:list;
+  const total=Math.round(use.reduce((s,x)=>s+x.ninku,0)*100)/100;
+  const h=`<div class="dl-title">${site}（${use.length}件・計${total}人工）</div>`+
+    use.map(r=>`<div class="dl-row" data-rid="${r.rid}"><span class="dls">${r.date}</span><span class="dlm">${esc(r.author)}・人工${r.ninku}</span></div>`).join('');
+  showModal(h);
+}
 function drawCal(){
   const [y,m]=calYM.split('-').map(Number);
   document.getElementById('calM').textContent=`${y}年 ${m}月`;
@@ -129,7 +164,42 @@ function drawCal(){
        ev.slice(0,3).map(x=>`<div class="ev clk" data-rid="${x.rid}" title="${x.site} ${x.ninku}">${x.site}</div>`).join('')+
        (ev.length>3?`<div class="ev more" data-date="${ds}">他${ev.length-3}件</div>`:'')+`</div>`;}
   document.getElementById('calGrid').innerHTML=h;}
-function findRec(rid){ return cur.find(x=>String(x.rid)===String(rid)); }
+let lastSiteRecs=[];
+function findRec(rid){ return cur.find(x=>String(x.rid)===String(rid)) || lastSiteRecs.find(x=>String(x.rid)===String(rid)); }
+async function openSiteHistory(site){
+  showModal('<div class="loading">読み込み中…</div>');
+  let recs=[], smStart=null;
+  try{ const res=await fetch(GAS_URL+'?action=sitehistory&site='+encodeURIComponent(site)); const d=await res.json(); recs=d.records||[]; smStart=d.startMonth||null; }catch(e){}
+  if(!recs.length){
+    const yrs=search[site]||{};
+    showModal(`<div class="dl-title">${site}</div>`+(Object.keys(yrs).length?Object.entries(yrs).sort((a,b)=>b[0]-a[0]).map(([y,v])=>`<div class="dl-row"><span class="dls">${y}年度</span><span class="dlm">${Math.round(v*10)/10}人工</span></div>`).join(''):'<div class="note">データが取得できませんでした。</div>'));
+    return;
+  }
+  lastSiteRecs=recs;
+  const r1=v=>Math.round(v*10)/10;
+  const total=r1(recs.reduce((s,x)=>s+x.ninku,0));
+  const oldest=recs.slice().sort((a,b)=>a.date<b.date?-1:1)[0];
+  const defStart=smStart || (+oldest.date.split('-')[1]);
+  const byM={}; recs.forEach(r=>{byM[r.date.slice(0,7)]=(byM[r.date.slice(0,7)]||0)+r.ninku;});
+  const mRows=Object.entries(byM).sort((a,b)=>a[0]<b[0]?1:-1).map(([ym,v])=>`<div class="mday"><span class="md">${ym}</span><span class="ms">${r1(v)}人工</span></div>`).join('');
+  const list=recs.slice().sort((a,b)=>a.date<b.date?1:-1).map(r=>`<div class="dl-row" data-rid="${r.rid}"><span class="dls">${r.date}</span><span class="dlm">${esc(r.author)}・人工${r.ninku}</span></div>`).join('');
+  const monthOpts=Array.from({length:12},(_,i)=>i+1).map(m=>`<option value="${m}" ${m===defStart?'selected':''}>${m}月</option>`).join('');
+  showModal(`<div class="dl-title">${site}（全${recs.length}件・計${total}人工）</div>`+
+    `<div class="sh-sec"><div class="sh-h">契約年ごと（開始月から1年）　開始月 <select id="cmStart" class="cmsel">${monthOpts}</select></div><div id="contractRows"></div></div>`+
+    `<div class="sh-sec"><div class="sh-h">月ごと</div>${mRows}</div>`+
+    `<div class="sh-sec"><div class="sh-h">日報（タップで中身）</div>${list}</div>`);
+  renderContract(defStart);
+}
+function renderContract(startMonth){
+  const recs=lastSiteRecs; const r1=v=>Math.round(v*10)/10;
+  const buckets={};
+  recs.forEach(r=>{const p=r.date.split('-');const y=+p[0],m=+p[1];const cy=(m>=startMonth)?y:y-1; buckets[cy]=(buckets[cy]||0)+r.ninku;});
+  const rows=Object.entries(buckets).sort((a,b)=>b[0]-a[0]).map(([y,v])=>{
+    const sy=+y; const endMonth=startMonth===1?12:startMonth-1; const endYear=startMonth===1?sy:sy+1;
+    return `<div class="dl-row"><span class="dls">${sy}/${startMonth} 〜 ${endYear}/${endMonth}</span><span class="dlm">${r1(v)}人工</span></div>`;
+  }).join('');
+  const el=document.getElementById('contractRows'); if(el) el.innerHTML=rows||'<div class="note">データなし</div>';
+}
 function fld(label,val){ return (val!==''&&val!=null)?`<div class="d-fld"><div class="d-lbl">${label}</div><div class="d-val">${esc(val)}</div></div>`:''; }
 function detailHTML(r){
   let photos='';
@@ -167,8 +237,8 @@ function computeMissing(records){
   });
   return miss;
 }
-function renderMissing(){
-  const miss=computeMissing(cur);
+function renderMissing(records){
+  const miss=computeMissing(records);
   const people=Object.keys(miss).sort((a,b)=>miss[b].length-miss[a].length);
   const el=document.getElementById('missList');
   if(!people.length){ el.innerHTML='<div class="ok">未記入の日はありません。みんなちゃんと書いています。</div>'; return; }
@@ -178,14 +248,15 @@ function renderMissing(){
   }).join('');
 }
 function render(){
-  const totalNinku=Math.round(sum(cur,x=>x.ninku)*10)/10;
-  const sites=new Set(cur.filter(x=>x.site).map(x=>x.site)).size;
-  const days=new Set(cur.map(x=>x.date.slice(0,10))).size;
-  document.getElementById('kpis').innerHTML=[['総人工',totalNinku],['現場数',sites],['稼働日数',days],['日報数',cur.length]]
+  const view=filterPeriod(cur);
+  const totalNinku=Math.round(sum(view,x=>x.ninku)*10)/10;
+  const sites=new Set(view.filter(x=>x.site).map(x=>x.site)).size;
+  const days=new Set(view.map(x=>x.date.slice(0,10))).size;
+  document.getElementById('kpis').innerHTML=[['総人工',totalNinku],['現場数',sites],['稼働日数',days],['日報数',view.length]]
     .map(([l,n])=>`<div class="kpi"><div class="n tnum">${n}</div><div class="l">${l}</div></div>`).join('');
-  bars(document.getElementById('rankBars'),aggBy(x=>x.site).slice(0,12));
-  bars(document.getElementById('monthBars'),aggBy(x=>x.date.slice(0,7)).sort((a,b)=>a[0]<b[0]?-1:1));
-  bars(document.getElementById('catBars'),aggBy(x=>x.cat),true);
+  bars(document.getElementById('rankBars'),aggBy(view,x=>x.site).slice(0,12),false,true);
+  bars(document.getElementById('monthBars'),aggBy(view,x=>x.date.slice(0,7)).sort((a,b)=>a[0]<b[0]?-1:1),false,false);
+  bars(document.getElementById('catBars'),aggBy(view,x=>x.cat),true,false);
   const lbl=(curFY!=null?curFY+'年度 ':'');
   document.getElementById('rankH').textContent=lbl+'現場別 延べ人工';
   document.getElementById('monthH').textContent=lbl+'月別 延べ人工';
@@ -195,7 +266,7 @@ function render(){
   if(curFY===_tfy) calYM=_tym;
   else if(cur.length) calYM=cur.map(x=>x.date.slice(0,7)).sort().reverse()[0];
   else calYM=`${curFY}-04`;
-  drawCal(); renderMissing();
+  drawCal(); renderMissing(view);
 }
 function bindOnce(){
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
@@ -208,6 +279,7 @@ function bindOnce(){
     if(c.classList.contains('more')) openDayList(c.dataset.date);
     else if(c.dataset.rid) openDetail(c.dataset.rid);};
   document.getElementById('modalBody').onclick=e=>{const c=e.target.closest('.dl-row'); if(c&&c.dataset.rid) openDetail(c.dataset.rid);};
+  document.getElementById('modalBody').addEventListener('change',e=>{ if(e.target.id==='cmStart') renderContract(Number(e.target.value)); });
   document.getElementById('modalX').onclick=closeModal;
   document.getElementById('modalBg').onclick=e=>{ if(e.target.id==='modalBg') closeModal(); };
   document.getElementById('q').oninput=e=>{const q=e.target.value.trim();const res=document.getElementById('res');
@@ -216,13 +288,34 @@ function bindOnce(){
     if(!hits.length){res.innerHTML='<div class="note">該当なし</div>';return}
     res.innerHTML=hits.map(s=>{const yrs=search[s];const total=Math.round(Object.values(yrs).reduce((a,b)=>a+b,0)*10)/10;
       const detail=Object.entries(yrs).sort((a,b)=>b[0]-a[0]).map(([y,v])=>`<span class="yr">${y}年度 ${Math.round(v*10)/10}</span>`).join('　');
-      return `<div class="row"><div><b>${s}</b><br><span class="yr" style="font-size:12px">${detail}</span></div><div class="v">計${total}</div></div>`}).join('')};
+      return `<div class="row clk-site" data-site="${s}"><div><b>${s}</b><br><span class="yr" style="font-size:12px">${detail}</span></div><div class="v">計${total}</div></div>`}).join('')};
+  document.getElementById('res').onclick=e=>{const r=e.target.closest('.clk-site'); if(r&&r.dataset.site) openSiteHistory(r.dataset.site);};
   document.getElementById('fySel').onchange=e=>fetchYear(Number(e.target.value));
+  document.getElementById('rankBars').onclick=e=>{const b=e.target.closest('.clk-bar'); if(b&&b.dataset.key) openSiteList(b.dataset.key);};
+  document.getElementById('pFrom').onchange=()=>{clearQuick();render();};
+  document.getElementById('pTo').onchange=()=>{clearQuick();render();};
+  document.querySelectorAll('.quick button').forEach(b=>b.onclick=()=>setQuick(b.dataset.q));
 }
+function setRange(y,m){
+  const f=`${y}-${String(m+1).padStart(2,'0')}-01`;
+  const last=new Date(y,m+1,0).getDate();
+  const t=`${y}-${String(m+1).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
+  document.getElementById('pFrom').value=f; document.getElementById('pTo').value=t;
+}
+function setQuick(q){
+  document.querySelectorAll('.quick button').forEach(b=>b.classList.toggle('on',b.dataset.q===q));
+  const t=new Date();
+  if(q==='all'){ document.getElementById('pFrom').value=''; document.getElementById('pTo').value=''; }
+  else if(q==='thismonth'){ setRange(t.getFullYear(),t.getMonth()); }
+  else if(q==='lastmonth'){ let y=t.getFullYear(),m=t.getMonth()-1; if(m<0){m=11;y--;} setRange(y,m); }
+  render();
+}
+function clearQuick(){ document.querySelectorAll('.quick button').forEach(b=>b.classList.remove('on')); }
+function resetPeriod(){ document.getElementById('pFrom').value=''; document.getElementById('pTo').value=''; document.querySelectorAll('.quick button').forEach(b=>b.classList.toggle('on',b.dataset.q==='all')); }
 function fillYearSelect(){ document.getElementById('fySel').innerHTML=years.map(y=>`<option value="${y}" ${y===curFY?'selected':''}>${y}年度（${y}年4月〜）</option>`).join(''); }
 async function fetchYear(fy){
   try{ const res=await fetch(GAS_URL+'?action=dashboard&fy='+fy); const d=await res.json();
-    if(d&&d.cur){ cur=d.cur; curFY=d.fy; render(); } }
+    if(d&&d.cur){ cur=d.cur; curFY=d.fy; resetPeriod(); render(); } }
   catch(e){ alert('この年度の読み込みに失敗しました。電波の良い所でもう一度お試しください。'); }
 }
 async function boot(){
@@ -233,7 +326,7 @@ async function boot(){
     years=[...new Set(Object.values(search).flatMap(o=>Object.keys(o).map(Number)))].sort((a,b)=>b-a);
     curFY=years.length?years[0]:2026; }
   if(!years.length) years=[curFY];
-  fillYearSelect(); bindOnce(); render();
+  fillYearSelect(); bindOnce(); resetPeriod(); render();
 }
 boot();
 </script></body></html>
