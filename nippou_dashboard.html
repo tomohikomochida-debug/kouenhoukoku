@@ -122,7 +122,9 @@ function drawCal(){
   let h=['日','月','火','水','木','金','土'].map(d=>`<div class="dow">${d}</div>`).join('');
   for(let i=0;i<first;i++)h+='<div class="cell empty"></div>';
   for(let d=1;d<=dim;d++){const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const ev=byDay[ds]||[];const tot=Math.round(sum(ev,x=>x.ninku)*100)/100;
+    const ev=byDay[ds]||[];
+    const _ba={}; ev.forEach(x=>{const a=x.author||'?';_ba[a]=(_ba[a]||0)+x.ninku;});
+    const tot=Math.round(Object.values(_ba).reduce((s,v)=>s+Math.min(v,1),0)*100)/100;
     h+=`<div class="cell"><div class="d">${d}${tot?` <span class="nk">${tot}</span>`:''}</div>`+
        ev.slice(0,3).map(x=>`<div class="ev clk" data-rid="${x.rid}" title="${x.site} ${x.ninku}">${x.site}</div>`).join('')+
        (ev.length>3?`<div class="ev more" data-date="${ds}">他${ev.length-3}件</div>`:'')+`</div>`;}
