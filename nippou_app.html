@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日報 ｜ 庭乃持田園</title>
+<style>
+  :root{
+    --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7;
+    --bark:#5B5750; --ink:#22231F; --tape:#C77C30; --line:#DCD9D0; --line-soft:#ECEAE3;
+    --ok:#2E7D55; --danger:#B0533F; --field:#FBFAF6; --radius:10px;
+    --shadow:0 1px 0 rgba(34,35,31,.04), 0 8px 24px -16px rgba(34,35,31,.25);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);
+    font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif;
+    line-height:1.65;-webkit-text-size-adjust:100%;}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  header{position:sticky;top:0;z-index:30;background:var(--leaf);color:#fff;
+    padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+    box-shadow:0 2px 12px -6px rgba(0,0,0,.4);}
+  .brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+  .brand .mark{font-size:13px;letter-spacing:.14em;opacity:.75;white-space:nowrap}
+  .brand h1{font-size:17px;font-weight:700;margin:0;letter-spacing:.02em;white-space:nowrap}
+  .whoami{display:flex;align-items:center;gap:8px;flex-shrink:0;background:rgba(255,255,255,.12);
+    border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:5px 12px 5px 14px;
+    color:#fff;font-size:14px;cursor:pointer;}
+  .whoami:hover{background:rgba(255,255,255,.2)}
+  .whoami b{font-weight:700}
+  .whoami .sw{font-size:12px;opacity:.7}
+
+  main{max-width:680px;margin:0 auto;padding:18px 14px 130px}
+  .day-meta{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .field{display:flex;flex-direction:column;gap:6px}
+  label,.lbl{font-size:13px;color:var(--bark);font-weight:600;letter-spacing:.02em}
+  input[type=date],input[type=text],input[type=number],textarea,select{
+    font-family:inherit;font-size:16px;color:var(--ink);background:var(--field);
+    border:1px solid var(--line);border-radius:8px;padding:11px 12px;width:100%;}
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--leaf);outline-offset:1px;border-color:var(--leaf)}
+  textarea{resize:vertical;min-height:60px}
+  input[type=date]{max-width:180px}
+
+  .sec-head{display:flex;align-items:center;gap:10px;margin:26px 2px 12px}
+  .sec-head .tag{font-size:12px;font-weight:700;color:var(--tape);letter-spacing:.12em}
+  .sec-head h2{font-size:15px;margin:0;font-weight:700}
+  .sec-head .rule{flex:1;height:1px;background:var(--line)}
+
+  .site{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
+  .site-top{display:flex;align-items:center;gap:10px;background:var(--leaf);color:#fff;padding:10px 14px}
+  .site-no{font-size:12px;font-weight:700;letter-spacing:.1em;background:var(--tape);color:#fff;border-radius:5px;padding:2px 8px}
+  .site-top .ttl{font-size:14px;font-weight:600;flex:1;opacity:.95}
+  .site-del{background:transparent;border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer}
+  .site-del:hover{background:rgba(255,255,255,.14)}
+  .site-body{padding:14px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .row > .field{flex:1;min-width:130px}
+  .row.times > .field{min-width:auto;flex:0 0 auto}
+  .hm{display:flex;align-items:center;gap:5px}
+  .hm select{padding:11px 8px;text-align:center}
+  .hm span{color:var(--bark);font-weight:700}
+
+  .ninku-wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--leaf-soft);border-radius:8px;padding:10px 14px;margin-bottom:14px}
+  .ninku-badge{display:flex;flex-direction:column;line-height:1.15}
+  .ninku-badge .n{font-size:30px;font-weight:800;color:var(--leaf)}
+  .ninku-badge .c{font-size:11px;color:var(--bark);font-weight:600;letter-spacing:.08em}
+  .ninku-ctl{display:flex;flex-direction:column;gap:6px;flex:1;min-width:180px}
+  .ninku-ctl .hint{font-size:12px;color:var(--bark)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{font-size:14px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 13px;cursor:pointer;color:var(--ink);font-variant-numeric:tabular-nums}
+  .chip:hover{border-color:var(--leaf)}
+  .chip.on{background:var(--leaf);border-color:var(--leaf);color:#fff;font-weight:700}
+  .reset-ninku{align-self:flex-start;border:1px solid var(--line);background:#fff;color:var(--bark);border-radius:7px;padding:5px 11px;font-size:12px;cursor:pointer;font-family:inherit}
+  .reset-ninku:hover{border-color:var(--leaf);color:var(--leaf)}
+
+  .pick{display:flex;gap:7px;flex-wrap:wrap}
+  .pick .chip.on{background:var(--tape);border-color:var(--tape)}
+  .pick-leaf .chip.on{background:var(--leaf);border-color:var(--leaf)}
+
+  .addable{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+  .addable input{flex:1;min-width:140px}
+  .mini-btn{border:1px dashed var(--leaf);background:var(--leaf-soft);color:var(--leaf);border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  .mini-btn:hover{background:#dbe6dd}
+  .taglist{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px}
+  .tag{background:#fff;border:1px solid var(--tape);color:var(--tape);border-radius:999px;padding:5px 10px;font-size:13px;display:flex;align-items:center;gap:7px}
+  .tag button{border:none;background:none;color:var(--tape);cursor:pointer;font-size:15px;line-height:1;padding:0}
+
+  .move-note{font-size:12px;color:var(--bark);background:var(--field);border-left:3px solid var(--tape);padding:7px 11px;border-radius:0 6px 6px 0;margin-top:4px}
+  .dup-note{font-size:12px;color:var(--danger);background:#fbeeea;border-left:3px solid var(--danger);padding:7px 11px;border-radius:0 6px 6px 0;margin-top:4px}
+
+  .photo-add{display:inline-flex;align-items:center;cursor:pointer}
+  .photo-list{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  .photo-thumb{position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+  .photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .photo-thumb button{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(34,35,31,.72);color:#fff;cursor:pointer;font-size:14px;line-height:1}
+
+  .states{display:flex;gap:8px;flex-wrap:wrap}
+  .state-opt{border:1px solid var(--line);background:#fff;border-radius:8px;padding:9px 15px;font-size:14px;cursor:pointer}
+  .state-opt.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  .add-site{width:100%;border:1.5px dashed var(--leaf);background:transparent;color:var(--leaf);border-radius:var(--radius);padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px}
+  .add-site:hover{background:var(--leaf-soft)}
+
+  .savebar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(246,245,240,.94);backdrop-filter:blur(6px);border-top:1px solid var(--line);padding:12px 14px;display:flex;gap:12px;align-items:center;justify-content:center}
+  .savebar .sum{font-size:13px;color:var(--bark);flex:1;max-width:680px}
+  .savebar .sum b{color:var(--leaf);font-size:16px}
+  .savebar .sum b.over{color:var(--danger)}
+  .savebar .sum .warn{color:var(--danger);font-size:12px;display:none}
+  .save{background:var(--leaf);color:#fff;border:none;border-radius:10px;padding:14px 28px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 6px 16px -8px rgba(33,74,55,.7)}
+  .save:hover{background:#1a3c2d}
+
+  .overlay{position:fixed;inset:0;z-index:60;background:var(--leaf);display:flex;align-items:center;justify-content:center;padding:24px}
+  .overlay .box{max-width:440px;width:100%;text-align:center;color:#fff}
+  .overlay .mark{font-size:13px;letter-spacing:.16em;opacity:.7}
+  .overlay h2{font-size:24px;margin:8px 0 4px;font-weight:800}
+  .overlay p{font-size:14px;opacity:.8;margin:0 0 24px}
+  .name-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .name-grid button{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:12px;padding:18px;font-size:18px;font-weight:700;cursor:pointer;font-family:inherit}
+  .name-grid button:hover{background:rgba(255,255,255,.22)}
+
+  .modal{position:fixed;inset:0;z-index:70;background:rgba(34,35,31,.55);display:none;align-items:flex-start;justify-content:center;padding:24px;overflow:auto}
+  .modal.show{display:flex}
+  .modal .sheet{background:#fff;border-radius:14px;max-width:760px;width:100%;padding:22px;box-shadow:0 20px 60px -20px rgba(0,0,0,.5)}
+  .modal h3{margin:0 0 4px;font-size:18px}
+  .modal .lead{font-size:14px;color:var(--bark);margin:0 0 16px}
+  .modal .lead b{color:var(--ok)}
+  .preview-tbl{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px;display:block;overflow-x:auto;white-space:nowrap}
+  .preview-tbl th,.preview-tbl td{border:1px solid var(--line);padding:7px 9px;text-align:left}
+  .preview-tbl th{background:var(--leaf-soft);color:var(--leaf);font-weight:700}
+  .modal .note{font-size:12px;color:var(--bark);background:var(--field);border-radius:8px;padding:10px 12px;margin:12px 0}
+  .modal .note.warn{color:var(--danger);background:#fbeeea}
+  .modal .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap}
+  .modal .acts button{border-radius:9px;padding:11px 20px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;border:1px solid var(--line);background:#fff}
+  .modal .acts .primary{background:var(--leaf);color:#fff;border-color:var(--leaf)}
+
+  @media (max-width:520px){
+    .name-grid{grid-template-columns:1fr}
+    .row.times > .field{width:100%}
+    .brand .mark{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<!-- 起動：名前選択 -->
+<div class="overlay" id="overlay">
+  <div class="box">
+    <div class="mark">庭乃持田園</div>
+    <h2>日報を書きます</h2>
+    <p>はじめに、あなたの名前を選んでください</p>
+    <div class="name-grid" id="nameGrid"></div>
+  </div>
+</div>
+
+<header>
+  <div class="brand"><span class="mark">庭乃持田園</span><h1>作業日報</h1></div>
+  <div class="whoami" id="whoami" title="名前を変える"><b id="whoamiName">—</b><span class="sw">変更</span></div>
+</header>
+
+<main>
+  <div class="day-meta">
+    <div class="field">
+      <label for="date">作業日</label>
+      <input type="date" id="date">
+    </div>
+    <div class="field" style="flex:1;min-width:160px">
+      <label for="weather">天候</label>
+      <select id="weather"><option value="">—</option><option>晴れ</option><option>曇り</option><option>雨</option><option>雪</option></select>
+    </div>
+  </div>
+
+  <div class="sec-head"><span class="tag">現場</span><h2>今日まわった現場</h2><span class="rule"></span></div>
+  <div id="sites"></div>
+  <button class="add-site" id="addSite">＋ 現場を追加（午後に別の現場へ行ったとき）</button>
+
+  <div class="sec-head"><span class="tag">まとめ</span><h2>今日ぜんたいのふりかえり</h2><span class="rule"></span></div>
+  <div class="field" style="margin-bottom:14px">
+    <label for="done">今日できたこと</label>
+    <textarea id="done" placeholder="任意"></textarea>
+  </div>
+  <div class="field">
+    <label for="learn">所感・学び</label>
+    <textarea id="learn" placeholder="任意"></textarea>
+  </div>
+</main>
+
+<div class="savebar">
+  <div class="sum">現場 <b id="sumSites">0</b> ／ あなたの人工 <b id="sumNinku">0</b> ／ 作業した人 <b id="sumPeople">0</b>人
+    <span class="warn" id="ninkuWarn">※1日の人工が1.0を超えています</span>
+  </div>
+  <button class="save" id="save">保存する</button>
+</div>
+
+<!-- 保存プレビュー -->
+<div class="modal" id="modal">
+  <div class="sheet">
+    <h3>この内容で保存します</h3>
+    <p class="lead">日報は <b>現場ごとに1行</b> に分けて記録されます。これで現場別の集計が正確に出せます。</p>
+    <table class="preview-tbl" id="previewTbl"></table>
+    <div class="note" id="previewNote"></div>
+    <div class="note warn" id="dupWarn" style="display:none"></div>
+    <div class="acts">
+      <button id="modalBack">もどる</button>
+      <button class="primary" id="modalConfirm">この内容で記録</button>
+    </div>
+  </div>
+</div>
+
+<!-- 下書き復元 -->
+<div class="modal" id="draftModal">
+  <div class="sheet">
+    <h3>書きかけの日報があります</h3>
+    <p class="lead" id="draftLead"></p>
+    <div class="acts">
+      <button id="draftDiscard">破棄して新規</button>
+      <button class="primary" id="draftRestore">続きから入力</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   GAS接続。スプレッドシートのマスタを読み、日報を保存します。
+   ========================================================= */
+const GAS_URL='https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
+async function loadMasters(){
+  try{
+    const res=await fetch(GAS_URL+'?action=masters');
+    const m=await res.json();
+    if(m && m.staff && m.staff.length) MASTER.staff=m.staff;
+    if(m && m.siteGroups && Object.keys(m.siteGroups).length) MASTER.siteGroups=m.siteGroups;
+  }catch(e){ console.warn('マスタ取得に失敗。仮マスタで動作します。',e); }
+}
+
+/* マスタ（取得できない場合のフォールバック） */
+const MASTER = {
+  staff: ['親方','樋上','山口','甲斐','澤崎','荒木'],
+  siteGroups: {
+    'マンション':['メゾンふじのき台','かしの木台ハイツ','しいの木台ハイツ','パークハイツ梶ヶ谷','ピュアグレイス宮崎台','クレストヒルズ'],
+    '公共':{ // 委託名 → 現場（公園など）。実際の委託名に置き換えてください
+      '○○公園維持管理業務委託（例）':['久地伊屋ノ免公園','下作延南こども公園'],
+      '○○学校樹木管理業務委託（例）':['宮前平小学校','千代ヶ丘小学校'],
+    },
+    '法人':['港北ガーデンホームズ'],
+    '個人':['齋藤邸','岸邸','桜ヶ丘'],
+    '寺院':[],
+    'その他':['会社'],
+  },
+  vehicles: ['4tクレーン','キャラバン','3tダンプ','パッカー','軽ダンプ','軽トラ'],
+  machines: ['刈払機','トリマー','ブロワー','チェンソー（小）','チェンソー（中）','チェンソー（大）'],
+};
+const NINKU_CHIPS = [0.25, 0.3, 0.5, 0.75, 1.0];
+const WORK_HOURS_PER_NINKU = 8;   // 8時間＝1人工（必要なら変更）
+const STATES = ['対応済み','報告済み','未対応'];
+
+/* ===== 追加した現場・委託を端末に記憶（本番はスプレッドシートで全員共有）===== */
+function pushCustom(rec){
+  try{ const c=JSON.parse(localStorage.getItem('nippou_custom_sites')||'[]'); c.push(rec);
+    localStorage.setItem('nippou_custom_sites',JSON.stringify(c)); }catch(e){}
+}
+function loadCustom(){
+  let c=[]; try{ c=JSON.parse(localStorage.getItem('nippou_custom_sites')||'[]'); }catch(e){}
+  c.forEach(x=>{ const g=MASTER.siteGroups; if(!(x.cat in g)) return;
+    if(Array.isArray(g[x.cat])){ if(x.site && !g[x.cat].includes(x.site)) g[x.cat].push(x.site); }
+    else{ if(x.contract){ if(!g[x.cat][x.contract]) g[x.cat][x.contract]=[];
+      if(x.site && !g[x.cat][x.contract].includes(x.site)) g[x.cat][x.contract].push(x.site); } }
+  });
+}
+
+/* ===== 状態 ===== */
+let author = null;
+let siteSeq = 0;
+const sites = {};   // id -> data
+
+function newSiteData(){
+  return {cat:'', contract:'', site:'', start:'', end:'', ninku:null, ninkuAuto:null, ninkuManual:false,
+          work:'', members:[], joiners:[], helpers:[], vehicles:[], machines:[],
+          vehicleList:[...MASTER.vehicles], machineList:[...MASTER.machines], photos:[],
+          claim:'', state:''};
+}
+
+/* ===== 名前選択 ===== */
+function initNames(){
+  const grid=document.getElementById('nameGrid'); grid.innerHTML='';
+  MASTER.staff.forEach(n=>{ const b=document.createElement('button'); b.textContent=n;
+    b.onclick=()=>setAuthor(n); grid.appendChild(b); });
+}
+function setAuthor(n){
+  author=n;
+  localStorage.setItem('nippou_author',n);
+  document.getElementById('whoamiName').textContent=n;
+  document.getElementById('overlay').style.display='none';
+  if(Object.keys(sites).length===0) addSite();
+  refreshPeoplePicks();   // 自分を選択肢から外し、過去の混入も掃除
+}
+document.getElementById('whoami').onclick=()=>{ document.getElementById('overlay').style.display='flex'; };
+
+function staffOthers(){ return MASTER.staff.filter(s=>s!==author); }
+function refreshPeoplePicks(){
+  Object.keys(sites).forEach(id=>{
+    const d=sites[id], el=document.getElementById('site-'+id); if(!el) return;
+    d.members=d.members.filter(m=>m!==author);
+    d.joiners=d.joiners.filter(m=>m!==author);
+    renderPick(el.querySelector('[data-members]'), staffOthers(), d.members,'leaf');
+    renderPick(el.querySelector('[data-joiners]'), staffOthers(), d.joiners,'leaf');
+  });
+  updateSummary();
+}
+
+/* ===== 現場カード ===== */
+function addSite(data){
+  const id=++siteSeq;
+  sites[id]=data||newSiteData();
+  const el=document.createElement('div'); el.className='site'; el.id='site-'+id;
+  el.innerHTML=cardHTML(id);
+  document.getElementById('sites').appendChild(el);
+  wireCard(id);
+  renumber(); recalc(id); updateMoveNotes();
+}
+
+function cardHTML(id){
+  const catOpt=['<option value="">種類を選ぶ…</option>']
+    .concat(Object.keys(MASTER.siteGroups).map(c=>`<option>${c}</option>`)).join('');
+  const stateOpt=STATES.map(s=>`<div class="state-opt" data-state-opt="${s}">${s}</div>`).join('');
+  return `
+    <div class="site-top">
+      <span class="site-no">現場 #<span data-no></span></span>
+      <span class="ttl" data-ttl>未選択</span>
+      <button class="site-del" data-del>削除</button>
+    </div>
+    <div class="site-body">
+      <div class="row">
+        <div class="field" style="flex:0 0 auto;min-width:150px">
+          <label>種類</label><select data-cat>${catOpt}</select>
+        </div>
+        <div class="field" data-contract-wrap style="flex:1;min-width:190px;display:none">
+          <label>委託名</label>
+          <select data-contract><option value="">委託を選ぶ…</option></select>
+          <div class="addable"><input type="text" data-newcontract placeholder="委託を追加"><button class="mini-btn" data-addcontract>＋追加</button></div>
+        </div>
+        <div class="field" style="flex:1;min-width:200px">
+          <label>現場名</label>
+          <select data-site><option value="">先に種類を選ぶ</option></select>
+          <div class="addable"><input type="text" data-newsite placeholder="一覧に無い現場を追加"><button class="mini-btn" data-addsite>＋追加</button></div>
+        </div>
+      </div>
+      <div class="row times">
+        <div class="field"><label>開始</label><div class="hm"><select data-start-h>${hourOptions()}</select><span>:</span><select data-start-m>${minOptions()}</select></div></div>
+        <div class="field"><label>終了</label><div class="hm"><select data-end-h>${hourOptions()}</select><span>:</span><select data-end-m>${minOptions()}</select></div></div>
+        <div class="field" style="flex:1;min-width:110px"><label>作業時間</label><input type="text" data-hours readonly style="background:#fff"></div>
+      </div>
+      <div class="move-note" data-move style="display:none"></div>
+      <div class="dup-note" data-dup style="display:none"></div>
+
+      <div class="ninku-wrap">
+        <div class="ninku-badge"><span class="n tnum" data-ninku>0</span><span class="c">人工（にんく）</span></div>
+        <div class="ninku-ctl">
+          <span class="hint" data-hint>時間から目安を出します。違うときだけ押して直してください。</span>
+          <div class="chips" data-chips></div>
+          <button class="reset-ninku" data-resetninku style="display:none">↺ 目安にもどす</button>
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:14px"><label>業務内容</label><textarea data-work placeholder="例）除草　刈込　道路沿い桜並木周辺"></textarea></div>
+
+      <div class="field" style="margin-bottom:14px"><span class="lbl">一緒に作業した人（自社・自分以外）</span><div class="pick pick-leaf" data-members></div></div>
+      <div class="field" style="margin-bottom:14px"><span class="lbl">途中から合流した人（自社）</span><div class="pick pick-leaf" data-joiners></div></div>
+
+      <div class="field" style="margin-bottom:14px">
+        <span class="lbl">応援・手伝いの人（社外）</span>
+        <div class="taglist" data-helpers></div>
+        <div class="addable"><input type="text" data-newhelper placeholder="名前を入力（例：田中）"><button class="mini-btn" data-addhelper>＋追加</button></div>
+      </div>
+
+      <div class="field" style="margin-bottom:14px">
+        <span class="lbl">使用車両</span><div class="pick" data-vehicles></div>
+        <div class="addable"><input type="text" data-newvehicle placeholder="その他の車両を追加"><button class="mini-btn" data-addvehicle>＋追加</button></div>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <span class="lbl">使用機械・道具</span><div class="pick" data-machines></div>
+        <div class="addable"><input type="text" data-newmachine placeholder="その他の機械・道具を追加"><button class="mini-btn" data-addmachine>＋追加</button></div>
+      </div>
+
+      <div class="field" style="margin-bottom:14px"><label>お客様からの要望・クレーム等</label><textarea data-claim placeholder="あれば記入"></textarea></div>
+      <div class="field"><span class="lbl">対応状態</span><div class="states" data-states>${stateOpt}</div></div>
+
+      <div class="field" style="margin-top:14px">
+        <span class="lbl">特記する状況の写真</span>
+        <div class="photo-list" data-photos></div>
+        <label class="mini-btn photo-add">＋ 写真を追加<input type="file" accept="image/*" data-photo multiple hidden></label>
+      </div>
+    </div>`;
+}
+
+function wireCard(id){
+  const el=document.getElementById('site-'+id);
+  const d=sites[id];
+  const q=sel=>el.querySelector(sel);
+
+  // 種類 →（委託）→ 現場
+  const catSel=q('[data-cat]'), siteSel=q('[data-site]'), contractSel=q('[data-contract]'), contractWrap=q('[data-contract-wrap]');
+  const isContract=c=>MASTER.siteGroups[c] && !Array.isArray(MASTER.siteGroups[c]);
+  const currentList=()=>{ const g=MASTER.siteGroups[d.cat]; if(!g) return []; return Array.isArray(g)?g:(g[d.contract]||[]); };
+  function fillSites(){ siteSel.innerHTML='<option value="">現場を選ぶ…</option>'+currentList().map(s=>`<option${s===d.site?' selected':''}>${s}</option>`).join(''); }
+  function fillContracts(){ const g=MASTER.siteGroups[d.cat]||{}; contractSel.innerHTML='<option value="">委託を選ぶ…</option>'+Object.keys(g).map(c=>`<option${c===d.contract?' selected':''}>${c}</option>`).join(''); }
+  function syncTitle(){ q('[data-ttl]').textContent=d.site||d.contract||d.cat||'未選択'; }
+
+  catSel.value=d.cat;
+  catSel.onchange=()=>{ d.cat=catSel.value; d.contract=''; d.site='';
+    if(isContract(d.cat)){ contractWrap.style.display=''; fillContracts(); siteSel.innerHTML='<option value="">先に委託を選ぶ</option>'; }
+    else { contractWrap.style.display='none'; fillSites(); }
+    syncTitle(); updateMoveNotes(); };
+  contractSel.onchange=()=>{ d.contract=contractSel.value; d.site=''; fillSites(); syncTitle(); };
+  siteSel.onchange=()=>{ d.site=siteSel.value; syncTitle(); updateMoveNotes(); };
+  q('[data-addcontract]').onclick=()=>{ const v=q('[data-newcontract]').value.trim(); if(!v) return;
+    if(!isContract(d.cat)){ alert('公共など委託のある種類を選んでください'); return; }
+    if(!MASTER.siteGroups[d.cat][v]) MASTER.siteGroups[d.cat][v]=[]; pushCustom({cat:d.cat,contract:v,site:null});
+    d.contract=v; fillContracts(); contractSel.value=v; siteSel.innerHTML='<option value="">現場を選ぶ…</option>'; q('[data-newcontract]').value=''; syncTitle(); };
+  q('[data-addsite]').onclick=()=>{ const v=q('[data-newsite]').value.trim(); if(!v) return;
+    if(!d.cat){ alert('先に種類を選んでください'); return; }
+    if(isContract(d.cat)){ if(!d.contract){ alert('先に委託を選んでください'); return; }
+      if(!MASTER.siteGroups[d.cat][d.contract].includes(v)) MASTER.siteGroups[d.cat][d.contract].push(v); pushCustom({cat:d.cat,contract:d.contract,site:v}); }
+    else { if(!MASTER.siteGroups[d.cat].includes(v)) MASTER.siteGroups[d.cat].push(v); pushCustom({cat:d.cat,contract:null,site:v}); }
+    d.site=v; fillSites(); siteSel.value=v; q('[data-newsite]').value=''; syncTitle(); updateMoveNotes(); };
+  if(d.cat){ catSel.value=d.cat; if(isContract(d.cat)){ contractWrap.style.display=''; fillContracts(); } fillSites(); }
+  syncTitle();
+
+  // 時刻
+  const sh=q('[data-start-h]'), sm=q('[data-start-m]'), eh=q('[data-end-h]'), em=q('[data-end-m]');
+  const compose=(h,m)=> h.value==='' ? '' : String(h.value).padStart(2,'0')+':'+m.value;
+  if(d.start){ const [a,b]=d.start.split(':'); sh.value=String(Number(a)); sm.value=b; }
+  if(d.end){ const [a,b]=d.end.split(':'); eh.value=String(Number(a)); em.value=b; }
+  const onTime=()=>{ d.start=compose(sh,sm); d.end=compose(eh,em); recalc(id); updateMoveNotes(); };
+  [sh,sm,eh,em].forEach(s=>s.onchange=onTime);
+
+  // 人工
+  const chips=q('[data-chips]');
+  NINKU_CHIPS.forEach(v=>{ const c=document.createElement('button'); c.className='chip'; c.dataset.v=v;
+    c.textContent=v.toFixed(2).replace(/0$/,''); c.onclick=()=>{ d.ninku=v; d.ninkuManual=true; paintNinku(id); updateSummary(); }; chips.appendChild(c); });
+  q('[data-resetninku]').onclick=()=>{ d.ninkuManual=false; recalc(id); };
+
+  // 業務内容・クレーム
+  q('[data-work]').value=d.work; q('[data-work]').oninput=()=>{ d.work=q('[data-work]').value; };
+  q('[data-claim]').value=d.claim; q('[data-claim]').oninput=()=>{ d.claim=q('[data-claim]').value; };
+
+  // 状態
+  el.querySelectorAll('[data-state-opt]').forEach(o=>{
+    if(o.dataset.stateOpt===d.state) o.classList.add('on');
+    o.onclick=()=>{ el.querySelectorAll('[data-state-opt]').forEach(x=>x.classList.remove('on'));
+      if(d.state===o.dataset.stateOpt){ d.state=''; } else { o.classList.add('on'); d.state=o.dataset.stateOpt; } };
+  });
+
+  // 自社メンバー・途中合流（自分以外）
+  renderPick(q('[data-members]'), staffOthers(), d.members,'leaf');
+  renderPick(q('[data-joiners]'), staffOthers(), d.joiners,'leaf');
+
+  // 応援
+  q('[data-addhelper]').onclick=()=>{ const v=q('[data-newhelper]').value.trim(); if(!v) return;
+    if(!d.helpers.includes(v)) d.helpers.push(v); q('[data-newhelper]').value=''; renderTags(id,'helpers'); updateSummary(); };
+  renderTags(id,'helpers');
+
+  // 車両・機械
+  renderPick(q('[data-vehicles]'), d.vehicleList, d.vehicles,'tape');
+  renderPick(q('[data-machines]'), d.machineList, d.machines,'tape');
+  q('[data-addvehicle]').onclick=()=>{ const v=q('[data-newvehicle]').value.trim(); if(!v) return;
+    if(!d.vehicleList.includes(v)) d.vehicleList.push(v); if(!d.vehicles.includes(v)) d.vehicles.push(v);
+    q('[data-newvehicle]').value=''; renderPick(q('[data-vehicles]'), d.vehicleList, d.vehicles,'tape'); };
+  q('[data-addmachine]').onclick=()=>{ const v=q('[data-newmachine]').value.trim(); if(!v) return;
+    if(!d.machineList.includes(v)) d.machineList.push(v); if(!d.machines.includes(v)) d.machines.push(v);
+    q('[data-newmachine]').value=''; renderPick(q('[data-machines]'), d.machineList, d.machines,'tape'); };
+
+  // 写真
+  q('[data-photo]').onchange=(e)=>{ [...e.target.files].forEach(f=>{ const r=new FileReader();
+    r.onload=()=>{ d.photos.push({name:f.name,url:r.result}); renderPhotos(id); }; r.readAsDataURL(f); }); e.target.value=''; };
+  renderPhotos(id);
+
+  // 削除
+  q('[data-del]').onclick=()=>{ if(Object.keys(sites).length<=1){ alert('現場は最低1つ必要です'); return; }
+    delete sites[id]; el.remove(); renumber(); updateMoveNotes(); updateSummary(); };
+}
+
+function renderPick(container, list, selectedArr){
+  container.innerHTML='';
+  list.forEach(item=>{ const c=document.createElement('button');
+    c.className='chip'+(selectedArr.includes(item)?' on':''); c.textContent=item;
+    c.onclick=()=>{ const i=selectedArr.indexOf(item); if(i<0) selectedArr.push(item); else selectedArr.splice(i,1);
+      c.classList.toggle('on'); updateSummary(); }; container.appendChild(c); });
+}
+function renderTags(id,key){
+  const el=document.getElementById('site-'+id); const box=el.querySelector('[data-'+key+']'); const d=sites[id];
+  box.innerHTML='';
+  d[key].forEach((h,i)=>{ const t=document.createElement('span'); t.className='tag';
+    t.innerHTML=`${h} <button title="削除">×</button>`;
+    t.querySelector('button').onclick=()=>{ d[key].splice(i,1); renderTags(id,key); updateSummary(); }; box.appendChild(t); });
+}
+function renderPhotos(id){
+  const el=document.getElementById('site-'+id); const box=el.querySelector('[data-photos]'); const d=sites[id];
+  box.innerHTML='';
+  d.photos.forEach((p,i)=>{ const t=document.createElement('div'); t.className='photo-thumb';
+    t.innerHTML=`<img src="${p.url}" alt=""><button title="削除">×</button>`;
+    t.querySelector('button').onclick=()=>{ d.photos.splice(i,1); renderPhotos(id); }; box.appendChild(t); });
+}
+
+/* ===== 計算 ===== */
+function hourOptions(){ let o='<option value="">–</option>'; for(let h=0;h<24;h++) o+=`<option value="${h}">${h}</option>`; return o; }
+function minOptions(){ return ['00','15','30','45'].map(m=>`<option value="${m}">${m}</option>`).join(''); }
+function diffHours(start,end){ if(!start||!end) return 0;
+  const [sh,sm]=start.split(':').map(Number), [eh,em]=end.split(':').map(Number);
+  let m=(eh*60+em)-(sh*60+sm); if(m<0) m+=24*60; return m/60; }
+function round025(x){ return Math.round(x/0.25)*0.25; }
+
+function recalc(id){
+  const el=document.getElementById('site-'+id); const d=sites[id];
+  const h=diffHours(d.start,d.end);
+  el.querySelector('[data-hours]').value = h? (Math.floor(h)+'時間'+Math.round((h%1)*60)+'分') : '';
+  const auto = h? round025(h/WORK_HOURS_PER_NINKU) : 0;
+  d.ninkuAuto=auto;
+  if(!d.ninkuManual) d.ninku=auto;
+  paintNinku(id); updateSummary();
+}
+function paintNinku(id){
+  const el=document.getElementById('site-'+id); const d=sites[id];
+  el.querySelector('[data-ninku]').textContent=(d.ninku??0);
+  el.querySelectorAll('[data-chips] .chip').forEach(c=>c.classList.toggle('on', Number(c.dataset.v)===d.ninku));
+  const reset=el.querySelector('[data-resetninku]'), hint=el.querySelector('[data-hint]');
+  if(d.ninkuManual){ reset.style.display='inline-block'; hint.textContent='自分で直した値です（時間からの目安は '+(d.ninkuAuto??0)+'）。'; }
+  else { reset.style.display='none'; hint.textContent='時間から目安を出します。違うときだけ押して直してください。'; }
+}
+
+/* 開始時刻でソートしたID順（未入力は末尾） */
+function idsByTime(){
+  return Object.keys(sites).map(Number).sort((a,b)=>{
+    const sa=sites[a].start||'99:99', sb=sites[b].start||'99:99';
+    return sa<sb?-1:sa>sb?1:a-b;
+  });
+}
+/* 移動注記（時刻順で前後を判定）＋ 同一現場の重複注意 */
+function updateMoveNotes(){
+  const order=idsByTime();
+  order.forEach((id,idx)=>{
+    const el=document.getElementById('site-'+id); if(!el) return;
+    const note=el.querySelector('[data-move]'); note.style.display='none';
+    if(idx>0){ const prev=sites[order[idx-1]], cur=sites[id];
+      if(prev.end && cur.start && diffHours(prev.end,cur.start)>0){
+        note.style.display='block';
+        note.textContent=`前の現場の終了（${prev.end}）から この現場の開始（${cur.start}）までは、移動として作業時間に含めていません。`;
+      } }
+  });
+  // 重複（同じ 種類+委託+現場）
+  const seen={};
+  Object.keys(sites).forEach(id=>{ const d=sites[id]; if(!d.site) return;
+    const key=d.cat+'|'+d.contract+'|'+d.site; (seen[key]=seen[key]||[]).push(id); });
+  Object.keys(sites).forEach(id=>{ const el=document.getElementById('site-'+id); if(!el) return;
+    el.querySelector('[data-dup]').style.display='none'; });
+  Object.values(seen).forEach(group=>{ if(group.length>1) group.forEach(id=>{
+    const el=document.getElementById('site-'+id); if(!el) return;
+    const dn=el.querySelector('[data-dup]'); dn.style.display='block';
+    dn.textContent='同じ現場が複数のカードにあります。意図的（午前・午後で分ける等）でなければご確認を。';
+  }); });
+}
+
+function updateSummary(){
+  const ids=Object.keys(sites);
+  document.getElementById('sumSites').textContent=ids.filter(i=>sites[i].site).length;
+  const total=ids.reduce((s,i)=>s+(Number(sites[i].ninku)||0),0);
+  const tn=Math.round(total*100)/100;
+  const nb=document.getElementById('sumNinku'); nb.textContent=tn; nb.classList.toggle('over', tn>1.0);
+  document.getElementById('ninkuWarn').style.display = tn>1.0 ? 'inline' : 'none';
+  const staffSet=new Set(), helpSet=new Set();
+  ids.forEach(i=>{ const d=sites[i]; if(!d.site) return;
+    [author,...d.members,...d.joiners].filter(Boolean).forEach(p=>staffSet.add(p));
+    d.helpers.forEach(p=>helpSet.add(p)); });
+  const peo=document.getElementById('sumPeople');
+  peo.textContent=staffSet.size+helpSet.size; peo.title=`自社${staffSet.size}人＋応援${helpSet.size}人`;
+  saveDraft();
+}
+function renumber(){ let n=0; idsByTime().forEach(id=>{ n++; const e=document.querySelector('#site-'+id+' [data-no]'); if(e) e.textContent=n; }); }
+
+/* ===== 下書き自動保存（写真は除く）===== */
+let draftTimer=null;
+function scheduleDraft(){ clearTimeout(draftTimer); draftTimer=setTimeout(saveDraft,400); }
+function collectDraft(){
+  return { author, date:val('date'), weather:val('weather'), done:val('done'), learn:val('learn'),
+    sites: idsByTime().map(id=>{ const {photos, ...rest}=sites[id]; return rest; }) };
+}
+function saveDraft(){
+  try{ if(!author) return; localStorage.setItem('nippou_draft', JSON.stringify(collectDraft())); }catch(e){}
+}
+function clearDraft(){ localStorage.removeItem('nippou_draft'); }
+function val(id){ return document.getElementById(id).value; }
+document.addEventListener('input', scheduleDraft);
+document.addEventListener('change', scheduleDraft);
+
+function restoreDraft(dr){
+  setAuthor(dr.author||author);
+  document.getElementById('date').value=dr.date||new Date().toISOString().slice(0,10);
+  document.getElementById('weather').value=dr.weather||'';
+  document.getElementById('done').value=dr.done||'';
+  document.getElementById('learn').value=dr.learn||'';
+  Object.keys(sites).forEach(id=>{ const e=document.getElementById('site-'+id); if(e) e.remove(); delete sites[id]; });
+  (dr.sites&&dr.sites.length?dr.sites:[null]).forEach(sd=>{
+    const data=newSiteData(); if(sd) Object.assign(data, sd, {photos:[]}); addSite(data); });
+  refreshPeoplePicks(); updateMoveNotes(); updateSummary();
+}
+
+/* ===== 保存（プレビュー → 記録 → リセット）===== */
+function buildRows(){
+  const date=val('date'), weather=val('weather');
+  const daily={ done:val('done'), learn:val('learn') };
+  return idsByTime().map(id=>{ const d=sites[id];
+    return { date, author, weather,
+      category:d.cat, contract:d.contract, site:d.site, start:d.start, end:d.end,
+      hours:Math.round(diffHours(d.start,d.end)*100)/100, ninku:d.ninku??0, work:d.work,
+      members:[author,...d.members].filter(Boolean).join('・'),
+      joiners:d.joiners.join('・'), helpers:d.helpers.join('・'),
+      vehicles:d.vehicles.join('・'), machines:d.machines.join('・'),
+      claim:d.claim, state:d.state, photoCount:d.photos.length, photos:d.photos, ...daily };
+  });
+}
+function resetForm(){
+  Object.keys(sites).forEach(id=>{ const e=document.getElementById('site-'+id); if(e) e.remove(); delete sites[id]; });
+  document.getElementById('weather').value=''; document.getElementById('done').value=''; document.getElementById('learn').value='';
+  document.getElementById('date').value=new Date().toISOString().slice(0,10);
+  addSite(); updateSummary(); clearDraft();
+}
+
+document.getElementById('save').onclick=()=>{
+  if(!author){ document.getElementById('overlay').style.display='flex'; return; }
+  const rows=buildRows().filter(r=>r.site);
+  if(rows.length===0){ alert('現場を1つ以上選んでください'); return; }
+  const cols=[['date','日付'],['author','作成者'],['category','種類'],['contract','委託'],['site','現場名'],
+    ['start','開始'],['end','終了'],['hours','時間'],['ninku','人工'],['members','作業人員'],
+    ['joiners','途中合流'],['helpers','応援'],['vehicles','車両'],['machines','機械'],['state','状態']];
+  let html='<thead><tr>'+cols.map(c=>`<th>${c[1]}</th>`).join('')+'</tr></thead><tbody>';
+  rows.forEach(r=>{ html+='<tr>'+cols.map(c=>`<td>${r[c[0]]??''}</td>`).join('')+'</tr>'; });
+  html+='</tbody>';
+  document.getElementById('previewTbl').innerHTML=html;
+  const totalNinku=rows.reduce((s,r)=>s+Number(r.ninku||0),0);
+  document.getElementById('previewNote').textContent=
+    `${author}さんの ${rows[0].date||'（日付未入力）'} の日報を、現場ごとに ${rows.length} 行で記録します。あなたの人工合計：${Math.round(totalNinku*100)/100}。`;
+  // 重複・人工超過の注意
+  const keys=rows.map(r=>r.category+'|'+r.contract+'|'+r.site);
+  const dup=keys.filter((k,i)=>keys.indexOf(k)!==i);
+  const dw=document.getElementById('dupWarn'); const warns=[];
+  if(dup.length) warns.push('同じ現場が複数行あります。午前・午後で分けたのでなければご確認ください。');
+  if(totalNinku>1.0) warns.push('1日の人工合計が1.0を超えています。入力ミスがないかご確認ください。');
+  if(warns.length){ dw.style.display='block'; dw.innerHTML=warns.join('<br>'); } else { dw.style.display='none'; }
+  document.getElementById('modal').classList.add('show');
+};
+document.getElementById('modalBack').onclick=()=>document.getElementById('modal').classList.remove('show');
+document.getElementById('modalConfirm').onclick=async ()=>{
+  const rows=buildRows().filter(r=>r.site);
+  const btn=document.getElementById('modalConfirm'); btn.disabled=true; btn.textContent='保存中…';
+  try{
+    const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({rows})});
+    const r=await res.json();
+    document.getElementById('modal').classList.remove('show');
+    if(r.ok){ alert('保存しました（'+r.saved+'件）。続けて新しい日報を入力できます。'); resetForm(); }
+    else { alert('保存に失敗しました：'+(r.error||'不明なエラー')); }
+  }catch(e){
+    document.getElementById('modal').classList.remove('show');
+    alert('通信エラーで保存できませんでした。電波を確認して、もう一度お試しください。\n（下書きは残っています）');
+  }finally{ btn.disabled=false; btn.textContent='この内容で記録'; }
+};
+document.getElementById('draftRestore').onclick=()=>{ try{ restoreDraft(JSON.parse(localStorage.getItem('nippou_draft'))); }catch(e){}
+  document.getElementById('draftModal').classList.remove('show'); };
+document.getElementById('draftDiscard').onclick=()=>{ clearDraft(); document.getElementById('draftModal').classList.remove('show'); };
+
+/* ===== 初期化 ===== */
+(async function init(){
+  document.getElementById('date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('addSite').onclick=()=>addSite();
+  await loadMasters();   // スプレッドシートのマスタを取得（失敗時は仮マスタ）
+  loadCustom();
+  initNames();
+  const saved=localStorage.getItem('nippou_author');
+  if(saved && MASTER.staff.includes(saved)) setAuthor(saved);
+  // 下書き確認
+  let dr=null; try{ dr=JSON.parse(localStorage.getItem('nippou_draft')||'null'); }catch(e){}
+  if(dr && dr.sites && dr.sites.some(s=>s.site)){
+    document.getElementById('draftLead').textContent=
+      `${dr.author||''}さんの ${dr.date||''} の書きかけ（現場${dr.sites.filter(s=>s.site).length}件）があります。`;
+    document.getElementById('draftModal').classList.add('show');
+  }
+})();
+</script>
+</body>
+</html>
