@@ -141,6 +141,30 @@
     .brand .mark{display:none}
   }
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  .hd-right{display:flex;align-items:center;gap:8px}
+  .edit-entry{background:#fff;border:1px solid var(--line,#cfcabe);color:#3a4a3d;font-family:inherit;font-size:13px;padding:7px 11px;border-radius:8px;cursor:pointer;white-space:nowrap}
+  .edit-entry:active{background:#f0ede4}
+  .ed-screen{position:fixed;inset:0;background:#f7f5ef;z-index:300;display:flex;flex-direction:column;overflow:hidden}
+  .ed-bar{display:flex;align-items:center;gap:12px;padding:13px 16px;background:#fff;border-bottom:1px solid #e5e0d4;flex:0 0 auto}
+  .ed-back{background:none;border:none;font-family:inherit;font-size:15px;color:#3a6b46;cursor:pointer;padding:4px;font-weight:600}
+  .ed-bar b{font-size:16px}
+  .ed-body{flex:1;overflow-y:auto;padding:16px;max-width:680px;width:100%;margin:0 auto;box-sizing:border-box}
+  .ed-item{background:#fff;border:1px solid #e5e0d4;border-radius:10px;padding:12px 14px;margin-bottom:9px;cursor:pointer;display:flex;justify-content:space-between;gap:10px;align-items:center}
+  .ed-item:active{background:#f0ede4}
+  .ed-item .ei-l{min-width:0}
+  .ed-item .ei-date{font-size:12px;color:#8a8270}
+  .ed-item .ei-site{font-weight:600;font-size:15px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ed-item .ei-sub{font-size:12px;color:#8a8270;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ed-item .ei-n{font-size:13px;color:#3a6b46;font-weight:600;white-space:nowrap}
+  .ed-fld{margin-bottom:13px}
+  .ed-fld label{display:block;font-size:13px;color:#6b6450;margin-bottom:5px;font-weight:600}
+  .ed-fld input,.ed-fld select,.ed-fld textarea{width:100%;font-size:16px;padding:10px 11px;border:1px solid #cfcabe;border-radius:8px;font-family:inherit;background:#fff;box-sizing:border-box}
+  .ed-fld textarea{min-height:60px;resize:vertical}
+  .ed-2{display:flex;gap:10px}.ed-2>div{flex:1}
+  .ed-save{width:100%;background:#3a6b46;color:#fff;border:none;font-family:inherit;font-size:16px;font-weight:600;padding:14px;border-radius:10px;cursor:pointer;margin-top:6px}
+  .ed-save:disabled{opacity:.6}
+  .ed-note{font-size:12px;color:#8a8270;margin:2px 0 14px}
+  .ed-empty{text-align:center;color:#8a8270;padding:44px 16px;line-height:1.7}
 </style>
 </head>
 <body>
@@ -157,7 +181,10 @@
 
 <header>
   <div class="brand"><span class="mark">庭乃持田園</span><h1>作業日報</h1></div>
-  <div class="whoami" id="whoami" title="名前を変える"><b id="whoamiName">—</b><span class="sw">変更</span></div>
+  <div class="hd-right">
+    <button class="edit-entry" id="editEntry">✏️ 直す</button>
+    <div class="whoami" id="whoami" title="名前を変える"><b id="whoamiName">—</b><span class="sw">変更</span></div>
+  </div>
 </header>
 
 <main>
@@ -218,6 +245,46 @@
       <button id="draftDiscard">破棄して新規</button>
       <button class="primary" id="draftRestore">続きから入力</button>
     </div>
+  </div>
+</div>
+
+<!-- 編集：一覧 -->
+<div class="ed-screen" id="edList" style="display:none">
+  <div class="ed-bar"><button class="ed-back" id="edListClose">← もどる</button><b id="edListTitle">日報を直す</b></div>
+  <div class="ed-body" id="edListBody"></div>
+</div>
+
+<!-- 編集：フォーム -->
+<div class="ed-screen" id="edForm" style="display:none">
+  <div class="ed-bar"><button class="ed-back" id="edFormClose">← 一覧へ</button><b>日報を直す</b></div>
+  <div class="ed-body">
+    <div class="ed-note" id="edFormHint"></div>
+    <div class="ed-fld"><label>作業日</label><input type="date" id="ed_date"></div>
+    <div class="ed-fld"><label>種類</label><select id="ed_cat"></select></div>
+    <div class="ed-fld" id="ed_contractWrap"><label>委託</label><select id="ed_contract"></select></div>
+    <div class="ed-fld"><label>現場名</label><select id="ed_site"></select></div>
+    <div class="ed-2">
+      <div class="ed-fld"><label>開始</label><input type="time" id="ed_start" step="900"></div>
+      <div class="ed-fld"><label>終了</label><input type="time" id="ed_end" step="900"></div>
+    </div>
+    <div class="ed-fld"><label>人工（時間から自動・手で直せます）</label><input type="number" id="ed_ninku" step="0.25" min="0"></div>
+    <div class="ed-fld"><label>業務内容</label><textarea id="ed_work"></textarea></div>
+    <div class="ed-fld"><label>作業人員（・で区切り）</label><input type="text" id="ed_members"></div>
+    <div class="ed-2">
+      <div class="ed-fld"><label>途中合流</label><input type="text" id="ed_joiners"></div>
+      <div class="ed-fld"><label>応援</label><input type="text" id="ed_helpers"></div>
+    </div>
+    <div class="ed-2">
+      <div class="ed-fld"><label>使用車両</label><input type="text" id="ed_vehicles"></div>
+      <div class="ed-fld"><label>使用機械</label><input type="text" id="ed_machines"></div>
+    </div>
+    <div class="ed-fld"><label>お客様からの要望・クレーム等</label><textarea id="ed_claim"></textarea></div>
+    <div class="ed-fld"><label>対応状態</label><select id="ed_state"></select></div>
+    <div class="ed-fld"><label>天候</label><select id="ed_weather"><option value="">—</option><option>晴れ</option><option>曇り</option><option>雨</option><option>雪</option></select></div>
+    <div class="ed-fld"><label>今日できたこと</label><textarea id="ed_done"></textarea></div>
+    <div class="ed-fld"><label>所感・学び</label><textarea id="ed_learn"></textarea></div>
+    <button class="ed-save" id="ed_submit">更新する</button>
+    <div class="ed-note" style="margin-top:10px">※ 写真の差し替えは、ここではできません（必要なときはスプレッドシートで対応してください）。</div>
   </div>
 </div>
 
@@ -687,6 +754,99 @@ document.getElementById('draftDiscard').onclick=()=>{ clearDraft(); document.get
     document.getElementById('draftModal').classList.add('show');
   }
 })();
+/* ===== 日報を直す（編集）===== */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function isOwnerName(n){ return n==='親方' || n==='持田智彦'; }
+let edRecRid=null;
+function edTimeToNinku(s,e){ const h=diffHours(s,e); return Math.round(h/8*4)/4; }
+
+document.getElementById('editEntry').onclick=()=>{ if(!author){document.getElementById('overlay').style.display='flex';return;} openEditList(); };
+document.getElementById('edListClose').onclick=()=>{ document.getElementById('edList').style.display='none'; };
+document.getElementById('edFormClose').onclick=()=>{ document.getElementById('edForm').style.display='none'; openEditList(); };
+
+async function openEditList(){
+  document.getElementById('edList').style.display='flex';
+  const body=document.getElementById('edListBody'); body.innerHTML='<div class="ed-empty">読み込み中…</div>';
+  document.getElementById('edListTitle').textContent = isOwnerName(author)?'日報を直す（全員ぶん）':'日報を直す（自分のぶん）';
+  try{
+    const res=await fetch(GAS_URL+'?action=editlist&author='+encodeURIComponent(author));
+    const d=await res.json();
+    const recs=d.records||[];
+    if(!recs.length){ body.innerHTML='<div class="ed-empty">直せる日報がありません。<br>日報を保存すると、ここに出ます。</div>'; return; }
+    body.innerHTML=recs.map(r=>`<div class="ed-item" data-rid="${r.rid}">
+      <div class="ei-l"><div class="ei-date">${r.date||''}</div>
+      <div class="ei-site">${esc(r.site||'（現場未設定）')}</div>
+      <div class="ei-sub">${esc(r.author||'')}${r.work?'・'+esc(r.work):''}</div></div>
+      <div class="ei-n">人工 ${r.ninku}</div></div>`).join('');
+    body.querySelectorAll('.ed-item').forEach(el=>el.onclick=()=>openEditForm(el.dataset.rid));
+  }catch(e){ body.innerHTML='<div class="ed-empty">読み込みに失敗しました。<br>電波を確認して、もう一度お試しください。</div>'; }
+}
+
+async function openEditForm(rid){
+  edRecRid=rid;
+  try{
+    const res=await fetch(GAS_URL+'?action=getone&rid='+encodeURIComponent(rid));
+    const d=await res.json();
+    if(!d.ok){ alert(d.error||'読み込めませんでした'); return; }
+    fillEditForm(d.rec);
+    const f=document.getElementById('edForm'); f.style.display='flex'; f.querySelector('.ed-body').scrollTop=0;
+  }catch(e){ alert('読み込みに失敗しました。電波を確認してください。'); }
+}
+
+function edIsContract(c){ return MASTER.siteGroups[c] && !Array.isArray(MASTER.siteGroups[c]); }
+function edFillCats(sel){ document.getElementById('ed_cat').innerHTML=Object.keys(MASTER.siteGroups).map(c=>`<option${c===sel?' selected':''}>${esc(c)}</option>`).join(''); }
+function edFillContracts(cat,sel){
+  const wrap=document.getElementById('ed_contractWrap'), cs=document.getElementById('ed_contract');
+  if(edIsContract(cat)){ wrap.style.display=''; const ks=Object.keys(MASTER.siteGroups[cat]||{});
+    if(sel && ks.indexOf(sel)<0) ks.unshift(sel);
+    cs.innerHTML=ks.map(c=>`<option${c===sel?' selected':''}>${esc(c)}</option>`).join(''); }
+  else { wrap.style.display='none'; cs.innerHTML=''; }
+}
+function edFillSites(cat,contract,sel){
+  const g=MASTER.siteGroups[cat]; let list=[];
+  if(Array.isArray(g)) list=g.slice(); else if(g) list=(g[contract]||[]).slice();
+  if(sel && list.indexOf(sel)<0) list.unshift(sel);
+  document.getElementById('ed_site').innerHTML=list.map(s=>`<option${s===sel?' selected':''}>${esc(s)}</option>`).join('');
+}
+function fillEditForm(r){
+  document.getElementById('ed_state').innerHTML='<option value="">—</option>'+STATES.map(s=>`<option${s===r.state?' selected':''}>${s}</option>`).join('');
+  edFillCats(r.category);
+  edFillContracts(r.category, r.contract);
+  edFillSites(r.category, r.contract, r.site);
+  const set=(id,v)=>document.getElementById(id).value=(v==null?'':v);
+  set('ed_date',r.date); set('ed_start',r.start); set('ed_end',r.end); set('ed_ninku',r.ninku);
+  set('ed_work',r.work); set('ed_members',r.members); set('ed_joiners',r.joiners); set('ed_helpers',r.helpers);
+  set('ed_vehicles',r.vehicles); set('ed_machines',r.machines); set('ed_claim',r.claim);
+  set('ed_weather',r.weather); set('ed_done',r.done); set('ed_learn',r.learn);
+  document.getElementById('edFormHint').textContent=(isOwnerName(author)&&r.author!==author)?(r.author+'さんの日報を直しています'):'';
+}
+document.getElementById('ed_cat').onchange=function(){ const c=this.value; edFillContracts(c,''); const con=edIsContract(c)?document.getElementById('ed_contract').value:''; edFillSites(c,con,''); };
+document.getElementById('ed_contract').onchange=function(){ edFillSites(document.getElementById('ed_cat').value,this.value,''); };
+function edRecalc(){ const n=edTimeToNinku(document.getElementById('ed_start').value,document.getElementById('ed_end').value); if(n>0) document.getElementById('ed_ninku').value=n; }
+document.getElementById('ed_start').onchange=edRecalc;
+document.getElementById('ed_end').onchange=edRecalc;
+
+document.getElementById('ed_submit').onclick=async function(){
+  const cat=document.getElementById('ed_cat').value;
+  const con=edIsContract(cat)?document.getElementById('ed_contract').value:'';
+  const v=id=>document.getElementById(id).value;
+  const start=v('ed_start'), end=v('ed_end');
+  const row={ date:v('ed_date'), category:cat, contract:con, site:v('ed_site'),
+    start:start, end:end, hours:Math.round(diffHours(start,end)*100)/100,
+    ninku:Number(v('ed_ninku'))||0, work:v('ed_work'), members:v('ed_members'),
+    joiners:v('ed_joiners'), helpers:v('ed_helpers'), vehicles:v('ed_vehicles'),
+    machines:v('ed_machines'), claim:v('ed_claim'), state:v('ed_state'),
+    weather:v('ed_weather'), done:v('ed_done'), learn:v('ed_learn') };
+  if(!row.site){ alert('現場名を選んでください'); return; }
+  const btn=this; btn.disabled=true; btn.textContent='更新中…';
+  try{
+    const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({mode:'update',rid:edRecRid,editor:author,row})});
+    const r=await res.json();
+    if(r.ok){ alert('更新しました。'); document.getElementById('edForm').style.display='none'; openEditList(); }
+    else { alert('更新できませんでした：'+(r.error||'不明なエラー')); }
+  }catch(e){ alert('通信エラーで更新できませんでした。電波を確認してください。'); }
+  finally{ btn.disabled=false; btn.textContent='更新する'; }
+};
 </script>
 </body>
 </html>
