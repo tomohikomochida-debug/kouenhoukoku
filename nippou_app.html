@@ -363,6 +363,8 @@ function setAuthor(n){
   document.getElementById('overlay').style.display='none';
   if(Object.keys(sites).length===0) addSite();
   refreshPeoplePicks();   // 自分を選択肢から外し、過去の混入も掃除
+  // ダッシュボードから「直す」で開かれていれば、その日報の編集を開く
+  if(window._pendingEdit){ const rid=window._pendingEdit; window._pendingEdit=null; openEditForm(rid); }
 }
 document.getElementById('whoami').onclick=()=>{ document.getElementById('overlay').style.display='flex'; };
 
@@ -744,11 +746,14 @@ document.getElementById('draftDiscard').onclick=()=>{ clearDraft(); document.get
   await loadMasters();   // スプレッドシートのマスタを取得（失敗時は仮マスタ）
   loadCustom();
   initNames();
+  // ダッシュボードから「直す」で開かれた場合（?edit=RID）
+  const editRid=new URLSearchParams(location.search).get('edit');
+  if(editRid) window._pendingEdit=editRid;
   const saved=localStorage.getItem('nippou_author');
   if(saved && MASTER.staff.includes(saved)) setAuthor(saved);
-  // 下書き確認
+  // 下書き確認（編集で開かれたときは出さない）
   let dr=null; try{ dr=JSON.parse(localStorage.getItem('nippou_draft')||'null'); }catch(e){}
-  if(dr && dr.sites && dr.sites.some(s=>s.site)){
+  if(!editRid && dr && dr.sites && dr.sites.some(s=>s.site)){
     document.getElementById('draftLead').textContent=
       `${dr.author||''}さんの ${dr.date||''} の書きかけ（現場${dr.sites.filter(s=>s.site).length}件）があります。`;
     document.getElementById('draftModal').classList.add('show');

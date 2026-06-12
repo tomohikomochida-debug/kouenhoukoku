@@ -86,6 +86,8 @@ main{max-width:920px;margin:0 auto;padding:18px 14px 60px}
 .dl-row .dls{font-weight:700}
 .dl-row .dlm{font-size:12px;color:var(--bark)}
 @media(max-width:680px){.cards{grid-template-columns:repeat(2,1fr)}.bar .nm{width:110px}}
+.d-edit-btn{width:100%;background:var(--leaf,#3a6b46);color:#fff;border:none;font-family:inherit;font-size:15px;font-weight:600;padding:13px;border-radius:9px;cursor:pointer}
+.d-edit-btn:active{opacity:.85}
 </style></head><body>
 <header><span class="mk">庭乃持田園</span><h1>日報ダッシュボード</h1>
   <select class="fysel" id="fySel"></select></header>
@@ -131,6 +133,7 @@ main{max-width:920px;margin:0 auto;padding:18px 14px 60px}
 <script>
 const FALLBACK={"cur": [], "search": {}};
 const GAS_URL='https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
+const APP_URL='https://tomohikomochida-debug.github.io/kouenhoukoku/nippou_app.html';
 let cur=[], search={}, years=[], curFY=null, calYM='2026-04';
 const sum=(a,f)=>a.reduce((s,x)=>s+(f?f(x):x),0);
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
@@ -210,8 +213,10 @@ function detailHTML(r){
     `<div class="d-grid">`+fld('開始',r.start)+fld('終了',r.end)+fld('時間',r.hours?r.hours+'h':'')+fld('人工',r.ninku)+fld('天候',r.weather)+`</div>`+
     fld('業務内容',r.work)+fld('作業人員',r.members)+fld('途中合流',r.joiners)+fld('応援',r.helpers)+
     fld('使用車両',r.vehicles)+fld('使用機械',r.machines)+fld('要望・クレーム',r.claim)+fld('状態',r.state)+
-    fld('今日できたこと',r.done)+fld('所感・学び',r.learn)+photos;
+    fld('今日できたこと',r.done)+fld('所感・学び',r.learn)+photos+
+    `<div style="margin-top:18px"><button class="d-edit-btn" onclick="goEdit('${r.rid}')">✏️ この日報を直す</button></div>`;
 }
+function goEdit(rid){ window.open(APP_URL+'?edit='+encodeURIComponent(rid),'_blank'); }
 function openDetail(rid){ const r=findRec(rid); if(!r)return; showModal(detailHTML(r)); }
 function openDayList(ds){
   const list=cur.filter(x=>x.date.slice(0,10)===ds);
