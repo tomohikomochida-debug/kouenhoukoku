@@ -264,8 +264,8 @@
     <div class="ed-fld" id="ed_contractWrap"><label>委託</label><select id="ed_contract"></select></div>
     <div class="ed-fld"><label>現場名</label><select id="ed_site"></select></div>
     <div class="ed-2">
-      <div class="ed-fld"><label>開始</label><input type="time" id="ed_start" step="900"></div>
-      <div class="ed-fld"><label>終了</label><input type="time" id="ed_end" step="900"></div>
+      <div class="ed-fld"><label>開始</label><input type="time" id="ed_start" step="600"></div>
+      <div class="ed-fld"><label>終了</label><input type="time" id="ed_end" step="600"></div>
     </div>
     <div class="ed-fld"><label>人工（時間から自動・手で直せます）</label><input type="number" id="ed_ninku" step="0.25" min="0"></div>
     <div class="ed-fld"><label>業務内容</label><textarea id="ed_work"></textarea></div>
@@ -320,8 +320,7 @@ const MASTER = {
   vehicles: ['4tクレーン','キャラバン','3tダンプ','パッカー','軽ダンプ','軽トラ'],
   machines: ['刈払機','トリマー','ブロワー','チェンソー（小）','チェンソー（中）','チェンソー（大）'],
 };
-const NINKU_CHIPS = [0.25, 0.3, 0.5, 0.75, 1.0];
-const WORK_HOURS_PER_NINKU = 8;   // 8時間＝1人工（必要なら変更）
+const NINKU_CHIPS = [0.25, 0.5, 0.75, 1.0];
 const STATES = ['対応済み','報告済み','未対応'];
 
 /* ===== 追加した現場・委託を端末に記憶（本番はスプレッドシートで全員共有）===== */
@@ -576,17 +575,26 @@ function renderPhotos(id){
 
 /* ===== 計算 ===== */
 function hourOptions(){ let o='<option value="">–</option>'; for(let h=0;h<24;h++) o+=`<option value="${h}">${h}</option>`; return o; }
-function minOptions(){ return ['00','15','30','45'].map(m=>`<option value="${m}">${m}</option>`).join(''); }
+function minOptions(){ return ['00','10','20','30','40','50'].map(m=>`<option value="${m}">${m}</option>`).join(''); }
 function diffHours(start,end){ if(!start||!end) return 0;
   const [sh,sm]=start.split(':').map(Number), [eh,em]=end.split(':').map(Number);
   let m=(eh*60+em)-(sh*60+sm); if(m<0) m+=24*60; return m/60; }
 function round025(x){ return Math.round(x/0.25)*0.25; }
+// 休憩（昼12:00-13:00／10:00-10:20／15:00-15:20）。作業時間に重なるぶんだけ差し引く。
+const BREAKS=[['10:00','10:20'],['12:00','13:00'],['15:00','15:20']];
+function toMin(x){ const p=String(x).split(':').map(Number); return p[0]*60+(p[1]||0); }
+function overlapMin(s,e,bs,be){ let S=toMin(s),E=toMin(e); if(E<S)E+=1440; const BS=toMin(bs),BE=toMin(be); return Math.max(0, Math.min(E,BE)-Math.max(S,BS)); }
+function breakMinutes(start,end){ if(!start||!end) return 0; return BREAKS.reduce((a,b)=>a+overlapMin(start,end,b[0],b[1]),0); }
+function workHours(start,end){ const g=diffHours(start,end); if(!g) return 0; return Math.max(0, g-breakMinutes(start,end)/60); }
+const NINKU_BASE_HOURS = workHours('8:30','17:00'); // 8:30-17:00（休憩1:40を除く実働6:50）＝1人工
 
 function recalc(id){
   const el=document.getElementById('site-'+id); const d=sites[id];
-  const h=diffHours(d.start,d.end);
-  el.querySelector('[data-hours]').value = h? (Math.floor(h)+'時間'+Math.round((h%1)*60)+'分') : '';
-  const auto = h? round025(h/WORK_HOURS_PER_NINKU) : 0;
+  const gross=diffHours(d.start,d.end);
+  const br=breakMinutes(d.start,d.end);
+  const h=Math.max(0, gross - br/60);
+  el.querySelector('[data-hours]').value = gross? (Math.floor(h)+'時間'+Math.round((h%1)*60)+'分'+(br?`（休憩${br}分を除く）`:'')) : '';
+  const auto = h? Math.min(1, round025(h/NINKU_BASE_HOURS)) : 0;
   d.ninkuAuto=auto;
   if(!d.ninkuManual) d.ninku=auto;
   paintNinku(id); updateSummary();
@@ -683,7 +691,7 @@ function buildRows(){
   return idsByTime().map(id=>{ const d=sites[id];
     return { date, author, weather,
       category:d.cat, contract:d.contract, site:d.site, start:d.start, end:d.end,
-      hours:Math.round(diffHours(d.start,d.end)*100)/100, ninku:d.ninku??0, work:d.work,
+      hours:Math.round(workHours(d.start,d.end)*100)/100, ninku:d.ninku??0, work:d.work,
       members:[author,...d.members].filter(Boolean).join('・'),
       joiners:d.joiners.join('・'), helpers:d.helpers.join('・'),
       vehicles:d.vehicles.join('・'), machines:d.machines.join('・'),
@@ -763,7 +771,7 @@ document.getElementById('draftDiscard').onclick=()=>{ clearDraft(); document.get
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function isOwnerName(n){ return n==='親方' || n==='持田智彦'; }
 let edRecRid=null;
-function edTimeToNinku(s,e){ const h=diffHours(s,e); return Math.round(h/8*4)/4; }
+function edTimeToNinku(s,e){ const h=workHours(s,e); return Math.min(1, round025(h/NINKU_BASE_HOURS)); }
 
 document.getElementById('editEntry').onclick=()=>{ if(!author){document.getElementById('overlay').style.display='flex';return;} openEditList(); };
 document.getElementById('edListClose').onclick=()=>{ document.getElementById('edList').style.display='none'; };
@@ -837,7 +845,7 @@ document.getElementById('ed_submit').onclick=async function(){
   const v=id=>document.getElementById(id).value;
   const start=v('ed_start'), end=v('ed_end');
   const row={ date:v('ed_date'), category:cat, contract:con, site:v('ed_site'),
-    start:start, end:end, hours:Math.round(diffHours(start,end)*100)/100,
+    start:start, end:end, hours:Math.round(workHours(start,end)*100)/100,
     ninku:Number(v('ed_ninku'))||0, work:v('ed_work'), members:v('ed_members'),
     joiners:v('ed_joiners'), helpers:v('ed_helpers'), vehicles:v('ed_vehicles'),
     machines:v('ed_machines'), claim:v('ed_claim'), state:v('ed_state'),
