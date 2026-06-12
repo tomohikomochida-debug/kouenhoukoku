@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>経費ダッシュボード — 庭乃持田園</title>
+<style>
+:root{
+  --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7;
+  --ok:#2E7D55; --tape:#C77C30; --bark:#5B5750; --ink:#22231F;
+  --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F; --radius:10px;
+  --shadow:0 1px 0 rgba(34,35,31,.04), 0 8px 24px -16px rgba(34,35,31,.25);
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--paper); color:var(--ink);
+  font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif; line-height:1.6}
+.tnum{font-variant-numeric:tabular-nums}
+header{background:var(--leaf); color:#fff; padding:14px 18px; display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:5; flex-wrap:wrap}
+header h1{margin:0; font-size:18px}
+.msel{margin-left:auto; font-size:15px; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.3); border-radius:999px; padding:7px 16px; color:#fff; font-family:inherit; cursor:pointer}
+.msel option{color:#000}
+main{max-width:920px; margin:0 auto; padding:16px 14px 60px}
+.loading{text-align:center; color:var(--bark); padding:30px; font-size:14px}
+.cards{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px}
+.kpi{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow)}
+.kpi .n{font-size:24px; font-weight:800; color:var(--leaf); line-height:1.15}
+.kpi .n.warn{color:var(--danger)}
+.kpi .l{font-size:12px; color:var(--bark); font-weight:600; margin-top:2px}
+.box{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; box-shadow:var(--shadow); margin-bottom:14px}
+.box h2{margin:0 0 14px; font-size:15px}
+.catrow{margin-bottom:12px}
+.catrow .top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px}
+.catrow .nm{font-size:14px; font-weight:600}
+.catrow .am{font-size:14px; font-weight:700}
+.bar{height:12px; background:var(--field); border-radius:6px; overflow:hidden}
+.bar > span{display:block; height:100%; border-radius:6px}
+.empty{color:var(--bark); font-size:13px}
+.flow{display:flex; flex-direction:column; gap:0}
+.flow .r{display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px dashed var(--line); font-size:14px}
+.flow .r.total{border-bottom:none; border-top:2px solid var(--leaf-soft); margin-top:4px; padding-top:12px; font-weight:700}
+.flow .r .v{font-weight:600}
+.flow .r.total .v{font-size:20px; font-weight:800; color:var(--leaf)}
+.flow .minus{color:var(--bark)}
+.diff{margin-top:12px; padding:10px; border-radius:8px; font-weight:700; font-size:14px; text-align:center}
+.diff.ok{background:var(--leaf-soft); color:var(--ok)}
+.diff.ng{background:#fbece8; color:var(--danger)}
+.owed-row{display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px dashed var(--line); font-size:14px}
+.owed-row b{color:var(--tape)}
+.tbl{width:100%; border-collapse:collapse; font-size:13px}
+.tbl th,.tbl td{border:1px solid var(--line); padding:8px 10px; text-align:right}
+.tbl th{background:var(--leaf-soft); color:var(--leaf); font-weight:700; text-align:center}
+.tbl td.ym{text-align:left; font-weight:600; cursor:pointer; color:var(--leaf)}
+.tbl tr.sel td{background:var(--field)}
+.tag{font-size:11px; background:var(--tape); color:#fff; padding:1px 6px; border-radius:5px; margin-left:6px}
+.foot{font-size:12px; color:var(--bark); text-align:center; margin-top:8px}
+.linkbar{display:flex; gap:10px; margin-top:6px; flex-wrap:wrap}
+.linkbar a{font-size:13px; color:var(--leaf); text-decoration:none; border:1px solid var(--line); border-radius:8px; padding:7px 12px; background:#fff}
+@media (max-width:560px){ .cards{grid-template-columns:repeat(2,1fr)} }
+</style>
+</head>
+<body>
+<header>
+  <h1>経費ダッシュボード</h1>
+  <select class="msel" id="monthSel"></select>
+</header>
+
+<main>
+  <div id="loading" class="loading">読み込み中…</div>
+  <div id="content" hidden>
+    <div class="cards" id="kpis"></div>
+
+    <div class="box">
+      <h2>費目別の内訳</h2>
+      <div id="cats"></div>
+    </div>
+
+    <div class="box">
+      <h2>財布の動き</h2>
+      <div class="flow" id="flow"></div>
+      <div id="diffBox"></div>
+    </div>
+
+    <div class="box" id="owedBox" hidden>
+      <h2>立て替え 未清算</h2>
+      <div id="owed"></div>
+    </div>
+
+    <div class="box">
+      <h2>月ごとの推移</h2>
+      <table class="tbl">
+        <thead><tr><th style="text-align:left">月</th><th>経費合計</th><th>入金</th><th>現金残高</th></tr></thead>
+        <tbody id="trend"></tbody>
+      </table>
+      <div class="linkbar">
+        <a id="toInput" href="../keihi/">← 入力アプリへ</a>
+      </div>
+    </div>
+  </div>
+  <p class="foot">庭乃持田園 経費ダッシュボード</p>
+</main>
+
+<script>
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyxxtzrbYhoU0JxQ3BUk3SlQWbmo0ytKt3v--i069kC0kho-u2t3amxoZZLr2ucslAGkg/exec";
+const CATS=[
+  {key:"車両費",c:"#214A37"},{key:"材料費",c:"#2E7D55"},{key:"消耗品費",c:"#C77C30"},
+  {key:"設備費",c:"#5B5750"},{key:"処分費",c:"#7a5b3a"},{key:"交通費",c:"#3a6ea5"},
+  {key:"福利厚生費",c:"#8a6d3b"},{key:"雑費",c:"#9a9a9a"}
+];
+const CAT_C=Object.fromEntries(CATS.map(x=>[x.key,x.c]));
+const yen=n=>"¥"+(Number(n)||0).toLocaleString("ja-JP");
+const $=id=>document.getElementById(id);
+const ymLabel=ym=>ym.split("-")[0]+"年"+(+ym.split("-")[1])+"月";
+
+let months=[], cur=null;
+
+async function load(){
+  try{
+    const res=await fetch(GAS_URL+"?action=summary");
+    const d=await res.json();
+    if(!d.ok) throw 0;
+    months=d.months||[];
+  }catch(e){ $("loading").textContent="電波を確認して、もう一度お試しください"; return; }
+  if(months.length===0){ $("loading").textContent="まだ経費が入力されていません。入力アプリで登録すると、ここに集計が出ます。"; return; }
+  $("monthSel").innerHTML=months.map(m=>`<option value="${m.ym}">${ymLabel(m.ym)}${m.closed?"（締め済）":""}</option>`).join("");
+  $("monthSel").onchange=()=>select($("monthSel").value);
+  $("loading").style.display="none"; $("content").hidden=false;
+  select(months[0].ym);
+}
+
+function select(ym){
+  cur=months.find(m=>m.ym===ym); if(!cur) return;
+  $("monthSel").value=ym;
+  renderKpis(); renderCats(); renderFlow(); renderOwed(); renderTrend();
+}
+
+function renderKpis(){
+  const unsettled=Object.values(cur.unsettled).reduce((s,v)=>s+v,0);
+  const cards=[
+    {l:"経費合計", n:yen(cur.expenseAll)},
+    {l:"財布の現金残高", n:yen(cur.balance)},
+    {l:"入金（社長）", n:yen(cur.inj)},
+    {l:"立て替え未清算", n:yen(unsettled), warn:unsettled>0}
+  ];
+  $("kpis").innerHTML=cards.map(c=>`<div class="kpi"><div class="n ${c.warn?"warn":""}">${c.n}</div><div class="l">${c.l}</div></div>`).join("");
+}
+
+function renderCats(){
+  const entries=CATS.filter(c=>(cur.cats[c.key]||0)>0).map(c=>({key:c.key,c:c.c,v:cur.cats[c.key]}));
+  if(entries.length===0){ $("cats").innerHTML=`<div class="empty">この月の費目別データはありません。</div>`; return; }
+  const max=Math.max(...entries.map(e=>e.v));
+  $("cats").innerHTML=entries.sort((a,b)=>b.v-a.v).map(e=>`
+    <div class="catrow"><div class="top"><span class="nm">${e.key}</span><span class="am tnum">${yen(e.v)}</span></div>
+    <div class="bar"><span style="width:${Math.max(4,e.v/max*100)}%;background:${e.c}"></span></div></div>`).join("");
+}
+
+function renderFlow(){
+  $("flow").innerHTML=`
+    <div class="r"><span>月初の残り（繰越）</span><span class="v tnum">${yen(cur.opening)}</span></div>
+    <div class="r"><span>＋ 入金（社長）</span><span class="v tnum">${yen(cur.inj)}</span></div>
+    <div class="r"><span class="minus">− 現金で払った分</span><span class="v tnum minus">${yen(cur.cash)}</span></div>
+    <div class="r"><span class="minus">− 立て替えの清算</span><span class="v tnum minus">${yen(cur.settledAdv)}</span></div>
+    <div class="r total"><span>財布の現金残高</span><span class="v tnum">${yen(cur.balance)}</span></div>`;
+  if(cur.counted===""||cur.counted==null){ $("diffBox").innerHTML=""; return; }
+  const diff=cur.counted-cur.balance;
+  $("diffBox").innerHTML=`<div class="diff ${diff===0?"ok":"ng"}">月末に数えた現金 ${yen(cur.counted)} ／ ${diff===0?"✓ 帳簿とぴったり":`差額 ${yen(Math.abs(diff))}（${diff>0?"現金が多い":"現金が足りない"}）`}</div>`;
+}
+
+function renderOwed(){
+  const list=Object.entries(cur.unsettled).filter(([,v])=>v>0);
+  $("owedBox").hidden=list.length===0;
+  $("owed").innerHTML=list.map(([n,v])=>`<div class="owed-row"><span>${n}</span><b class="tnum">${yen(v)}</b></div>`).join("");
+}
+
+function renderTrend(){
+  $("trend").innerHTML=months.map(m=>`<tr class="${m.ym===cur.ym?"sel":""}">
+    <td class="ym" onclick="select('${m.ym}')">${ymLabel(m.ym)}${m.closed?'<span class="tag">締</span>':''}</td>
+    <td class="tnum">${yen(m.expenseAll)}</td><td class="tnum">${yen(m.inj)}</td><td class="tnum">${yen(m.balance)}</td></tr>`).join("");
+}
+
+if(GAS_URL.startsWith("http")) load();
+else $("loading").textContent="GAS_URL が未設定です。";
+</script>
+</body>
+</html>
