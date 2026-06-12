@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>庭乃持田園 アプリ</title>
+
+<!-- ホーム画面に追加したときの見え方 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="庭乃持田園">
+<meta name="theme-color" content="#214A37">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png" type="image/png">
+
+<style>
+:root{
+  --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7;
+  --ok:#2E7D55; --tape:#C77C30; --bark:#5B5750; --ink:#22231F;
+  --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F;
+  --radius:14px;
+  --shadow:0 1px 0 rgba(34,35,31,.04), 0 10px 26px -18px rgba(34,35,31,.30);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  padding:max(16px,env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
+}
+main{max-width:680px;margin:0 auto}
+
+/* ヘッダー */
+.head{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 4px 22px;text-align:center}
+.logo{width:auto;height:96px;max-width:78%;object-fit:contain}
+.tag{font-size:12.5px;color:var(--bark)}
+
+/* アプリのグリッド */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.app{
+  display:flex;flex-direction:column;gap:10px;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px 14px;min-height:128px;text-decoration:none;color:inherit;
+  box-shadow:var(--shadow);transition:transform .12s ease, box-shadow .12s ease;
+}
+.app:active{transform:scale(.975);box-shadow:0 1px 0 rgba(34,35,31,.04)}
+.app:focus-visible{outline:3px solid var(--ok);outline-offset:2px}
+.chip{width:46px;height:46px;border-radius:12px;background:var(--leaf-soft);
+  display:grid;place-items:center}
+.chip svg{width:26px;height:26px;stroke:var(--leaf);fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+.app h2{margin:0;font-size:16px;letter-spacing:.01em}
+.app p{margin:0;font-size:12.5px;color:var(--bark);line-height:1.45}
+
+/* 区切り */
+.sub{display:flex;align-items:center;gap:10px;margin:26px 4px 12px;color:var(--bark)}
+.sub::before,.sub::after{content:"";height:1px;background:var(--line);flex:1}
+.sub span{font-size:12px;letter-spacing:.04em}
+
+/* 事務・集計用（小さめリスト） */
+.mini{display:flex;flex-direction:column;gap:8px}
+.mini a{
+  display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 14px;
+}
+.mini a:active{background:var(--field)}
+.mini a:focus-visible{outline:3px solid var(--ok);outline-offset:2px}
+.mini .dot{width:30px;height:30px;border-radius:9px;background:var(--leaf-soft);
+  display:grid;place-items:center;flex:0 0 auto}
+.mini .dot svg{width:17px;height:17px;stroke:var(--leaf);fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+.mini b{font-size:14px;font-weight:600}
+.mini small{display:block;color:var(--bark);font-size:11.5px;margin-top:1px}
+
+/* 使い方 */
+details{margin-top:22px;background:var(--card);border:1px solid var(--line);
+  border-radius:12px;overflow:hidden}
+summary{list-style:none;cursor:pointer;padding:14px 16px;font-size:13.5px;
+  display:flex;align-items:center;gap:8px;color:var(--leaf);font-weight:600}
+summary::-webkit-details-marker{display:none}
+summary .q{width:20px;height:20px;border-radius:50%;background:var(--leaf);color:#fff;
+  display:grid;place-items:center;font-size:12px;flex:0 0 auto}
+.guide{padding:2px 18px 18px;font-size:13px;color:var(--ink);line-height:1.7}
+.guide ol{margin:6px 0 0;padding-left:1.2em}
+.guide li{margin:4px 0}
+.guide .key{background:var(--leaf-soft);border-radius:6px;padding:1px 7px;
+  font-weight:600;white-space:nowrap}
+
+.foot{text-align:center;color:var(--bark);font-size:11px;margin-top:22px}
+
+@media (max-width:340px){ .grid{grid-template-columns:1fr} }
+@media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+<main>
+
+  <header class="head">
+    <img class="logo" src="logo.png" alt="庭乃持田園">
+    <span class="tag">現場のアプリ ｜ 押すだけで開きます</span>
+  </header>
+
+  <!-- メインの4アプリ -->
+  <nav class="grid" aria-label="アプリ">
+
+    <a class="app" href="nippou_app.html">
+      <span class="chip" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/>
+          <path d="M9 3v2h6V3"/><path d="M8.5 10h7M8.5 14h7M8.5 17.5h4"/></svg>
+      </span>
+      <div><h2>日報</h2><p>その日の現場・人工・作業を入力</p></div>
+    </a>
+
+    <a class="app" href="zaizai.html">
+      <span class="chip" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 3.5 8.5 9.5h7L12 3.5Z"/><path d="M4 20.5 7.5 14l3 1.8"/>
+          <path d="M20 20.5 16.5 14l-3 1.8"/><path d="M9 20.5h6"/></svg>
+      </span>
+      <div><h2>残材・処分の報告</h2><p>残った材料・処分（ガラ・混廃）を報告</p></div>
+    </a>
+
+    <a class="app" href="keihi/">
+      <span class="chip" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M13 3v4h4"/>
+          <path d="M10 12h5M10 15h5"/><path d="M12.5 10.5v6"/></svg>
+      </span>
+      <div><h2>経費精算</h2><p>立て替えたお金・領収書を申請</p></div>
+    </a>
+
+    <a class="app" href="park_app.html">
+      <span class="chip" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 4c3 0 5 2.5 5 5.5S14 15 12 15 7 12.5 7 9.5 9 4 12 4Z"/>
+          <path d="M12 15v5"/><path d="M5 20h14"/></svg>
+      </span>
+      <div><h2>公園報告</h2><p>公園・現場の状況を写真つきで報告</p></div>
+    </a>
+
+  </nav>
+
+  <!-- 事務・集計用 -->
+  <div class="sub"><span>事務・集計用</span></div>
+  <div class="mini">
+    <a href="nippou_dashboard.html">
+      <span class="dot" aria-hidden="true"><svg viewBox="0 0 24 24">
+        <path d="M4 20V9M10 20V4M16 20v-7M22 20H2"/></svg></span>
+      <span><b>日報の集計</b><small>年度ごとの記録を見る</small></span>
+    </a>
+    <a href="keihi_dashboard/">
+      <span class="dot" aria-hidden="true"><svg viewBox="0 0 24 24">
+        <path d="M4 20V9M10 20V4M16 20v-7M22 20H2"/></svg></span>
+      <span><b>経費の集計</b><small>申請された経費を見る</small></span>
+    </a>
+  </div>
+
+  <!-- 使い方 -->
+  <details>
+    <summary><span class="q">?</span>ホーム画面に置いて、アプリみたいに使う</summary>
+    <div class="guide">
+      iPhoneなら、この画面をホームに置くとアイコンから一発で開けます。
+      <ol>
+        <li>下の<span class="key">共有ボタン</span>（四角に↑）を押す</li>
+        <li><span class="key">ホーム画面に追加</span>を選ぶ</li>
+        <li>右上の<span class="key">追加</span>を押す</li>
+      </ol>
+      これで「庭乃持田園」のアイコンができます。次からはそれを押すだけです。
+    </div>
+  </details>
+
+  <p class="foot">庭乃持田園</p>
+
+</main>
+</body>
+</html>
