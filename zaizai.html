@@ -130,6 +130,8 @@
     font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 6px 16px -8px rgba(33,74,55,.7)}
   .save:hover{background:#1a3c2d}
   .save:disabled{opacity:.5;cursor:default}
+  .save.danger-btn{background:#fff;color:var(--danger);border:1.5px solid var(--danger);box-shadow:none;padding:14px 20px}
+  .save.danger-btn:hover{background:#fbeceA}
 
   .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
   .filters .field{margin-bottom:0}
@@ -191,7 +193,7 @@
   .toast.show{opacity:1}
   .toast.err{background:var(--danger)}
 
-  .editbadge{display:none;background:var(--tape);color:#fff;font-size:12px;font-weight:700;border-radius:6px;padding:3px 10px;margin-left:8px}
+  .editbadge{display:none;background:var(--tape);color:#fff;font-size:12px;font-weight:700;border-radius:6px;padding:3px 10px;margin-left:8px;cursor:pointer}
   .editbadge.show{display:inline-block}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -208,7 +210,7 @@
 </div>
 
 <header>
-  <div class="brand"><span class="mark">庭乃持田園</span><h1>残材処分<span class="editbadge" id="editBadge">編集中</span></h1></div>
+  <div class="brand"><span class="mark">庭乃持田園</span><h1>残材処分<span class="editbadge" id="editBadge" title="タップで編集をやめる">編集中 ✕</span></h1></div>
   <div class="whoami" id="whoami"><b id="whoName">—</b><span class="sw">切替</span></div>
 </header>
 
@@ -292,6 +294,7 @@
 
 <div class="savebar" id="savebar">
   <div class="sum">集計金額 <b><span class="yen">¥</span><span class="tnum" id="barTotal">0</span></b></div>
+  <button class="save danger-btn" id="btnDelete" style="display:none">削除</button>
   <button class="save" id="btnSave">記録する</button>
 </div>
 
@@ -592,7 +595,7 @@ function apply(d){ d=d||{};
   setChipsOn(pickElems.place,d.place||[]); $('#placeOther').value=d.placeOther||'';
   setChipsOn(pickElems.vehicle,d.vehicle||[]); $('#vehicleOther').value=d.vehicleOther||'';
   refreshPlaceMode(); normalizeTo100(); syncSliders(); recalc(); }
-function resetForm(){ editDenpyo=null; $('#editBadge').classList.remove('show'); $('#pvDelete').style.display='none';
+function resetForm(){ editDenpyo=null; $('#editBadge').classList.remove('show'); $('#pvDelete').style.display='none'; $('#btnDelete').style.display='none';
   apply({date:todayStr()}); clearDraft(); }
 
 /* ===== 行の組み立て ===== */
@@ -654,14 +657,17 @@ $('#pvConfirm').onclick=async()=>{
   }catch(e){ toast('電波を確認して、もう一度お試しください',true);
   }finally{ $('#pvConfirm').disabled=false; $('#pvConfirm').textContent='記録する'; }
 };
-$('#pvDelete').onclick=async()=>{
+async function doDelete(){
   if(!editDenpyo) return; if(!confirm('この記録（一台ぶん）を削除します。よろしいですか？')) return;
   try{ const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
     body:JSON.stringify({mode:'delete',denpyo:editDenpyo})});
     const d=await res.json(); if(!d.ok) throw new Error();
     $('#modal').classList.remove('show'); toast('削除しました'); resetForm(); allRecords=[]; switchTab('list');
   }catch(e){ toast('電波を確認して、もう一度お試しください',true); }
-};
+}
+$('#pvDelete').onclick=doDelete;
+$('#btnDelete').onclick=doDelete;
+$('#editBadge').onclick=()=>{ if(confirm('編集をやめて新規入力にもどります。よろしいですか？')) resetForm(); };
 
 /* ===== タブ ===== */
 function switchTab(which){ const input=which==='input';
@@ -757,9 +763,7 @@ function openEdit(k){
     qty:totalKg? conv(totalKg) : '',
     amount:amount||'', govqty:govqty||'',
     place:p.on, placeOther:p.other, vehicle:v.on, vehicleOther:v.other });
-  if(!editDenpyo){ // 履歴（伝票ID無し）は更新不可。新規複製として扱う
-    toast('この古い記録は閲覧用です（保存で新規になります）');
-  } else { $('#editBadge').classList.add('show'); }
+  $('#editBadge').classList.add('show'); $('#btnDelete').style.display='';
   switchTab('input'); window.scrollTo(0,0);
 }
 
