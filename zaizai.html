@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>残材処分 ｜ 庭乃持田園</title>
+<style>
+  :root{
+    --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7;
+    --bark:#5B5750; --ink:#22231F; --tape:#C77C30; --line:#DCD9D0; --line-soft:#ECEAE3;
+    --ok:#2E7D55; --danger:#B0533F; --field:#FBFAF6; --radius:10px;
+    --shadow:0 1px 0 rgba(34,35,31,.04), 0 8px 24px -16px rgba(34,35,31,.25);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);
+    font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif;
+    line-height:1.65;-webkit-text-size-adjust:100%;}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  header{position:sticky;top:0;z-index:30;background:var(--leaf);color:#fff;
+    padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+    box-shadow:0 2px 12px -6px rgba(0,0,0,.4);}
+  .brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+  .brand .mark{font-size:13px;letter-spacing:.14em;opacity:.75;white-space:nowrap}
+  .brand h1{font-size:17px;font-weight:700;margin:0;letter-spacing:.02em;white-space:nowrap}
+  .whoami{display:flex;align-items:center;gap:8px;flex-shrink:0;background:rgba(255,255,255,.12);
+    border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:5px 12px 5px 14px;
+    color:#fff;font-size:14px;cursor:pointer;}
+  .whoami:hover{background:rgba(255,255,255,.2)}
+  .whoami b{font-weight:700}
+  .whoami .sw{font-size:12px;opacity:.7}
+
+  .tabs{position:sticky;top:50px;z-index:25;background:var(--paper);border-bottom:1px solid var(--line);
+    display:flex;max-width:680px;margin:0 auto;}
+  .tabs button{flex:1;background:none;border:none;font-family:inherit;font-size:15px;font-weight:700;
+    color:var(--bark);padding:13px 0;cursor:pointer;border-bottom:3px solid transparent;}
+  .tabs button.on{color:var(--leaf);border-bottom-color:var(--leaf)}
+
+  main{max-width:680px;margin:0 auto;padding:18px 14px 130px}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+  label,.lbl{font-size:13px;color:var(--bark);font-weight:600;letter-spacing:.02em}
+  input[type=date],input[type=text],input[type=number],textarea,select{
+    font-family:inherit;font-size:16px;color:var(--ink);background:var(--field);
+    border:1px solid var(--line);border-radius:8px;padding:11px 12px;width:100%;}
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--leaf);outline-offset:1px;border-color:var(--leaf)}
+  textarea{resize:vertical;min-height:56px}
+  input[type=date]{max-width:190px}
+
+  .sec-head{display:flex;align-items:center;gap:10px;margin:24px 2px 12px}
+  .sec-head .tag{font-size:12px;font-weight:700;color:var(--tape);letter-spacing:.12em}
+  .sec-head h2{font-size:15px;margin:0;font-weight:700}
+  .sec-head .rule{flex:1;height:1px;background:var(--line)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px;margin-bottom:16px}
+
+  .pick{display:flex;gap:7px;flex-wrap:wrap}
+  .chip{font-size:15px;border:1px solid var(--line);background:#fff;border-radius:999px;
+    padding:8px 15px;cursor:pointer;color:var(--ink);font-variant-numeric:tabular-nums}
+  .chip:hover{border-color:var(--leaf)}
+  .chip.on{background:var(--leaf);border-color:var(--leaf);color:#fff;font-weight:700}
+  .pick.tape .chip.on{background:var(--tape);border-color:var(--tape)}
+
+  .addable{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+  .addable input{flex:1;min-width:140px}
+  .mini-btn{border:1px dashed var(--leaf);background:var(--leaf-soft);color:var(--leaf);
+    border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  .mini-btn:hover{background:#dbe6dd}
+
+  .suggest{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+  .suggest .chip{font-size:13px;padding:6px 12px;border-style:dashed;color:var(--bark)}
+  .hlp{font-size:11px;color:var(--bark);margin-top:2px;display:block}
+  .fld-public{display:none}
+  body.place-public .fld-public{display:flex}
+  body.place-public .fld-private{display:none}
+
+  /* 現場カード（複数現場） */
+  .sitecard{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);
+    box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+  .sitecard .sc-top{display:flex;align-items:center;gap:10px;background:var(--leaf);color:#fff;padding:8px 12px}
+  .sitecard .sc-no{font-size:12px;font-weight:700;background:var(--tape);border-radius:5px;padding:2px 8px}
+  .sitecard .sc-ttl{flex:1;font-size:14px;font-weight:600;opacity:.95;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sitecard .sc-amt{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+  .sitecard .sc-del{background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}
+  .sitecard .sc-body{padding:12px}
+  .sc-row{display:flex;gap:10px;flex-wrap:wrap}
+  .sc-row .field{flex:1;min-width:130px;margin-bottom:10px}
+  .sc-alloc{margin-top:12px;display:none}
+  .sc-alloc.show{display:block}
+  .sc-alloc .row{display:flex;align-items:center;gap:12px}
+  .sc-alloc input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:8px;border-radius:999px;
+    background:var(--leaf-soft);outline:none;padding:0}
+  .sc-alloc input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:30px;height:30px;
+    border-radius:50%;background:var(--leaf);border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:pointer}
+  .sc-alloc input[type=range]::-moz-range-thumb{width:30px;height:30px;border-radius:50%;background:var(--leaf);border:3px solid #fff;cursor:pointer}
+  .sc-alloc .read{font-size:13px;color:var(--bark);min-width:148px;text-align:right;font-variant-numeric:tabular-nums}
+  .sc-alloc .read b{color:var(--leaf);font-size:16px}
+  .grp-lbl{font-size:12px;color:var(--bark);font-weight:700;margin:18px 0 8px;padding-top:12px;border-top:1px dashed var(--line)}
+  .grp-lbl:first-child{margin-top:0;padding-top:0;border-top:none}
+  .balance{border:1px solid var(--line);background:#fff;color:var(--bark);border-radius:8px;
+    padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .balance:hover{border-color:var(--leaf);color:var(--leaf)}
+
+  .add-site{width:100%;border:1.5px dashed var(--leaf);background:transparent;color:var(--leaf);
+    border-radius:var(--radius);padding:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px}
+  .add-site:hover{background:var(--leaf-soft)}
+  .splitmode{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  .splitmode .lbl{margin-right:2px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}
+  .seg button{border:none;background:none;font-family:inherit;font-size:14px;font-weight:700;color:var(--bark);padding:8px 16px;cursor:pointer}
+  .seg button.on{background:var(--leaf);color:#fff}
+
+  .nums{display:flex;gap:12px;flex-wrap:wrap}
+  .nums .field{flex:1;min-width:130px;margin-bottom:0}
+  .calc{background:var(--leaf-soft);border-radius:8px;padding:12px 14px;margin-top:14px;
+    display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+  .calc .item{display:flex;flex-direction:column;line-height:1.2}
+  .calc .item .k{font-size:11px;color:var(--bark);font-weight:600;letter-spacing:.06em}
+  .calc .item .v{font-size:20px;font-weight:800;color:var(--leaf)}
+  .calc .item.total .v{font-size:26px}
+  .calc .yen{font-size:15px;font-weight:700}
+
+  .savebar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(246,245,240,.94);
+    backdrop-filter:blur(6px);border-top:1px solid var(--line);padding:12px 14px;
+    display:flex;gap:12px;align-items:center;justify-content:center}
+  .savebar .sum{font-size:13px;color:var(--bark);flex:1;max-width:680px}
+  .savebar .sum b{color:var(--leaf);font-size:18px}
+  .save{background:var(--leaf);color:#fff;border:none;border-radius:10px;padding:14px 28px;
+    font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 6px 16px -8px rgba(33,74,55,.7)}
+  .save:hover{background:#1a3c2d}
+  .save:disabled{opacity:.5;cursor:default}
+
+  .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
+  .filters .field{margin-bottom:0}
+  .filters select,.filters input{min-width:120px}
+  .totals{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .stat{flex:1;min-width:130px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px 14px;box-shadow:var(--shadow)}
+  .stat .k{font-size:12px;color:var(--bark);font-weight:600}
+  .stat .v{font-size:21px;font-weight:800;color:var(--leaf);font-variant-numeric:tabular-nums}
+  .stat .v small{font-size:13px;font-weight:700;color:var(--bark)}
+
+  .rec{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:13px 15px;margin-bottom:10px;cursor:pointer}
+  .rec:hover{border-color:var(--leaf)}
+  .rec .top{display:flex;align-items:baseline;gap:10px;justify-content:space-between}
+  .rec .date{font-size:13px;color:var(--bark);font-weight:600;font-variant-numeric:tabular-nums}
+  .rec .amt{font-size:18px;font-weight:800;color:var(--leaf);font-variant-numeric:tabular-nums}
+  .rec .sites{margin:5px 0 6px}
+  .rec .sline{display:flex;justify-content:space-between;gap:10px;font-size:15px}
+  .rec .sline .nm{font-weight:700}
+  .rec .sline .sv{color:var(--bark);font-variant-numeric:tabular-nums}
+  .rec .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .rec .mtag{font-size:12px;background:var(--field);border:1px solid var(--line);border-radius:6px;padding:2px 8px;color:var(--bark)}
+  .rec .mtag.t{border-color:var(--tape);color:var(--tape)}
+  .empty{text-align:center;color:var(--bark);padding:40px 0}
+
+  .overlay{position:fixed;inset:0;z-index:60;background:var(--leaf);display:flex;align-items:center;justify-content:center;padding:24px}
+  .overlay.hide{display:none}
+  .overlay .box{max-width:460px;width:100%;text-align:center;color:#fff}
+  .overlay .mark{font-size:13px;letter-spacing:.16em;opacity:.7}
+  .overlay h2{font-size:24px;margin:8px 0 4px;font-weight:800}
+  .overlay p{font-size:14px;opacity:.8;margin:0 0 24px}
+  .name-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .name-grid button{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.3);color:#fff;
+    border-radius:12px;padding:16px;font-size:17px;font-weight:700;cursor:pointer;font-family:inherit}
+  .name-grid button:hover{background:rgba(255,255,255,.22)}
+
+  .modal{position:fixed;inset:0;z-index:70;background:rgba(34,35,31,.55);display:none;
+    align-items:flex-start;justify-content:center;padding:24px;overflow:auto}
+  .modal.show{display:flex}
+  .modal .sheet{background:#fff;border-radius:14px;max-width:560px;width:100%;padding:22px;
+    box-shadow:0 20px 60px -20px rgba(0,0,0,.5)}
+  .modal h3{margin:0 0 4px;font-size:18px}
+  .modal .lead{font-size:14px;color:var(--bark);margin:0 0 16px}
+  .pv-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:14px}
+  .pv-row .k{color:var(--bark)}
+  .pv-row .v{font-weight:700;text-align:right;white-space:pre-wrap}
+  .pv-row.big .v{color:var(--leaf);font-size:18px}
+  .pv-site{display:flex;justify-content:space-between;font-size:14px;padding:4px 0}
+  .pv-site .nm{font-weight:700}
+  .modal .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+  .modal .acts button{border-radius:9px;padding:11px 20px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;border:1px solid var(--line);background:#fff}
+  .modal .acts .primary{background:var(--leaf);color:#fff;border-color:var(--leaf)}
+  .modal .acts .danger{border-color:var(--danger);color:var(--danger)}
+
+  .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:80;
+    background:var(--ink);color:#fff;padding:12px 20px;border-radius:999px;font-size:14px;
+    box-shadow:0 8px 24px -8px rgba(0,0,0,.5);opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%}
+  .toast.show{opacity:1}
+  .toast.err{background:var(--danger)}
+
+  .editbadge{display:none;background:var(--tape);color:#fff;font-size:12px;font-weight:700;border-radius:6px;padding:3px 10px;margin-left:8px}
+  .editbadge.show{display:inline-block}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="overlay" id="overlay">
+  <div class="box">
+    <div class="mark">庭乃持田園</div>
+    <h2>残材処分</h2>
+    <p>記入する人を選んでください</p>
+    <div class="name-grid" id="nameGrid"></div>
+  </div>
+</div>
+
+<header>
+  <div class="brand"><span class="mark">庭乃持田園</span><h1>残材処分<span class="editbadge" id="editBadge">編集中</span></h1></div>
+  <div class="whoami" id="whoami"><b id="whoName">—</b><span class="sw">切替</span></div>
+</header>
+
+<div class="tabs">
+  <button id="tabInput" class="on">入力</button>
+  <button id="tabList">一覧</button>
+</div>
+
+<!-- ===== 入力 ===== -->
+<main id="viewInput">
+  <div class="field">
+    <label>処分した日</label>
+    <input type="date" id="f_date">
+  </div>
+
+  <div class="sec-head"><span class="tag">01</span><h2>現場（この一台に積んだ現場）</h2><span class="rule"></span></div>
+  <div class="splitmode">
+    <span class="lbl">量の単位</span>
+    <span class="seg"><button id="unitKg" class="on">kg</button><button id="unitM3">立米(㎥)</button></span>
+    <span id="hijuuWrap" style="display:none;align-items:center;gap:6px">
+      <span class="lbl">比重</span><input type="text" inputmode="decimal" id="f_hijuu" value="0.5" style="width:72px">
+      <span class="hlp">t/㎥　枝葉・草は0.5前後／ガラ・残土は1.0〜1.5</span>
+    </span>
+  </div>
+  <div id="sites"></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+    <button class="add-site" id="addSiteBtn" style="flex:1;margin-bottom:0">＋ 現場を追加</button>
+    <button class="balance" id="balanceBtn" style="display:none">均等にもどす</button>
+  </div>
+
+  <div class="sec-head"><span class="tag">02</span><h2>種類</h2><span class="rule"></span></div>
+  <div class="card">
+    <div class="pick tape" id="pickType"></div>
+    <div class="addable"><input type="text" id="typeOther" placeholder="その他（例：竹、根、混廃）"></div>
+    <div class="suggest" id="typeSuggest"></div>
+  </div>
+
+  <div class="sec-head"><span class="tag">03</span><h2>処分場所（1か所）</h2><span class="rule"></span></div>
+  <div class="card">
+    <div id="pickPlace"></div>
+    <div class="addable"><input type="text" id="placeOther" placeholder="その他（一覧に無い処分先＝民間）"></div>
+    <div class="suggest" id="placeSuggest"></div>
+  </div>
+
+  <div class="sec-head"><span class="tag">04</span><h2 id="numHead">数量・金額</h2><span class="rule"></span></div>
+  <div class="card">
+    <div class="nums">
+      <div class="field fld-private" id="qtyTotalWrap"><label>処分量（合計・<span id="qtyUnitLbl">kg</span>）</label><input type="text" inputmode="numeric" id="f_qty" placeholder="例：805"></div>
+      <div class="field fld-private" id="amountWrap"><label>民間処分費（円）</label><input type="text" inputmode="numeric" id="f_amount" placeholder="例：10868"><span class="hlp">民間：種類で変わるので手入力</span></div>
+      <div class="field fld-public" id="govqtyWrap"><label>処分量（<span id="qtyUnitLbl2">kg</span>）</label><input type="text" inputmode="numeric" id="f_govqty" placeholder="例：540"><span class="hlp">公共焼却場：kg×15円で自動</span></div>
+    </div>
+    <div class="calc">
+      <div class="item" id="govLine"><span class="k">公共ぶん（量×15円/kg）</span><span class="v"><span class="yen">¥</span><span class="tnum" id="c_govfee">0</span></span></div>
+      <div class="item total"><span class="k" id="c_totalLbl">集計用金額</span><span class="v"><span class="yen">¥</span><span class="tnum" id="c_total">0</span></span></div>
+    </div>
+  </div>
+
+  <div class="sec-head"><span class="tag">05</span><h2>使用車両</h2><span class="rule"></span></div>
+  <div class="card">
+    <div class="pick" id="pickVehicle"></div>
+    <div class="addable"><input type="text" id="vehicleOther" placeholder="その他（例：3tダンプ）"></div>
+    <div class="suggest" id="vehicleSuggest"></div>
+  </div>
+</main>
+
+<!-- ===== 一覧 ===== -->
+<main id="viewList" style="display:none">
+  <div class="filters">
+    <div class="field"><label>年度（4月始まり）</label><select id="flYear"></select></div>
+    <div class="field"><label>月</label><select id="flMonth"></select></div>
+    <div class="field" style="flex:1;min-width:150px"><label>現場・処分先でしぼる</label><input type="text" id="flKeyword" placeholder="例：岸邸"></div>
+    <button class="mini-btn" id="flReload" style="height:44px">↻ 更新</button>
+  </div>
+  <div class="splitmode" style="margin-bottom:12px">
+    <span class="lbl">表示</span>
+    <span class="seg"><button id="listDenpyo" class="on">一台ごと</button><button id="listSite">現場ごと</button></span>
+  </div>
+  <div class="totals" id="totals"></div>
+  <div id="recList"></div>
+</main>
+
+<div class="savebar" id="savebar">
+  <div class="sum">集計金額 <b><span class="yen">¥</span><span class="tnum" id="barTotal">0</span></b></div>
+  <button class="save" id="btnSave">記録する</button>
+</div>
+
+<div class="modal" id="modal">
+  <div class="sheet">
+    <h3 id="pvTitle">この内容で記録します</h3>
+    <p class="lead">まちがいが無いかご確認ください。</p>
+    <div id="pvBody"></div>
+    <div class="acts">
+      <button id="pvBack">もどる</button>
+      <button id="pvDelete" class="danger" style="display:none">削除</button>
+      <button id="pvConfirm" class="primary">記録する</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===== 設定 ===== */
+/* ↓↓↓ 残材処分の GAS（デプロイ済みURL）↓↓↓ */
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz3eI72jQip1qDuZp1rBgQQB4vmDlaP8kjptoFWquxKf2x1Y45ZbjG_wUksPmZ113zM/exec';
+/* 名簿・現場マスタは日報アプリと共有（日報の GAS から取得） */
+const NIPPOU_GAS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
+
+const FALLBACK_STAFF = ['親方','樋上','山口','甲斐','澤崎','荒木'];
+const FALLBACK_SITEGROUPS = {
+  'マンション':['しいの木台ハイツ','かしの木台ハイツ','港北ガーデンホームズ','サントゥール中川','メゾンふじのき台'],
+  '公共':{ '（委託名）':['久地梅林公園','下作延南谷公園'] },
+  '法人':[], '個人':['岸邸'], '寺院':[], 'その他':['会社']
+};
+const PLACES_PUBLIC  = ['橘処理センター','王禅寺処理センター','堤根処理センター']; // ＝役所（kg×15自動）よく使う順
+const PLACES_PRIVATE = ['フォレスト横浜','真緑','大藤産業'];                       // ＝民間（手入力）
+const PLACES   = PLACES_PUBLIC.concat(PLACES_PRIVATE);
+const VEHICLES = ['パッカー','4tクレーン','3ｔダンプ','軽ダンプ'];
+const TYPES    = ['枝葉','幹','草'];
+const PUBLIC_RATE = 15;    // 公共焼却場の固定単価（円/kg）。変わったらここを直す
+const DEFAULT_HIJUU = 0.5; // 立米→kg の既定比重（枝葉・草の目安）
+
+const LS = { author:'zaizai_author', draft:'zaizai_draft', custom:'nippou_custom_sites',
+  places:'zaizai_places', vehicles:'zaizai_vehicles', types:'zaizai_types', sites:'zaizai_sites' };
+
+/* ===== 状態 ===== */
+let author='';
+let MASTER={ staff:FALLBACK_STAFF.slice(), siteGroups:JSON.parse(JSON.stringify(FALLBACK_SITEGROUPS)) };
+let cand={ places:[], vehicles:[], types:[], sites:[] };
+let qtyUnit='kg';            // 'kg' | 'm3'
+let currentIsPublic=false;   // 選んだ処分場所が公共か
+let hijuu=DEFAULT_HIJUU;     // 立米→kg 比重
+let siteSeq=0;
+let sites={};                // id -> {cat,contract,site,qty}
+let editDenpyo=null;
+let allRecords=[];
+let listMode='denpyo';       // 'denpyo'（一台ごと） | 'site'（現場ごと）
+
+const $=s=>document.querySelector(s);
+const num=v=>{const n=Number(String(v).replace(/[^\d.-]/g,''));return isFinite(n)?n:0;};
+const yen=n=>Math.round(n).toLocaleString('ja-JP');
+const todayStr=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+/* 日付を YYYY-MM-DD に正規化（"Wed Sep 25 2024 ..." や "2024/9/5 17:00" も対応） */
+function normDate(v){ if(!v) return ''; const s=String(v).trim();
+  let m=s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if(m) return m[1]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[3]).slice(-2);
+  const MON={Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
+  let e=s.match(/^[A-Za-z]{3}\s+([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})/);
+  if(e&&MON[e[1]]) return e[3]+'-'+MON[e[1]]+'-'+('0'+e[2]).slice(-2);
+  const d=new Date(s); if(!isNaN(d)) return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+  return s; }
+/* 年度（4月始まり）：1〜3月は前年の年度 */
+function fyOf(dateStr){ const s=normDate(dateStr); const y=+s.slice(0,4), mo=+s.slice(5,7); if(!y) return ''; return String(mo>=4? y : y-1); }
+function toast(m,err){const t=$('#toast');t.textContent=m;t.className='toast show'+(err?' err':'');setTimeout(()=>t.className='toast',2300);}
+const isContract=c=>MASTER.siteGroups[c] && !Array.isArray(MASTER.siteGroups[c]);
+
+/* ===== マスタ取得 ===== */
+async function loadMasters(){
+  // 日報マスタ（名簿・現場）
+  try{
+    const res=await fetch(NIPPOU_GAS_URL+'?action=masters'); const m=await res.json();
+    if(m&&m.staff&&m.staff.length) MASTER.staff=m.staff;
+    if(m&&m.siteGroups&&Object.keys(m.siteGroups).length) MASTER.siteGroups=m.siteGroups;
+  }catch(e){ /* オフライン時はフォールバック */ }
+  applyCustomSites();
+  // 残材の候補（その他・現場履歴）
+  cand.places=JSON.parse(localStorage.getItem(LS.places)||'[]');
+  cand.vehicles=JSON.parse(localStorage.getItem(LS.vehicles)||'[]');
+  cand.types=JSON.parse(localStorage.getItem(LS.types)||'[]');
+  cand.sites=JSON.parse(localStorage.getItem(LS.sites)||'[]');
+  if(GAS_URL!=='PASTE_YOUR_GAS_URL_HERE'){
+    try{ const res=await fetch(GAS_URL+'?action=masters'); const d=await res.json();
+      if(d&&d.ok!==false){ cand.places=d.places||cand.places; cand.vehicles=d.vehicles||cand.vehicles;
+        cand.types=d.types||cand.types; cand.sites=d.sites||cand.sites;
+        localStorage.setItem(LS.places,JSON.stringify(cand.places));
+        localStorage.setItem(LS.vehicles,JSON.stringify(cand.vehicles));
+        localStorage.setItem(LS.types,JSON.stringify(cand.types));
+        localStorage.setItem(LS.sites,JSON.stringify(cand.sites));
+      }
+    }catch(e){}
+  }
+}
+function pushCustom(rec){ try{const c=JSON.parse(localStorage.getItem(LS.custom)||'[]');c.push(rec);localStorage.setItem(LS.custom,JSON.stringify(c));}catch(e){} }
+function applyCustomSites(){
+  let c=[]; try{c=JSON.parse(localStorage.getItem(LS.custom)||'[]');}catch(e){}
+  c.forEach(x=>{ const g=MASTER.siteGroups; if(!(x.cat in g)) return;
+    if(Array.isArray(g[x.cat])){ if(x.site&&!g[x.cat].includes(x.site)) g[x.cat].push(x.site); }
+    else { if(x.contract){ if(!g[x.cat][x.contract]) g[x.cat][x.contract]=[];
+      if(x.site&&!g[x.cat][x.contract].includes(x.site)) g[x.cat][x.contract].push(x.site); } }
+  });
+}
+
+/* ===== 名前 ===== */
+function renderNameGrid(){ const g=$('#nameGrid'); g.innerHTML='';
+  (MASTER.staff.length?MASTER.staff:FALLBACK_STAFF).forEach(n=>{ const b=document.createElement('button');
+    b.textContent=n; b.onclick=()=>{ setAuthor(n); $('#overlay').classList.add('hide'); }; g.appendChild(b); }); }
+function setAuthor(n){ author=n; $('#whoName').textContent=n; localStorage.setItem(LS.author,n); }
+$('#whoami').onclick=()=>{ renderNameGrid(); $('#overlay').classList.remove('hide'); };
+
+/* ===== チップ（種類・場所・車両） ===== */
+const pickElems={};
+function buildChips(container,items){ container.innerHTML='';
+  items.forEach(v=>{ const c=document.createElement('button'); c.className='chip'; c.type='button'; c.textContent=v; c.dataset.v=v;
+    c.onclick=()=>{ c.classList.toggle('on'); saveDraft(); }; container.appendChild(c); }); }
+function setupPicks(){ pickElems.type=$('#pickType'); pickElems.place=$('#pickPlace'); pickElems.vehicle=$('#pickVehicle');
+  buildChips(pickElems.type,TYPES); buildPlaceChips(); buildChips(pickElems.vehicle,VEHICLES); }
+function buildPlaceChips(){
+  const c=pickElems.place; c.innerHTML='';
+  const group=(label,items)=>{
+    const lab=document.createElement('div'); lab.className='grp-lbl'; lab.textContent=label; c.appendChild(lab);
+    const row=document.createElement('div'); row.className='pick'; c.appendChild(row);
+    items.forEach(v=>{ const b=document.createElement('button'); b.className='chip'; b.type='button'; b.textContent=v; b.dataset.v=v;
+      b.onclick=()=>{ const was=b.classList.contains('on');
+        c.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));   // 1つだけ
+        if(!was) b.classList.add('on');
+        $('#placeOther').value='';
+        refreshPlaceMode(); saveDraft(); };
+      row.appendChild(b); });
+  };
+  group('公共（処理センター）＝ 役所・kg×15円で自動', PLACES_PUBLIC);
+  group('民間 ＝ 処分費を手入力', PLACES_PRIVATE);
+}
+function refreshPlaceMode(){
+  const chip=chipsOn(pickElems.place)[0]||'';
+  currentIsPublic = PLACES_PUBLIC.includes(chip);
+  document.body.classList.toggle('place-public', currentIsPublic);
+  $('#numHead').textContent = currentIsPublic ? '数量（公共・kg×15円）' : '数量・金額（民間）';
+  $('#govLine').style.display = currentIsPublic ? 'flex' : 'none';
+  $('#c_totalLbl').textContent = currentIsPublic ? '集計用金額' : '処分費';
+  recalc();
+}
+const chipsOn=c=>[...c.querySelectorAll('.chip.on')].map(x=>x.dataset.v);
+const setChipsOn=(c,arr)=>c.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',arr.includes(x.dataset.v)));
+
+function renderSuggest(el,items,input,max){ el.innerHTML='';
+  (items||[]).slice(0,max||10).forEach(v=>{ const c=document.createElement('button'); c.className='chip'; c.type='button'; c.textContent=v;
+    c.onclick=()=>{ input.value=v; saveDraft(); }; el.appendChild(c); }); }
+function renderCandSuggest(){
+  renderSuggest($('#typeSuggest'),cand.types,$('#typeOther'),10);
+  renderSuggest($('#placeSuggest'),cand.places,$('#placeOther'),10);
+  renderSuggest($('#vehicleSuggest'),cand.vehicles,$('#vehicleOther'),10);
+}
+
+/* ===== 現場カード（複数） ===== */
+function newSite(){ return {cat:'',contract:'',site:'',w:50}; }
+function addSite(data){
+  const id=++siteSeq; sites[id]=data||newSite();
+  const el=document.createElement('div'); el.className='sitecard'; el.id='sc-'+id;
+  el.innerHTML=`
+    <div class="sc-top"><span class="sc-no" data-no></span><span class="sc-ttl" data-ttl>現場を選ぶ</span>
+      <span class="sc-amt" data-amt></span><button class="sc-del" data-del>削除</button></div>
+    <div class="sc-body">
+      <div class="sc-row">
+        <div class="field" style="flex:0 0 auto;min-width:120px"><label>区分</label><select data-cat></select></div>
+        <div class="field" data-contract-wrap style="display:none"><label>委託名</label><select data-contract></select></div>
+        <div class="field"><label>現場名</label><select data-site></select></div>
+      </div>
+      <div class="addable"><input type="text" data-newsite placeholder="一覧に無い現場を追加"><button class="mini-btn" data-addsite>＋追加</button></div>
+      <div class="sc-alloc" data-alloc><label class="lbl">この現場のぶん（スライダーで大まかに）</label>
+        <div class="row"><input type="range" min="0" max="100" data-w><span class="read" data-read></span></div></div>
+    </div>`;
+  $('#sites').appendChild(el); wireSite(id); renumber(); recalc();
+}
+function renumber(){ [...$('#sites').children].forEach((el,i)=>{ el.querySelector('[data-no]').textContent='現場 '+(i+1); }); }
+function wireSite(id){
+  const el=$('#sc-'+id), d=sites[id];
+  const catSel=el.querySelector('[data-cat]'), conSel=el.querySelector('[data-contract]'),
+        conWrap=el.querySelector('[data-contract-wrap]'), siteSel=el.querySelector('[data-site]');
+  const ttl=el.querySelector('[data-ttl]');
+  catSel.innerHTML='<option value="">区分を選ぶ…</option>'+Object.keys(MASTER.siteGroups).map(c=>`<option ${c===d.cat?'selected':''}>${c}</option>`).join('');
+  function fillContracts(){ const g=MASTER.siteGroups[d.cat]||{}; conSel.innerHTML='<option value="">委託を選ぶ…</option>'+Object.keys(g).map(c=>`<option ${c===d.contract?'selected':''}>${c}</option>`).join(''); }
+  function listSites(){ const g=MASTER.siteGroups[d.cat]; if(!g) return []; return Array.isArray(g)?g:(g[d.contract]||[]); }
+  function fillSites(){ siteSel.innerHTML='<option value="">'+(d.cat?'現場を選ぶ…':'先に区分を選ぶ')+'</option>'+listSites().map(s=>`<option ${s===d.site?'selected':''}>${s}</option>`).join(''); }
+  function syncTtl(){ ttl.textContent=d.site||d.contract||d.cat||'現場を選ぶ'; }
+  if(d.cat){ if(isContract(d.cat)){ conWrap.style.display=''; fillContracts(); } fillSites(); }
+  syncTtl();
+  catSel.onchange=()=>{ d.cat=catSel.value; d.contract=''; d.site='';
+    if(isContract(d.cat)){ conWrap.style.display=''; fillContracts(); siteSel.innerHTML='<option value="">先に委託を選ぶ</option>'; }
+    else { conWrap.style.display='none'; fillSites(); } syncTtl(); saveDraft(); };
+  conSel.onchange=()=>{ d.contract=conSel.value; d.site=''; fillSites(); syncTtl(); saveDraft(); };
+  siteSel.onchange=()=>{ d.site=siteSel.value; syncTtl(); saveDraft(); };
+  el.querySelector('[data-addsite]').onclick=()=>{ const v=el.querySelector('[data-newsite]').value.trim(); if(!v) return;
+    if(!d.cat){ toast('先に区分を選んでください',true); return; }
+    if(isContract(d.cat)){ if(!d.contract){ toast('先に委託を選んでください',true); return; }
+      if(!MASTER.siteGroups[d.cat][d.contract].includes(v)) MASTER.siteGroups[d.cat][d.contract].push(v);
+      pushCustom({cat:d.cat,contract:d.contract,site:v}); }
+    else { if(!MASTER.siteGroups[d.cat].includes(v)) MASTER.siteGroups[d.cat].push(v); pushCustom({cat:d.cat,contract:null,site:v}); }
+    d.site=v; fillSites(); siteSel.value=v; el.querySelector('[data-newsite]').value=''; syncTtl(); saveDraft(); };
+  el.querySelector('[data-w]').value = Math.round(d.w==null?100:d.w);
+  el.querySelector('[data-w]').oninput=e=>onSlide(id, e.target.value);
+  el.querySelector('[data-del]').onclick=()=>{ delete sites[id]; el.remove();
+    if(!Object.keys(sites).length) addSite(); normalizeTo100(); syncSliders(); renumber(); recalc(); saveDraft(); };
+}
+function siteList(){ return Object.keys(sites).map(k=>sites[k]); }
+
+/* ===== 配分（スライダーの重み） ===== */
+function shares(){
+  const arr=siteList(); const n=arr.length; if(!n) return [];
+  const w=arr.map(s=>Math.max(0,num(s.w==null?50:s.w))); const W=w.reduce((a,b)=>a+b,0);
+  if(W>0) return w.map(x=>x/W);
+  return arr.map(()=>1/n);
+}
+function intSplit(total,sh){ if(!sh.length) return []; total=Math.round(total); const raw=sh.map(s=>total*s); const fl=raw.map(x=>Math.floor(x));
+  let rem=total-fl.reduce((a,b)=>a+b,0); const ord=raw.map((x,i)=>[x-fl[i],i]).sort((a,b)=>b[0]-a[0]);
+  for(let k=0;k<rem;k++){ fl[ord[k%ord.length][1]]++; } return fl; }
+function totals(){
+  if(currentIsPublic){ const govkg=toKg($('#f_govqty').value); const govfee=govkg*PUBLIC_RATE;
+    return {govqty:govkg, amount:0, govfee, total:govfee, qtyKg:govkg}; }
+  const amount=num($('#f_amount').value); const qtyKg=toKg($('#f_qty').value);
+  return {govqty:0, amount, govfee:0, total:amount, qtyKg};
+}
+function toKg(v){ return qtyUnit==='m3' ? num(v)*num(hijuu) : num(v); }
+function recalc(){
+  const t=totals();
+  $('#c_govfee').textContent=yen(t.govfee); $('#c_total').textContent=yen(t.total); $('#barTotal').textContent=yen(t.total);
+  const arr=siteList(), n=arr.length, sh=shares();
+  const amt=intSplit(t.amount,sh), fee=intSplit(t.govfee,sh);
+  const totalKg=t.qtyKg;
+  const kgSplit = totalKg>0 ? intSplit(Math.round(totalKg), sh) : sh.map(()=>0);
+  const multi = n>=2;
+  $('#balanceBtn').style.display = multi ? '' : 'none';
+  [...$('#sites').children].forEach((el,i)=>{
+    el.querySelector('[data-amt]').textContent = n? '¥'+yen((amt[i]||0)+(fee[i]||0)) : '';
+    const alloc=el.querySelector('[data-alloc]'); alloc.classList.toggle('show',multi);
+    const read=el.querySelector('[data-read]');
+    if(read){ const pct=Math.round((sh[i]||0)*100);
+      const kgTxt = totalKg>0 ? '・約'+yen(kgSplit[i]||0)+'kg' : '';
+      read.innerHTML=`<b>${pct}%</b>${kgTxt}`; }
+  });
+}
+function balanceEven(){ const ids=Object.keys(sites); const each=100/(ids.length||1);
+  ids.forEach(x=>sites[x].w=each); syncSliders(); recalc(); saveDraft(); }
+function normalizeTo100(){ const ids=Object.keys(sites); if(!ids.length) return;
+  const S=ids.reduce((a,x)=>a+Math.max(0,num(sites[x].w)),0);
+  if(S<=0){ ids.forEach(x=>sites[x].w=100/ids.length); }
+  else { ids.forEach(x=>sites[x].w=Math.max(0,num(sites[x].w))/S*100); } }
+function syncSliders(){ [...$('#sites').children].forEach(el=>{ const id=el.id.split('-')[1];
+  const r=el.querySelector('[data-w]'); if(r&&sites[id]!=null) r.value=Math.round(sites[id].w); }); }
+function onSlide(id,v){ const ids=Object.keys(sites); v=Math.max(0,Math.min(100,num(v)));
+  if(ids.length<=1){ sites[id].w=100; }
+  else { const others=ids.filter(x=>x!==String(id));
+    const oldOther=others.reduce((a,x)=>a+Math.max(0,num(sites[x].w)),0); const remain=100-v;
+    if(oldOther<=0){ const each=remain/others.length; others.forEach(x=>sites[x].w=each); }
+    else { others.forEach(x=>{ sites[x].w=Math.max(0,num(sites[x].w))/oldOther*remain; }); }
+    sites[id].w=v; }
+  syncSliders(); recalc(); saveDraft(); }
+
+/* ===== 単位・配分の操作 ===== */
+function setUnit(u){ qtyUnit=u;
+  $('#unitKg').classList.toggle('on',u==='kg'); $('#unitM3').classList.toggle('on',u==='m3');
+  $('#hijuuWrap').style.display = u==='m3' ? 'inline-flex' : 'none';
+  const lbl = u==='m3' ? '立米' : 'kg';
+  $('#qtyUnitLbl').textContent=lbl; const l2=document.getElementById('qtyUnitLbl2'); if(l2) l2.textContent=lbl;
+  recalc(); saveDraft(); }
+$('#unitKg').onclick=()=>setUnit('kg'); $('#unitM3').onclick=()=>setUnit('m3');
+$('#f_hijuu').addEventListener('input',()=>{ hijuu=num($('#f_hijuu').value)||DEFAULT_HIJUU; recalc(); saveDraft(); });
+$('#addSiteBtn').onclick=()=>{ addSite(newSite());
+  const ids=Object.keys(sites); const n=ids.length; const id=ids[n-1]; const share=100/n;
+  const others=ids.slice(0,-1); const oldOther=others.reduce((a,x)=>a+Math.max(0,num(sites[x].w)),0)||1;
+  others.forEach(x=>sites[x].w=Math.max(0,num(sites[x].w))/oldOther*(100-share));
+  sites[id].w=share; syncSliders(); recalc(); saveDraft(); };
+$('#balanceBtn').onclick=balanceEven;
+
+/* ===== 下書き ===== */
+function collect(){ return { date:$('#f_date').value, unit:qtyUnit, hijuu:$('#f_hijuu').value,
+  sites:siteList().map(s=>({cat:s.cat,contract:s.contract,site:s.site,w:s.w})),
+  type:chipsOn(pickElems.type), typeOther:$('#typeOther').value.trim(),
+  qty:$('#f_qty').value.trim(), amount:$('#f_amount').value.trim(), govqty:$('#f_govqty').value.trim(),
+  place:chipsOn(pickElems.place), placeOther:$('#placeOther').value.trim(),
+  vehicle:chipsOn(pickElems.vehicle), vehicleOther:$('#vehicleOther').value.trim() }; }
+function saveDraft(){ if(editDenpyo) return; try{ localStorage.setItem(LS.draft,JSON.stringify(collect())); }catch(e){} }
+function clearDraft(){ localStorage.removeItem(LS.draft); }
+function apply(d){ d=d||{};
+  $('#f_date').value=d.date||todayStr();
+  $('#f_hijuu').value=d.hijuu||String(DEFAULT_HIJUU); hijuu=num($('#f_hijuu').value)||DEFAULT_HIJUU;
+  setUnit(d.unit||'kg');
+  $('#sites').innerHTML=''; sites={}; siteSeq=0;
+  (d.sites&&d.sites.length?d.sites:[newSite()]).forEach(s=>addSite(Object.assign(newSite(),s)));
+  setChipsOn(pickElems.type,d.type||[]); $('#typeOther').value=d.typeOther||'';
+  $('#f_qty').value=d.qty||''; $('#f_amount').value=d.amount||''; $('#f_govqty').value=d.govqty||'';
+  setChipsOn(pickElems.place,d.place||[]); $('#placeOther').value=d.placeOther||'';
+  setChipsOn(pickElems.vehicle,d.vehicle||[]); $('#vehicleOther').value=d.vehicleOther||'';
+  refreshPlaceMode(); normalizeTo100(); syncSliders(); recalc(); }
+function resetForm(){ editDenpyo=null; $('#editBadge').classList.remove('show'); $('#pvDelete').style.display='none';
+  apply({date:todayStr()}); clearDraft(); }
+
+/* ===== 行の組み立て ===== */
+function buildRows(){
+  const t=totals(), arr=siteList(), sh=shares(), n=arr.length;
+  const amt=intSplit(t.amount,sh), fee=intSplit(t.govfee,sh);
+  const types=[...chipsOn(pickElems.type)]; const to=$('#typeOther').value.trim(); if(to) types.push(to);
+  const places=[...chipsOn(pickElems.place)]; const po=$('#placeOther').value.trim(); if(po) places.push(po);
+  const vehicles=[...chipsOn(pickElems.vehicle)]; const vo=$('#vehicleOther').value.trim(); if(vo) vehicles.push(vo);
+  const typeS=types.join('・'), placeS=places.join('・'), vehS=vehicles.join('・');
+  const useM3 = qtyUnit==='m3';
+  const hj = useM3 ? num(hijuu)||DEFAULT_HIJUU : '';
+  // 総量を kg に換算し、スライダーの割合で各現場に按分
+  const totalKg = t.qtyKg;
+  const kgSplit = totalKg>0 ? intSplit(Math.round(totalKg), sh) : sh.map(()=>0);
+  return arr.map((s,i)=>{
+    const share=sh[i]||0;
+    return { date:$('#f_date').value, siteCat:s.cat, siteContract:s.contract, site:s.site,
+      share:Math.round(share*1000)/1000, type:typeS, place:placeS, vehicle:vehS,
+      qty:kgSplit[i]||0, hijuu:hj, amount:amt[i]||0, govqty:Math.round(t.govqty*share*100)/100,
+      govfee:fee[i]||0, total:(amt[i]||0)+(fee[i]||0), author };
+  });
+}
+
+/* ===== プレビュー → 保存 ===== */
+function openPreview(){
+  if(!author){ renderNameGrid(); $('#overlay').classList.remove('hide'); return; }
+  const arr=siteList();
+  if(!arr.length || !arr.some(s=>s.site)){ toast('現場を選んでください',true); return; }
+  const t=totals();
+  if(!t.amount && !t.govfee){ toast('処分金額か役所処分量を入れてください',true); $('#f_amount').focus(); return; }
+  const rows=buildRows();
+  let html=`<div class="pv-row"><span class="k">日付</span><span class="v">${$('#f_date').value}</span></div>`;
+  rows.forEach(r=>{ html+=`<div class="pv-site"><span class="nm">${r.site||'(現場未選択)'}</span><span class="tnum">¥${yen(r.total)}</span></div>`; });
+  const types=rows[0]?rows[0].type:''; const place=rows[0]?rows[0].place:''; const veh=rows[0]?rows[0].vehicle:'';
+  html+=`<div class="pv-row"><span class="k">種類</span><span class="v">${types||'—'}</span></div>`;
+  html+=`<div class="pv-row"><span class="k">処分場所</span><span class="v">${place||'—'}</span></div>`;
+  html+=`<div class="pv-row"><span class="k">使用車両</span><span class="v">${veh||'—'}</span></div>`;
+  html+=`<div class="pv-row"><span class="k">民間処分費 / 公共ぶん</span><span class="v">¥${yen(t.amount)} / ¥${yen(t.govfee)}</span></div>`;
+  html+=`<div class="pv-row big"><span class="k">集計用金額（合計）</span><span class="v">¥${yen(t.total)}</span></div>`;
+  $('#pvBody').innerHTML=html;
+  $('#pvTitle').textContent=editDenpyo?'この内容に更新します':'この内容で記録します';
+  $('#pvDelete').style.display=editDenpyo?'':'none';
+  $('#modal').classList.add('show');
+}
+$('#pvBack').onclick=()=>$('#modal').classList.remove('show');
+$('#btnSave').onclick=openPreview;
+
+$('#pvConfirm').onclick=async()=>{
+  if(GAS_URL==='PASTE_YOUR_GAS_URL_HERE'){ toast('GAS の URL を設定してください',true); return; }
+  const rows=buildRows();
+  $('#pvConfirm').disabled=true; $('#pvConfirm').textContent='送信中…';
+  try{
+    const body=editDenpyo?{mode:'update',denpyo:editDenpyo,editor:author,rows}:{rows};
+    const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
+    const d=await res.json(); if(!d.ok) throw new Error(d.error||'');
+    $('#modal').classList.remove('show'); toast(editDenpyo?'更新しました':'記録しました');
+    resetForm(); allRecords=[]; await loadMasters(); renderCandSuggest();
+  }catch(e){ toast('電波を確認して、もう一度お試しください',true);
+  }finally{ $('#pvConfirm').disabled=false; $('#pvConfirm').textContent='記録する'; }
+};
+$('#pvDelete').onclick=async()=>{
+  if(!editDenpyo) return; if(!confirm('この記録（一台ぶん）を削除します。よろしいですか？')) return;
+  try{ const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({mode:'delete',denpyo:editDenpyo})});
+    const d=await res.json(); if(!d.ok) throw new Error();
+    $('#modal').classList.remove('show'); toast('削除しました'); resetForm(); allRecords=[]; switchTab('list');
+  }catch(e){ toast('電波を確認して、もう一度お試しください',true); }
+};
+
+/* ===== タブ ===== */
+function switchTab(which){ const input=which==='input';
+  $('#tabInput').classList.toggle('on',input); $('#tabList').classList.toggle('on',!input);
+  $('#viewInput').style.display=input?'':'none'; $('#viewList').style.display=input?'none':'';
+  $('#savebar').style.display=input?'flex':'none'; if(!input) loadList(); }
+$('#tabInput').onclick=()=>switchTab('input'); $('#tabList').onclick=()=>switchTab('list');
+
+/* ===== 一覧 ===== */
+async function loadList(force){
+  if(GAS_URL==='PASTE_YOUR_GAS_URL_HERE'){ $('#recList').innerHTML='<div class="empty">GAS の URL を設定してください</div>'; return; }
+  if(allRecords.length&&!force){ renderList(); return; }
+  $('#recList').innerHTML='<div class="empty">読み込み中…</div>';
+  try{ const res=await fetch(GAS_URL+'?action=list'); const d=await res.json();
+    allRecords=(d.records||[]).slice(); fillYearMonth(); renderList();
+  }catch(e){ $('#recList').innerHTML='<div class="empty">電波を確認して、もう一度お試しください</div>'; }
+}
+function fillYearMonth(){
+  const fys=new Set(); allRecords.forEach(r=>{ const fy=fyOf(r.date); if(fy) fys.add(fy); });
+  const arr=[...fys].sort().reverse(); const ySel=$('#flYear'); const cur=ySel.value;
+  const def = cur || arr[0] || '';   // 初期は最新年度
+  ySel.innerHTML='<option value="">すべての年度</option>'+arr.map(y=>`<option value="${y}" ${y===def?'selected':''}>${y}年度</option>`).join('');
+  const mSel=$('#flMonth');
+  if(mSel.options.length<=1){ mSel.innerHTML='<option value="">すべての月</option>'+Array.from({length:12},(_,i)=>{const m=String(i+1).padStart(2,'0');return `<option value="${m}">${i+1}月</option>`}).join(''); }
+}
+function filteredRows(){ const y=$('#flYear').value,m=$('#flMonth').value,kw=$('#flKeyword').value.trim();
+  return allRecords.filter(r=>{ if(y&&fyOf(r.date)!==y) return false;
+    if(m&&normDate(r.date).slice(5,7)!==m) return false;
+    if(kw){ const hay=(r.site+' '+r.siteContract+' '+r.place+' '+r.vehicle+' '+r.type); if(!hay.includes(kw)) return false; } return true; }); }
+function setListMode(m){ listMode=m; $('#listDenpyo').classList.toggle('on',m==='denpyo'); $('#listSite').classList.toggle('on',m==='site'); renderList(); }
+$('#listDenpyo').onclick=()=>setListMode('denpyo'); $('#listSite').onclick=()=>setListMode('site');
+function renderList(){
+  const rows=filteredRows();
+  const sum=rows.reduce((s,r)=>{ s.amount+=num(r.amount); s.govfee+=num(r.govfee); s.total+=num(r.total); return s; },{amount:0,govfee:0,total:0});
+  const headK = listMode==='site' ? '現場数' : '台数（伝票）';
+  const headV = listMode==='site'
+    ? new Set(rows.map(r=>r.site||'(未選択)')).size+'<small> 現場</small>'
+    : new Set(rows.map(r=>r.denpyo||r.rid)).size+'<small> 台</small>';
+  $('#totals').innerHTML=`
+    <div class="stat"><div class="k">${headK}</div><div class="v">${headV}</div></div>
+    <div class="stat"><div class="k">処分金額</div><div class="v"><small>¥</small>${yen(sum.amount)}</div></div>
+    <div class="stat"><div class="k">役所処分料</div><div class="v"><small>¥</small>${yen(sum.govfee)}</div></div>
+    <div class="stat"><div class="k">集計金額 合計</div><div class="v"><small>¥</small>${yen(sum.total)}</div></div>`;
+  if(!rows.length){ $('#recList').innerHTML='<div class="empty">記録がありません</div>'; return; }
+  if(listMode==='site'){ renderBySite(rows); return; }
+  // 一台ごと（伝票ごと）
+  const groups={}; rows.forEach(r=>{ const k=r.denpyo||('r'+r.rid); (groups[k]=groups[k]||[]).push(r); });
+  const cards=Object.keys(groups).map(k=>{ const g=groups[k]; g.sort((a,b)=>(a.rid-b.rid));
+    const date=normDate(g[0].date); const tot=g.reduce((a,r)=>a+num(r.total),0);
+    return {k,date,tot,g}; }).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  $('#recList').innerHTML=cards.map(c=>{
+    const r0=c.g[0];
+    const slines=c.g.map(r=>`<div class="sline"><span class="nm">${(r.site||'(現場未選択)').replace(/</g,'&lt;')}</span><span class="sv">¥${yen(num(r.total))}</span></div>`).join('');
+    const tags=[]; if(r0.type) tags.push(`<span class="mtag t">${r0.type}</span>`);
+    if(r0.place) tags.push(`<span class="mtag">${r0.place}</span>`); if(r0.vehicle) tags.push(`<span class="mtag">${r0.vehicle}</span>`);
+    return `<div class="rec" data-k="${c.k}"><div class="top"><span class="date">${c.date}</span><span class="amt">¥${yen(c.tot)}</span></div>
+      <div class="sites">${slines}</div><div class="meta">${tags.join('')}</div></div>`;
+  }).join('');
+  $('#recList').querySelectorAll('.rec').forEach(el=>{ el.onclick=()=>openEdit(el.dataset.k); });
+}
+function renderBySite(rows){
+  const map={};
+  rows.forEach(r=>{ const k=r.site||'(現場未選択)'; if(!map[k]) map[k]={amount:0,govfee:0,total:0,cnt:0};
+    map[k].amount+=num(r.amount); map[k].govfee+=num(r.govfee); map[k].total+=num(r.total); map[k].cnt++; });
+  const arr=Object.keys(map).map(k=>Object.assign({site:k},map[k])).sort((a,b)=>b.total-a.total);
+  $('#recList').innerHTML=arr.map(s=>`
+    <div class="rec" data-site="${s.site.replace(/"/g,'&quot;')}">
+      <div class="top"><span class="date">${s.cnt}件</span><span class="amt">¥${yen(s.total)}</span></div>
+      <div class="sites"><div class="sline"><span class="nm">${s.site.replace(/</g,'&lt;')}</span></div></div>
+      <div class="meta"><span class="mtag">民間 ¥${yen(s.amount)}</span><span class="mtag">公共 ¥${yen(s.govfee)}</span></div>
+    </div>`).join('');
+  $('#recList').querySelectorAll('.rec').forEach(el=>{ el.onclick=()=>{
+    $('#flKeyword').value=el.dataset.site; setListMode('denpyo'); }; });
+}
+['flYear','flMonth','flKeyword'].forEach(id=>$('#'+id).addEventListener('input',renderList));
+$('#flReload').onclick=()=>loadList(true);
+
+/* ===== 編集（伝票単位） ===== */
+function splitKnown(s,known){ const a=(s||'').split('・').map(x=>x.trim()).filter(Boolean);
+  return { on:a.filter(x=>known.includes(x)), other:a.filter(x=>!known.includes(x)).join('、') }; }
+function openEdit(k){
+  const g=allRecords.filter(r=>(r.denpyo||('r'+r.rid))===k); if(!g.length) return;
+  g.sort((a,b)=>a.rid-b.rid); editDenpyo=g[0].denpyo||null;
+  const r0=g[0];
+  const t=splitKnown(r0.type,TYPES), p=splitKnown(r0.place,PLACES), v=splitKnown(r0.vehicle,VEHICLES);
+  const amount=g.reduce((a,r)=>a+num(r.amount),0);
+  const govqty=g.reduce((a,r)=>a+num(r.govqty),0);
+  const hj=num(r0.hijuu); const m3=hj>0; const conv=kg=> m3?Math.round(num(kg)/hj*100)/100:num(kg);
+  const totalKg=g.reduce((a,r)=>a+num(r.qty),0);
+  apply({ date:normDate(r0.date), unit:m3?'m3':'kg', hijuu:m3?String(hj):String(DEFAULT_HIJUU),
+    sites:g.map(r=>({cat:r.siteCat,contract:r.siteContract,site:r.site,w:Math.max(1,Math.round(num(r.share)*100))})),
+    type:t.on, typeOther:t.other,
+    qty:totalKg? conv(totalKg) : '',
+    amount:amount||'', govqty:govqty||'',
+    place:p.on, placeOther:p.other, vehicle:v.on, vehicleOther:v.other });
+  if(!editDenpyo){ // 履歴（伝票ID無し）は更新不可。新規複製として扱う
+    toast('この古い記録は閲覧用です（保存で新規になります）');
+  } else { $('#editBadge').classList.add('show'); }
+  switchTab('input'); window.scrollTo(0,0);
+}
+
+/* ===== 起動 ===== */
+['f_amount','f_govqty','f_qty'].forEach(id=>$('#'+id).addEventListener('input',()=>{recalc();saveDraft();}));
+['f_date','typeOther','vehicleOther'].forEach(id=>$('#'+id).addEventListener('input',saveDraft));
+$('#placeOther').addEventListener('input',()=>{ if($('#placeOther').value.trim()) pickElems.place.querySelectorAll('.chip.on').forEach(x=>x.classList.remove('on'));
+  refreshPlaceMode(); saveDraft(); });
+pickElems.typeWatch=0;
+
+(async function init(){
+  setupPicks();
+  await loadMasters(); renderCandSuggest();
+  const saved=localStorage.getItem(LS.author);
+  if(saved){ setAuthor(saved); $('#overlay').classList.add('hide'); } else renderNameGrid();
+  let dr=null; try{ dr=JSON.parse(localStorage.getItem(LS.draft)||'null'); }catch(e){}
+  apply(dr||{date:todayStr()});
+  if(GAS_URL==='PASTE_YOUR_GAS_URL_HERE') toast('GAS の URL を設定してください',true);
+})();
+</script>
+</body>
+</html>
