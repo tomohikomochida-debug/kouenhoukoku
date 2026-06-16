@@ -293,10 +293,12 @@
    GAS接続。スプレッドシートのマスタを読み、日報を保存します。
    ========================================================= */
 const GAS_URL='https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
+/* マスタ（staff/siteGroups）は親「物件マスタ」から取得。保存・編集は上の日報GASのまま。 */
+const MASTERS_URL='https://script.google.com/macros/s/AKfycby-j7qQHOoxfNX7xAoCZrECf6vOa-EluxCu2eYx5oms41GWvXT3EPd-dYvyNIQE__Zr/exec';
 function todayStr(){const t=new Date();return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');}
 async function loadMasters(){
   try{
-    const res=await fetch(GAS_URL+'?action=masters');
+    const res=await fetch(MASTERS_URL+'?action=masters');
     const m=await res.json();
     if(m && m.staff && m.staff.length) MASTER.staff=m.staff;
     if(m && m.siteGroups && Object.keys(m.siteGroups).length) MASTER.siteGroups=m.siteGroups;
