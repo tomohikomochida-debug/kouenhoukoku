@@ -268,14 +268,22 @@
 <script>
 const GAS_URL='https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
 
-/* ===== 名簿（日報と連動：?action=masters の staff を使う。親方は除外） ===== */
-let ROSTER = ['樋上','山口','甲斐','澤崎','荒木']; // 通信できないときの控え
+/* ===== 名簿（日報と連動：?action=masters の staff を使う。親方も含む） =====
+   画面には「親方」と表示し、記録（保存・CSV）には実名で残す。
+   別名を増やすときは下の REAL_NAME / DISP_NAME に1行ずつ足す。 */
+const REAL_NAME = { '親方':'持田智彦' };   // 画面表示 → 記録（保存する実名）
+const DISP_NAME = { '持田智彦':'親方' };    // 記録 → 画面表示（一覧でもどす）
+const toReal = n => REAL_NAME[n] || n;
+const toDisp = n => DISP_NAME[n] || n;
+const dispNames = s => String(s||'').split('\n').map(x=>x.trim()).filter(Boolean).map(toDisp).join('、');
+
+let ROSTER = ['親方','樋上','山口','甲斐','澤崎','荒木']; // 通信できないときの控え
 async function loadRoster(){
   try{
     const res=await fetch(GAS_URL+'?action=masters');
     const m=await res.json();
     if(m && Array.isArray(m.staff) && m.staff.length){
-      ROSTER = m.staff.filter(n=>n && n!=='親方');
+      ROSTER = m.staff.filter(n=>n);
     }
   }catch(e){ /* 控えのまま進む */ }
   // 端末で足した運転者を後ろに足す
@@ -463,8 +471,8 @@ document.getElementById('cancelSave').onclick=()=>document.getElementById('modal
 document.getElementById('confirmSave').onclick=async()=>{
   const btn=document.getElementById('confirmSave'); btn.disabled=true; btn.textContent='記録中…';
   const row={
-    checker, when:whenStr(), timing:state.timing,
-    drivers:state.drivers.join('\n'),
+    checker:toReal(checker), when:whenStr(), timing:state.timing,
+    drivers:state.drivers.map(toReal).join('\n'),
     detector:state.detector,
     method:state.detector==='使ってない'?document.getElementById('method').value:'',
     result:state.result,
@@ -535,12 +543,12 @@ function renderList(records){
   body.innerHTML=days.map(day=>{
     const items=groups[day].map(r=>{
       const time=((r['作成日時']||'').split(' ')[1])||'';
-      const drivers=(r['運転者']||'').split('\n').filter(Boolean).join('、');
+      const drivers=(r['運転者']||'').split('\n').filter(Boolean).map(toDisp).join('、');
       const bad=(r['酒気帯びの有無']||'')==='有';
       const timing=r['区分']||'';
       const det=r['アルコール検知器の使用有無']||'';
       const ins=r['指示事項']||''; const oth=r['その他必要な事項']||''; const mth=r['検知器を使ってない場合の確認方法']||'';
-      let sub=`確認者：${esc(r['確認者']||'')}　／　検知器：${esc(det||'—')}`;
+      let sub=`確認者：${esc(dispNames(r['確認者'])||'')}　／　検知器：${esc(det||'—')}`;
       const extra=[ins&&('指示：'+ins), mth&&('確認方法：'+mth), oth&&('その他：'+oth)].filter(Boolean).join('\n');
       return `<div class="rec">
         <div class="rec-top">
