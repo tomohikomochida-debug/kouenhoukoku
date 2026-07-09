@@ -54,9 +54,11 @@ main{max-width:920px;margin:0 auto;padding:18px 14px 60px}
 .mcard{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--field)}
 .mhead{font-weight:800;font-size:15px;display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .mcount{font-size:12px;font-weight:700;color:#fff;background:var(--warn);border-radius:999px;padding:2px 10px}
-.mday{display:flex;gap:10px;font-size:13px;padding:3px 0;border-top:1px dashed var(--line)}
+.mday{display:flex;align-items:center;gap:10px;font-size:13px;padding:5px 0;border-top:1px dashed var(--line)}
 .mday .md{font-variant-numeric:tabular-nums;color:var(--bark);width:92px;flex-shrink:0}
-.mday .ms{color:var(--ink)}
+.mday .ms{color:var(--ink);flex:1;min-width:0}
+.mday .mgo{margin-left:auto;flex-shrink:0;background:var(--leaf);color:#fff;text-decoration:none;font-size:12px;font-weight:700;padding:6px 13px;border-radius:7px;white-space:nowrap}
+.mday .mgo:active{opacity:.85}
 .ok{font-size:14px;color:var(--leaf2);font-weight:700;padding:8px 0}
 .loading{text-align:center;color:var(--bark);padding:40px;font-size:14px}
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto}
@@ -166,7 +168,7 @@ function drawCal(){
     const _ba={}; ev.forEach(x=>{const a=x.author||'?';_ba[a]=(_ba[a]||0)+x.ninku;});
     const tot=Math.round(Object.values(_ba).reduce((s,v)=>s+Math.min(v,1),0)*100)/100;
     h+=`<div class="cell"><div class="d">${d}${tot?` <span class="nk">${tot}</span>`:''}</div>`+
-       ev.slice(0,3).map(x=>`<div class="ev clk" data-rid="${x.rid}" title="${x.site} ${x.ninku}"><span class="nk">${x.ninku}</span> ${x.site}</div>`).join('')+
+       ev.slice(0,3).map(x=>`<div class="ev clk" data-rid="${x.rid}" title="${x.site} ${x.ninku}">${x.site}</div>`).join('')+
        (ev.length>3?`<div class="ev more" data-date="${ds}">他${ev.length-3}件</div>`:'')+`</div>`;}
   document.getElementById('calGrid').innerHTML=h;}
 let lastSiteRecs=[];
@@ -232,13 +234,15 @@ function computeMissing(records){
     const d=(r.date||'').slice(0,10); if(!d)return;
     if(!byDate[d]) byDate[d]={written:new Set(),present:new Set(),whoSite:{}};
     if(r.author){ byDate[d].written.add(r.author); byDate[d].present.add(r.author); }
-    (r.members||'').split('・').forEach(m=>{m=m.trim(); if(m){ byDate[d].present.add(m); (byDate[d].whoSite[m]=byDate[d].whoSite[m]||new Set()).add(r.site);} });
+    (r.members||'').split('・').forEach(m=>{m=m.trim(); if(m){ byDate[d].present.add(m);
+      const wm=byDate[d].whoSite[m]=byDate[d].whoSite[m]||{};
+      if(r.site && !wm[r.site]) wm[r.site]={site:r.site,cat:r.cat||'',con:r.con||''}; } });
   });
   const EXCLUDE=new Set(['親方','持田','持田智彦']);
   const miss={};
   Object.keys(byDate).sort().reverse().forEach(d=>{
     const o=byDate[d];
-    o.present.forEach(p=>{ if(EXCLUDE.has(p))return; if(!o.written.has(p)){ (miss[p]=miss[p]||[]).push({date:d,sites:[...(o.whoSite[p]||[])]}); } });
+    o.present.forEach(p=>{ if(EXCLUDE.has(p))return; if(!o.written.has(p)){ (miss[p]=miss[p]||[]).push({date:d,sites:Object.values(o.whoSite[p]||{})}); } });
   });
   return miss;
 }
@@ -249,7 +253,11 @@ function renderMissing(records){
   if(!people.length){ el.innerHTML='<div class="ok">未記入の日はありません。みんなちゃんと書いています。</div>'; return; }
   el.innerHTML=people.map(p=>{const days=miss[p];
     return `<div class="mcard"><div class="mhead">${p}<span class="mcount">未記入 ${days.length}日</span></div>`+
-      days.map(x=>`<div class="mday"><span class="md">${x.date}</span><span class="ms">${x.sites.filter(Boolean).join('・')||'(現場不明)'}</span></div>`).join('')+`</div>`;
+      days.map(x=>{
+        const names=x.sites.map(s=>s.site).filter(Boolean).join('・')||'(現場不明)';
+        const url=APP_URL+'?new=1&date='+encodeURIComponent(x.date)+'&author='+encodeURIComponent(p)+'&sites='+encodeURIComponent(JSON.stringify(x.sites));
+        return `<div class="mday"><span class="md">${x.date}</span><span class="ms">${esc(names)}</span><a class="mgo" href="${url}" target="_blank" rel="noopener">✏️ 書く</a></div>`;
+      }).join('')+`</div>`;
   }).join('');
 }
 function render(){
