@@ -824,8 +824,25 @@ async function openEditList(){
   }catch(e){ body.innerHTML='<div class="ed-empty">読み込みに失敗しました。<br>電波を確認して、もう一度お試しください。</div>'; }
 }
 
+function addAnotherSiteForDay(dateStr, who){
+  // 編集画面を閉じて、いつもの新規入力へ戻す
+  document.getElementById('edForm').style.display='none';
+  document.getElementById('edList').style.display='none';
+  // 作者を合わせる（親方が他人ぶんに足す場合も、その人の名前で保存されるように）
+  if(who && MASTER.staff.includes(who) && who!==author) setAuthor(who);
+  else if(!author && who && MASTER.staff.includes(who)) setAuthor(who);
+  // 現場カードを空1枚に作り直し、日付をその日にそろえる
+  Object.keys(sites).forEach(id=>{ const e=document.getElementById('site-'+id); if(e) e.remove(); delete sites[id]; });
+  addSite();
+  if(dateStr) document.getElementById('date').value=dateStr;
+  refreshPeoplePicks(); updateMoveNotes(); updateSummary();
+  window.scrollTo(0,0);
+  alert((dateStr||'この日')+' にもう1現場ぶんを足します。\n現場を選んで、いつも通り「この内容で記録」で保存してください。');
+}
 async function openEditForm(rid){
   edRecRid=rid;
+  try{
+    const res=await fetch(GAS_URL+'?action=getone&rid='+encodeURIComponent(rid));
     const d=await res.json();
     if(!d.ok){ alert(d.error||'読み込めませんでした'); return; }
     fillEditForm(d.rec);
