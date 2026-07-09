@@ -162,10 +162,25 @@
       <button id="mTree" class="mbtn on" onclick="setMode('tree')">🌳 樹木管理</button>
       <button id="mExt" class="mbtn" onclick="setMode('exterior')">🏡 庭・外構</button>
     </div>
+    <div class="casebar2">
+      <button class="iconbtn" id="syncBtn" onclick="syncCase()">↑ この案件を事務所に同期</button>
+      <span class="muted" id="syncState" style="flex:1"></span>
+    </div>
     <div class="case">
       <div class="row2">
         <div><label>案件名</label><input id="caseName" placeholder="例：かしの木台ハイツ 樹木剪定"></div>
         <div><label>調査日</label><input id="caseDate" type="date"></div>
+      </div>
+      <div class="row2">
+        <div><label>種類</label><select id="siteCat" onchange="onSiteCat(this.value)"></select></div>
+        <div id="siteContractWrap" style="display:none"><label>委託名</label><select id="siteContract" onchange="onSiteContract(this.value)"></select></div>
+      </div>
+      <div class="row2">
+        <div><label>現場（物件マスタ）</label><select id="siteSel" onchange="onSiteSel(this.value)"></select></div>
+        <div><label>調査担当</label><select id="tantouSel" onchange="setTantou(this.value)"></select></div>
+      </div>
+      <div id="siteAddWrap" style="display:none"><label>一覧に無い現場を追加</label>
+        <div style="display:flex;gap:6px"><input id="siteAdd" placeholder="現場名を入力" style="flex:1"><button class="iconbtn" onclick="addSiteName()">＋追加</button></div>
       </div>
       <div><label>工事場所（御見積書に記載）</label><input id="casePlace" placeholder="例：川崎市〇〇区〇〇 1-2-3" oninput="setPlace(this.value)"></div>
       <div><label>写真帳の見出し</label><input id="bookTitle" placeholder="写真帳" oninput="setBookTitle(this.value)"></div>
@@ -289,7 +304,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   // 見積・写真帳・マスター用の共通マッピング
   function nameOf(t) { return ty(t) === "exterior" ? (t.item || "") : ((t.work || "") + "　" + (t.species || "")).trim(); }
-  function specOf(t) { return ty(t) === "exterior" ? (t.memo || "") : ("H=" + (t.h || "") + "m　C=" + (t.c || "") + "cm"); }
+  function specOf(t) { if (ty(t) === "exterior") return t.memo || ""; var s = "H=" + (t.h || "") + "m　C=" + (t.c || "") + "cm"; if (t.w) s += "　W=" + t.w + "m"; return s; }
   function qtyOf(t) { return ty(t) === "exterior" ? (t.qty || "") : 1; }
   function unitOf(t) { return ty(t) === "exterior" ? (t.unit || "") : "本"; }
   function kubun(t) { return ty(t) === "exterior" ? "外構" : "樹木"; }
@@ -458,7 +473,11 @@ const UNITS=["㎡","m","箇所","本","式","㎥","t","台","枚","組"];
 function today(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
 /* HTML挿し込み用エスケープ（メモ等に " や < が入っても崩れないように） */
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] };
+/* 事務所同期：survey専用GAS。物件マスタは日報GASの ?action=masters を流用 */
+const GAS_URL="https://script.google.com/macros/s/AKfycbz7WKesmndt-qaRoAwecFvIOge8702y0ruzsW9AY-2sgEjodA0OH6BZoCKPqa6i7nO4qQ/exec";
+const MASTERS_URL="https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec";
+let MASTER={staff:[],siteGroups:{}};
+let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] };
 let saveTimer=null;
 let undoStack=[], redoStack=[], lastKey=null, lastTime=0;
 function snapClone(){ return JSON.parse(JSON.stringify(state)); }
@@ -488,7 +507,7 @@ function markDirty(){ document.getElementById("saveState").textContent="保存�
   clearTimeout(saveTimer); saveTimer=setTimeout(save,500); }
 let caseId=null, casesIndex=[];
 function newId(){ return "c"+Date.now()+Math.floor(Math.random()*1000); }
-function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] }; }
+function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] }; }
 function touchIndex(){ const meta={id:caseId,name:state.caseName||"(無題)",date:state.caseDate||"",updatedAt:Date.now(),n:(state.trees||[]).length}; const e=casesIndex.find(c=>c.id===caseId); if(e) Object.assign(e,meta); else casesIndex.unshift(meta); }
 async function save(){ try{ if(!caseId) caseId=newId(); touchIndex();
   await idbSet("case_"+caseId, JSON.parse(JSON.stringify(state))); await idbSet("cases",casesIndex); await idbSet("current",caseId);
@@ -565,7 +584,7 @@ function markerPng(n){ const S=84, cv=document.createElement("canvas"); cv.width
   return cv.toDataURL("image/png"); }
 
 /* モデル */
-function addTree(scroll,noUndo){ if(scroll===undefined) scroll=true; if(!noUndo) pushUndo("add"); state.trees.push(state.mode==="exterior"?{type:"exterior",item:"",qty:"",unit:"",memo:"",photos:[]}:{type:"tree",species:"",h:"",c:"",work:"強剪定",memo:"",photos:[]});
+function addTree(scroll,noUndo){ if(scroll===undefined) scroll=true; if(!noUndo) pushUndo("add"); state.trees.push(state.mode==="exterior"?{type:"exterior",item:"",qty:"",unit:"",memo:"",photos:[]}:{type:"tree",species:"",h:"",c:"",w:"",work:"強剪定",memo:"",photos:[]});
   markDirty(); renderTrees(); if(scroll){ const el=document.querySelector("#trees .tree:last-child"); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"center"}); } }
 function delTree(i){ if(confirm((i+1)+"番を削除しますか？")){ pushUndo("del"); state.trees.splice(i,1); markDirty(); renderTrees(); } }
 function move(i,d){ const j=i+d; if(j<0||j>=state.trees.length) return; pushUndo("move"); [state.trees[i],state.trees[j]]=[state.trees[j],state.trees[i]]; markDirty(); renderTrees(); }
@@ -601,20 +620,27 @@ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 function voice(i,btn){ if(!SR){ alert("この端末は音声ボタン非対応です。各欄をタップし、キーボードのマイクで話してください。"); return; }
   const rec=new SR(); rec.lang="ja-JP"; rec.interimResults=false; btn.classList.add("rec"); btn.textContent="●聞取中";
   rec.onresult=e=>{ parseVoice(i,e.results[0][0].transcript); renderTrees(); };
-  rec.onerror=()=>{ btn.classList.remove("rec"); btn.textContent="🎤音声"; };
+  rec.onerror=(e)=>{ btn.classList.remove("rec"); btn.textContent="🎤音声";
+    const c=e&&e.error;
+    if(c==="not-allowed"||c==="service-not-allowed") alert("マイクの使用が許可されていません。アドレスバーのマイク（🎤）アイコン、またはブラウザの設定で、このサイトのマイクを「許可」にしてください。");
+    else if(c==="no-speech") alert("音声が聞き取れませんでした。もう一度、はっきりお話しください。");
+    else if(c==="audio-capture") alert("マイクが見つかりません。端末のマイクをご確認ください。");
+    else if(c==="network") alert("音声認識サーバーに接続できませんでした。電波を確認して、もう一度お試しください。");
+    else if(c) alert("音声認識でエラーが発生しました（"+c+"）。"); };
   rec.onend=()=>{ btn.classList.remove("rec"); btn.textContent="🎤音声"; };
-  rec.start(); }
+  try{ rec.start(); }catch(err){ btn.classList.remove("rec"); btn.textContent="🎤音声"; alert("音声認識を開始できませんでした。少し待ってからもう一度お試しください。"); } }
 function parseVoice(i,txt){ const t=state.trees[i]; const z=txt.replace(/[０-９]/g,d=>"0123456789"["０１２３４５６７８９".indexOf(d)]);
   for(const s of SPECIES) if(txt.includes(s)) t.species=s;
   for(const w of WORKS) if(txt.includes(w)) t.work=w;
-  let m=z.match(/(高さ|たかさ)\s*([0-9]+(?:\.[0-9])?)/); if(m) t.h=m[2];
-  m=z.match(/(幹周|みきまわり|周囲|しゅうい)\s*([0-9]+)/); if(m) t.c=m[2];
-  if(!t.h){ m=z.match(/([0-9]+)\s*メートル/); if(m) t.h=m[1]; }
+  let m=z.match(/(?:高さ|たかさ|エイチ|エッチ|[hH])\s*([0-9]+(?:\.[0-9]+)?)/); if(m) t.h=m[1];
+  m=z.match(/(?:幹周|みきしゅう|みきまわり|胸高周囲|周囲|しゅうい|シー|スィー|[cC])\s*([0-9]+(?:\.[0-9]+)?)/); if(m) t.c=m[1];
+  m=z.match(/(?:葉張り|葉張|はばり|ようちょう|ダブリュー|ダブル|だぶりゅー|[wW])\s*([0-9]+(?:\.[0-9]+)?)/); if(m) t.w=m[1];
+  if(!t.h){ m=z.match(/([0-9]+(?:\.[0-9]+)?)\s*メートル/); if(m) t.h=m[1]; }
   if(!t.c){ m=z.match(/([0-9]+)\s*センチ/); if(m) t.c=m[1]; }
   markDirty(); }
 
 /* 描画：入力 */
-function normalize(){ if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; }); }
+function normalize(){ if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; if(state.category===undefined) state.category=""; if(state.contract===undefined) state.contract=""; if(state.site===undefined) state.site=""; if(state.tantou===undefined) state.tantou=""; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; if(t.w===undefined) t.w=""; }); }
 function opts(list,val){ return list.map(x=>`<option ${x===val?"selected":""}>${x}</option>`).join(""); }
 function photosHTML(t,i){ const ph=(state.trees[i].photos)||[];
   const thumbs=ph.map((p,k)=>`<div class="thumb"><img src="${p}" onclick="editPhoto(${i},${k})"><button class="rm" onclick="delPhoto(${i},${k})">×</button><div class="thmove"><button onclick="movePhoto(${i},${k},-1)">◀</button><button onclick="editPhoto(${i},${k})">✎</button><button onclick="movePhoto(${i},${k},1)">▶</button></div></div>`).join("");
@@ -634,15 +660,16 @@ function fieldsHTML(t,i){
      <div class="grid3">
        <div class="fld"><label>樹種</label><input list="splist" class="yellow" value="${esc(t.species)}" oninput="upd(${i},'species',this.value)" placeholder="樹種"></div>
        <div class="fld"><label>作業方針</label><select class="yellow" onchange="upd(${i},'work',this.value)">${opts(WORKS,t.work)}</select></div>
-       <div class="fld"><label>高さ (m)</label><input class="yellow" inputmode="decimal" value="${esc(t.h)}" oninput="upd(${i},'h',this.value)" placeholder="例 12"></div>
-       <div class="fld"><label>胸高周囲 (cm)</label><input class="yellow" value="${esc(t.c)}" oninput="upd(${i},'c',this.value)" placeholder="例 160（93・97）"></div>
+       <div class="fld"><label>高さ (H・m)</label><input class="yellow" inputmode="decimal" value="${esc(t.h)}" oninput="upd(${i},'h',this.value)" placeholder="例 12"></div>
+       <div class="fld"><label>幹周 (C・cm)</label><input class="yellow" value="${esc(t.c)}" oninput="upd(${i},'c',this.value)" placeholder="例 160（93・97）"></div>
+       <div class="fld"><label>葉張り (W・m)</label><input class="yellow" inputmode="decimal" value="${esc(t.w)}" oninput="upd(${i},'w',this.value)" placeholder="例 5"></div>
        <div class="fld"><label>単価(円)</label><input class="yellow" inputmode="numeric" value="${esc(t.up)}" oninput="upd(${i},'up',this.value)" placeholder="任意"></div>
      </div>
      <div class="fld" style="margin-top:8px"><label>メモ（任意）</label><input value="${esc(t.memo)}" oninput="upd(${i},'memo',this.value)" placeholder="キノコ・空洞 など"></div>`;
 }
 function setType(i,type){ var t=state.trees[i]; if(t.type===type) return; pushUndo("type"+i); t.type=type;
   if(type==="exterior"){ if(t.item===undefined)t.item=""; if(t.qty===undefined)t.qty=""; if(t.unit===undefined)t.unit=""; }
-  else { if(t.species===undefined)t.species=""; if(t.h===undefined)t.h=""; if(t.c===undefined)t.c=""; if(t.work===undefined)t.work="強剪定"; }
+  else { if(t.species===undefined)t.species=""; if(t.h===undefined)t.h=""; if(t.c===undefined)t.c=""; if(t.w===undefined)t.w=""; if(t.work===undefined)t.work="強剪定"; }
   markDirty(); renderTrees(); }
 function setMode(m){ state.mode=m; markDirty();
   var bt=document.getElementById("mTree"), be=document.getElementById("mExt");
@@ -655,6 +682,7 @@ function renderTrees(){
   { const bt=document.getElementById("bookTitle"); if(bt) bt.value=(state.bookTitle||""); }
   { const pl=document.getElementById("casePlace"); if(pl) pl.value=(state.place||""); }
   document.getElementById("caseDate").value=state.caseDate;
+  renderSite();
   renderMap();
   const box=document.getElementById("trees");
   if(!state.trees.length){ box.innerHTML='<div class="empty">「＋ 木を追加」から1本ずつ登録します。</div>'; return; }
@@ -734,6 +762,75 @@ function importJSON(ev){ const f=ev.target.files[0]; if(!f) return; const rd=new
     pushUndo("import"); state=Object.assign({mode:"tree",caseName:"",caseDate:"",mapImage:"",mapMarkers:[],trees:[]},d); normalize(); markDirty(); setMode(state.mode||"tree"); showTab("input"); alert("読み込みました（"+state.trees.length+"件）"); }
     catch(e){ alert("読み込めませんでした"); } }; rd.readAsText(f); ev.target.value=""; }
 
+/* ===== 物件マスタ参照（種類→委託→現場）＋担当 ===== */
+async function loadMasters(){
+  try{
+    const r=await fetch(MASTERS_URL+"?action=masters");
+    const j=await r.json();
+    MASTER={ staff:(j.staff||[]), siteGroups:(j.siteGroups||{}) };
+    try{ await idbSet("masters_cache", MASTER); }catch(e){}
+  }catch(e){
+    const c=await idbGet("masters_cache"); if(c) MASTER=c;
+  }
+  renderSite();
+}
+function hasContracts(cat){ const g=MASTER.siteGroups[cat]; return g && !Array.isArray(g); }
+function siteList(){ const g=MASTER.siteGroups[state.category]; if(!g) return []; return Array.isArray(g)?g:(g[state.contract]||[]); }
+function renderSite(){
+  const catSel=document.getElementById("siteCat"); if(!catSel) return;
+  const cats=Object.keys(MASTER.siteGroups||{});
+  catSel.innerHTML='<option value="">種類を選ぶ…</option>'+cats.map(c=>`<option ${c===state.category?"selected":""}>${esc(c)}</option>`).join("");
+  const cw=document.getElementById("siteContractWrap"), cs=document.getElementById("siteContract");
+  if(hasContracts(state.category)){ cw.style.display="";
+    const ks=Object.keys(MASTER.siteGroups[state.category]||{});
+    cs.innerHTML='<option value="">委託を選ぶ…</option>'+ks.map(k=>`<option ${k===state.contract?"selected":""}>${esc(k)}</option>`).join("");
+  } else { cw.style.display="none"; }
+  const ss=document.getElementById("siteSel");
+  let list=siteList().slice();
+  if(state.site && list.indexOf(state.site)<0) list=[state.site].concat(list);
+  ss.innerHTML='<option value="">現場を選ぶ…</option>'+list.map(s=>`<option ${s===state.site?"selected":""}>${esc(s)}</option>`).join("")+'<option value="__add__">＋ 一覧に無い現場を追加…</option>';
+  const aw=document.getElementById("siteAddWrap"); if(aw) aw.style.display="none";
+  const ts=document.getElementById("tantouSel");
+  if(ts){ ts.innerHTML='<option value="">調査担当…</option>'+(MASTER.staff||[]).map(n=>`<option ${n===state.tantou?"selected":""}>${esc(n)}</option>`).join(""); }
+}
+function onSiteCat(v){ pushUndo("site"); state.category=v; state.contract=""; state.site=""; markDirty(); renderSite(); }
+function onSiteContract(v){ pushUndo("site"); state.contract=v; state.site=""; markDirty(); renderSite(); }
+function onSiteSel(v){ if(v==="__add__"){ const aw=document.getElementById("siteAddWrap"); if(aw){ aw.style.display=""; const i=document.getElementById("siteAdd"); if(i) i.focus(); } return; } pushUndo("site"); state.site=v; markDirty(); }
+function addSiteName(){ const i=document.getElementById("siteAdd"); const v=(i&&i.value||"").trim(); if(!v) return; pushUndo("site"); state.site=v; if(i) i.value=""; markDirty(); renderSite(); }
+function setTantou(v){ state.tantou=v; markDirty(); }
+
+/* ===== 事務所へ同期（手動・案件ごと。写真はDrive、重複はキーでスキップ） ===== */
+function hashStr(s){ let h=0x811c9dc5>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,0x01000193)>>>0; } return ("0000000"+h.toString(16)).slice(-8); }
+async function syncCase(){
+  const btn=document.getElementById("syncBtn"), st=document.getElementById("syncState");
+  try{
+    await save();
+    if(btn) btn.disabled=true; if(st){ st.textContent="同期中…"; st.style.color="#5B5750"; }
+    let known=[];
+    try{ const kr=await fetch(GAS_URL+"?action=knownphotos&caseId="+encodeURIComponent(caseId)); const kj=await kr.json(); known=(kj&&kj.keys)||[]; }catch(e){}
+    const knownSet=new Set(known), seen=new Set(), photos=[];
+    const items=state.trees.map((t,i)=>{
+      const keys=(t.photos||[]).map(durl=>{ const k=hashStr(durl); if(!knownSet.has(k)&&!seen.has(k)){ seen.add(k); photos.push({key:k,dataURL:durl}); } return k; });
+      return { idx:i, kind:(t.type==="exterior"?"exterior":"tree"), species:t.species||"", item:t.item||"",
+        h:t.h||"", c:t.c||"", w:t.w||"", work:t.work||"", qty:t.qty||"", unit:t.unit||"", up:t.up||"", memo:t.memo||"",
+        mx:(t.mx==null?null:t.mx), my:(t.my==null?null:t.my), photoKeys:keys };
+    });
+    const payload={ action:"sync",
+      case:{ caseId:caseId, caseName:state.caseName||"", category:state.category||"", contract:state.contract||"",
+             site:state.site||"", caseDate:state.caseDate||"", place:state.place||"", mode:state.mode||"tree",
+             taxRate:state.taxRate, extras:state.extras||{}, tantou:state.tantou||"", updatedAt:new Date().toISOString() },
+      items:items, photos:photos };
+    const res=await fetch(GAS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
+    const j=await res.json();
+    if(!j.ok) throw new Error(j.error||"error");
+    const now=new Date(), hm=("0"+now.getHours()).slice(-2)+":"+("0"+now.getMinutes()).slice(-2);
+    if(st){ st.textContent="同期済 "+hm+(j.uploaded?("／写真"+j.uploaded+"枚アップ"):""); st.style.color="#2E7D55"; }
+    const meta=casesIndex.find(c=>c.id===caseId); if(meta){ meta.syncedAt=Date.now(); try{ await idbSet("cases",casesIndex); }catch(e){} }
+  }catch(e){
+    if(st){ st.textContent="電波を確認して、もう一度お試しください（未同期）"; st.style.color="#B0533F"; }
+  }finally{ if(btn) btn.disabled=false; }
+}
+
 /* 起動 */
 document.getElementById("caseName").addEventListener("input",e=>{ state.caseName=e.target.value; markDirty(); });
 document.getElementById("caseDate").addEventListener("input",e=>{ state.caseDate=e.target.value; markDirty(); });
@@ -744,7 +841,7 @@ document.getElementById("caseDate").addEventListener("input",e=>{ state.caseDate
   casesIndex=(await idbGet("cases"))||[]; caseId=await idbGet("current");
   if(!casesIndex.length){ const legacy=await idbGet("state"); if(legacy&&legacy.trees){ caseId=newId(); state=Object.assign(emptyState(),legacy); } else { caseId=newId(); state=emptyState(); } normalize(); await save(); }
   else { if(!caseId||!casesIndex.find(c=>c.id===caseId)) caseId=casesIndex[0].id; state=(await idbGet("case_"+caseId))||emptyState(); normalize(); }
-  syncMode(); renderTrees(); renderMap(); renderCaseBar(); updateStorage(); updUndoBtn(); })();
+  syncMode(); renderTrees(); renderMap(); renderCaseBar(); updateStorage(); updUndoBtn(); loadMasters(); })();
 
 /* --- Excel書き出し（アプリ内生成） --- */
 /* ブラウザ用: 写真を枠にトリミングしてExcel(.xlsx)を端末上で生成・保存（AI不要） */
