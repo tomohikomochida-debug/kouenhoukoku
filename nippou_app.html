@@ -288,7 +288,8 @@
     <div class="ed-fld"><label>今日できたこと</label><textarea id="ed_done"></textarea></div>
     <div class="ed-fld"><label>所感・学び</label><textarea id="ed_learn"></textarea></div>
     <button class="ed-save" id="ed_submit">更新する</button>
-    <div class="ed-note" style="margin-top:10px">※ 写真の差し替えは、ここではできません（必要なときはスプレッドシートで対応してください）。</div>
+    <button class="ed-addsite" id="ed_addsite" style="margin-top:9px">＋ この日にもう1現場ふやす（新規入力へ）</button>
+    <div class="ed-note" style="margin-top:10px">※ 「もう1現場ふやす」は、今の日報はそのままで、同じ日にもう1件ぶんを新しく足します。<br>※ 写真の差し替えは、ここではできません（必要なときはスプレッドシートで対応してください）。</div>
   </div>
 </div>
 
@@ -865,7 +866,9 @@ function edFillSites(cat,contract,sel){
   if(sel && list.indexOf(sel)<0) list.unshift(sel);
   document.getElementById('ed_site').innerHTML=list.map(s=>`<option${s===sel?' selected':''}>${esc(s)}</option>`).join('');
 }
+let edRecAuthor='';
 function fillEditForm(r){
+  edRecAuthor=r.author||'';
   document.getElementById('ed_state').innerHTML='<option value="">—</option>'+STATES.map(s=>`<option${s===r.state?' selected':''}>${s}</option>`).join('');
   edFillCats(r.category);
   edFillContracts(r.category, r.contract);
@@ -877,6 +880,7 @@ function fillEditForm(r){
   set('ed_weather',r.weather); set('ed_done',r.done); set('ed_learn',r.learn);
   document.getElementById('edFormHint').textContent=(isOwnerName(author)&&r.author!==author)?(r.author+'さんの日報を直しています'):'';
 }
+document.getElementById('ed_addsite').onclick=()=>{ addAnotherSiteForDay(document.getElementById('ed_date').value, edRecAuthor); };
 document.getElementById('ed_cat').onchange=function(){ const c=this.value; edFillContracts(c,''); const con=edIsContract(c)?document.getElementById('ed_contract').value:''; edFillSites(c,con,''); };
 document.getElementById('ed_contract').onchange=function(){ edFillSites(document.getElementById('ed_cat').value,this.value,''); };
 function edRecalc(){ const n=edTimeToNinku(document.getElementById('ed_start').value,document.getElementById('ed_end').value); if(n>0) document.getElementById('ed_ninku').value=n; }
