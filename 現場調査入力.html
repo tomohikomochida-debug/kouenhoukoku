@@ -148,6 +148,7 @@
   <section id="input">
     <div class="casebar">
       <select id="caseSel" onchange="switchCase(this.value)"></select>
+      <button class="iconbtn" onclick="openCaseBrowser()">📁 フォルダ</button>
       <button class="iconbtn" onclick="newCase()">＋新規</button>
       <button class="iconbtn" onclick="deleteCase()">削除</button>
     </div>
@@ -218,12 +219,30 @@
   <section id="book"><div id="bookBody"></div></section>
 </main>
 
+<!-- 物件（現場）ごとの案件ブラウザ：この端末内の案件をまとめる -->
+<div id="caseBrowser" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:flex-start;justify-content:center">
+  <div style="background:#fff;margin:36px 0;width:92%;max-width:620px;max-height:82vh;overflow:auto;border-radius:12px;padding:14px;box-shadow:0 8px 30px rgba(0,0,0,.25)">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <b style="font-size:16px">📁 案件フォルダ</b>
+      <span style="flex:1"></span>
+      <button class="iconbtn" onclick="closeCaseBrowser()">閉じる</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button id="cbTabAuto" onclick="setCbTab('auto')" style="flex:1;border:1px solid #214a37;border-radius:8px;padding:8px;cursor:pointer;background:#214a37;color:#fff">種類・現場</button>
+      <button id="cbTabFolder" onclick="setCbTab('folder')" style="flex:1;border:1px solid #214a37;border-radius:8px;padding:8px;cursor:pointer;background:#fff;color:#214a37">マイフォルダ</button>
+    </div>
+    <input id="cbSearch" placeholder="現場名・案件名で絞り込み" oninput="renderCaseBrowser()" style="width:100%;box-sizing:border-box;padding:9px;border:1px solid #dcd9d0;border-radius:8px;margin-bottom:10px">
+    <div id="cbList"></div>
+  </div>
+</div>
+
 <div id="photoEditor" class="peditor" style="display:none">
   <div class="pehead">
     <button onclick="edRotate(-1)">↺</button>
     <button onclick="edRotate(1)">↻</button>
     <span class="muted" style="color:#bbb">画像をドラッグでトリミング範囲</span>
     <span style="flex:1"></span>
+    <button onclick="saveEditedPhoto()">📥 端末に保存</button>
     <button onclick="edCancel()">キャンセル</button>
     <button class="solid" onclick="edApply()">適用</button>
   </div>
@@ -235,6 +254,7 @@
   <button id="xlsxBtn" class="solid" onclick="exportExcel()">Excel書き出し</button>
   <button onclick="window.print()">写真帳をPDF保存</button>
   <button onclick="exportJSON()">事務所へ書き出し</button>
+  <button onclick="saveAllPhotos()">写真を端末に保存</button>
   <button onclick="document.getElementById('imp').click()">読み込み</button>
   <input id="imp" type="file" accept="application/json" style="display:none" onchange="importJSON(event)">
 </div>
@@ -474,7 +494,7 @@ function today(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneO
 /* HTML挿し込み用エスケープ（メモ等に " や < が入っても崩れないように） */
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 /* 事務所同期：survey専用GAS。物件マスタは日報GASの ?action=masters を流用 */
-const GAS_URL="https://script.google.com/macros/s/AKfycbz7WKesmndt-qaRoAwecFvIOge8702y0ruzsW9AY-2sgEjodA0OH6BZoCKPqa6i7nO4qQ/exec";
+const GAS_URL="https://script.google.com/macros/s/AKfycbzI8mKXax95BDYc8u-XklRRiMBe-pz9orHf6M557GxKygVv1heSC1fAjjvDvUNN6gcuuA/exec";
 const MASTERS_URL="https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec";
 let MASTER={staff:[],siteGroups:{}};
 let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] };
@@ -508,7 +528,7 @@ function markDirty(){ document.getElementById("saveState").textContent="保存�
 let caseId=null, casesIndex=[];
 function newId(){ return "c"+Date.now()+Math.floor(Math.random()*1000); }
 function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] }; }
-function touchIndex(){ const meta={id:caseId,name:state.caseName||"(無題)",date:state.caseDate||"",updatedAt:Date.now(),n:(state.trees||[]).length}; const e=casesIndex.find(c=>c.id===caseId); if(e) Object.assign(e,meta); else casesIndex.unshift(meta); }
+function touchIndex(){ const meta={id:caseId,name:state.caseName||"(無題)",date:state.caseDate||"",site:state.site||"",category:state.category||"",updatedAt:Date.now(),n:(state.trees||[]).length}; const e=casesIndex.find(c=>c.id===caseId); if(e) Object.assign(e,meta); else casesIndex.unshift(meta); }
 async function save(){ try{ if(!caseId) caseId=newId(); touchIndex();
   await idbSet("case_"+caseId, JSON.parse(JSON.stringify(state))); await idbSet("cases",casesIndex); await idbSet("current",caseId);
   document.getElementById("saveState").textContent="保存済"; renderCaseBar(); updateStorage();
@@ -613,6 +633,27 @@ function edApply(){ pushUndo("photoedit"); const url=edState.url, sel=edState.se
 function edCommit(url){ state.trees[edState.i].photos[edState.k]=url; markDirty(); renderTrees(); edClose(); }
 function edCancel(){ edClose(); }
 function edClose(){ document.getElementById("photoEditor").style.display="none"; edState=null; edDrag=null; }
+/* ===== 写真を端末（カメラロール等）に保存 ===== */
+async function blobFromDataUrl(durl){ return (await fetch(durl)).blob(); }
+async function savePhotoToDevice(durl, name){
+  try{
+    const blob=await blobFromDataUrl(durl);
+    const file=new File([blob], name, {type:blob.type||"image/jpeg"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file]}); return; }
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+  }catch(e){ if(e&&e.name==="AbortError") return; alert("保存できませんでした。写真を長押しして「画像を保存」でも保存できます。"); }
+}
+async function saveEditedPhoto(){ if(!edState) return; const nm=(state.caseName||"現場調査").replace(/[\\/:*?"<>|]/g,"_")+"_"+(edState.i+1)+"-"+(edState.k+1)+".jpg"; await savePhotoToDevice(edState.url, nm); }
+async function saveAllPhotos(){
+  const base=(state.caseName||"現場調査").replace(/[\\/:*?"<>|]/g,"_");
+  const files=[];
+  for(let i=0;i<state.trees.length;i++){ const ph=state.trees[i].photos||[]; for(let k=0;k<ph.length;k++){ try{ const b=await blobFromDataUrl(ph[k]); files.push(new File([b], base+"_"+(i+1)+"-"+(k+1)+".jpg", {type:b.type||"image/jpeg"})); }catch(e){} } }
+  if(!files.length){ alert("保存できる写真がありません。"); return; }
+  try{
+    if(navigator.canShare && navigator.canShare({files})){ await navigator.share({files, title:base}); return; }
+    files.forEach(f=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1500); });
+  }catch(e){ if(e&&e.name==="AbortError") return; alert("まとめて保存できませんでした。枚数が多い場合は、写真を1枚ずつ長押しで保存してください。"); }
+}
 function upd(i,k,v){ pushUndo("upd:"+i+":"+k); state.trees[i][k]=v; markDirty(); if(k!=="memo") document.getElementById("saveState").textContent="保存中…"; }
 
 /* 音声（対応端末のみ） */
@@ -829,6 +870,95 @@ async function syncCase(){
   }catch(e){
     if(st){ st.textContent="電波を確認して、もう一度お試しください（未同期）"; st.style.color="#B0533F"; }
   }finally{ if(btn) btn.disabled=false; }
+}
+
+/* ===== 物件（現場）ごとの案件ブラウザ（端末内） ===== */
+async function ensureCaseSites(){
+  let changed=false;
+  for(const c of casesIndex){
+    if(c.site===undefined){
+      const st=await idbGet("case_"+c.id);
+      c.site=(st&&st.site)||""; c.category=(st&&st.category)||""; changed=true;
+    }
+  }
+  if(changed){ try{ await idbSet("cases",casesIndex); }catch(e){} }
+}
+let folders=[]; let cbTab="auto"; const cbOpen=new Set();
+async function loadFolders(){ folders=(await idbGet("folders"))||[]; }
+async function saveFolders(){ try{ await idbSet("folders",folders); }catch(e){} }
+function kSafe(s){ return String(s).replace(/['"\\<>]/g,"_"); }
+async function openCaseBrowser(){ await save(); await ensureCaseSites(); await loadFolders(); const b=document.getElementById("cbSearch"); if(b) b.value=""; document.getElementById("caseBrowser").style.display="flex"; renderCaseBrowser(); }
+function closeCaseBrowser(){ document.getElementById("caseBrowser").style.display="none"; }
+function setCbTab(t){ cbTab=t; renderCaseBrowser(); }
+function toggleOpen(k){ if(cbOpen.has(k)) cbOpen.delete(k); else cbOpen.add(k); renderCaseBrowser(); }
+async function pickCase(id){ closeCaseBrowser(); await switchCase(id); }
+
+function folderSelectHtml(c){
+  const cur=c.folderId||"";
+  const opts=['<option value="">未分類</option>'].concat(folders.map(f=>`<option value="${esc(f.id)}" ${f.id===cur?"selected":""}>${esc(f.name)}</option>`)).join("");
+  return `<select onchange="assignCase('${c.id}',this.value)" onclick="event.stopPropagation()" style="font-size:12px;border:1px solid #dcd9d0;border-radius:6px;padding:5px;max-width:120px">${opts}</select>`;
+}
+async function assignCase(id,fid){ const m=casesIndex.find(c=>c.id===id); if(!m) return; if(fid) m.folderId=fid; else delete m.folderId; try{ await idbSet("cases",casesIndex); }catch(e){} renderCaseBrowser(); }
+async function createFolder(){ const nm=(prompt("フォルダ名を入力")||"").trim(); if(!nm) return; folders.push({id:"f"+Date.now()+Math.floor(Math.random()*1000),name:nm}); await saveFolders(); renderCaseBrowser(); }
+async function renameFolder(id){ const f=folders.find(x=>x.id===id); if(!f) return; const nm=(prompt("フォルダ名",f.name)||"").trim(); if(!nm) return; f.name=nm; await saveFolders(); renderCaseBrowser(); }
+async function deleteFolder(id){ if(!confirm("このフォルダを削除しますか？（中の案件は未分類に戻ります。案件自体は消えません）")) return; folders=folders.filter(x=>x.id!==id); casesIndex.forEach(c=>{ if(c.folderId===id) delete c.folderId; }); await saveFolders(); try{ await idbSet("cases",casesIndex); }catch(e){} renderCaseBrowser(); }
+
+function caseRowHtml(c){
+  return `<div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+    <button onclick="pickCase('${c.id}')" style="flex:1;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;background:${c.id===caseId?'#e5ede7':'#fff'};border:1px solid #dcd9d0;border-radius:8px;padding:10px;cursor:pointer">
+      <span style="font-weight:600">${esc(c.name||"(無題)")}</span>
+      <span style="color:#8a8270;font-size:12px;white-space:nowrap">${esc(c.date||"日付なし")}・${c.n||0}件</span></button>
+    ${folderSelectHtml(c)}</div>`;
+}
+function folderHdr(label,count,openKey,extra){
+  const open=cbOpen.has(openKey);
+  return `<div onclick="toggleOpen('${openKey}')" style="display:flex;align-items:center;gap:6px;padding:8px 4px;border-bottom:1px solid #e5e5e5;cursor:pointer;user-select:none">
+    <span style="width:14px;color:#8a8270">${open?"▾":"▸"}</span><span style="font-weight:700">${esc(label)}</span>
+    <span style="color:#8a8270;font-size:12px">${esc(count)}</span><span style="flex:1"></span>${extra||""}</div>`;
+}
+function renderCaseBrowser(){
+  const ta=document.getElementById("cbTabAuto"), tf=document.getElementById("cbTabFolder");
+  if(ta&&tf){ const on="flex:1;border:1px solid #214a37;border-radius:8px;padding:8px;cursor:pointer;background:#214a37;color:#fff", off="flex:1;border:1px solid #214a37;border-radius:8px;padding:8px;cursor:pointer;background:#fff;color:#214a37";
+    ta.setAttribute("style", cbTab==="auto"?on:off); tf.setAttribute("style", cbTab==="folder"?on:off); }
+  const q=(document.getElementById("cbSearch").value||"").trim();
+  const el=document.getElementById("cbList");
+  const match=c=>!q || String(c.name||"").includes(q) || String(c.site||"").includes(q) || String(c.category||"").includes(q);
+  if(cbTab==="auto"){
+    const cats={};
+    casesIndex.filter(match).forEach(c=>{ const ck=(c.category&&String(c.category).trim())||"（種類未設定）"; (cats[ck]=cats[ck]||[]).push(c); });
+    const catKeys=Object.keys(cats).sort((a,b)=>String(a).localeCompare(String(b),"ja"));
+    if(!catKeys.length){ el.innerHTML='<div style="color:#8a8270;padding:16px;text-align:center">該当する案件がありません。</div>'; return; }
+    el.innerHTML=catKeys.map(ck=>{
+      const list=cats[ck], catKey="cat:"+kSafe(ck); let html=folderHdr("📁 "+ck, "調査"+list.length+"件", catKey);
+      if(cbOpen.has(catKey)||q){
+        const sites={}; list.forEach(c=>{ const sk=(c.site&&String(c.site).trim())||"（現場未設定）"; (sites[sk]=sites[sk]||[]).push(c); });
+        const siteKeys=Object.keys(sites).sort((a,b)=>String(a).localeCompare(String(b),"ja"));
+        html+='<div style="margin-left:14px">'+siteKeys.map(sk=>{
+          const sl=sites[sk].slice().sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+          const siteKey="site:"+kSafe(ck)+"|"+kSafe(sk); let sh=folderHdr("📂 "+sk, sl.length+"件", siteKey);
+          if(cbOpen.has(siteKey)||q){ sh+='<div style="margin-left:14px">'+sl.map(caseRowHtml).join("")+'</div>'; }
+          return sh;
+        }).join("")+'</div>';
+      }
+      return `<div style="margin-bottom:10px">${html}</div>`;
+    }).join("");
+  } else {
+    let html='<div style="margin-bottom:10px"><button class="iconbtn" onclick="createFolder()">＋ フォルダを作成</button></div>';
+    folders.forEach(f=>{
+      const list=casesIndex.filter(c=>c.folderId===f.id).filter(match).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+      const key="fld:"+f.id;
+      const extra=`<button onclick="event.stopPropagation();renameFolder('${f.id}')" style="font-size:12px;color:#5b5750;background:none;border:none;cursor:pointer">名前</button><button onclick="event.stopPropagation();deleteFolder('${f.id}')" style="font-size:12px;color:#b0533f;background:none;border:none;cursor:pointer">削除</button>`;
+      html+='<div style="margin-bottom:10px">'+folderHdr("📁 "+f.name, list.length+"件", key, extra);
+      if(cbOpen.has(key)||q){ html+= list.length ? '<div style="margin-left:14px">'+list.map(caseRowHtml).join("")+'</div>' : '<div style="margin-left:14px;color:#8a8270;font-size:12px;padding:8px">まだ案件がありません。各案件の右のプルダウンでこのフォルダを選ぶと入ります。</div>'; }
+      html+='</div>';
+    });
+    const un=casesIndex.filter(c=>!c.folderId).filter(match).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+    const unKey="fld:__none__";
+    html+='<div style="margin-bottom:10px">'+folderHdr("🗂 未分類", un.length+"件", unKey);
+    if(cbOpen.has(unKey)||q){ html+= un.length ? '<div style="margin-left:14px">'+un.map(caseRowHtml).join("")+'</div>' : '<div style="margin-left:14px;color:#8a8270;font-size:12px;padding:8px">未分類の案件はありません。</div>'; }
+    html+='</div>';
+    el.innerHTML=html;
+  }
 }
 
 /* 起動 */
