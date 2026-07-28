@@ -224,6 +224,7 @@
       <button class="btn" id="toolTree" data-tool="tree">樹木（本）<small>クリックで1本配置</small></button>
       <button class="btn" id="toolSelect" data-tool="select">選択・編集・削除<small>クリックで選択／頂点ドラッグ移動・辺の○で追加・頂点ダブルタップで削除</small></button>
       <button class="btn" id="toolPan" data-tool="pan">✋ 地図を移動<small>地図右上の✋でも切替できます</small></button>
+      <button class="btn on" id="snapToggle">寸法を0.1m刻みにそろえる<small>2.01m → 2.00m。頂点を置く・動かすときに効きます</small></button>
     </div>
 
     <div class="sec">
@@ -1158,19 +1159,43 @@ function refreshDraftBar(){
     $('dbUndo').disabled=draft.pts.length===0;
   }
 }
+/* --- 寸法を0.1m刻みにそろえる ---
+   直前の点からの距離を0.1mの倍数に丸める。向きは変えないので、線の傾きはそのまま。 */
+var SNAP_ON=true;
+const SNAP_M=0.1;
+function snapLen(ip,prev){
+  if(!SNAP_ON||!state.scale||!prev) return ip;
+  const dx=ip.x-prev.x, dy=ip.y-prev.y, dpx=Math.hypot(dx,dy);
+  if(dpx<1e-6) return ip;
+  const sm=Math.round((dpx*state.scale)/SNAP_M)*SNAP_M;
+  if(sm<=0) return ip;
+  const k=(sm/state.scale)/dpx;
+  return {x:prev.x+dx*k, y:prev.y+dy*k};
+}
+function lastDraftPt(){ return (draft&&draft.pts&&draft.pts.length)?draft.pts[draft.pts.length-1]:null; }
+// 1点目は前の点がないので、0.1mのます目に乗せる
+function snapGrid(ip){
+  if(!SNAP_ON||!state.scale) return ip;
+  const g=SNAP_M/state.scale;                       // 0.1m が何pxか
+  if(!isFinite(g)||g<=0) return ip;
+  return {x:Math.round(ip.x/g)*g, y:Math.round(ip.y/g)*g};
+}
+// 前の点があれば距離でそろえ、なければます目に乗せる
+function snapPt(ip,prev){ return prev?snapLen(ip,prev):snapGrid(ip); }
 function addAreaPoint(ip){
   if(holeMode){ // 除外エリア（穴）＝多角形固定
     if(!draft)draft={pts:[],hole:true};
     if(draft.pts.length>=3&&dist(ip,draft.pts[0])<16/view.zoom){finishArea();return;}
-    draft.pts.push(ip);refreshDraftBar();draw();return;
+    draft.pts.push(snapPt(ip,lastDraftPt()));refreshDraftBar();draw();return;
   }
   if(curGeom()==='box'){placeBox(ip);return;}   // 刈込：寸法入力でタップ配置
   if(!draft)draft={pts:[]};
   // 多角形のみ：始点付近のタップで閉じる（線＝管理柵は閉じない）
   if(curGeom()!=='line'&&draft.pts.length>=3&&dist(ip,draft.pts[0])<16/view.zoom){finishArea();return;}
-  draft.pts.push(ip);refreshDraftBar();draw();
+  draft.pts.push(snapPt(ip,lastDraftPt()));refreshDraftBar();draw();
 }
 function placeBox(ip){
+  ip=snapGrid(ip);
   const sides=curBoxSides(), round=!!curKindDef().round; let L,D;
   if(round){const d=curDiaVal(); if(d<=0){alert('円柱は「径」を入力してください。');return;} L=D=d;}
   else {L=curLenVal();D=curDepVal(); if(L<=0||D<=0){alert('刈込は左で「長さ」と「奥行」を入力してください。');return;}}
@@ -1209,7 +1234,7 @@ cv.addEventListener('mousedown',e=>{
 cv.addEventListener('mousemove',e=>{
   if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;draw();return;}
   if(tool==='cal'){const p=evtPos(e),ip=toImg(p.x,p.y);if(calDragIdx!==null)draft.pts[calDragIdx]=ip;else if(draft)hover=ip;draw();return;}
-  if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}ringPts(editV.f,editV.ring)[editV.idx]={x:ip.x,y:ip.y};recalcAreaFeature(editV.f);draw();return;}
+  if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(function(){const _p=ringPts(editV.f,editV.ring),_pv=_p.length>1?_p[(editV.idx-1+_p.length)%_p.length]:null,_s=snapLen(ip,_pv);_p[editV.idx]={x:_s.x,y:_s.y};})();recalcAreaFeature(editV.f);draw();return;}
   if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(dragGroup?multiSel.forEach(g=>moveFeature(g,ip.x-dragLast.x,ip.y-dragLast.y)):moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y));dragLast=ip;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;draw();}
 });
@@ -1243,7 +1268,7 @@ cv.addEventListener('touchmove',e=>{
   if(e.touches.length===2&&pinchD){const d=touchDist(e),c=touchMid(e);zoomAt(c.x,c.y,d/pinchD);pinchD=d;return;}
   if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;lastTouch=null;draw();return;}
   if(tool==='cal'&&calDragIdx!==null){const p=evtPos(e),ip=toImg(p.x,p.y);draft.pts[calDragIdx]=ip;lastTouch=null;draw();return;}
-  if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}ringPts(editV.f,editV.ring)[editV.idx]={x:ip.x,y:ip.y};recalcAreaFeature(editV.f);lastTouch=null;draw();return;}
+  if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(function(){const _p=ringPts(editV.f,editV.ring),_pv=_p.length>1?_p[(editV.idx-1+_p.length)%_p.length]:null,_s=snapLen(ip,_pv);_p[editV.idx]={x:_s.x,y:_s.y};})();recalcAreaFeature(editV.f);lastTouch=null;draw();return;}
   if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(dragGroup?multiSel.forEach(g=>moveFeature(g,ip.x-dragLast.x,ip.y-dragLast.y)):moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y));dragLast=ip;lastTouch=null;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;lastTouch=null;draw();}
 },{passive:false});
@@ -1314,6 +1339,7 @@ function finishArea(){
   draft=null;multiSel=[];selected=state.features[state.features.length-1]||null;recalcAll();refreshDraftBar();renderAgg();renderSansha();draw();
 }
 function placeTree(ip){
+  ip=snapGrid(ip);
   pushHistory();
   const cat=$('catSel').value,kind=$('kindSel').value;
   const f={type:'tree',cat,kind,pt:ip};
@@ -1839,6 +1865,20 @@ const RP_DOT='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDw
 var rpShapes={};                                    // シート名 → 図形XMLの配列
 var rpSid=1000;                                     // 図形の通し番号（画像とぶつからない数字から）
 
+// '#2E7D55' → '2E7D55'（未指定は黒）
+function rpHex(c){
+  if(!c) return '000000';
+  const m=String(c).replace('#','').slice(0,6);
+  return /^[0-9a-fA-F]{6}$/.test(m)?m.toUpperCase():'000000';
+}
+// 凡例の色見本（塗りつぶした四角）
+function rpSwatch(widths,x,y,w,h2,col){
+  const inner=rpSpHead('Rect',w,h2)
+    +'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+    +'<a:solidFill><a:srgbClr val="'+rpHex(col)+'"/></a:solidFill>'
+    +'<a:ln w="'+Math.round(0.75*RP_EMU)+'"><a:solidFill><a:srgbClr val="222222"/></a:solidFill></a:ln></xdr:spPr>'+RP_EMPTY_TX;
+  return rpAnchor(widths,x,y,w,h2,inner);
+}
 function rpX(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function rpColPxW(w){return Math.round((w||8.43)*7)+5;}
 // px → セル位置
@@ -1861,7 +1901,7 @@ function rpSpHead(name,w,h){
 }
 const RP_EMPTY_TX='<xdr:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ja-JP"/></a:p></xdr:txBody></xdr:sp>';
 // 折れ線・多角形（黒線・塗りなし）
-function rpPoly(widths,pts,close,lw,dash){
+function rpPoly(widths,pts,close,lw,dash,col){
   if(!pts||pts.length<2)return '';
   const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
   const x0=Math.min.apply(null,xs), y0=Math.min.apply(null,ys);
@@ -1873,26 +1913,26 @@ function rpPoly(widths,pts,close,lw,dash){
   const inner=rpSpHead('Freeform',w,h)
     +'<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/>'
     +'<a:pathLst><a:path w="'+Math.round(w*RP_EMU)+'" h="'+Math.round(h*RP_EMU)+'">'+P+'</a:path></a:pathLst></a:custGeom>'
-    +'<a:noFill/><a:ln w="'+Math.round((lw||1)*RP_EMU)+'" cap="flat"><a:solidFill><a:srgbClr val="000000"/></a:solidFill>'
+    +'<a:noFill/><a:ln w="'+Math.round((lw||1)*RP_EMU)+'" cap="flat"><a:solidFill><a:srgbClr val="'+rpHex(col)+'"/></a:solidFill>'
     +(dash?'<a:prstDash val="dash"/>':'')+'</a:ln></xdr:spPr>'+RP_EMPTY_TX;
   return rpAnchor(widths,x0,y0,w,h,inner);
 }
 // 文字（テキストボックス）
-function rpText(widths,x,y,s,fs){
+function rpText(widths,x,y,s,fs,col,align){
   fs=fs||8;
   const w=Math.max(14,String(s).length*fs*0.82), h=fs*1.9;
   const inner=rpSpHead('TextBox',w,h)
     +'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln><a:noFill/></a:ln></xdr:spPr>'
     +'<xdr:txBody><a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"/><a:lstStyle/>'
-    +'<a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="'+Math.round(fs*100)+'"><a:solidFill><a:srgbClr val="000000"/></a:solidFill>'
+    +'<a:p><a:pPr algn="'+(align||'ctr')+'"/><a:r><a:rPr lang="ja-JP" sz="'+Math.round(fs*100)+'"><a:solidFill><a:srgbClr val="'+rpHex(col)+'"/></a:solidFill>'
     +'<a:latin typeface="'+RP_FONT+'"/><a:ea typeface="'+RP_FONT+'"/></a:rPr><a:t>'+rpX(s)+'</a:t></a:r></a:p></xdr:txBody></xdr:sp>';
   return rpAnchor(widths,x-w/2,y-h/2,w,h,inner);
 }
 // 丸（樹木用）
-function rpCircle(widths,cx,cy,r,lw){
+function rpCircle(widths,cx,cy,r,lw,col){
   const inner=rpSpHead('Oval',r*2,r*2)
     +'<a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom><a:noFill/>'
-    +'<a:ln w="'+Math.round((lw||1)*RP_EMU)+'"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln></xdr:spPr>'+RP_EMPTY_TX;
+    +'<a:ln w="'+Math.round((lw||1)*RP_EMU)+'"><a:solidFill><a:srgbClr val="'+rpHex(col)+'"/></a:solidFill></a:ln></xdr:spPr>'+RP_EMPTY_TX;
   return rpAnchor(widths,cx-r,cy-r,r*2,r*2,inner);
 }
 function rpPush(sheet,xml){ if(xml){ (rpShapes[sheet]=rpShapes[sheet]||[]).push(xml); } }
@@ -2063,27 +2103,52 @@ function rpBuildHaichi(wb,park){
   rpStyle(ws.getCell('B1'),{size:14,bold:true,al:'left'});
   let r=3;
   const box=rpFitBox(state.img.width,state.img.height,620,760);   // 紙の上の大きさ（画素数とは別）
+  const k=box.w/state.img.width;
+  // 1つの図形を図面の上に置く
+  const drawFeat=(f,ox,oy,col)=>{
+    const M=p=>({x:ox+p.x*k, y:oy+p.y*k});
+    if(f.type==='area') rpPush('配置図',rpPoly(WID,f.pts.map(M),true,1.6,false,col));
+    else if(f.type==='line') rpPush('配置図',rpPoly(WID,f.pts.map(M),false,1.6,false,col));
+    else if(f.type==='tree'){ const c=M(f.pt); rpPush('配置図',rpCircle(WID,c.x,c.y,Math.max(3,treeRadius(f)*k),1.2,col)); }
+    else if(f.type==='box'){
+      const c=M(f.pt), rw=(state.scale?(f.L/state.scale):60)*k/2, rh=(state.scale?((f.D||f.L)/state.scale):20)*k/2;
+      if(f.round) rpPush('配置図',rpCircle(WID,c.x,c.y,Math.max(3,rw),1.6,col));
+      else rpPush('配置図',rpPoly(WID,[{x:c.x-rw,y:c.y-rh},{x:c.x+rw,y:c.y-rh},{x:c.x+rw,y:c.y+rh},{x:c.x-rw,y:c.y+rh}],true,1.6,col));
+    }
+  };
+  const mapURL=filteredImageDataURL(()=>false);   // 下敷きは図面だけ（作業範囲は図形で重ねる）
+
+  /* --- 全体図：作業箇所をぜんぶ1枚に。工種ごとに色を変えて凡例をつける --- */
+  if(mapURL){
+    ws.getCell('B'+r).value='全体図（作業箇所ぜんぶ）';
+    rpStyle(ws.getCell('B'+r),{size:12,bold:true,al:'left'});
+    r+=1;
+    const ox=0.15*rpColPxW(WID[0]), oy=(r-1+0.15)*RP_ROWPX;
+    rpPutImage(wb,ws,mapURL,r,box,WID);
+    groups.forEach(g=>{ const col=featColor(g.feats[0]); g.feats.forEach(f=>drawFeat(f,ox,oy,col)); });
+    r+=Math.ceil(box.h/RP_ROWPX)+1;
+    // 凡例
+    let ly=(r-1)*RP_ROWPX+4;
+    groups.forEach((g,i)=>{
+      const col=featColor(g.feats[0]);
+      const qty=g.trees?(g.trees+' '+g.unit):(g.m2.toFixed(2)+' ㎡');
+      rpPush('配置図',rpSwatch(WID,ox+2,ly+3,12,9,col));
+      rpPush('配置図',rpText(WID,ox+20+ (String(g.cat+'　'+g.kind+'　'+qty).length*4.2), ly+7,
+        (RP_MARU[i]||'')+' '+g.cat+'　'+g.kind+'　'+qty, 8, '000000'));
+      ly+=16;
+    });
+    r+=Math.ceil((groups.length*16+8)/RP_ROWPX)+2;
+  }
   groups.forEach((g,i)=>{
     const n=RP_MARU[i]||('('+(i+1)+')');
     const qty=g.trees?(g.trees+' '+g.unit):(g.m2.toFixed(2)+' ㎡');
     ws.getCell('B'+r).value=n+' '+g.cat+'　'+g.kind+'　（'+qty+'）';
     rpStyle(ws.getCell('B'+r),{size:11,bold:true,al:'left'});
     r+=1;
-    const url=filteredImageDataURL(()=>false);      // 下敷きは図面だけ（作業範囲は図形で重ねる）
-    if(url){
-      const ox=0.15*rpColPxW(WID[0]), oy=(r-1+0.15)*RP_ROWPX, k=box.w/state.img.width;
-      rpPutImage(wb,ws,url,r,box,WID);
-      g.feats.forEach(f=>{
-        const M=p=>({x:ox+p.x*k, y:oy+p.y*k});
-        if(f.type==='area') rpPush('配置図',rpPoly(WID,f.pts.map(M),true,1.6));
-        else if(f.type==='line') rpPush('配置図',rpPoly(WID,f.pts.map(M),false,1.6));
-        else if(f.type==='tree'){ const c=M(f.pt); rpPush('配置図',rpCircle(WID,c.x,c.y,Math.max(3,treeRadius(f)*k),1.2)); }
-        else if(f.type==='box'){
-          const c=M(f.pt), rw=(state.scale?(f.L/state.scale):60)*k/2, rh=(state.scale?((f.D||f.L)/state.scale):20)*k/2;
-          if(f.round) rpPush('配置図',rpCircle(WID,c.x,c.y,Math.max(3,rw),1.6));
-          else rpPush('配置図',rpPoly(WID,[{x:c.x-rw,y:c.y-rh},{x:c.x+rw,y:c.y-rh},{x:c.x+rw,y:c.y+rh},{x:c.x-rw,y:c.y+rh}],true,1.6));
-        }
-      });
+    if(mapURL){
+      const ox=0.15*rpColPxW(WID[0]), oy=(r-1+0.15)*RP_ROWPX;
+      rpPutImage(wb,ws,mapURL,r,box,WID);
+      g.feats.forEach(f=>drawFeat(f,ox,oy,featColor(f)));   // 画面と同じ配色
       r+=Math.ceil(box.h/RP_ROWPX)+1;
     }
     r+=2;
@@ -2368,6 +2433,11 @@ async function exportReportXlsx(){
     alert('報告書の書き出しに失敗しました。\n'+(err&&err.message?err.message:err));
   }
 }
+$('snapToggle').onclick=()=>{
+  SNAP_ON=!SNAP_ON;
+  $('snapToggle').classList.toggle('on',SNAP_ON);
+  $('snapToggle').firstChild.textContent=SNAP_ON?'寸法を0.1m刻みにそろえる':'寸法はそろえない（自由）';
+};
 $('rpXlsx').onclick=exportReportXlsx;
 ['rpFy','rpKeiyaku','rpAtena','rpUkeoi','contractName','agentName','supervisorName'].forEach(id=>{
   const el=$(id); if(el)el.addEventListener('change',rpSaveMeta);
