@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>公園作業記録 使い方 — 庭乃持田園</title>
+<style>
+:root{
+  --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7;
+  --ok:#2E7D55; --tape:#C77C30; --bark:#5B5750; --ink:#22231F;
+  --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F;
+  --radius:10px; --shadow:0 1px 0 rgba(34,35,31,.04), 0 8px 24px -16px rgba(34,35,31,.25);
+  --grid:#E7E4DA;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--paper);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:24px 24px;
+  color:var(--ink);
+  font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif;
+  line-height:1.75; -webkit-text-size-adjust:100%;
+}
+.tnum{font-variant-numeric:tabular-nums}
+main{max-width:760px;margin:0 auto;padding:0 16px 64px}
+
+/* ---- ヘッダー ---- */
+header{background:var(--leaf);color:#F6F5F0;padding:26px 16px 22px;margin-bottom:22px}
+.hd{max-width:760px;margin:0 auto}
+.hd .eyebrow{font-size:12px;letter-spacing:.18em;color:#A9C6B5;margin:0 0 6px}
+.hd h1{margin:0;font-size:26px;line-height:1.35;letter-spacing:.01em}
+.hd p{margin:10px 0 0;font-size:14px;color:#D6E3DA;max-width:44em}
+.hd .tools{margin-top:16px;display:flex;gap:10px;flex-wrap:wrap}
+.hd button,.hd a.btnlink{
+  background:#2F6349;border:1px solid #47795F;color:#F6F5F0;border-radius:var(--radius);
+  padding:9px 14px;font-size:13px;font-family:inherit;cursor:pointer;text-decoration:none;display:inline-block}
+.hd button:hover,.hd a.btnlink:hover{background:#377254}
+
+/* ---- 節 ---- */
+section{margin:0 0 34px}
+h2{
+  font-size:18px;margin:0 0 4px;color:var(--leaf);
+  display:flex;align-items:baseline;gap:10px}
+h2 .n{
+  font-family:ui-monospace,'SFMono-Regular',monospace;font-size:12px;color:var(--tape);
+  border:1px solid var(--tape);border-radius:4px;padding:1px 6px;flex:none}
+.lead{margin:0 0 14px;color:var(--bark);font-size:14px}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:18px;margin:0 0 14px}
+.card h3{margin:0 0 8px;font-size:15px;color:var(--leaf)}
+.card p:last-child{margin-bottom:0}
+.card p{margin:0 0 10px;font-size:14.5px}
+
+/* ---- 3つの約束 ---- */
+.promise{display:grid;gap:12px}
+@media(min-width:640px){.promise{grid-template-columns:1fr 1fr 1fr}}
+.promise .card{margin:0;padding:16px;border-top:3px solid var(--tape)}
+.promise .card.warn{border-top-color:var(--danger)}
+.promise h3{font-size:14.5px}
+.promise p{font-size:13.5px;color:var(--bark);margin:0}
+
+/* ---- 手順 ---- */
+.step{display:flex;gap:14px;align-items:flex-start;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:16px 18px;margin:0 0 12px}
+.step .no{
+  flex:none;width:34px;height:34px;border-radius:50%;background:var(--leaf);color:#F6F5F0;
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;
+  font-variant-numeric:tabular-nums;margin-top:2px}
+.step .bd{flex:1;min-width:0}
+.step h3{margin:0 0 6px;font-size:15.5px}
+.step p{margin:0 0 8px;font-size:14.5px}
+.step p:last-child{margin-bottom:0}
+.step ul{margin:6px 0 0;padding-left:1.2em;font-size:14px}
+.step li{margin:3px 0}
+
+/* ---- 部品 ---- */
+kbd{
+  display:inline-block;background:var(--leaf-soft);border:1px solid #C8DAD0;color:var(--leaf);
+  border-radius:6px;padding:1px 7px;font-size:13px;font-family:inherit;font-weight:600;
+  white-space:nowrap;margin:0 1px}
+.note{background:var(--field);border-left:3px solid var(--tape);padding:10px 14px;
+  border-radius:0 6px 6px 0;font-size:13.5px;color:var(--bark);margin:12px 0 0}
+.note b{color:var(--ink)}
+.note.danger{border-left-color:var(--danger)}
+.note.ok{border-left-color:var(--ok)}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--card)}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:var(--leaf-soft);color:var(--leaf);font-weight:700;font-size:13px}
+td.u{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--bark)}
+.tblwrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--line);box-shadow:var(--shadow)}
+.tblwrap table{border:none}
+.tblwrap th:first-child,.tblwrap td:first-child{border-left:none}
+.tblwrap th:last-child,.tblwrap td:last-child{border-right:none}
+.tblwrap tr:first-child th{border-top:none}
+
+/* ---- 画面図 ---- */
+figure{margin:0}
+figcaption{font-size:12.5px;color:var(--bark);margin-top:8px}
+svg.dia{display:block;width:100%;height:auto;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.dia text{font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif}
+
+/* ---- Q&A ---- */
+.qa{border-top:1px solid var(--line);padding:12px 0 2px}
+.qa:first-of-type{border-top:none}
+.qa h3{margin:0 0 4px;font-size:14.5px;color:var(--ink)}
+.qa h3::before{content:"？";color:var(--tape);font-weight:700;margin-right:8px}
+.qa p{margin:0;font-size:14px;color:var(--bark)}
+
+footer{border-top:1px solid var(--line);margin-top:8px;padding-top:16px;
+  font-size:12.5px;color:var(--bark)}
+
+@media print{
+  body{background:#fff}
+  header{background:#fff;color:var(--ink);border-bottom:2px solid var(--leaf);padding:0 0 14px}
+  .hd .eyebrow{color:var(--bark)} .hd p{color:var(--bark)} .hd .tools{display:none}
+  .card,.step,.tblwrap,svg.dia{box-shadow:none}
+  section{page-break-inside:avoid}
+  main{padding:0}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<style>
+.phase{margin:38px 0 20px;border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+.phase .bar{background:var(--leaf);color:#F6F5F0;padding:14px 20px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.phase .bar .num{font-size:12px;letter-spacing:.16em;color:#A9C6B5;flex:none}
+.phase .bar h2{color:#F6F5F0;font-size:19px;margin:0;display:block}
+.phase .bar .where{margin-left:auto;font-size:12.5px;color:#CFE0D6}
+.phase .body{background:var(--card);border:1px solid var(--line);border-top:none;padding:14px 20px 4px;font-size:14px;color:var(--bark)}
+.phase .body p{margin:0 0 10px}
+h2.sub{font-size:16px;margin:26px 0 4px;color:var(--leaf)}
+h2.sub .n{font-family:ui-monospace,monospace;font-size:11px;color:var(--tape);border:1px solid var(--tape);border-radius:4px;padding:1px 6px}
+.handoff{background:var(--leaf-soft);border-radius:10px;padding:14px 18px;margin:22px 0 0;font-size:14px;color:var(--leaf)}
+.handoff b{display:block;font-size:15px;margin-bottom:3px}
+@media print{.phase{page-break-before:always} .phase:first-of-type{page-break-before:auto}}
+</style>
+
+</head>
+<body>
+<header>
+  <div class="hd">
+    <p class="eyebrow">庭乃持田園　社内ツール</p>
+    <h1>公園作業記録<br>求積＆出来形ツール　使い方</h1>
+    <p>図面の上に作業した範囲を置いていくと数量が集まり、そのまま報告書・配置図・求積図まで出せます。現場と事務所の2フェーズに分けて説明します。</p>
+    <div class="tools">
+      <a class="btnlink" href="https://tomohikomochida-debug.github.io/kouenhoukoku/park_app.html">アプリを開く</a>
+      <button type="button" onclick="window.print()">この資料を印刷 / PDFで保存</button>
+    </div>
+  </div>
+</header>
+<main>
+<section>
+  <h2 class="sub"><span class="n">共通</span>はじめに読む3つ</h2>
+  <p class="lead">ここだけ守れば、大きな失敗はしません。</p>
+  <div class="promise">
+    <div class="card warn">
+      <h3>保存は自分で押す</h3>
+      <p>日報アプリと違って、下書きの自動保存はありません。画面を閉じる・更新すると消えます。区切りごとに <kbd>この公園を保存（.json）</kbd> を押してください。</p>
+    </div>
+    <div class="card">
+      <h3>面積の前に縮尺</h3>
+      <p>先に縮尺を合わせないと ㎡ が出ません。右下のバッジがオレンジの「縮尺：未設定」なら、まだです。本数だけ数えるなら縮尺なしでも大丈夫。</p>
+    </div>
+    <div class="card">
+      <h3>工種を選んでから描く</h3>
+      <p>選んでいる工種のものとして記録されます。描いた後に工種は変わりません。順番は「工種を選ぶ → 図面に置く」です。</p>
+    </div>
+  </div>
+</section>
+
+
+
+<div class="phase">
+  <div class="bar"><span class="num">フェーズ 1</span><h2>現場で記録する</h2><span class="where">iPad・現場</span></div>
+  <div class="body"><p>公園の図面の上に、刈った範囲と剪定した木を置いていきます。ここでの目標は<b>「保存」を押すところまで</b>。数量はアプリが勝手に数えるので、図面に印をつける感覚で構いません。</p></div>
+</div>
+
+<section>
+  <h2 class="sub"><span class="n">1-1</span>画面の見かた</h2>
+  <p class="lead">左が「これから何を記録するか」、真ん中が図面、右が「たまった数量」です。</p>
+  <figure>
+    <svg class="dia" viewBox="0 0 700 330" role="img" aria-label="画面の3分割レイアウト図">
+      <rect x="0" y="0" width="700" height="330" fill="#FFFFFF"/>
+      <rect x="14" y="14" width="672" height="30" rx="6" fill="#214A37"/>
+      <text x="28" y="34" fill="#F6F5F0" font-size="12">公園作業記録　/　公園名　委託名</text>
+      <text x="590" y="34" fill="#A9C6B5" font-size="12">↶ 戻る　↷ 進む</text>
+      <rect x="14" y="54" width="190" height="262" rx="8" fill="#FBFAF6" stroke="#DCD9D0"/>
+      <text x="28" y="78" fill="#C77C30" font-size="12" font-weight="700">左：じゅんび</text>
+      <text x="28" y="102" fill="#22231F" font-size="12">図面を読み込む</text>
+      <text x="28" y="126" fill="#22231F" font-size="12">① 縮尺合わせ</text>
+      <text x="28" y="150" fill="#22231F" font-size="12">② 工種を選ぶ</text>
+      <text x="28" y="174" fill="#22231F" font-size="12">③ 記録モード</text>
+      <text x="28" y="198" fill="#5B5750" font-size="11">凡例の表示</text>
+      <text x="28" y="222" fill="#5B5750" font-size="11">保存 / 読込</text>
+      <text x="28" y="246" fill="#5B5750" font-size="11">報告書の欄（フェーズ2）</text>
+      <text x="28" y="270" fill="#5B5750" font-size="11">印刷 / PDF</text>
+      <rect x="214" y="54" width="272" height="262" rx="8" fill="#F2F0EA" stroke="#DCD9D0"/>
+      <text x="228" y="78" fill="#C77C30" font-size="12" font-weight="700">中：図面</text>
+      <polygon points="248,120 350,104 386,168 300,196 244,166" fill="#E5EDE7" stroke="#2E7D55" stroke-width="2"/>
+      <polygon points="292,140 330,134 340,160 300,168" fill="#FFFFFF" stroke="#C77C30" stroke-width="1.6" stroke-dasharray="4 3"/>
+      <text x="296" y="156" fill="#C77C30" font-size="10">除外</text>
+      <circle cx="410" cy="128" r="7" fill="#2E7D55" opacity=".75"/>
+      <circle cx="436" cy="152" r="7" fill="#2E7D55" opacity=".75"/>
+      <circle cx="404" cy="164" r="7" fill="#2E7D55" opacity=".75"/>
+      <rect x="404" y="64" width="72" height="20" rx="6" fill="#FFFFFF" stroke="#DCD9D0"/>
+      <text x="412" y="78" fill="#5B5750" font-size="11">✋ ＋ － ⤢</text>
+      <rect x="382" y="286" width="94" height="20" rx="6" fill="#FFFFFF" stroke="#C77C30"/>
+      <text x="390" y="300" fill="#C77C30" font-size="11">縮尺：未設定</text>
+      <rect x="252" y="286" width="112" height="22" rx="8" fill="#214A37"/>
+      <text x="262" y="301" fill="#F6F5F0" font-size="11">✓確定 ↶1点 ✕</text>
+      <rect x="496" y="54" width="190" height="262" rx="8" fill="#FBFAF6" stroke="#DCD9D0"/>
+      <text x="510" y="78" fill="#C77C30" font-size="12" font-weight="700">右：集まった数量</text>
+      <text x="510" y="102" fill="#22231F" font-size="12">この公園の集計</text>
+      <text x="510" y="126" fill="#22231F" font-size="12">求積表（三斜）</text>
+      <text x="510" y="150" fill="#22231F" font-size="12">本数集計</text>
+      <text x="510" y="174" fill="#22231F" font-size="12">その他（手入力）</text>
+      <text x="510" y="198" fill="#5B5750" font-size="11">概算金額（参考）</text>
+      <line x1="510" y1="220" x2="672" y2="220" stroke="#DCD9D0"/>
+      <text x="510" y="242" fill="#5B5750" font-size="11">選んだ図形の内訳・</text>
+      <text x="510" y="258" fill="#5B5750" font-size="11">斜面区分・除外エリアも</text>
+      <text x="510" y="274" fill="#5B5750" font-size="11">ここに出ます</text>
+    </svg>
+    <figcaption>画面がせまいと3つが縦に並びます。iPadは横向きが見やすいです。</figcaption>
+  </figure>
+</section>
+
+
+<section>
+  <h2 class="sub"><span class="n">1-2</span>記録のしかた（手順1〜5）</h2>
+  <p class="lead">この順番でやって、最後に保存すれば現場は終わりです。</p>
+
+  <div class="step">
+    <div class="no tnum">1</div>
+    <div class="bd">
+      <h3>図面を読み込んで、名前を書く</h3>
+      <p>左上の <kbd>公園図面を読み込む</kbd> で図面（PNG / JPG）を選びます。上のヘッダーに公園名と委託名（例：高津区北部）を入れてください。あとで報告書に使います。</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="no tnum">2</div>
+    <div class="bd">
+      <h3>① 縮尺を合わせる</h3>
+      <p>図面の中で長さが分かっているところ（園路の幅、区画の一辺など）を使います。</p>
+      <ul>
+        <li>先に <kbd>その2点の実距離（m）</kbd> に数字を入れる</li>
+        <li><kbd>縮尺を設定（2点クリック）</kbd> を押す</li>
+        <li>図面上でその一端を押して、もう一端までドラッグ（2回タップでも可）</li>
+      </ul>
+      <div class="note">置いた点は指を離さず動かせば微調整できます。合うと右下のバッジが実際の縮尺に変わります。</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="no tnum">3</div>
+    <div class="bd">
+      <h3>② 工種を選ぶ</h3>
+      <p>大分類（中低木刈込工・除草工・基本剪定 など）→ 細別の順で選びます。選ぶと記録モードが自動で切り替わり、必要な入力欄だけが出ます。</p>
+      <ul>
+        <li>剪定・撤去の木 → <b>規格（幹周ランク）</b> を選ぶ</li>
+        <li>中木の円柱・生垣、つるの管理柵 → <b>寸法（長さ・奥行・径・高さ）</b> を入れる</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="no tnum">4</div>
+    <div class="bd">
+      <h3>③ 図面に置いていく</h3>
+      <p><b>面積（㎡）</b>：外周の角を順にタップ → <kbd>✓ 確定</kbd>、または始点（黄色）をタップで閉じます。<br>
+      <b>樹木（本）</b>：木のある場所をタップで1本ずつ。面積の上に重ねても大丈夫です。<br>
+      <b>寸法を入れるもの</b>（中木の円柱・生垣）：先に寸法を入れてから、置く場所をタップします。</p>
+      <div class="note">図面を動かしたいときは <kbd>✋ 地図を移動</kbd>。記録に戻るときは、また ③ でモードを選び直します。</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="no tnum">5</div>
+    <div class="bd">
+      <h3>数量を確かめて、保存する</h3>
+      <p>右側の「この公園の集計（出来形）」で数字を見ます。図面に描かないもの（巣撤去、発生材の運搬・処分など）は「その他（手入力）」で足してください。<br>
+      最後に <kbd>この公園を保存（.json）</kbd>。<b>現場はここまでで終わりです。</b>このファイルを事務所へ渡せば、報告書はそちらで作れます。</p>
+    </div>
+  </div>
+</section>
+
+
+<section>
+  <h2 class="sub"><span class="n">1-3</span>工種ごとの入れかた</h2>
+  <div class="tblwrap">
+    <table>
+      <tr><th style="width:34%">工種（大分類）</th><th class="u" style="width:12%">単位</th><th>記録のしかた</th></tr>
+      <tr><td>中低木刈込工</td><td class="u">㎡</td><td>低木は範囲を描くだけ。中木刈込は高さを入れると側面も足されます。円柱・生垣は寸法を入れてタップ配置。</td></tr>
+      <tr><td>除草工<br><span style="font-size:12px;color:#5B5750">機械除草Ⅰ・集草・積込運搬・小運搬</span></td><td class="u">㎡</td><td>範囲を描きます。中にある刈込の面積は<b>自動で引かれます</b>。</td></tr>
+      <tr><td>つる性植物除去</td><td class="u">㎡</td><td>地表・寄植は範囲を描く。管理柵はフェンスに沿って端から端へタップ→確定、高さを掛けて面積にします。</td></tr>
+      <tr><td>低木内除草清掃</td><td class="u">㎡</td><td>植込み地の範囲を描きます。</td></tr>
+      <tr><td>軽剪定・基本剪定<br><span style="font-size:12px;color:#5B5750">着葉木 / 落葉木</span></td><td class="u">本</td><td>規格（幹周ランク10段階）を選んでから、木を1本ずつタップ。ランクごとに色が変わります。</td></tr>
+      <tr><td>胴ぶき剪除</td><td class="u">本</td><td>高さ2.0mまで / 4.5mまでを選んでタップ。</td></tr>
+      <tr><td>樹木撤去<br><span style="font-size:12px;color:#5B5750">実生木 / 支障木 / 枯損木</span></td><td class="u">本</td><td>種類と幹周ランクを選んでタップ。実生木（C=10cm程度）はランク不要。</td></tr>
+      <tr><td>竹伐採（斜面地）</td><td class="u">本</td><td>本数をタップで置きます。</td></tr>
+      <tr><td>巣撤去</td><td class="u">個</td><td>カラス / スズメバチを選んで位置をタップ。</td></tr>
+      <tr><td>その他（手入力）<br><span style="font-size:12px;color:#5B5750">公園外運搬・発生材運搬・処理手数料</span></td><td class="u">台 / t</td><td>図面に置けないものは右下の「その他」で工種と数量を選んで <kbd>追加</kbd>。</td></tr>
+    </table>
+  </div>
+  <div class="note ok"><b>引きすぎ防止のしくみ</b>：除草から自動で引かれるのは「刈込」だけです。つる性植物除去と低木内除草清掃は、刈込の上に重ねて行う作業なので引かれません。</div>
+</section>
+
+
+<section>
+  <h2 class="sub"><span class="n">1-4</span>覚えると早くなる操作</h2>
+  <div class="card">
+    <h3>刈らない部分を除く（除外エリア）</h3>
+    <p>木の株元、ベンチ、遊具など、その範囲の中で作業しない部分は穴として抜けます。<br>
+    範囲をタップして選ぶ → 右の <kbd>⊘ 除外エリア（穴）</kbd> → 抜きたい部分の外周をタップ → <kbd>✓ 確定</kbd>。何か所でも取れます。終わるときは <kbd>■ 除外モードを終了</kbd>。</p>
+  </div>
+  <div class="card">
+    <h3>斜面をみる</h3>
+    <p>範囲を選ぶと、右の求積表に斜面区分が出ます。平坦（×1）／緩斜面（×1.15）／急斜面（×1.30）から選ぶか、直接入力。図面の投影面積に係数を掛けた数字で計上されます。</p>
+  </div>
+  <div class="card">
+    <h3>同じ範囲を別の工種でも計上する</h3>
+    <p>低木の刈込範囲を、そのまま「つる性植物除去」「低木内除草清掃」でも数えたいとき。中低木刈込工の範囲を選ぶと出る <kbd>この範囲をコピー</kbd> で、チェックした工種に同じ形で足せます。</p>
+  </div>
+  <div class="card">
+    <h3>描いたものを直す</h3>
+    <p><kbd>選択・編集・削除</kbd> にして図形をタップ。</p>
+    <ul style="margin:6px 0 0;padding-left:1.2em;font-size:14px">
+      <li>赤い頂点をドラッグ＝動かす／辺の ＋ をタップ＝頂点を足す／頂点をダブルタップ＝消す</li>
+      <li>本体をドラッグ＝まるごと移動、重なっているときは同じ場所を続けてタップで切り替え</li>
+      <li>地図右上の <kbd>多</kbd> でまとめて選択 → ⧉複製・🗑削除・↺↻回転</li>
+      <li>やり直しは上の <kbd>↶ 戻る</kbd> <kbd>↷ 進む</kbd></li>
+    </ul>
+  </div>
+</section>
+
+
+<section>
+  <h2 class="sub"><span class="n">1-5</span>困ったとき — 現場</h2>
+  <div class="card" style="padding:8px 18px">
+    <div class="qa"><h3>㎡ が出ない・面積が空欄</h3>
+      <p>縮尺がまだです。右下のバッジがオレンジなら手順2に戻ってください。本数だけなら縮尺なしでも数えられます。</p></div>
+    <div class="qa"><h3>画面を閉じたら消えた</h3>
+      <p>自動保存はありません。区切りごとに <kbd>この公園を保存（.json）</kbd> を押す習慣にしてください。</p></div>
+    <div class="qa"><h3>図形が閉じられない</h3>
+      <p>下の <kbd>✓ 確定</kbd>、または始点の黄色い点をタップです。1点だけ戻すなら <kbd>↶ 1点戻す</kbd>、やめるなら <kbd>✕</kbd>。</p></div>
+    <div class="qa"><h3>指で動かすと線が引かれてしまう</h3>
+      <p>記録モードのままです。<kbd>✋ 地図を移動</kbd> に切り替えてください。</p></div>
+    <div class="qa"><h3>工種を間違えて描いた</h3>
+      <p>描いた後で工種は変えられません。<kbd>選択・編集・削除</kbd> で消してから、工種を選び直して描き直してください。</p></div>
+    <div class="qa"><h3>Excelを出そうとしたら怒られた</h3>
+      <p>Excelの書き出しだけはネット接続が要ります。現場では <kbd>この公園を保存（.json）</kbd> だけしておけば十分です。</p></div>
+  </div>
+</section>
+
+
+
+<div class="handoff"><b>ここで現場は終わりです</b>
+<kbd>この公園を保存（.json）</kbd> で保存したファイルを事務所へ渡してください。図面も作業範囲も数量も、そのファイルに全部入っています。Excelは事務所で作ります（書き出しには通信が要るので、現場で無理に出さなくて大丈夫です）。</div>
+
+
+<div class="phase">
+  <div class="bar"><span class="num">フェーズ 2</span><h2>事務所で報告書にする</h2><span class="where">PC・事務所</span></div>
+  <div class="body"><p>受け取ったファイルを開いて、欄を埋めて書き出すと、いつもの様式の報告書が配置図・求積図つきで出ます。手順の番号はフェーズ1から続いています。</p></div>
+</div>
+
+<section>
+  <h2 class="sub"><span class="n">2-1</span>報告書までの手順（手順6〜10）</h2>
+  <p class="lead">現場が保存したファイルを開いて、欄を埋めて、書き出すだけです。</p>
+  <div class="step">
+    <div class="no tnum">6</div>
+    <div class="bd"><h3>現場のデータを開く</h3>
+      <p><kbd>公園データを開く（.json）</kbd> で、現場が保存したファイルを読み込みます。図面・作業範囲・数量が、そのまま戻ります。</p></div>
+  </div>
+  <div class="step">
+    <div class="no tnum">7</div>
+    <div class="bd"><h3>報告書の欄を埋める</h3>
+      <p>左の下のほうにある「報告書（この様式のExcel）」の欄です。年度・第何回・提出年月日・契約番号・公園の住所・あて先・請負者。<br>
+      あわせて、上のほうにある 着手／完成年月日・現場代理人氏名・監督員職氏名 も確認してください。</p>
+      <div class="note ok"><b>毎回同じ項目は覚えます</b>：年度・契約番号・あて先・請負者・委託・現場代理人・監督員は、次に開いたとき入ったままです。毎回入れ直すのは第何回と提出日くらいです。</div></div>
+  </div>
+  <div class="step">
+    <div class="no tnum">8</div>
+    <div class="bd"><h3>履行場所の図を用意する</h3>
+      <p><kbd>📍 位置図用にGoogleマップを開く</kbd> で地図を出してスクリーンショット →
+      <kbd>🖼 履行場所の図をえらぶ</kbd> でその画像を選びます。報告書の枠の形に合わせて自動で収まるので、つぶれません。丸や施工位置は、印刷してから手書きで足してください。</p></div>
+  </div>
+  <div class="step">
+    <div class="no tnum">9</div>
+    <div class="bd"><h3>Excelを書き出す</h3>
+      <p><kbd>📄 報告書のExcelを書き出す</kbd>。ファイル名は「報告書_No_3_○○公園.xlsx」のように、第何回と公園名が入ります。</p>
+      <div class="note danger"><b>ここだけネット接続が要ります</b>。Excelを組み立てる部品をその場で読み込むためです。圏外だと「ネット接続が必要です」と出ます。</div></div>
+  </div>
+  <div class="step">
+    <div class="no tnum">10</div>
+    <div class="bd"><h3>Excelで仕上げて提出</h3>
+      <p>開いて、文字の重なりなどを直します（次の節）。そのまま印刷すればA4縦1枚ずつに収まります。</p></div>
+  </div>
+</section>
+
+
+<section>
+  <h2 class="sub"><span class="n">2-2</span>書き出すと何が出るか</h2>
+  <p class="lead">1つのブックに、最大4枚のシートが入ります。</p>
+  <div class="tblwrap">
+    <table>
+      <tr><th style="width:22%">シート</th><th>中身</th></tr>
+      <tr><td><b>報告書</b></td><td>いつもの様式そのまま。押印欄・罫線・和暦・A4縦の印刷設定つき。工種・形状寸法・数量・単位が集計から自動で入り、面積のものは摘要に「求積図参照」が付きます。木の規格は「幹周30cm以上60cm未満」の書き方です。</td></tr>
+      <tr><td><b>報告書（続き）</b></td><td>工種が8行を超えたぶん。24行まで入ります（合計32行）。8行に収まったときは、このシートは作られません。</td></tr>
+      <tr><td><b>配置図</b></td><td>どこを作業したかを示す図。<b>1枚目が全体図</b>で、作業箇所をぜんぶ1枚に収めています。工種ごとに色を変え、下に凡例（色・工種・数量）が付きます。<br>
+      2枚目からは<b>細別ごとに1枚ずつ</b>。低木刈込の図には低木刈込だけ、剪定の図には木の丸だけを黒で描くので、細かいところはこちらで確認できます。</td></tr>
+      <tr><td><b>求積図</b></td><td>数量の根拠。細別ごとに、三斜の図とヘロンの表（No. / a / b / c / s / A）が並びます。図はCADと同じ<b>白黒の線画</b>です。</td></tr>
+    </table>
+  </div>
+</section>
+
+
+<section>
+  <h2 class="sub"><span class="n">2-3</span>数量が合うしくみ</h2>
+  <p class="lead">求積図の数字を足すと、報告書の数量にぴったり一致します。</p>
+  <div class="card">
+    <p>求積図の各ブロックは、三角形の合計だけで終わりません。引き算と補正の行が続きます。</p>
+    <div class="tblwrap" style="margin-top:10px">
+      <table>
+        <tr><th>行</th><th class="u">例</th></tr>
+        <tr><td>三角形の合計</td><td class="u">172.14</td></tr>
+        <tr><td>除外（穴）1か所</td><td class="u">−3.20</td></tr>
+        <tr><td>内側控除（刈込ぶん）</td><td class="u">−120.55</td></tr>
+        <tr><td>斜面補正</td><td class="u">×1.15</td></tr>
+        <tr><td><b>計上面積</b></td><td class="u"><b>120.55</b></td></tr>
+      </table>
+    </div>
+    <p style="margin-top:10px">この計上面積を細別ごとに足したものが、報告書シートの数量です。除草から刈込を引いている場合も引き算の行が出るので、監督員さんに聞かれてもその場で説明できます。</p>
+  </div>
+  <div class="note"><b>三角形の番号</b>は図ごとに1から振り直されます。図に描いてある△の番号と、表のNo.は必ず同じです。</div>
+</section>
+
+
+<section>
+  <h2 class="sub"><span class="n">2-4</span>Excelの上で直す</h2>
+  <p class="lead">配置図と求積図は画像ではなく、Excelの<b>図形（オブジェクト）</b>で入っています。そのまま手直しできます。</p>
+  <div class="tblwrap">
+    <table>
+      <tr><th style="width:32%">やりたいこと</th><th>やり方</th></tr>
+      <tr><td>線の形を直す</td><td>線をクリックして選ぶ → 頂点をドラッグ。図形の書式から「頂点の編集」も使えます。</td></tr>
+      <tr><td>寸法や番号を打ち直す</td><td>数字をクリック → そのまま入力。テキストボックスなので自由に書き換えられます。</td></tr>
+      <tr><td>重なった文字をずらす</td><td>ドラッグで動かすだけ。</td></tr>
+      <tr><td>線の太さ・色を変える</td><td>右クリック →「図形の書式設定」。提出先の好みに合わせられます。</td></tr>
+      <tr><td>不要な線を消す</td><td>選んで Delete。</td></tr>
+      <tr><td>まとめて動かす</td><td>Shiftを押しながら複数クリック、またはドラッグで囲んで選択。</td></tr>
+    </table>
+  </div>
+  <div class="note"><b>文字の重なりは自動でよけていません。</b>画像だったころは自動でずらしていましたが、図形にしたことで自分で動かせるようになったので、あえて素直な位置に置いています。込み入った図では番号と寸法が重なることがあります。</div>
+  <div class="note"><b>全体図の色を変えたいとき</b>：全体図だけ工種ごとに色を付けてあります。白黒で提出したい場合は、線を選んで「図形の書式設定」から黒に変えてください。細別ごとの図と求積図は最初から黒です。</div>
+  <div class="note ok"><b>配置図の図面だけは画像です</b>。もとがスキャンなので線にできません。その上に重なっている作業範囲・管理柵・樹木の丸は図形なので、動かせます。</div>
+</section>
+
+
+<section>
+  <h2 class="sub"><span class="n">2-5</span>出すもの一覧</h2>
+  <p class="lead">目的で使い分けます。迷ったら、まず「この公園を保存」。</p>
+  <div class="tblwrap">
+    <table>
+      <tr><th style="width:38%">ボタン</th><th>出るもの・使いどころ</th></tr>
+      <tr><td><kbd>📄 報告書のExcelを書き出す</kbd></td><td><b>提出用。</b>上の4シートが1つのブックで出ます。</td></tr>
+      <tr><td><kbd>この公園を保存（.json）</kbd></td><td>作業データそのもの。続きをやるとき・保管用。</td></tr>
+      <tr><td><kbd>公園データを開く（.json）</kbd></td><td>現場から届いたファイルを読み込む。</td></tr>
+      <tr><td><kbd>Excelで求積表を書き出す</kbd></td><td>求積表・数量集計（報告用）・凡例の3シート。数量だけ手早く確認したいとき。</td></tr>
+      <tr><td><kbd>報告書用に書き出す（.json）</kbd></td><td>数量と図をまとめた中間データ。ふだんは使いません。</td></tr>
+      <tr><td><kbd>🖨 印刷／PDFで保存</kbd></td><td>地図と集計を1枚に。社内の確認用。</td></tr>
+      <tr><td><kbd>注記図を画像で書き出す</kbd></td><td>記録した図をPNG画像で。資料に貼るとき。</td></tr>
+      <tr><td><kbd>複数の.jsonをまとめて集計</kbd></td><td>何か所ぶんかの数量を合算したいとき。</td></tr>
+    </table>
+  </div>
+</section>
+
+
+<section>
+  <h2 class="sub"><span class="n">2-6</span>困ったとき — 事務所</h2>
+  <div class="card" style="padding:8px 18px">
+    <div class="qa"><h3>「ネット接続が必要です」と出る</h3>
+      <p>Excelの書き出しだけは通信を使います。つながる場所でやり直してください。<code>.json</code> が保存してあれば、いつでも出し直せます。</p></div>
+    <div class="qa"><h3>Excelが「修復しますか」と聞いてくる</h3>
+      <p>本来は出ません。出たら、その画面のログ（どのパーツかが書いてあります）を親方に見せてください。原因が特定できます。</p></div>
+    <div class="qa"><h3>工種が多くて収まらないと言われた</h3>
+      <p>様式は合計32行までです（1枚目8行＋続き24行）。超えるときは、工種を分けて2回書き出してください。</p></div>
+    <div class="qa"><h3>履行場所が空欄で出た</h3>
+      <p>図を選んでいません。<kbd>🖼 履行場所の図をえらぶ</kbd> で画像を選んでから、もう一度書き出してください。</p></div>
+    <div class="qa"><h3>数量が現場の話と合わない</h3>
+      <p>求積図シートを見てください。除外（穴）・内側控除・斜面補正のどれが効いているかが行で出ています。</p></div>
+    <div class="qa"><h3>年度や請負者を変えたい</h3>
+      <p>左の報告書欄を書き換えれば、次からその内容で出ます。委託先が変わる回だけ、その場で直してください。</p></div>
+  </div>
+</section>
+
+
+<footer>
+  庭乃持田園　社内ツール「公園作業記録 — 求積＆出来形ツール」の使い方。<br>
+  データは端末の中だけで動きます（事務所のスプレッドシートには自動で上がりません）。Excelの書き出しのときだけ通信を使います。<br>
+  様式が変わったとき・欲しい工種があれば親方まで。
+</footer>
+
+</main>
+</body>
+</html>
