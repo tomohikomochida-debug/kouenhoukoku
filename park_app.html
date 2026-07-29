@@ -1673,7 +1673,35 @@ function openParkFile(file){
   r.readAsText(file);
 }
 function applyParkJson(text){
-  let d; try{ d=JSON.parse(text); }catch(err){ alert('このファイルは読み込めませんでした（JSON破損の可能性）。'); return; }
+  const kb=Math.round((text?text.length:0)/1024);
+  let d;
+  try{ d=JSON.parse(text); }
+  catch(err){
+    const tail=String(text||'').slice(-40).replace(/\s+/g,' ');
+    alert('このファイルは公園データとして読み込めませんでした。\n\n'
+      +'大きさ：'+kb+' KB\n'
+      +'原因：'+((err&&err.message)||err)+'\n'
+      +'末尾：…'+tail+'\n\n'
+      +(/[}\]]\s*$/.test(String(text||'')) ? '中身の形がくずれています。'
+        : 'ファイルが途中で切れています。ダウンロードし直してください。'));
+    return;
+  }
+  if(!d||typeof d!=='object'){ alert('中身が公園データの形になっていません（大きさ '+kb+' KB）。'); return; }
+  if(!Array.isArray(d.features)){
+    if(d.rows_source||d.images||d.meta){
+      alert('これは「報告書用に書き出す」で作ったファイルです。作業データ（図形）は入っていません。\n\n'
+        +'「この公園を保存（.json）」で作ったファイルを開いてください。');
+    }else{
+      alert('公園データが見つかりませんでした。\n\n大きさ：'+kb+' KB\n'
+        +'中身の項目：'+Object.keys(d).slice(0,8).join(', ')+'\n\n'
+        +'このアプリで保存したファイルか確認してください。');
+    }
+    return;
+  }
+  try{ applyParkData(d,kb); }
+  catch(err){ alert('読み込みの途中で問題が起きました。\n'+((err&&err.message)||err)+'\n\nデータは残っているので、もう一度お試しください。'); }
+}
+function applyParkData(d,kb){
   $('parkName').value=d.park||'';state.scale=d.scale||null;
   if(d.contract!==undefined)$('contractName').value=d.contract||'';
   $('orderNo').value=d.order||'';$('workDate').value=d.date||'';
@@ -1685,6 +1713,7 @@ function applyParkJson(text){
   state.features=d.features||[];state.manual=d.manual||[];recalcAll();
   undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
+  if(!state.features.length) alert('読み込みは成功しましたが、記録が0件でした（大きさ '+kb+' KB）。\n保存したときに図形が入っていたか確認してください。');
 }
 /* ---------- ファイルをドラッグ＆ドロップで開く ---------- */
 (function setupDrop(){
