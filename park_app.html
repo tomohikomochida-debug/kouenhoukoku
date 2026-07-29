@@ -173,6 +173,39 @@
   #saveToast a{font-size:12.5px;color:var(--acc);text-decoration:underline}
   #saveToast button{margin-left:auto;background:none;border:none;color:var(--mut);font-size:18px;cursor:pointer;line-height:1}
   @media(min-width:760px){#saveToast{left:auto;right:16px;max-width:560px}}
+
+  /* 設定ポップアップ */
+  #cfgBox{position:fixed;inset:0;z-index:9997;display:none;align-items:center;justify-content:center;background:rgba(16,20,26,.8)}
+  #cfgBox.on{display:flex}
+  #cfgBox .bx{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    width:min(92vw,460px);max-height:86vh;display:flex;flex-direction:column;overflow:hidden}
+  #cfgBox .hd{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+  #cfgBox .hd b{font-size:15px}
+  #cfgBox .hd button{margin-left:auto;background:none;border:none;color:var(--mut);font-size:20px;cursor:pointer}
+  #cfgBody{padding:10px 16px 18px;overflow:auto}
+  /* クラウドの一覧 */
+  #cloudBox{position:fixed;inset:0;z-index:9997;display:none;align-items:center;justify-content:center;background:rgba(16,20,26,.8)}
+  #cloudBox.on{display:flex}
+  #cloudBox .bx{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    width:min(92vw,560px);max-height:80vh;display:flex;flex-direction:column;overflow:hidden}
+  #cloudBox .hd{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+  #cloudBox .hd b{font-size:15px}
+  #cloudBox .hd button{margin-left:auto;background:none;border:none;color:var(--mut);font-size:20px;cursor:pointer}
+  #cloudBody{padding:10px 14px 16px;overflow:auto}
+  #cloudBody .item{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);
+    border-radius:10px;margin-bottom:7px;cursor:pointer;background:var(--panel2)}
+  #cloudBody .item:hover{border-color:var(--acc)}
+  #cloudBody .item .nm{font-size:14px}
+  #cloudBody .item .sb{font-size:11.5px;color:var(--mut);margin-top:2px}
+  #cloudBody .item .go{margin-left:auto;color:var(--acc);font-size:12px}
+  #cloudBody .item .del{background:none;border:none;color:var(--mut);font-size:15px;cursor:pointer;padding:2px 4px;margin-left:8px}
+  #cloudBody .item .del:hover{color:var(--bad)}
+
+  /* 読み込みエラーの知らせ */
+  #jsErr{position:fixed;left:0;right:0;top:0;z-index:10000;display:none;background:#B0533F;color:#fff;
+    padding:10px 14px;font-size:13px;line-height:1.6}
+  #jsErr.on{display:block}
+  #jsErr b{display:block;font-size:14px;margin-bottom:2px}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
@@ -180,6 +213,51 @@
 </head>
 <body>
 <div id="printArea"></div>
+<div id="jsErr"></div>
+<div id="cfgBox"><div class="bx">
+  <div class="hd"><b>施工条件・報告書の設定</b><button id="cfgClose">×</button></div>
+  <div id="cfgBody">
+      <label class="fld">委託名（例：高津区北部）</label>
+      <input id="contractName" placeholder="高津区北部" style="width:100%">
+      <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
+      <h3 style="margin:0 0 6px">施工条件</h3>
+      <label class="fld">指示番号（実績の管理用）</label>
+      <input id="orderNo" placeholder="例：5082000633-3" style="width:100%">
+      <label class="fld">実施年月日</label>
+      <input id="workDate" type="date" style="width:100%">
+      <label class="fld">着手年月日（別日のとき）</label>
+      <input id="startDate" type="date" style="width:100%">
+      <label class="fld">完成年月日（別日のとき）</label>
+      <input id="finishDate" type="date" style="width:100%">
+      <label class="fld">現場代理人氏名</label>
+      <input id="agentName" placeholder="氏名" style="width:100%">
+      <label class="fld">監督員職氏名</label>
+      <input id="supervisorName" placeholder="職・氏名" style="width:100%">
+      <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
+      <h3 style="margin:0 0 6px">報告書の様式に入れるもの</h3>
+      <div class="row">
+        <div style="flex:1"><label class="fld">年度（令和）</label><input id="rpFy" class="txt" inputmode="numeric" placeholder="8"></div>
+        <div style="flex:1"><label class="fld">第何回</label><input id="rpNo" class="txt" inputmode="numeric" placeholder="3"></div>
+      </div>
+      <label class="fld">提出年月日</label>
+      <input id="rpSubmit" type="date" style="width:100%">
+      <label class="fld">契約番号</label>
+      <input id="rpKeiyaku" placeholder="契約番号" style="width:100%">
+      <label class="fld">公園の住所（施工場所の2行目）</label>
+      <input id="rpAddr" placeholder="例：高津区久地4丁目" style="width:100%">
+      <label class="fld">あて先</label>
+      <input id="rpAtena" placeholder="高津区役所道路公園センター所長" style="width:100%">
+      <label class="fld">請負者（商号又は名称）</label>
+      <input id="rpUkeoi" placeholder="株式会社グリーンネットワーク" style="width:100%">
+      <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
+      <h3 style="margin:0 0 6px">クラウド</h3>
+      <button class="btn ghost" id="cloudCfg">クラウドの設定<small>GASのURLを貼る（最初に1回だけ）</small></button>
+  </div>
+</div></div>
+<div id="cloudBox"><div class="bx">
+  <div class="hd"><b id="cloudTitle">クラウドの公園</b><button id="cloudClose">×</button></div>
+  <div id="cloudBody"></div>
+</div></div>
 <div id="dropZone"><div class="bx">
   <b>ここに落とすと開きます</b>
   <span>公園データ（.json）… そのまま続きから作業できます<br>図面の画像（PNG / JPG）… 下敷きの図面として読み込みます</span>
@@ -188,7 +266,6 @@
   <header>
     <a href="index.html" title="アプリ一覧にもどる" aria-label="アプリ一覧にもどる" style="color:inherit;text-decoration:none;font-size:24px;font-weight:700;line-height:1;display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:32px;opacity:.85;flex:0 0 auto">‹</a><div class="logo">公園作業記録 <b>/</b> 求積＆出来形</div>
     <input class="park" id="parkName" placeholder="公園名（例：久地さくら緑地）">
-    <input class="park" id="contractName" value="高津区北部" placeholder="委託名（例：高津区北部）" style="width:160px">
     <span class="meta" id="contractMeta">業務委託</span>
     <span class="sp"></span>
     <button id="undoBtn" title="元に戻す (Ctrl+Z)" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px 10px;font-size:13px;cursor:pointer;margin-right:6px">↶<span class="blbl"> 戻る</span></button>
@@ -272,53 +349,25 @@
     </div>
 
     <div class="sec">
-      <h3>保存 / 読込</h3>
-      <button class="btn ghost" id="saveJson">この公園を保存（.json）</button>
-      <button class="btn" id="reportExport">報告書用に書き出す（.json）<small>数量＋注記図＋求積図を1ファイルに（PCで報告書Excelへ）</small></button>
-      <button class="btn ghost" id="openMap">📍 位置図用にGoogleマップを開く<small>公園名で地図を表示→スクショして報告書の履行場所へ貼付（丸・施工位置は手書き）</small></button>
-      <button class="btn ghost" id="openJson">公園データを開く（.json）</button>
-      <input type="file" id="jsonFile" accept="application/json" hidden>
-      <button class="btn ghost" id="exportPng">注記図を画像で書き出す</button>
-      <label class="fld">指示番号（実績の管理用）</label>
-      <input id="orderNo" placeholder="例：5082000633-3" style="width:100%">
-      <label class="fld">実施年月日</label>
-      <input id="workDate" type="date" style="width:100%">
-      <label class="fld">着手年月日（報告書用・別日のとき）</label>
-      <input id="startDate" type="date" style="width:100%">
-      <label class="fld">完成年月日（報告書用・別日のとき）</label>
-      <input id="finishDate" type="date" style="width:100%">
-      <label class="fld">現場代理人氏名（報告書用）</label>
-      <input id="agentName" placeholder="氏名" style="width:100%">
-      <label class="fld">監督員職氏名（報告書用）</label>
-      <input id="supervisorName" placeholder="職・氏名" style="width:100%">
-      <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
-      <h3>報告書（この様式のExcel）</h3>
-      <div class="row">
-        <div style="flex:1">
-          <label class="fld">年度（令和）</label>
-          <input id="rpFy" class="txt" inputmode="numeric" placeholder="8">
-        </div>
-        <div style="flex:1">
-          <label class="fld">第何回</label>
-          <input id="rpNo" class="txt" inputmode="numeric" placeholder="3">
-        </div>
-      </div>
-      <label class="fld">提出年月日</label>
-      <input id="rpSubmit" type="date" style="width:100%">
-      <label class="fld">契約番号</label>
-      <input id="rpKeiyaku" placeholder="契約番号" style="width:100%">
-      <label class="fld">公園の住所（施工場所の2行目）</label>
-      <input id="rpAddr" placeholder="例：高津区久地4丁目" style="width:100%">
-      <label class="fld">あて先</label>
-      <input id="rpAtena" placeholder="高津区役所道路公園センター所長" style="width:100%">
-      <label class="fld">請負者（商号又は名称）</label>
-      <input id="rpUkeoi" placeholder="株式会社グリーンネットワーク" style="width:100%">
-      <button class="btn ghost" id="rpMapBtn" style="margin-top:8px">🖼 履行場所の図をえらぶ<small>Googleマップのスクショ（枠に合わせて自動で収めます）</small></button>
+      <h3>保存 / 書き出し</h3>
+      <button class="btn" id="cloudSave">☁️ クラウドに保存<small>Driveへ直接。ファイルの受け渡しは要りません</small></button>
+      <button class="btn ghost" id="cloudOpen">☁️ クラウドから開く<small>保存した公園の一覧から選びます</small></button>
+      <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
+      <button class="btn ghost" id="rpMapBtn">🖼 履行場所の図をえらぶ<small>Googleマップのスクショ（枠に合わせて自動で収めます）</small></button>
       <input type="file" id="rpMapFile" accept="image/*" hidden>
-      <button class="btn" id="rpXlsx">📄 報告書のExcelを書き出す<small>いつもの様式のまま・数量は集計から自動</small></button>
-      <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
-      <button class="btn" id="printPdf">🖨 印刷／PDFで保存<small>実績用：地図＋集計を1枚に</small></button>
-      <button class="btn ghost danger" id="clearAll">全消去</button>
+      <button class="btn" id="rpXlsx">📄 報告書のExcelを書き出す<small>報告書・配置図・求積図をまとめて1つのブックに</small></button>
+      <button class="btn ghost" id="cfgBtn">⚙ 施工条件・報告書の設定<small>委託・実施日・担当者・年度・契約番号など</small></button>
+      <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
+      <button class="btn ghost" id="moreOutBtn">そのほかの出力 ▾<small>ファイル保存・印刷・画像・地図</small></button>
+      <div id="moreOut" style="display:none">
+        <button class="btn ghost" id="saveJson">この公園を保存（.json）<small>圏外のときの控えに</small></button>
+        <button class="btn ghost" id="openJson">公園データを開く（.json）</button>
+        <input type="file" id="jsonFile" accept="application/json" hidden>
+        <button class="btn ghost" id="printPdf">🖨 印刷／PDFで保存<small>社内の確認用：地図＋集計を1枚に</small></button>
+        <button class="btn ghost" id="exportPng">注記図を画像で書き出す</button>
+        <button class="btn ghost" id="openMap">📍 位置図用にGoogleマップを開く<small>スクショして「履行場所の図」に使います</small></button>
+        <button class="btn ghost danger" id="clearAll">全消去</button>
+      </div>
     </div>
   </div>
 
@@ -405,6 +454,17 @@
   </div>
 </div>
 <script>
+/* 途中でエラーが出たら、黙って半分死んだ画面にせず知らせる */
+window.addEventListener('error',function(ev){
+  try{
+    var b=document.getElementById('jsErr'); if(!b)return;
+    b.className='on';
+    b.innerHTML='<b>アプリの読み込みで問題が起きました</b>'
+      +'この画面のまま使うと、ボタンが効かないことがあります。親方に次の内容を伝えてください：<br>'
+      +String(ev.message||ev.type)+'（'+String(ev.filename||'').split('/').pop()+' '+(ev.lineno||'')+'行）';
+  }catch(e){}
+});
+
 /* ---------- 工種マスタ（高津区 地区標準単価・2025.12） ---------- */
 const BANDS = ["30cm未満","30〜60cm","60〜90cm","90〜120cm","120〜150cm","150〜180cm","180〜210cm","210〜240cm","240〜270cm","270〜300cm"];
 /* 受注中の委託は委託名（ヘッダー欄）で管理。工種はここに集約し、将来増えたら追記する。
@@ -1867,28 +1927,6 @@ $('openMap').onclick=()=>{
   if(!q){alert('先に公園名を入力してください。');return;}
   window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q),'_blank');
 };
-$('reportExport').onclick=()=>{
-  if(state.features.some(f=>f.type!=='tree')&&!state.scale){alert('先に「縮尺合わせ」を行ってください。面積が0のまま書き出されます。');return;}
-  const {areas,trees}=aggregate();
-  const A=[],T=[],N=[];
-  Object.values(areas).forEach(a=>{ A.push({cat:a.cat,kind:a.kind,m2:Math.round((a.m2||0)*100)/100,geom:a.line?'line':'poly'}); });
-  Object.values(trees).forEach(t=>{ if(t.cat==='巣撤去') N.push({kind:t.kind,n:t.n}); else T.push({cat:t.cat,kind:t.kind,rank:t.rank||null,n:t.n}); });
-  const M=state.manual.map(m=>({kind:m.kind,qty:m.qty,unit:(MANUAL[m.kind]||{}).unit||''}));
-  const annotated=fullImageDataURL();
-  const sansha=[];
-  state.features.forEach(f=>{ if(f.type==='area'&&f.pts&&f.pts.length>=3&&!f.noFig){ sansha.push({cat:f.cat,kind:f.kind,label:f.cat+' › '+f.kind,png:composeTriImage(f,780)}); } });
-  const mokucut=[];   // 中木の円柱・生垣の明細（求積表の根拠用）
-  state.features.forEach(f=>{ if(f.type==='box'&&f.cat==='中低木刈込工'){ mokucut.push({shape:f.round?'cyl':'box', d:f.round?f.L:null, L:f.round?null:f.L, D:f.round?null:f.D, H:f.H||0, sides:(f.sides!==false), area:f.area||0}); } });
-  const bundle={
-    meta:{park:$('parkName').value||'',contractName:$('contractName').value||'',orderNo:$('orderNo').value||'',workDate:$('workDate').value||'',startDate:$('startDate').value||'',finishDate:$('finishDate').value||'',agent:$('agentName')?($('agentName').value||''):'',supervisor:$('supervisorName')?($('supervisorName').value||''):'',scale:state.scale||null,exportedAt:new Date().toISOString()},
-    rows_source:{areas:A,trees:T,nests:N,manual:M},
-    mokucut:mokucut,
-    images:{annotated:annotated||null,sansha}
-  };
-  const base=($('orderNo').value?$('orderNo').value+'_':'')+($('parkName').value||'公園');
-  dl(JSON.stringify(bundle),`報告書バンドル_${base}.json`,'application/json');
-  alert('報告書用データを書き出しました。\nPCのジェネレータでこのJSONを読み込むと、転記なしで報告書Excelが完成します。');
-};
 $('openJson').onclick=()=>$('jsonFile').click();
 $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;openParkFile(f);e.target.value='';};
 // 公園データ（.json）を開く。ボタンからでも、ファイルを落としても、ここを通る。
@@ -1935,12 +1973,114 @@ function applyParkData(d,kb){
   if($('agentName'))$('agentName').value=d.agent||'';if($('supervisorName'))$('supervisorName').value=d.supervisor||'';
   if(d.rp){const R=d.rp;const sv=(id,v)=>{const el=$(id);if(el&&v!==undefined&&v!==null&&v!=='')el.value=v;};
     sv('rpFy',R.fy);sv('rpNo',R.no);sv('rpSubmit',R.submit);sv('rpKeiyaku',R.keiyaku);sv('rpAddr',R.addr);sv('rpAtena',R.atena);sv('rpUkeoi',R.ukeoi);}
+  state.cloudId=d.cloudId||state.cloudId||null;
   if(d.mapImg){state.mapImg=d.mapImg;const b=$('rpMapBtn');if(b)b.firstChild.textContent='🖼 履行場所の図：読み込みました（変えるならもう一度）';}
   state.features=d.features||[];state.manual=d.manual||[];recalcAll();
   undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
   if(!state.features.length) alert('読み込みは成功しましたが、記録が0件でした（大きさ '+kb+' KB）。\n保存したときに図形が入っていたか確認してください。');
 }
+/* ---------- クラウド（GAS経由でDriveに保存） ---------- */
+const CLOUD_KEY='park_gas_url';
+function cloudUrl(){ try{ return (localStorage.getItem(CLOUD_KEY)||'').trim(); }catch(e){ return ''; } }
+function cloudBox(on,title){ $('cloudBox').classList.toggle('on',!!on); if(title)$('cloudTitle').textContent=title; }
+$('cloudClose').onclick=()=>cloudBox(false);
+$('cfgBtn').onclick=()=>$('cfgBox').classList.add('on');
+$('cfgClose').onclick=()=>$('cfgBox').classList.remove('on');
+$('cfgBox').addEventListener('click',e=>{ if(e.target===$('cfgBox')) $('cfgBox').classList.remove('on'); });
+$('moreOutBtn').onclick=()=>{
+  const m=$('moreOut'), on=(m.style.display==='none');
+  m.style.display=on?'block':'none';
+  $('moreOutBtn').firstChild.textContent=on?'そのほかの出力 ▴':'そのほかの出力 ▾';
+};
+// 実施日を変えたら「別の日の記録」として保存する（同じ公園に何度も行くため）
+$('workDate').addEventListener('change',()=>{
+  if(state.cloudId){ state.cloudId=null; }
+});
+$('cloudCfg').onclick=()=>{
+  const cur=cloudUrl();
+  const v=prompt('GASのウェブアプリURL（/exec で終わるもの）を貼ってください。\n空にすると設定を消します。',cur);
+  if(v===null)return;
+  const u=v.trim();
+  if(u&&!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)){ alert('URLの形が違うようです。/exec で終わる必要があります。'); return; }
+  try{ localStorage.setItem(CLOUD_KEY,u); }catch(e){}
+  if(!u){ alert('設定を消しました。'); return; }
+  fetch(u+'?action=ping').then(r=>r.json()).then(d=>{
+    alert(d.ok?('つながりました。\n表：'+d.spreadsheet+'\nフォルダ：'+d.folder+'\n保存ずみ：'+d.count+'件')
+              :('つながりましたが、GAS側でエラーです。\n'+d.error));
+  }).catch(e=>alert('つながりませんでした。URLと、デプロイの「アクセスできるユーザー：全員」を確認してください。\n'+e));
+};
+function parkPayload(){
+  const order=$('orderNo').value||'';
+  return {park:$('parkName').value||'',contract:$('contractName').value||'',order,
+    date:$('workDate').value||'',start:$('startDate').value||'',finish:$('finishDate').value||'',
+    agent:$('agentName').value||'',supervisor:$('supervisorName').value||'',
+    scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,
+    rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,
+        addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value},
+    mapImg:state.mapImg||null,cloudId:state.cloudId||null,saved:new Date().toISOString()};
+}
+$('cloudSave').onclick=async()=>{
+  const u=cloudUrl();
+  if(!u){ alert('先に「クラウドの設定」でGASのURLを貼ってください。'); return; }
+  if(!$('parkName').value){ alert('公園名を入れてください。一覧で見分けがつかなくなります。'); return; }
+  const b=$('cloudSave'); const label=b.firstChild.textContent;
+  b.firstChild.textContent='☁️ 保存中…'; b.disabled=true;
+  try{
+    const payload=parkPayload();
+    const res=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'save',id:state.cloudId||null,park:payload.park,contract:payload.contract,
+        order:payload.order,date:payload.date,figures:state.features.length,json:JSON.stringify(payload)})});
+    const d=await res.json();
+    if(!d.ok) throw new Error(d.error||'保存できませんでした');
+    state.cloudId=d.id;
+    alert('クラウドに保存しました。\n公園：'+payload.park+'\n更新：'+d.updated+'\n\n事務所では「クラウドから開く」で読み込めます。');
+  }catch(e){
+    alert('クラウドに保存できませんでした。\n'+(e&&e.message?e.message:e)+'\n\n電波の届くところで、もう一度お試しください。念のため「この公園を保存（.json）」もしておくと安全です。');
+  }finally{ b.firstChild.textContent=label; b.disabled=false; }
+};
+$('cloudOpen').onclick=async()=>{
+  const u=cloudUrl();
+  if(!u){ alert('先に「クラウドの設定」でGASのURLを貼ってください。'); return; }
+  cloudBox(true,'クラウドの公園'); $('cloudBody').innerHTML='<div class="legend">読み込み中…</div>';
+  try{
+    const d=await (await fetch(u+'?action=list')).json();
+    if(!d.ok) throw new Error(d.error||'一覧を取れませんでした');
+    if(!d.items.length){ $('cloudBody').innerHTML='<div class="legend">まだ保存された公園がありません。</div>'; return; }
+    $('cloudBody').innerHTML=d.items.map(it=>
+      '<div class="item" data-id="'+esc(it.id)+'"><div><div class="nm">'+esc(it.park||'（名前なし）')
+      +(it.date?('　<span style="color:var(--acc)">'+esc(it.date)+'</span>'):'')+'</div>'
+      +'<div class="sb">更新 '+esc(it.updated||'')+(it.figures?('　図形 '+it.figures+'件'):'')
+      +(it.order?('　指示 '+esc(it.order)):'')+'</div></div>'
+      +'<div class="go">開く →</div><button class="del" data-del="'+esc(it.id)+'" title="消す">🗑</button></div>').join('');
+    Array.prototype.forEach.call($('cloudBody').querySelectorAll('[data-del]'),b=>{
+      b.onclick=async e=>{
+        e.stopPropagation();
+        if(!confirm('この記録を消します。よろしいですか。')) return;
+        try{
+          const r=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},
+            body:JSON.stringify({action:'delete',id:b.getAttribute('data-del')})});
+          const d2=await r.json();
+          if(!d2.ok) throw new Error(d2.error||'消せませんでした');
+          $('cloudOpen').onclick();
+        }catch(err){ alert('消せませんでした。\n'+(err&&err.message||err)); }
+      };
+    });
+    Array.prototype.forEach.call($('cloudBody').querySelectorAll('.item'),el=>{
+      el.onclick=async()=>{
+        if(state.features.length && !confirm('いま記録している内容を置きかえます。よろしいですか。')) return;
+        $('cloudBody').innerHTML='<div class="legend">開いています…</div>';
+        try{
+          const g=await (await fetch(u+'?action=get&id='+encodeURIComponent(el.getAttribute('data-id')))).json();
+          if(!g.ok) throw new Error(g.error||'読み込めませんでした');
+          applyParkJson(g.data);
+          state.cloudId=el.getAttribute('data-id');
+          cloudBox(false);
+        }catch(e){ $('cloudBody').innerHTML='<div class="legend">'+esc(String(e&&e.message||e))+'</div>'; }
+      };
+    });
+  }catch(e){ $('cloudBody').innerHTML='<div class="legend">一覧を取れませんでした。'+esc(String(e&&e.message||e))+'</div>'; }
+};
 /* ---------- ファイルをドラッグ＆ドロップで開く ---------- */
 (function setupDrop(){
   const zone=$('dropZone');
