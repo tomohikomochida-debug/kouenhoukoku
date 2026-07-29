@@ -486,7 +486,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 </script>
 <script>
 const SPECIES=["シラカシ","ケヤキ","コナラ","サクラ","エゴノキ","マテバシイ","クスノキ","ヒノキ","スギ","イチョウ","クヌギ","モミジ","ツバキ","キンモクセイ"];
-const WORKS=["強剪定","枯れ枝剪定","萌芽更新","高さ低減剪定","透かし剪定","伐採","その他"];
+const WORKS=["剪定","強剪定","枯れ枝剪定","萌芽更新","高さ低減剪定","透かし剪定","伐採","その他"];
 const ITEMS=["土間コンクリート","化粧ブロック積み","ブロック積み","フェンス設置","目隠しフェンス","カーポート","テラス屋根","ウッドデッキ","人工芝","芝張り","植栽","高木植栽","低木植栽","生垣","石張り","乱形石張り","インターロッキング","洗い出し","門柱","表札","ポスト","花壇","立水栓","防草シート","砂利敷き","整地","残土処分","解体撤去"];
 const UNITS=["㎡","m","箇所","本","式","㎥","t","台","枚","組"];
 /* ローカル日付（YYYY-MM-DD）。toISOString()はUTCなので早朝に前日日付になるのを防ぐ */
@@ -700,7 +700,7 @@ function fieldsHTML(t,i){
   return `<div style="text-align:right;margin-bottom:6px"><button class="mic" onclick="voice(${i},this)">🎤音声</button></div>
      <div class="grid3">
        <div class="fld"><label>樹種</label><input list="splist" class="yellow" value="${esc(t.species)}" oninput="upd(${i},'species',this.value)" placeholder="樹種"></div>
-       <div class="fld"><label>作業方針</label><select class="yellow" onchange="upd(${i},'work',this.value)">${opts(WORKS,t.work)}</select></div>
+       <div class="fld"><label>作業内容</label><select class="yellow" onchange="upd(${i},'work',this.value)">${opts(WORKS,t.work)}</select></div>
        <div class="fld"><label>高さ (H・m)</label><input class="yellow" inputmode="decimal" value="${esc(t.h)}" oninput="upd(${i},'h',this.value)" placeholder="例 12"></div>
        <div class="fld"><label>幹周 (C・cm)</label><input class="yellow" value="${esc(t.c)}" oninput="upd(${i},'c',this.value)" placeholder="例 160（93・97）"></div>
        <div class="fld"><label>葉張り (W・m)</label><input class="yellow" inputmode="decimal" value="${esc(t.w)}" oninput="upd(${i},'w',this.value)" placeholder="例 5"></div>
@@ -746,7 +746,7 @@ function pageHead(sub){ return `<div class="pghead"><h2>${esc(state.bookTitle||"
 function frameHTML(fr){ const t=fr.t, no=fr.no;
    var cap = t.type==="exterior"
      ? `<span class="bn">No.${no}</span><br><b>${esc(t.item)||"（品名未入力）"}</b><br>数量：${esc(t.qty)||"-"} ${esc(t.unit)}${t.memo?`<br>仕様：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`
-     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>胸高周囲：${esc(t.c)||"-"} cm${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
+     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業内容：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>胸高周囲：${esc(t.c)||"-"} cm${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
    return `<div class="pbitem"><div class="p">${fr.img?`<img src="${fr.img}">`:'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
 }
 function renderBook(){
