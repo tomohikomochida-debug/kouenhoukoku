@@ -1409,9 +1409,11 @@ function refreshDraftBar(){
   const bar=$('draftbar'),active=!!(draft&&(tool==='area'||tool==='strip'||tool==='cal'));
   bar.classList.toggle('on',active);
   if(active){
-    const isArea=tool==='area', need=holeMode?3:((curGeom()==='line')?2:3);
-    $('dbFinish').style.display=isArea?'':'none';
-    $('dbFinish').disabled=!(isArea&&draft.pts.length>=need);
+    // 幅刈りも「✓ 確定」で閉じる。線なので2点あればよい。
+    const canFin=(tool==='area'||tool==='strip');
+    const need=holeMode?3:((tool==='strip'||curGeom()==='line')?2:3);
+    $('dbFinish').style.display=canFin?'':'none';
+    $('dbFinish').disabled=!(canFin&&draft.pts.length>=need);
     $('dbUndo').disabled=draft.pts.length===0;
   }
 }
@@ -1490,7 +1492,7 @@ function undoDraftPoint(){
   if(!draft)return;draft.pts.pop();calDragIdx=null;hover=null;if(!draft.pts.length)draft=null;refreshDraftBar();draw();
 }
 function cancelDraft(){draft=null;calDragIdx=null;hover=null;holeMode=null;refreshDraftBar();updateHint();draw();}
-$('dbFinish').onclick=()=>{const need=holeMode?3:((curGeom()==='line')?2:3);if(tool==='area'&&draft&&draft.pts.length>=need)finishArea();};
+$('dbFinish').onclick=()=>{const need=holeMode?3:((tool==='strip'||curGeom()==='line')?2:3);if((tool==='area'||tool==='strip')&&draft&&draft.pts.length>=need)finishArea();};
 $('dbUndo').onclick=undoDraftPoint;
 $('dbCancel').onclick=cancelDraft;
 cv.addEventListener('mousedown',e=>{
