@@ -244,6 +244,8 @@
 
     <div class="sec">
       <h3>③ 記録モード <span class="st" style="color:var(--mut);font-weight:400">工種で自動選択</span></h3>
+      <button class="btn ghost" id="placeRect" data-tool="rect" style="display:none">📐 この寸法で四角を置く<small>上の「長さ×奥行」の四角を、タップした場所に置きます</small></button>
+      <button class="btn ghost" id="toolStrip" data-tool="strip" style="display:none">📏 幅刈り（線に幅をつける）<small>道や法面に沿ってタップ→「✓確定」。あとで区間ごとに幅を変えられます</small></button>
       <button class="btn on" id="toolArea" data-tool="area">面積（㎡）<small>外周をタップ→「✓確定」か始点をタップ</small></button>
       <button class="btn" id="toolTree" data-tool="tree">樹木（本）<small>クリックで1本配置</small></button>
       <button class="btn" id="toolSelect" data-tool="select">選択・編集・削除<small>クリックで選択／頂点ドラッグ移動・辺の○で追加・頂点ダブルタップで削除</small></button>
@@ -256,6 +258,17 @@
       <button class="btn on" id="legendToggle">凡例を表示<small>記号＋工種＋集計数を地図に表示・ドラッグで移動</small></button>
       <button class="btn ghost" id="legendReset">位置を右下に戻す</button>
       <button class="btn ghost" id="labelReset">工種の数字の位置を戻す<small>手で動かした数字を自動配置にもどす</small></button>
+      <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
+      <h3 style="margin:0 0 6px">画面に出すもの</h3>
+      <label class="fld">図形につける表示</label>
+      <select id="dispMode" class="txt" style="width:100%">
+        <option value="num">番号だけ（①②…）</option>
+        <option value="full">工種と数量</option>
+        <option value="none">出さない</option>
+      </select>
+      <button class="btn ghost" id="dispOnlySel" style="margin-top:8px">編集中のものだけ出す<small>選んでいない図形の数字を隠します</small></button>
+      <div id="dispList" style="margin-top:8px"></div>
+      <div class="legend" style="margin-top:6px">工種をタップすると、その数字の表示を切り替えます。編集中の図形はいつでも出ます。</div>
     </div>
 
     <div class="sec">
@@ -502,12 +515,15 @@ function fillRanks(){
   }else{lg.style.display='none';}
   // 寸法欄（低木＝なし／中木＝高さ／管理柵＝高さ）多角形でも高さを表示
   const g=curGeom(), box=(g==='box'), line=(g==='line'), needH=curNeedsHeight();
-  const showDim=box||line||needH;
+  const showDim=box||line||needH||(g==='poly');
   $('dimLbl').style.display=showDim?'block':'none';
   $('dimRow').style.display=showDim?'flex':'none';
   const round=box&&!!curKindDef().round;
-  $('lenWrap').style.display=(box&&!round)?'inline':'none';
-  $('depWrap').style.display=(box&&!round)?'inline':'none';
+  const poly=(g==='poly');
+  $('lenWrap').style.display=((box&&!round)||poly)?'inline':'none';
+  $('depWrap').style.display=((box&&!round)||poly)?'inline':'none';
+  if($('placeRect')) $('placeRect').style.display=poly?'block':'none';
+  if($('toolStrip')) $('toolStrip').style.display=poly?'block':'none';
   $('diaWrap').style.display=round?'inline':'none';
   $('htWrap').style.display=needH?'inline':'none';
   $('dimNote').textContent= line?'：柵の長さ×高さ' : round?'：円柱（投影＝円＋側面）' : box?(curBoxSides()?'：投影＋側面4面':'：投影のみ') : (needH?'：投影面積＋側面（周長×高さ）':'');
@@ -548,6 +564,8 @@ function updateHint(){
   if(holeMode){h.innerHTML='＜除外エリア＞刈らない部分（木・ベンチ等）の外周を<b>タップ</b>→<b>「✓ 確定」</b>。全体面積から差し引きます（やめるは✕）。';return;}
   if(!state.scale&&tool!=='cal'){h.innerHTML='面積を出すには先に <b>① 縮尺合わせ</b> を。本数だけなら縮尺なしでもOK。';return;}
   if(tool==='cal')h.innerHTML='既知の長さの<b>一端を押して、もう一端までドラッグ</b>（タップ2回でもOK）。置いた点は<b>離さず動かせば微調整</b>できます。先に左の「実距離(m)」を合わせて。';
+  else if(tool==='strip')h.innerHTML='＜幅刈り＞道や法面に沿って<b>端から順にタップ</b>→<b>「✓ 確定」</b>。左の「長さ」欄の数字を最初の幅に使います（あとから区間ごとに変えられます）。';
+  else if(tool==='rect')h.innerHTML='＜寸法で置く＞左の<b>長さ×奥行</b>の四角を、<b>タップした場所</b>に置きます。置いたあとは普通の面積として頂点を動かしたり回したりできます。';
   else if(tool==='pan')h.innerHTML='<b>地図移動モード</b>：ドラッグ（iPadは指1本）で<b>表示位置だけ</b>を動かします。記録に戻るには上で別のモードを選択。';
   else if(tool==='area'){
     if(curGeom()==='line')h.innerHTML='＜つる：管理柵＞フェンスに沿って<b>端から端へタップ</b>→<b>「✓ 確定」</b>。左の<b>高さ(m)</b>を掛けて面積にします。';
@@ -581,7 +599,54 @@ function holesAreaM2(f){if(!state.scale||!f.holes||!f.holes.length)return 0;let 
 // 外周−穴 の正味投影面積
 function netFootprintM2(f){const o=areaM2(f.pts);if(o==null)return null;return Math.max(0,o-holesAreaM2(f));}
 // featureの計上面積（㎡）を再計算
+/* ---------- 幅刈り：中心線に幅を与えて帯（面積）にする ---------- */
+function lineIntersect(p1,p2,p3,p4){
+  const d=(p2.x-p1.x)*(p4.y-p3.y)-(p2.y-p1.y)*(p4.x-p3.x);
+  if(Math.abs(d)<1e-9) return null;
+  const t=((p3.x-p1.x)*(p4.y-p3.y)-(p3.y-p1.y)*(p4.x-p3.x))/d;
+  return {x:p1.x+t*(p2.x-p1.x), y:p1.y+t*(p2.y-p1.y)};
+}
+// c=中心線の点（px）, wpx=区間ごとの幅（px）→ 外周の点
+function stripPolygon(c,wpx){
+  const n=(c||[]).length; if(n<2) return (c||[]).slice();
+  const seg=[];
+  for(let i=0;i<n-1;i++){
+    const dx=c[i+1].x-c[i].x, dy=c[i+1].y-c[i].y, L=Math.hypot(dx,dy)||1;
+    seg.push({nx:-dy/L, ny:dx/L, h:((wpx[i]!=null?wpx[i]:wpx[0])||0)/2, a:c[i], b:c[i+1]});
+  }
+  const chain=sign=>{
+    const out=[];
+    for(let i=0;i<seg.length;i++){
+      const s=seg[i];
+      const A={x:s.a.x+sign*s.nx*s.h, y:s.a.y+sign*s.ny*s.h};
+      const B={x:s.b.x+sign*s.nx*s.h, y:s.b.y+sign*s.ny*s.h};
+      if(i===0) out.push(A);
+      else{
+        const p=seg[i-1];
+        const P={x:p.a.x+sign*p.nx*p.h, y:p.a.y+sign*p.ny*p.h};
+        const Q={x:p.b.x+sign*p.nx*p.h, y:p.b.y+sign*p.ny*p.h};
+        const X=lineIntersect(P,Q,A,B);
+        if(X && Math.hypot(X.x-s.a.x,X.y-s.a.y) < Math.max(p.h,s.h)*6) out.push(X);
+        else { out.push(Q); out.push(A); }        // 折れが急なときは角を落とす
+      }
+      if(i===seg.length-1) out.push(B);
+    }
+    return out;
+  };
+  return chain(1).concat(chain(-1).reverse());
+}
+// 中心線と幅から外周を作り直す
+function rebuildStrip(f){
+  if(!f.strip||!state.scale) return;
+  const w=f.strip.w||[];
+  f.pts=stripPolygon(f.strip.c, f.strip.c.map((p,i)=>((w[i]!=null?w[i]:w[0])||0)/state.scale));
+}
+function stripSegLen(f,i){
+  const c=f.strip.c; if(!c[i]||!c[i+1])return 0;
+  return dist(c[i],c[i+1])*(state.scale||0);
+}
 function recalcAreaFeature(f){
+  if(f.strip) rebuildStrip(f);
   if(f.type==='box'){ if(f.round){const r=(f.L||0)/2; f.area=(f.sides===false)?(Math.PI*r*r):(Math.PI*r*r+Math.PI*(f.L||0)*(f.H||0));} else {const fp=f.L*f.D; f.area=(f.sides===false)?fp:(fp+2*(f.H||0)*(f.L+f.D));} }  // 円柱=π(d/2)²(+π·d·h)／生垣=投影+側面4面
   else if(f.type==='line'){f.length=lengthM(f.pts);f.area=lineAreaM2(f);}
   else if(f.type==='area'){f.footprint=netFootprintM2(f);
@@ -862,11 +927,32 @@ function drawEdgeLengths(f){
 
 function syncDelBtn(){const n=multiSel.length,any=(n>0||selected),single=(n<=1); updateCopyWorksUI();
   const d=$('selActions');if(d)d.style.display=any?'flex':'none';
-  const isBox=single&&selected&&selected.type==='box'&&!selected.round,rl=$('rotL'),rr=$('rotR'),sy=$('symSel'),sc=$('selCount');
-  if(rl)rl.style.display=isBox?'inline-flex':'none'; if(rr)rr.style.display=isBox?'inline-flex':'none';
+  const canRot=single&&selected&&((selected.type==='box'&&!selected.round)||(selected.pts&&selected.pts.length>=2));
+  const rl=$('rotL'),rr=$('rotR'),sy=$('symSel'),sc=$('selCount');
+  if(rl)rl.style.display=canRot?'inline-flex':'none'; if(rr)rr.style.display=canRot?'inline-flex':'none';
   const sel=multiSel.length?multiSel:(selected?[selected]:[]); const hasBox=sel.some(f=>f&&f.type==='box');
   if(sy)sy.style.display=hasBox?'inline-flex':'none';
   if(sc){sc.style.display=n>1?'inline-flex':'none'; sc.textContent=n>1?(n+'個'):'';}}
+/* ---------- 図形の番号と、画面に何を出すか ---------- */
+const MARU='①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚';
+function maru(n){ return (n>=1&&n<=MARU.length)?MARU[n-1]:('('+n+')'); }
+let _figNos=new Map();
+// 閉じた図形（樹木以外）に、並び順で通し番号をふる。Excelの求積図もこの番号を使う。
+function refreshFigNos(){
+  _figNos=new Map(); let n=0;
+  state.features.forEach(f=>{ if(f.type!=='tree') _figNos.set(f,++n); });
+}
+function figNo(f){ return _figNos.get(f)||0; }
+function dispKey(f){ return f.cat+' › '+f.kind; }
+let disp={mode:'num', onlySel:false, off:{}};      // mode: num=番号だけ / full=工種と数量 / none=出さない
+function labelVisible(f){
+  if(exporting) return true;
+  if(isSel(f)) return true;                        // 編集中のものは、隠す設定でも必ず出す
+  if(disp.off[dispKey(f)]) return false;
+  if(disp.mode==='none') return false;
+  if(disp.onlySel) return false;
+  return true;
+}
 function computeGroups(){
   const R=90/view.zoom;
   const items=[];
@@ -890,7 +976,7 @@ function computeGroups(){
   return {clusters,memberSet};
 }
 function draw(){
-  syncDelBtn();
+  syncDelBtn(); refreshFigNos();
   ctx.clearRect(0,0,cv.width,cv.height);
   ctx.save();ctx.translate(view.ox,view.oy);ctx.scale(view.zoom,view.zoom);
   if(state.img)ctx.drawImage(state.img,0,0);
@@ -941,16 +1027,35 @@ function draw(){
         ctx.setLineDash([6/view.zoom,4/view.zoom]);ctx.lineWidth=(hot?4:2)/view.zoom;ctx.strokeStyle=hot?'#ff5e00':'#ff8c00';ctx.stroke();ctx.setLineDash([]);
         const hc=centroid(h),ha=areaM2(h);label(hc.x,hc.y,`${hot?'▶ ':''}除外${hi+1}\n${ha!=null?'-'+ha.toFixed(2):''} ㎡`,hot?'#ff5e00':'#ff8c00',f);
       });
+      if(!exporting&&f===selected&&f.strip){
+        const c=f.strip.c;
+        ctx.save();
+        ctx.setLineDash([7/view.zoom,5/view.zoom]);ctx.lineWidth=1.6/view.zoom;ctx.strokeStyle='#ffb454';
+        ctx.beginPath();c.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();
+        ctx.setLineDash([]);
+        if(f._seg!=null&&c[f._seg]&&c[f._seg+1]){
+          ctx.lineWidth=4/view.zoom;ctx.strokeStyle='#ff8c00';
+          ctx.beginPath();ctx.moveTo(c[f._seg].x,c[f._seg].y);ctx.lineTo(c[f._seg+1].x,c[f._seg+1].y);ctx.stroke();
+        }
+        ctx.restore();
+      }
       if(!exporting&&f===selected)drawHandles(f);
       if(!exporting&&f===selected)drawEdgeLengths(f);
-      const c=centroid(f.pts);const _maxY=f.pts.reduce((a,p)=>Math.max(a,p.y),-Infinity);const tag=(f.calc==='trim')?'（投影＋側面）':'';const stag=(f.slopeK&&f.slopeK!==1)?` ${f.slopeKind||''}×${f.slopeK}`:'';label(c.x,_maxY,`${f.kind}${tag}${stag}\n${f.area?f.area.toFixed(2):'—'} ㎡`,col,f);
+      if(labelVisible(f)){
+        const c=centroid(f.pts);const _maxY=f.pts.reduce((a,p)=>Math.max(a,p.y),-Infinity);
+        const tag=(f.calc==='trim')?'（投影＋側面）':'';
+        const stag=(f.slopeK&&f.slopeK!==1)?` ${f.slopeKind||''}×${f.slopeK}`:'';
+        const no=maru(figNo(f));
+        const full=`${no} ${f.kind}${tag}${stag}\n${f.area?f.area.toFixed(2):'—'} ㎡`;
+        label(c.x,_maxY,(!exporting&&disp.mode==='num'&&!isSel(f))?no:full,col,f);
+      }
     }else{
       const isNest=(f.cat==='巣撤去'), rad=treeRadius(f)/view.zoom;
       ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad,0,7);ctx.fillStyle=col;ctx.fill();
       ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=isSel(f)?SEL:(isNest?'#fff':'#0008');ctx.stroke();
       if(isNest){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad+3/view.zoom,0,7);ctx.lineWidth=1.8/view.zoom;ctx.strokeStyle=col;ctx.stroke();}
       if(isNest) label(f.pt.x,f.pt.y+rad+2/view.zoom,f.kind,col,f);   // 巣は位置が重要：出力でも常に表示
-      else if(!exporting && (isSel(f) || view.zoom>1.4) && !(_grouped&&_grouped.has(f))) label(f.pt.x,f.pt.y+rad+2/view.zoom,(f.rank?f.rank:f.kind),col,f);
+      else if(!exporting && (isSel(f) || view.zoom>1.4) && !(_grouped&&_grouped.has(f)) && labelVisible(f)) label(f.pt.x,f.pt.y+rad+2/view.zoom,(f.rank?f.rank:f.kind),col,f);
     }
   });
   if(_gmap){ _gmap.clusters.forEach(cl=>{
@@ -961,7 +1066,7 @@ function draw(){
     let _gt;
     if(cl.mode==='count'){ _gt=`${cl.kind}${cl.dim?' '+cl.dim:''}\n× ${N}${cl.unit||'本'}`; }
     else { const a=Math.round(cl.area*100)/100; _gt=`${cl.kind} ${cl.dim}\n${a.toFixed(2)}㎡ × ${N} ＝ ${(a*N).toFixed(2)}㎡`; }
-    label(cl.cx,cl.cy,_gt,cl.col,cl.members[0],true);   // ×N のまとめ数字も動かせるように
+    if(exporting||labelVisible(cl.members[0])) label(cl.cx,cl.cy,_gt,cl.col,cl.members[0],true);   // ×N のまとめ数字も動かせるように
   }); }
   flushLabels(); _labels=null;
   // draft（作図中：破線＋点で視認。面積=赤、縮尺=青） 
@@ -1063,7 +1168,7 @@ function legendRows(){
   Object.values(areas).forEach(a=>items.push({cat:a.cat,kind:a.kind,rank:'',type:a.line?'line':'area',col:a.col,label:a.kind,val:a.m2.toFixed(2)+' ㎡'}));
   Object.values(trees).forEach(t=>items.push({cat:t.cat,kind:t.kind,rank:t.rank,type:'tree',col:t.col,rad:t.rad,label:t.kind+(t.rank?' '+t.rank:''),val:t.n+' '+(t.unit||'本')}));
   items.sort(cmpSpec);   // 仕様書（工種）順に自動整列
-  return items;
+  return items.filter(it=>!disp.off[it.cat+' › '+it.kind]);   // 「隠す」にした工種は凡例からも外す
 }
 function roundRect2(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 function drawLegend(){
@@ -1105,7 +1210,7 @@ let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hove
 let lblDrag=null;   // 工種の数字（ラベル）を手で動かしている最中
 
 let editV=null,lastPick=null,pickIdx=0,lastVtxTap=null,prevToolForPan='area',holeMode=null,dragRing=null,hlHole=null,_labels=null,_labelHit=[],exporting=false;
-function ringPts(f,ring){return ring==='outer'?f.pts:(f.holes||[])[ring];}
+function ringPts(f,ring){ if(ring==='outer') return (f.strip?f.strip.c:f.pts); return (f.holes||[])[ring]; }
 function hitBox(f,ip,tol){ if(f.round){const rpx=(state.scale?(f.L/state.scale):60)/2;return dist(f.pt,ip)<=rpx+tol;} const wpx=state.scale?(f.L/state.scale):60,hpx=state.scale?(f.D/state.scale):40,dx=ip.x-f.pt.x,dy=ip.y-f.pt.y,c=Math.cos(f.rot||0),sn=Math.sin(f.rot||0),rx=dx*c+dy*sn,ry=-dx*sn+dy*c; return Math.abs(rx)<=wpx/2+tol&&Math.abs(ry)<=hpx/2+tol; }
 function nearestTree(ip){let best=null,bd=Infinity;state.features.forEach(f=>{if(f.type==='tree'){const d=dist(f.pt,ip);if(d<(treeRadius(f)+8)/view.zoom&&d<bd){bd=d;best=f;}}});return best;}
 // 重なり対応：クリック地点の全ヒットを上から返す
@@ -1193,11 +1298,15 @@ function downCommon(p,ip){
 function startLegendDrag(p){legend.x=legend._box.x;legend.y=legend._box.y;draggingLegend=true;legDragOff={x:p.x-legend._box.x,y:p.y-legend._box.y};}
 function moveFeature(f,dx,dy){
   if(f.pt){f.pt.x+=dx;f.pt.y+=dy;}
-  else{f.pts.forEach(p=>{p.x+=dx;p.y+=dy;});(f.holes||[]).forEach(h=>h.forEach(p=>{p.x+=dx;p.y+=dy;}));}
+  else{
+    if(f.strip) f.strip.c.forEach(p=>{p.x+=dx;p.y+=dy;});
+    f.pts.forEach(p=>{p.x+=dx;p.y+=dy;});
+    (f.holes||[]).forEach(h=>h.forEach(p=>{p.x+=dx;p.y+=dy;}));
+  }
 }
 function moveDrag(f,ring,dx,dy){ if(ring==null)moveFeature(f,dx,dy); else if(f.holes&&f.holes[ring])f.holes[ring].forEach(p=>{p.x+=dx;p.y+=dy;}); }
 function refreshDraftBar(){
-  const bar=$('draftbar'),active=!!(draft&&(tool==='area'||tool==='cal'));
+  const bar=$('draftbar'),active=!!(draft&&(tool==='area'||tool==='strip'||tool==='cal'));
   bar.classList.toggle('on',active);
   if(active){
     const isArea=tool==='area', need=holeMode?3:((curGeom()==='line')?2:3);
@@ -1232,13 +1341,13 @@ function snapPt(ip,prev){ return prev?snapLen(ip,prev):snapGrid(ip); }
 function addAreaPoint(ip){
   if(holeMode){ // 除外エリア（穴）＝多角形固定
     if(!draft)draft={pts:[],hole:true};
-    if(draft.pts.length>=3&&dist(ip,draft.pts[0])<16/view.zoom){finishArea();return;}
+    if(tool!=='strip'&&draft.pts.length>=3&&dist(ip,draft.pts[0])<16/view.zoom){finishArea();return;}
     draft.pts.push(snapPt(ip,lastDraftPt()));refreshDraftBar();draw();return;
   }
   if(curGeom()==='box'){placeBox(ip);return;}   // 刈込：寸法入力でタップ配置
   if(!draft)draft={pts:[]};
   // 多角形のみ：始点付近のタップで閉じる（線＝管理柵は閉じない）
-  if(curGeom()!=='line'&&draft.pts.length>=3&&dist(ip,draft.pts[0])<16/view.zoom){finishArea();return;}
+  if(tool!=='strip'&&curGeom()!=='line'&&draft.pts.length>=3&&dist(ip,draft.pts[0])<16/view.zoom){finishArea();return;}
   draft.pts.push(snapPt(ip,lastDraftPt()));refreshDraftBar();draw();
 }
 function placeBox(ip){
@@ -1250,6 +1359,21 @@ function placeBox(ip){
   const cat=$('catSel').value,kind=$('kindSel').value;
   const f={type:'box',cat,kind,pt:ip,L,D,H:sides?curHeightVal():0,sides,round,rot:0};
   state.features.push(f);recalcAll();renderAgg();draw();
+}
+// 寸法で四角を置く（中木の生垣と同じ考え方。置いたあとは普通の面積として編集・回転できる）
+function placeRect(ip){
+  if(!state.scale){ alert('先に「縮尺合わせ」を行ってください。'); return; }
+  const L=curLenVal(), D=curDepVal();
+  if(!(L>0)||!(D>0)){ alert('左の「長さ」と「奥行」を入力してください。'); return; }
+  ip=snapGrid(ip);
+  const w=(L/state.scale)/2, d=(D/state.scale)/2;
+  pushHistory();
+  const cat=$('catSel').value, kind=$('kindSel').value;
+  const f={type:'area',cat,kind,
+    pts:[{x:ip.x-w,y:ip.y-d},{x:ip.x+w,y:ip.y-d},{x:ip.x+w,y:ip.y+d},{x:ip.x-w,y:ip.y+d}],
+    holes:[], calc:(curNeedsHeight()?'trim':'flat'), height:(curNeedsHeight()?curHeightVal():0), slopeK:1};
+  state.features.push(f); recalcAll(); renderAgg(); renderSansha();
+  selected=f; draw();
 }
 // 縮尺：押した位置に点を置き、指/マウスを離すまでドラッグで微調整。離した位置で確定。
 function calDown(ip){
@@ -1275,7 +1399,8 @@ cv.addEventListener('mousedown',e=>{
   const r=downCommon(p,ip);
   if(r){cv.style.cursor='grabbing';draw();return;}
   if(tool==='cal'){calDown(ip);return;}
-  if(tool==='area'){addAreaPoint(ip);return;}
+  if(tool==='area'||tool==='strip'){addAreaPoint(ip);return;}
+  if(tool==='rect'){placeRect(ip);return;}
   if(tool==='tree'){placeTree(ip);return;}
 });
 cv.addEventListener('mousemove',e=>{
@@ -1331,7 +1456,8 @@ cv.addEventListener('touchend',e=>{
   if(dragging){recalcAll();dragging=null;dragGroup=false;dragSnap=null;dragRing=null;renderAgg();renderSansha();lastTouch=null;return;}
   if(panning){panning=false;return;}
   if(!lastTouch)return;const ip=toImg(lastTouch.x,lastTouch.y);
-  if(tool==='area'){addAreaPoint(ip);}
+  if(tool==='area'||tool==='strip'){addAreaPoint(ip);}
+  else if(tool==='rect'){placeRect(ip);}
   else if(tool==='tree'){placeTree(ip);}
   lastTouch=null;
 });
@@ -1375,6 +1501,17 @@ function finishArea(){
   }
   const cat=$('catSel').value,kind=$('kindSel').value;
   const geom=curGeom(), h=curHeightVal();
+  if(tool==='strip'){                       // 幅刈り：中心線＋区間ごとの幅
+    if(!draft||draft.pts.length<2){return;}
+    if(!state.scale){alert('先に「縮尺合わせ」を行ってください。');return;}
+    pushHistory();
+    const w0=Math.max(0.1,curLenVal()||1.0);
+    const c=draft.pts.slice();
+    const f={type:'area',cat,kind,strip:{c:c,w:c.slice(0,-1).map(()=>w0)},pts:[],holes:[],calc:'flat',slopeK:1};
+    recalcAreaFeature(f); state.features.push(f);
+    selected=f; draft=null; refreshDraftBar(); recalcAll(); renderAgg(); renderSansha(); updateHint(); draw();
+    return;
+  }
   if(geom==='line'){
     if(draft.pts.length<2){return;}
     pushHistory();
@@ -1416,6 +1553,43 @@ function pointInPoly(p,pts){let c=false;for(let i=0,j=pts.length-1;i<pts.length;
 function selectFeature(f){selected=f;hlHole=null;renderSansha();draw();}
 function renderSansha(){
   const el=$('sansha');
+  // 幅刈り：区間ごとに幅を変えられる表
+  if(selected&&selected.strip){
+    const f=selected, c=f.strip.c, w=f.strip.w;
+    let t='<div class="legend" style="margin-bottom:6px">幅刈り：区間ごとに幅を変えられます。行をタップすると、その区間が図面上で光ります。</div>'
+      +'<table><tr><th>区間</th><th class="num">延長</th><th class="num">幅(m)</th><th class="num">面積</th></tr>';
+    let sum=0;
+    for(let i=0;i<c.length-1;i++){
+      const L=stripSegLen(f,i), ww=(w[i]!=null?w[i]:w[0])||0, a=L*ww; sum+=a;
+      t+='<tr data-seg="'+i+'" style="cursor:pointer'+(f._seg===i?';background:#2b3543':'')+'">'
+        +'<td>'+(i+1)+' → '+(i+2)+'</td>'
+        +'<td class="num">'+L.toFixed(2)+' m</td>'
+        +'<td class="num"><input type="number" step="0.1" min="0.1" value="'+ww+'" data-w="'+i+'" style="width:64px;text-align:right"></td>'
+        +'<td class="num">'+a.toFixed(2)+' ㎡</td></tr>';
+    }
+    t+='<tr><td colspan="3" style="text-align:right">合計（延長×幅）</td><td class="num"><b>'+sum.toFixed(2)+' ㎡</b></td></tr>';
+    t+='<tr><td colspan="3" style="text-align:right">計上面積（外周から）</td><td class="num"><b>'+(f.area!=null?f.area.toFixed(2):'—')+' ㎡</b></td></tr></table>'
+      +'<div class="row" style="margin-top:6px"><input id="stripAll" type="number" step="0.1" min="0.1" placeholder="幅(m)" style="width:80px;text-align:right">'
+      +'<button class="btn ghost" id="stripApply" style="margin:0">全区間をこの幅に</button></div>';
+    el.innerHTML=t;
+    el.querySelectorAll('[data-w]').forEach(inp=>{
+      inp.onchange=()=>{
+        const i=+inp.getAttribute('data-w'), v=parseFloat(inp.value);
+        if(!(v>0))return;
+        pushHistory(); f.strip.w[i]=v; recalcAll(); renderAgg(); renderSansha(); draw();
+      };
+    });
+    el.querySelectorAll('[data-seg]').forEach(tr=>{
+      tr.onclick=e=>{ if(e.target.tagName==='INPUT')return; f._seg=+tr.getAttribute('data-seg'); renderSansha(); draw(); };
+    });
+    const ap=$('stripApply');
+    if(ap) ap.onclick=()=>{
+      const v=parseFloat($('stripAll').value);
+      if(!(v>0)){alert('幅を入れてください。');return;}
+      pushHistory(); f.strip.w=f.strip.w.map(()=>v); recalcAll(); renderAgg(); renderSansha(); draw();
+    };
+    return;
+  }
   // 刈込（長さ×奥行×高さ：投影＋側面4面）
   if(selected&&selected.type==='box'&&selected.round){
     const d=selected.L,r=d/2,H=selected.H||0,top=Math.PI*r*r,side=Math.PI*d*H,tot=selected.area;
@@ -1560,7 +1734,18 @@ function duplicateSelected(){
   state.features.push(g); setSingle(g);
   recalcAll();renderSansha();renderAgg();draw();
 }
-function rotateSelected(deg){if(!selected||selected.type!=='box'||selected.round)return;pushHistory();selected.rot=(selected.rot||0)+deg*Math.PI/180;draw();}
+// 回転：生垣・円柱だけでなく、草刈りや刈込の面積・線も回せるようにする
+function rotateSelected(deg){
+  const f=selected; if(!f)return;
+  if(f.type==='box'){ if(f.round)return; pushHistory(); f.rot=(f.rot||0)+deg*Math.PI/180; draw(); return; }
+  if(!f.pts||f.pts.length<2)return;
+  pushHistory();
+  const c=centroid(f.pts), a=deg*Math.PI/180, cs=Math.cos(a), sn=Math.sin(a);
+  const rot=p=>({x:c.x+(p.x-c.x)*cs-(p.y-c.y)*sn, y:c.y+(p.x-c.x)*sn+(p.y-c.y)*cs});
+  f.pts=f.pts.map(rot);
+  if(f.holes)f.holes=f.holes.map(hh=>hh.map(rot));
+  recalcAreaFeature(f); renderAgg(); renderSansha(); draw();
+}
 
 /* ---------- 集計 ---------- */
 function unitPrice(f){
@@ -1569,6 +1754,7 @@ function unitPrice(f){
   return kd.price||0;
 }
 function renderAgg(){
+  renderDispList();
   // area: by cat+kind sum m2
   const am={},tm={};let cost=0;
   state.features.forEach(f=>{
@@ -2136,6 +2322,26 @@ async function rpInjectShapes(buf){
   }
   return await zip.generateAsync({type:'arraybuffer',compression:'DEFLATE'});
 }
+/* --- 幅刈りの図：外周と中心線、区間ごとの延長と幅を書く（三斜にはしない） --- */
+function rpStripFigureXml(sheet,widths,f,ox,oy,maxW,maxH){
+  const c=f.strip.c, out=f.pts; if(!c||c.length<2||!out||out.length<3) return {w:0,h:0};
+  const all=out.concat(c);
+  const xs=all.map(p=>p.x), ys=all.map(p=>p.y);
+  const minx=Math.min.apply(null,xs), maxx=Math.max.apply(null,xs);
+  const miny=Math.min.apply(null,ys), maxy=Math.max.apply(null,ys);
+  const bw=Math.max(1,maxx-minx), bh=Math.max(1,maxy-miny), pad=26;
+  const k=Math.min((maxW-2*pad)/bw,(maxH-2*pad)/bh);
+  const M=p=>({x:ox+pad+(p.x-minx)*k, y:oy+pad+(p.y-miny)*k});
+  rpPush(sheet,rpPoly(widths,out.map(M),true,1.4));               // 外周
+  rpPush(sheet,rpPoly(widths,c.map(M),false,0.7,true));           // 中心線（破線）
+  for(let i=0;i<c.length-1;i++){
+    const a=M(c[i]), b=M(c[i+1]);
+    const L=stripSegLen(f,i), w=(f.strip.w[i]!=null?f.strip.w[i]:f.strip.w[0])||0;
+    rpPush(sheet,rpText(widths,(a.x+b.x)/2,(a.y+b.y)/2,(i+1)+'→'+(i+2),8));
+    rpPush(sheet,rpText(widths,(a.x+b.x)/2,(a.y+b.y)/2+13,'L='+L.toFixed(2)+'m　W='+w.toFixed(2)+'m',7));
+  }
+  return {w:Math.round(bw*k+2*pad), h:Math.round(bh*k+2*pad)};
+}
 /* --- 求積図：外周・対角線・番号・辺の長さを図形で --- */
 function rpFigureXml(sheet,widths,f,ox,oy,maxW,maxH){
   const pts=f.pts; if(!pts||pts.length<3) return {w:0,h:0};
@@ -2302,21 +2508,26 @@ function rpBuildHaichi(wb,park){
       const qty=g.trees?(g.trees+' '+g.unit):(g.m2.toFixed(2)+' ㎡');
       rpPush('配置図',rpSwatch(WID,ox+2,ly+3,12,9,col));
       rpPush('配置図',rpText(WID,ox+20+ (String(g.cat+'　'+g.kind+'　'+qty).length*4.2), ly+7,
-        (RP_MARU[i]||'')+' '+g.cat+'　'+g.kind+'　'+qty, 8, '000000'));
+        g.cat+'　'+g.kind+'　'+qty, 8, '000000'));
       ly+=16;
     });
     r+=Math.ceil((groups.length*16+8)/RP_ROWPX)+2;
   }
   groups.forEach((g,i)=>{
-    const n=RP_MARU[i]||('('+(i+1)+')');
     const qty=g.trees?(g.trees+' '+g.unit):(g.m2.toFixed(2)+' ㎡');
-    ws.getCell('B'+r).value=n+' '+g.cat+'　'+g.kind+'　（'+qty+'）';
+    ws.getCell('B'+r).value=g.cat+'　'+g.kind+'　（'+qty+'）';
     rpStyle(ws.getCell('B'+r),{size:11,bold:true,al:'left'});
     r+=1;
     if(mapURL){
       const ox=RP_PAD, oy=(r-1)*RP_ROWPX+RP_PAD;
       rpPutImage(wb,ws,mapURL,r,box,WID);
-      g.feats.forEach(f=>drawFeat(f,ox,oy,featColor(f)));   // 画面と同じ配色
+      g.feats.forEach(f=>{
+        drawFeat(f,ox,oy,featColor(f));                     // 画面と同じ配色
+        if(f.type!=='tree'){                                // 図形の番号を添えて求積図と対応づける
+          const c=(f.pts&&f.pts.length)?centroid(f.pts):f.pt;
+          if(c) rpPush('配置図',rpText(WID,ox+c.x*k,oy+c.y*k,maru(figNo(f)),10,rpHex(featColor(f))));
+        }
+      });
       r+=Math.ceil(box.h/RP_ROWPX)+1;
     }
     r+=2;
@@ -2337,17 +2548,48 @@ function rpBuildKyuseki(wb,park){
   let r=3;                                   // 三角形の番号は図ごとに1から（図に描かれる番号と同じ）
   TRI_MONO=true;                             // 求積図は白黒の線画で（CADの図に寄せる）
   groups.forEach((g,i)=>{
-    const n=RP_MARU[i]||('('+(i+1)+')');
-    ws.getCell('B'+r).value=n+' '+g.cat+'　'+g.kind;
+    ws.getCell('B'+r).value=g.cat+'　'+g.kind;
     rpStyle(ws.getCell('B'+r),{size:11,bold:true,al:'left'});
     r+=2;
     let kindTotalRows=[];
     g.feats.filter(f=>f.type!=='tree').forEach(f=>{
-      if(f.type==='area'){
+      const fno=maru(figNo(f));
+      if(f.strip){                                    // 幅刈り：三斜ではなく「延長×幅」で出す
+        const fig=rpStripFigureXml('求積図',WID,f,4,(r-1)*RP_ROWPX,500,340);
+        if(fig.h) r+=Math.ceil(fig.h/RP_ROWPX)+2;
+        ws.getCell('B'+r).value=fno+' の求積（延長×幅）';
+        rpStyle(ws.getCell('B'+r),{size:10,bold:true,al:'left'});
+        r+=1;
+        [['B','区間'],['C','延長(m)'],['D','幅(m)'],['G','面積（㎡）']].forEach(([cc,v])=>{
+          ws.getCell(cc+r).value=v; rpStyle(ws.getCell(cc+r),{size:10,border:true});
+        });
+        ['E','F'].forEach(cc=>rpStyle(ws.getCell(cc+r),{size:10,border:true}));
+        r+=1;
+        const first=r;
+        for(let i=0;i<f.strip.c.length-1;i++){
+          ws.getCell('B'+r).value=(i+1)+'→'+(i+2);
+          ws.getCell('C'+r).value=Math.round(stripSegLen(f,i)*100)/100;
+          ws.getCell('D'+r).value=(f.strip.w[i]!=null?f.strip.w[i]:f.strip.w[0])||0;
+          ws.getCell('G'+r).value={formula:'ROUND(C'+r+'*D'+r+',2)'};
+          ['B','C','D','E','F','G'].forEach(cc=>rpStyle(ws.getCell(cc+r),{size:10,border:true,fmt:(cc==='B'?undefined:'0.00')}));
+          r+=1;
+        }
+        const last=r-1;
+        ws.mergeCells('B'+r+':F'+r);
+        ws.getCell('B'+r).value='計上面積（延長×幅の合計）';
+        ws.getCell('G'+r).value={formula:'SUM(G'+first+':G'+last+')'};
+        rpStyle(ws.getCell('B'+r),{size:10,al:'right',border:true,bold:true});
+        rpStyle(ws.getCell('G'+r),{size:11,border:true,bold:true,fmt:'0.00'});
+        kindTotalRows.push('G'+r); r+=2;
+      }
+      else if(f.type==='area'){
         const t=heronTable(f.pts);
         // 三斜の図（Excelの図形で置く＝あとからExcel上で直せる）
         const fig=rpFigureXml('求積図',WID,f,4,(r-1)*RP_ROWPX,500,400);
         if(fig.h) r+=Math.ceil(fig.h/RP_ROWPX)+2;
+        ws.getCell('B'+r).value=fno+' の求積';         // 図面の番号と対応
+        rpStyle(ws.getCell('B'+r),{size:10,bold:true,al:'left'});
+        r+=1;
         ws.mergeCells('C'+r+':E'+r);
         ws.getCell('C'+r).value='三辺（ｍ）'; ws.getCell('G'+r).value='面積（㎡）';
         rpStyle(ws.getCell('C'+r),{size:10}); rpStyle(ws.getCell('G'+r),{size:10});
@@ -2394,7 +2636,7 @@ function rpBuildKyuseki(wb,park){
         kindTotalRows.push('G'+r); r+=2;
       } else if(f.type==='box'){
         // 生垣・円柱：展開して足す
-        ws.getCell('B'+r).value=f.kind+(f.round?('　φ'+f.L+'m'):('　W'+f.L+'m H'+(f.H||0)+'m D'+f.D+'m'));
+        ws.getCell('B'+r).value=fno+' '+f.kind+(f.round?('　φ'+f.L+'m'):('　W'+f.L+'m H'+(f.H||0)+'m D'+f.D+'m'));
         rpStyle(ws.getCell('B'+r),{size:10,al:'left'}); r+=1;
         const lines=[];
         if(f.round){
@@ -2424,7 +2666,7 @@ function rpBuildKyuseki(wb,park){
       } else if(f.type==='line'){
         const L=lengthM(f.pts), H=f.height||0;
         ws.mergeCells('B'+r+':F'+r);
-        ws.getCell('B'+r).value=f.kind+'　長さ '+L.toFixed(2)+'m × 高さ '+H+'m';
+        ws.getCell('B'+r).value=fno+' '+f.kind+'　長さ '+L.toFixed(2)+'m × 高さ '+H+'m';
         rpStyle(ws.getCell('B'+r),{size:10,al:'right',border:true});
         ws.getCell('G'+r).value=(f.area!=null)?Math.round(f.area*100)/100:null;
         rpStyle(ws.getCell('G'+r),{size:11,border:true,bold:true,fmt:'0.00'});
@@ -2547,7 +2789,7 @@ async function exportReportXlsx(){
   const max=RP_S1_LAST-RP_S1_FIRST+1+RP_S2_ROWS;
   if(rows.length>max){ alert('工種が'+rows.length+'行あり、様式の'+max+'行に収まりません。分けて書き出してください。'); return; }
   const park=$('parkName').value||'公園';
-  rpShapes={}; rpSid=1000;
+  rpShapes={}; rpSid=1000; refreshFigNos();
   try{
     const wb=new ExcelJS.Workbook();
     await wb.xlsx.load(rpB64ToBuf(RP_TPL_B64));
@@ -2601,6 +2843,31 @@ async function exportReportXlsx(){
     alert('報告書の書き出しに失敗しました。\n'+(err&&err.message?err.message:err));
   }
 }
+// 工種ごとの表示・非表示の一覧をつくる
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function renderDispList(){
+  const box=$('dispList'); if(!box)return;
+  const seen={},rows=[];
+  state.features.forEach(f=>{ const k=dispKey(f); if(!seen[k]){seen[k]=true;rows.push({k,f});} });
+  rows.sort((a,b)=>cmpSpec(a.f,b.f));
+  if(!rows.length){ box.innerHTML='<div class="legend">まだ記録がありません。</div>'; return; }
+  box.innerHTML=rows.map(r=>{
+    const on=!disp.off[r.k];
+    return '<button class="btn ghost'+(on?' on':'')+'" data-k="'+esc(r.k)+'" style="text-align:left;padding:7px 10px;margin:0 0 5px">'
+      +'<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+esc(featColor(r.f))+';margin-right:7px"></span>'
+      +(on?'':'（隠す）')+esc(r.f.cat)+'　'+esc(r.f.kind)+'</button>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('button'),b=>{
+    b.onclick=()=>{ const k=b.getAttribute('data-k'); disp.off[k]=!disp.off[k]; renderDispList(); draw(); };
+  });
+}
+$('dispMode').onchange=()=>{ disp.mode=$('dispMode').value; draw(); };
+$('dispOnlySel').onclick=()=>{
+  disp.onlySel=!disp.onlySel;
+  $('dispOnlySel').classList.toggle('on',disp.onlySel);
+  $('dispOnlySel').firstChild.textContent=disp.onlySel?'編集中のものだけ出す（いま有効）':'編集中のものだけ出す';
+  draw();
+};
 $('labelReset').onclick=()=>{
   const n=state.features.filter(f=>f.lbl||f.glbl).length;
   if(!n){alert('手で動かした数字はありません。');return;}
