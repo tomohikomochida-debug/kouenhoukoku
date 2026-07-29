@@ -896,7 +896,40 @@ function treeRadius(f){if(f.cat==='巣撤去')return 9;return f.rank?(5+Math.max
 function featColor(f){if(f.type==='tree')return treeColor(f);return colorFor(f.cat+f.kind);}
 function centroid(pts){let x=0,y=0;pts.forEach(p=>{x+=p.x;y+=p.y});return{x:x/pts.length,y:y/pts.length};}
 // 選択中の面積/線：頂点（赤）＝移動・ダブルタップ削除／辺中点（＋黄）＝タップで頂点追加
+/* ---------- 回転ハンドル（図形の上に出る丸をつまんで回す） ---------- */
+const ROT_OFF_PX=30, ROT_R_PX=9;
+function rotHandlePos(f){
+  const pts=(f.strip?f.strip.c:f.pts);
+  let cx,top;
+  if(pts&&pts.length){
+    let minx=Infinity,maxx=-Infinity,miny=Infinity;
+    pts.forEach(p=>{minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);miny=Math.min(miny,p.y);});
+    cx=(minx+maxx)/2; top=miny;
+  }else if(f.pt){
+    const w=(state.scale?(f.L/state.scale):60), d=(state.scale?((f.D||f.L)/state.scale):40);
+    cx=f.pt.x; top=f.pt.y-Math.max(w,d)/2;
+  }else return null;
+  return {x:cx, y:top-ROT_OFF_PX/view.zoom, ax:cx, ay:top};
+}
+function drawRotHandle(f){
+  const hp=rotHandlePos(f); if(!hp)return;
+  ctx.save();
+  ctx.lineWidth=1.6/view.zoom; ctx.strokeStyle='#ffd400'; ctx.setLineDash([4/view.zoom,3/view.zoom]);
+  ctx.beginPath();ctx.moveTo(hp.ax,hp.ay);ctx.lineTo(hp.x,hp.y);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();ctx.arc(hp.x,hp.y,ROT_R_PX/view.zoom,0,7);
+  ctx.fillStyle=rotDrag?'#ffd400':'#0a0e14dd'; ctx.fill();
+  ctx.lineWidth=2/view.zoom; ctx.strokeStyle='#ffd400'; ctx.stroke();
+  ctx.beginPath();ctx.arc(hp.x,hp.y,4.4/view.zoom,-0.6,3.6);
+  ctx.lineWidth=1.6/view.zoom; ctx.strokeStyle=rotDrag?'#0a0e14':'#ffd400'; ctx.stroke();
+  ctx.restore();
+}
+function rotHandleHit(f,ip){
+  const hp=rotHandlePos(f); if(!hp)return false;
+  return dist(ip,hp)<=(ROT_R_PX+5)/view.zoom;
+}
 function drawHandles(f){
+  drawRotHandle(f);
   const vr=6/view.zoom,er=5/view.zoom;
   const rings=[['outer',f.pts,'#ff2d2d']]; if(f.type==='area'&&f.holes)f.holes.forEach((h,i)=>rings.push([i,h,'#ff8c00']));
   rings.forEach(([ring,pts,vcol])=>{
@@ -1273,6 +1306,7 @@ function labelHitFeature(ip){ for(let i=_labelHit.length-1;i>=0;i--){const b=_la
 function downCommon(p,ip){
   if(spaceDown||tool==='pan'){panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};return 'pan';}
   if(legendHit(p)){startLegendDrag(p);return 'legend';}
+  if(selected&&!multiSel.length&&rotHandleHit(selected,ip)){ startRotDragIP(ip); return 'rot'; }
   if(tool!=='cal'){ const lb=labelHitBox(ip); if(lb&&lb.f&&state.features.indexOf(lb.f)>=0){ startLabelDrag(lb,ip); return 'label'; } }
   if(holeMode)return null;                       // 除外エリア描画中は常にポチ追加
   if(tool!=='tree'){                             // 樹木モードでは頂点編集を拾わない（面積の上に木を置けるように）
@@ -1950,22 +1984,22 @@ function applyRot(rd,a){
   if(rd.holes0) f.holes=rd.holes0.map(hh=>hh.map(R));
   recalcAreaFeature(f);
 }
-function startRotDrag(e){
+function startRotDragIP(ip){
   const f=selected; if(!f) return;
   const c=featCenter(f); if(!c) return;
-  const p=evtPos(e), s=screenOf(c);
   rotDrag={f,c,
     base:(f.type==='box'?(f.rot||0):0),
     pts0:(f.pts?f.pts.map(q=>({x:q.x,y:q.y})):null),
     strip0:(f.strip?f.strip.c.map(q=>({x:q.x,y:q.y})):null),
     holes0:(f.holes?f.holes.map(hh=>hh.map(q=>({x:q.x,y:q.y}))):null),
-    a0:Math.atan2(p.y-s.y,p.x-s.x), moved:false};
+    a0:Math.atan2(ip.y-c.y,ip.x-c.x), moved:false};
 }
+function startRotDrag(e){ startRotDragIP(toImg(evtPos(e).x,evtPos(e).y)); }
 function moveRotDrag(e){
   if(!rotDrag) return;
   if(e.cancelable) e.preventDefault();
-  const p=evtPos(e), s=screenOf(rotDrag.c);
-  let a=Math.atan2(p.y-s.y,p.x-s.x)-rotDrag.a0;
+  const p=evtPos(e), ip=toImg(p.x,p.y);
+  let a=Math.atan2(ip.y-rotDrag.c.y,ip.x-rotDrag.c.x)-rotDrag.a0;
   if(!rotDrag.moved){ if(Math.abs(a)<0.035) return; rotDrag.moved=true; pushHistory(); }
   a=Math.round(a*(180/Math.PI)*2)/2*(Math.PI/180);          // 0.5度きざみ
   applyRot(rotDrag,a); draw();
