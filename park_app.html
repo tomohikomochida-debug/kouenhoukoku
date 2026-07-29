@@ -162,6 +162,17 @@
     background:rgba(23,29,38,.96);max-width:min(86vw,520px)}
   #dropZone .bx b{display:block;font-size:19px;color:var(--acc);margin-bottom:8px}
   #dropZone .bx span{display:block;font-size:13.5px;color:var(--mut);line-height:1.7}
+
+  /* 保存したことの知らせ＋手動保存リンク */
+  #saveToast{position:fixed;left:12px;right:12px;bottom:12px;z-index:9998;display:none;
+    align-items:center;gap:12px;flex-wrap:wrap;
+    background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--acc);
+    border-radius:10px;padding:11px 14px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+  #saveToast.on{display:flex}
+  #saveToast span{font-size:13.5px;color:var(--ink)}
+  #saveToast a{font-size:12.5px;color:var(--acc);text-decoration:underline}
+  #saveToast button{margin-left:auto;background:none;border:none;color:var(--mut);font-size:18px;cursor:pointer;line-height:1}
+  @media(min-width:760px){#saveToast{left:auto;right:16px;max-width:560px}}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
@@ -950,7 +961,7 @@ function draw(){
     let _gt;
     if(cl.mode==='count'){ _gt=`${cl.kind}${cl.dim?' '+cl.dim:''}\n× ${N}${cl.unit||'本'}`; }
     else { const a=Math.round(cl.area*100)/100; _gt=`${cl.kind} ${cl.dim}\n${a.toFixed(2)}㎡ × ${N} ＝ ${(a*N).toFixed(2)}㎡`; }
-    label(cl.cx,cl.cy,_gt,cl.col);
+    label(cl.cx,cl.cy,_gt,cl.col,cl.members[0],true);   // ×N のまとめ数字も動かせるように
   }); }
   flushLabels(); _labels=null;
   // draft（作図中：破線＋点で視認。面積=赤、縮尺=青） 
@@ -984,9 +995,9 @@ function draw(){
 }
 function midpoint(a,b){return{x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
 // ラベル：_labels収集中は後でまとめて配置（重なり回避）。即時のときはその場に描画。
-function label(x,y,txt,col,f){
-  if(_labels){_labels.push({x,y,txt,col,f});return;}
-  flushLabels([{x,y,txt,col,f}]);
+function label(x,y,txt,col,f,grp){
+  if(_labels){_labels.push({x,y,txt,col,f,grp:!!grp});return;}
+  flushLabels([{x,y,txt,col,f,grp:!!grp}]);
 }
 function flushLabels(list){
   const arr=list||_labels||[]; if(!arr.length){return;}
@@ -995,9 +1006,9 @@ function flushLabels(list){
   ctx.font=`700 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
   const items=arr.map(L=>{const lines=String(L.txt).split('\n');let w=0;lines.forEach(l=>{const m=ctx.measureText(l).width;if(m>w)w=m;});
     const bh=lines.length*lh+pad*1.4;
-    const man=L.f&&L.f.lbl;
-    return {x:man?(L.x+L.f.lbl.dx):L.x, y:man?(L.y+L.f.lbl.dy):(L.y+bh/2+gap+6/view.zoom),
-            ox:L.x,oy:L.y,col:L.col,f:L.f,lines,bw:w+pad*2,bh,manual:!!man};});
+    const man=L.f&&(L.grp?L.f.glbl:L.f.lbl);
+    return {x:man?(L.x+man.dx):L.x, y:man?(L.y+man.dy):(L.y+bh/2+gap+6/view.zoom),
+            ox:L.x,oy:L.y,col:L.col,f:L.f,grp:!!L.grp,lines,bw:w+pad*2,bh,manual:!!man};});
   // 重なり回避：y昇順に、既配置と重なるものは下へずらす。手で動かしたものは動かさない。
   const placed=[];
   items.filter(it=>it.manual).forEach(it=>placed.push(it));
@@ -1011,7 +1022,7 @@ function flushLabels(list){
     }
     placed.push(it);
   });
-  _labelHit=placed.filter(it=>it.f).map(it=>({f:it.f,x:it.x,y:it.y,ox:it.ox,oy:it.oy,bw:it.bw,bh:it.bh}));
+  _labelHit=placed.filter(it=>it.f).map(it=>({f:it.f,grp:it.grp,x:it.x,y:it.y,ox:it.ox,oy:it.oy,bw:it.bw,bh:it.bh}));
   // リーダー線（ずれた分だけ）
   placed.forEach(it=>{if(Math.abs(it.y-it.oy)>1.5/view.zoom||Math.abs(it.x-it.ox)>1.5/view.zoom){
     ctx.beginPath();ctx.moveTo(it.ox,it.oy);ctx.lineTo(it.x,it.y);ctx.lineWidth=1/view.zoom;ctx.strokeStyle='rgba(20,40,60,.45)';ctx.setLineDash([3/view.zoom,2/view.zoom]);ctx.stroke();ctx.setLineDash([]);
@@ -1134,15 +1145,17 @@ function deleteVertex(f,ring,idx){
 function labelHitBox(ip){ for(let i=_labelHit.length-1;i>=0;i--){const b=_labelHit[i]; if(Math.abs(ip.x-b.x)<=b.bw/2&&Math.abs(ip.y-b.y)<=b.bh/2) return b;} return null; }
 // ラベルの位置は「引き出し元（ox,oy）からのずれ」で覚える
 function startLabelDrag(b,ip){
-  const base = b.f.lbl ? {dx:b.f.lbl.dx, dy:b.f.lbl.dy} : {dx:b.x-b.ox, dy:b.y-b.oy};
-  lblDrag={f:b.f, sx:ip.x, sy:ip.y, base:base, moved:false};
+  const cur = b.grp ? b.f.glbl : b.f.lbl;
+  const base = cur ? {dx:cur.dx, dy:cur.dy} : {dx:b.x-b.ox, dy:b.y-b.oy};
+  lblDrag={f:b.f, grp:!!b.grp, sx:ip.x, sy:ip.y, base:base, moved:false};
 }
 function moveLabelDrag(ip){
   if(!lblDrag)return;
   const ddx=ip.x-lblDrag.sx, ddy=ip.y-lblDrag.sy;
   if(!lblDrag.moved && Math.hypot(ddx,ddy)<4/view.zoom) return;   // 少し動かして初めて「移動」とみなす
   if(!lblDrag.moved){ lblDrag.moved=true; pushHistory(); }
-  lblDrag.f.lbl={dx:lblDrag.base.dx+ddx, dy:lblDrag.base.dy+ddy};
+  const pos={dx:lblDrag.base.dx+ddx, dy:lblDrag.base.dy+ddy};
+  if(lblDrag.grp) lblDrag.f.glbl=pos; else lblDrag.f.lbl=pos;
   draw();
 }
 function labelHitFeature(ip){ for(let i=_labelHit.length-1;i>=0;i--){const b=_labelHit[i]; if(Math.abs(ip.x-b.x)<=b.bw/2&&Math.abs(ip.y-b.y)<=b.bh/2) return b.f;} return null; }
@@ -1785,7 +1798,21 @@ function printPDF(){
 $('printPdf').onclick=printPDF;
 function dataURLtoBlob(durl){const c=durl.split(',');const mime=(c[0].match(/:(.*?);/)||[])[1]||'application/octet-stream';const bin=atob(c[1]);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:mime});}
 // 保存：iPhone/iPadは共有シート（保存先を選べる）／PC(Win・Mac)・Androidはダウンロード（ブラウザの保存先＝通常ダウンロードフォルダ）
+// Windowsで使えない文字を落とす（これがあると保存に失敗する環境がある）
+function safeName(n){ return String(n).replace(/[\\/:*?"<>|\r\n]/g,'_').replace(/\s+/g,' ').trim() || 'data'; }
+// 保存できなかったとき用の手動リンクを画面下に出す
+function showSaveLink(url,name){
+  let t=$('saveToast');
+  if(!t){ t=document.createElement('div'); t.id='saveToast'; document.body.appendChild(t); }
+  t.innerHTML='';
+  const s=document.createElement('span'); s.textContent='保存しました：'+name;
+  const a=document.createElement('a'); a.href=url; a.download=name; a.textContent='見つからないときはここを右クリック →「名前を付けて保存」';
+  const x=document.createElement('button'); x.textContent='×'; x.onclick=()=>t.classList.remove('on');
+  t.appendChild(s); t.appendChild(a); t.appendChild(x); t.classList.add('on');
+  clearTimeout(showSaveLink._t); showSaveLink._t=setTimeout(()=>t.classList.remove('on'),90000);
+}
 function saveFile(blob,name){
+  name=safeName(name);
   const ua=navigator.userAgent||'';
   const isIOS=/iP(hone|od|ad)/.test(ua) || (navigator.platform==='MacIntel' && (navigator.maxTouchPoints||0)>1);
   if(isIOS){
@@ -1797,7 +1824,16 @@ function saveFile(blob,name){
       }
     }catch(e){}
   }
-  const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);
+  if(navigator.msSaveOrOpenBlob){ try{ navigator.msSaveOrOpenBlob(blob,name); return; }catch(e){} }
+  const u=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=u; a.download=name; a.rel='noopener'; a.style.display='none';
+  document.body.appendChild(a);
+  try{ a.click(); }
+  catch(e){ try{ a.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})); }catch(e2){} }
+  setTimeout(()=>{ if(a.parentNode)a.remove(); },5000);      // すぐ消すと保存が止まる環境がある
+  showSaveLink(u,name);
+  setTimeout(()=>URL.revokeObjectURL(u),120000);            // 手動保存に間に合うよう2分は生かす
 }
 function dl(text,name,type){ saveFile(new Blob([text],{type:type||'application/octet-stream'}),name); }
 
@@ -2537,9 +2573,9 @@ async function exportReportXlsx(){
   }
 }
 $('labelReset').onclick=()=>{
-  const n=state.features.filter(f=>f.lbl).length;
+  const n=state.features.filter(f=>f.lbl||f.glbl).length;
   if(!n){alert('手で動かした数字はありません。');return;}
-  pushHistory(); state.features.forEach(f=>{delete f.lbl;}); draw();
+  pushHistory(); state.features.forEach(f=>{delete f.lbl;delete f.glbl;}); draw();
 };
 $('snapToggle').onclick=()=>{
   SNAP_ON=!SNAP_ON;
