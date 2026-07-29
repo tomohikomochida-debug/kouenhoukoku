@@ -153,6 +153,15 @@
     #printArea img.trimg{display:block;border:1px solid #bbb;margin-bottom:6px}
     #printArea table.trtab{width:auto;min-width:70%;font-size:10px}
   }
+
+  /* ファイルを落とすときの受け皿 */
+  #dropZone{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;
+    background:rgba(16,20,26,.82);backdrop-filter:blur(2px)}
+  #dropZone.on{display:flex}
+  #dropZone .bx{border:2px dashed var(--acc);border-radius:16px;padding:34px 44px;text-align:center;
+    background:rgba(23,29,38,.96);max-width:min(86vw,520px)}
+  #dropZone .bx b{display:block;font-size:19px;color:var(--acc);margin-bottom:8px}
+  #dropZone .bx span{display:block;font-size:13.5px;color:var(--mut);line-height:1.7}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
@@ -160,6 +169,10 @@
 </head>
 <body>
 <div id="printArea"></div>
+<div id="dropZone"><div class="bx">
+  <b>ここに落とすと開きます</b>
+  <span>公園データ（.json）… そのまま続きから作業できます<br>図面の画像（PNG / JPG）… 下敷きの図面として読み込みます</span>
+</div></div>
 <div class="app">
   <header>
     <a href="index.html" title="アプリ一覧にもどる" aria-label="アプリ一覧にもどる" style="color:inherit;text-decoration:none;font-size:24px;font-weight:700;line-height:1;display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:32px;opacity:.85;flex:0 0 auto">‹</a><div class="logo">公園作業記録 <b>/</b> 求積＆出来形</div>
@@ -231,6 +244,7 @@
       <h3>凡例（地図上）</h3>
       <button class="btn on" id="legendToggle">凡例を表示<small>記号＋工種＋集計数を地図に表示・ドラッグで移動</small></button>
       <button class="btn ghost" id="legendReset">位置を右下に戻す</button>
+      <button class="btn ghost" id="labelReset">工種の数字の位置を戻す<small>手で動かした数字を自動配置にもどす</small></button>
     </div>
 
     <div class="sec">
@@ -980,11 +994,14 @@ function flushLabels(list){
   ctx.save();
   ctx.font=`700 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
   const items=arr.map(L=>{const lines=String(L.txt).split('\n');let w=0;lines.forEach(l=>{const m=ctx.measureText(l).width;if(m>w)w=m;});
-    const bh=lines.length*lh+pad*1.4; return {x:L.x,y:L.y+bh/2+gap+6/view.zoom,ox:L.x,oy:L.y,col:L.col,f:L.f,lines,bw:w+pad*2,bh};});
-  // 重なり回避：y昇順に、既配置と重なるものは下へずらす
-  items.sort((a,b)=>a.y-b.y);
+    const bh=lines.length*lh+pad*1.4;
+    const man=L.f&&L.f.lbl;
+    return {x:man?(L.x+L.f.lbl.dx):L.x, y:man?(L.y+L.f.lbl.dy):(L.y+bh/2+gap+6/view.zoom),
+            ox:L.x,oy:L.y,col:L.col,f:L.f,lines,bw:w+pad*2,bh,manual:!!man};});
+  // 重なり回避：y昇順に、既配置と重なるものは下へずらす。手で動かしたものは動かさない。
   const placed=[];
-  items.forEach(it=>{let guard=0,moved=true;
+  items.filter(it=>it.manual).forEach(it=>placed.push(it));
+  items.filter(it=>!it.manual).sort((a,b)=>a.y-b.y).forEach(it=>{let guard=0,moved=true;
     while(moved&&guard++<300){moved=false;
       for(const p of placed){
         if(Math.abs(it.x-p.x)*2<(it.bw+p.bw)&&Math.abs(it.y-p.y)*2<(it.bh+p.bh)+gap*2){
@@ -994,7 +1011,7 @@ function flushLabels(list){
     }
     placed.push(it);
   });
-  _labelHit=placed.filter(it=>it.f).map(it=>({f:it.f,x:it.x,y:it.y,bw:it.bw,bh:it.bh}));
+  _labelHit=placed.filter(it=>it.f).map(it=>({f:it.f,x:it.x,y:it.y,ox:it.ox,oy:it.oy,bw:it.bw,bh:it.bh}));
   // リーダー線（ずれた分だけ）
   placed.forEach(it=>{if(Math.abs(it.y-it.oy)>1.5/view.zoom||Math.abs(it.x-it.ox)>1.5/view.zoom){
     ctx.beginPath();ctx.moveTo(it.ox,it.oy);ctx.lineTo(it.x,it.y);ctx.lineWidth=1/view.zoom;ctx.strokeStyle='rgba(20,40,60,.45)';ctx.setLineDash([3/view.zoom,2/view.zoom]);ctx.stroke();ctx.setLineDash([]);
@@ -1074,6 +1091,8 @@ function legendHit(p){const b=legend._box;return !!(legend.show&&b&&p.x>=b.x&&p.
 
 /* ---------- 入力 ---------- */
 let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null,draggingLegend=false,legDragOff=null,spaceDown=false,dragSnap=null;
+let lblDrag=null;   // 工種の数字（ラベル）を手で動かしている最中
+
 let editV=null,lastPick=null,pickIdx=0,lastVtxTap=null,prevToolForPan='area',holeMode=null,dragRing=null,hlHole=null,_labels=null,_labelHit=[],exporting=false;
 function ringPts(f,ring){return ring==='outer'?f.pts:(f.holes||[])[ring];}
 function hitBox(f,ip,tol){ if(f.round){const rpx=(state.scale?(f.L/state.scale):60)/2;return dist(f.pt,ip)<=rpx+tol;} const wpx=state.scale?(f.L/state.scale):60,hpx=state.scale?(f.D/state.scale):40,dx=ip.x-f.pt.x,dy=ip.y-f.pt.y,c=Math.cos(f.rot||0),sn=Math.sin(f.rot||0),rx=dx*c+dy*sn,ry=-dx*sn+dy*c; return Math.abs(rx)<=wpx/2+tol&&Math.abs(ry)<=hpx/2+tol; }
@@ -1112,10 +1131,25 @@ function deleteVertex(f,ring,idx){
   pushHistory();pts.splice(idx,1);recalcAll();renderAgg();renderSansha();draw();
 }
 // マウス/タッチ共通の押下処理。'pan'|'legend'|'vertex'|'edge'|'drag' を返したら=操作開始（タップ配置しない）／null=描画or配置
+function labelHitBox(ip){ for(let i=_labelHit.length-1;i>=0;i--){const b=_labelHit[i]; if(Math.abs(ip.x-b.x)<=b.bw/2&&Math.abs(ip.y-b.y)<=b.bh/2) return b;} return null; }
+// ラベルの位置は「引き出し元（ox,oy）からのずれ」で覚える
+function startLabelDrag(b,ip){
+  const base = b.f.lbl ? {dx:b.f.lbl.dx, dy:b.f.lbl.dy} : {dx:b.x-b.ox, dy:b.y-b.oy};
+  lblDrag={f:b.f, sx:ip.x, sy:ip.y, base:base, moved:false};
+}
+function moveLabelDrag(ip){
+  if(!lblDrag)return;
+  const ddx=ip.x-lblDrag.sx, ddy=ip.y-lblDrag.sy;
+  if(!lblDrag.moved && Math.hypot(ddx,ddy)<4/view.zoom) return;   // 少し動かして初めて「移動」とみなす
+  if(!lblDrag.moved){ lblDrag.moved=true; pushHistory(); }
+  lblDrag.f.lbl={dx:lblDrag.base.dx+ddx, dy:lblDrag.base.dy+ddy};
+  draw();
+}
 function labelHitFeature(ip){ for(let i=_labelHit.length-1;i>=0;i--){const b=_labelHit[i]; if(Math.abs(ip.x-b.x)<=b.bw/2&&Math.abs(ip.y-b.y)<=b.bh/2) return b.f;} return null; }
 function downCommon(p,ip){
   if(spaceDown||tool==='pan'){panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};return 'pan';}
   if(legendHit(p)){startLegendDrag(p);return 'legend';}
+  if(tool!=='cal'){ const lb=labelHitBox(ip); if(lb&&lb.f&&state.features.indexOf(lb.f)>=0){ startLabelDrag(lb,ip); return 'label'; } }
   if(holeMode)return null;                       // 除外エリア描画中は常にポチ追加
   if(tool!=='tree'){                             // 樹木モードでは頂点編集を拾わない（面積の上に木を置けるように）
     const hnd=hitHandle(ip);
@@ -1232,6 +1266,7 @@ cv.addEventListener('mousedown',e=>{
   if(tool==='tree'){placeTree(ip);return;}
 });
 cv.addEventListener('mousemove',e=>{
+  if(lblDrag){const p=evtPos(e);moveLabelDrag(toImg(p.x,p.y));return;}
   if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;draw();return;}
   if(tool==='cal'){const p=evtPos(e),ip=toImg(p.x,p.y);if(calDragIdx!==null)draft.pts[calDragIdx]=ip;else if(draft)hover=ip;draw();return;}
   if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(function(){const _p=ringPts(editV.f,editV.ring),_pv=_p.length>1?_p[(editV.idx-1+_p.length)%_p.length]:null,_s=snapLen(ip,_pv);_p[editV.idx]={x:_s.x,y:_s.y};})();recalcAreaFeature(editV.f);draw();return;}
@@ -1239,6 +1274,7 @@ cv.addEventListener('mousemove',e=>{
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;draw();}
 });
 window.addEventListener('mouseup',()=>{
+  if(lblDrag){const d=lblDrag;lblDrag=null;if(!d.moved){selectFeature(d.f);}renderAgg();draw();return;}
   if(draggingLegend){draggingLegend=false;cv.style.cursor=tool==='select'?'grab':'crosshair';return;}
   if(tool==='cal'&&calDragIdx!==null){calUp();return;}
   if(editV){recalcAll();editV=null;dragSnap=null;renderAgg();renderSansha();}
@@ -1266,6 +1302,7 @@ cv.addEventListener('touchstart',e=>{
 cv.addEventListener('touchmove',e=>{
   e.preventDefault();
   if(e.touches.length===2&&pinchD){const d=touchDist(e),c=touchMid(e);zoomAt(c.x,c.y,d/pinchD);pinchD=d;return;}
+  if(lblDrag){const p=evtPos(e);moveLabelDrag(toImg(p.x,p.y));lastTouch=null;return;}
   if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;lastTouch=null;draw();return;}
   if(tool==='cal'&&calDragIdx!==null){const p=evtPos(e),ip=toImg(p.x,p.y);draft.pts[calDragIdx]=ip;lastTouch=null;draw();return;}
   if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(function(){const _p=ringPts(editV.f,editV.ring),_pv=_p.length>1?_p[(editV.idx-1+_p.length)%_p.length]:null,_s=snapLen(ip,_pv);_p[editV.idx]={x:_s.x,y:_s.y};})();recalcAreaFeature(editV.f);lastTouch=null;draw();return;}
@@ -1274,6 +1311,7 @@ cv.addEventListener('touchmove',e=>{
 },{passive:false});
 cv.addEventListener('touchend',e=>{
   if(pinchD&&e.touches.length<2){pinchD=null;return;}
+  if(lblDrag){const d=lblDrag;lblDrag=null;if(!d.moved){selectFeature(d.f);}renderAgg();draw();lastTouch=null;return;}
   if(draggingLegend){draggingLegend=false;lastTouch=null;return;}
   if(tool==='cal'){if(calDragIdx!==null)calUp();lastTouch=null;return;}
   if(editV){recalcAll();editV=null;dragSnap=null;renderAgg();renderSansha();lastTouch=null;return;}
@@ -1547,7 +1585,17 @@ function renderAgg(){
 $('manAdd').onclick=()=>{const k=$('manKind').value,q=parseFloat($('manQty').value);if(k&&q>0){pushHistory();state.manual.push({kind:k,qty:q});$('manQty').value='';renderAgg();}};
 
 /* ---------- 保存/読込/書き出し ---------- */
-$('loadImg').onclick=()=>$('imgFile').click();$('imgFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{state.img=im;state.imgData=r.result;fit();updateHint();requestAnimationFrame(fit);$('secMap').classList.add('collapsed');$('mapSt').textContent='読込済';};im.src=r.result;};r.readAsDataURL(f);};
+$('loadImg').onclick=()=>$('imgFile').click();
+$('imgFile').onchange=e=>{const f=e.target.files[0];if(f)openMapFile(f);e.target.value='';};
+// 図面の画像を読み込む
+function openMapFile(file){
+  const r=new FileReader();
+  r.onload=()=>{const im=new Image();
+    im.onload=()=>{state.img=im;state.imgData=r.result;fit();updateHint();requestAnimationFrame(fit);
+      $('secMap').classList.add('collapsed');$('mapSt').textContent='読込済';};
+    im.src=r.result;};
+  r.readAsDataURL(file);
+}
 function fit(){
   if(!state.img)return;
   // 表示領域の実サイズに合わせてバッファを更新（初期化状況に依存せず常に正しく全体表示）
@@ -1603,8 +1651,16 @@ $('reportExport').onclick=()=>{
   alert('報告書用データを書き出しました。\nPCのジェネレータでこのJSONを読み込むと、転記なしで報告書Excelが完成します。');
 };
 $('openJson').onclick=()=>$('jsonFile').click();
-$('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{
-  let d; try{ d=JSON.parse(r.result); }catch(err){ alert('このファイルは読み込めませんでした（JSON破損の可能性）。'); return; }
+$('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;openParkFile(f);e.target.value='';};
+// 公園データ（.json）を開く。ボタンからでも、ファイルを落としても、ここを通る。
+function openParkFile(file){
+  const r=new FileReader();
+  r.onload=()=>applyParkJson(r.result);
+  r.onerror=()=>alert('ファイルを読み込めませんでした。');
+  r.readAsText(file);
+}
+function applyParkJson(text){
+  let d; try{ d=JSON.parse(text); }catch(err){ alert('このファイルは読み込めませんでした（JSON破損の可能性）。'); return; }
   $('parkName').value=d.park||'';state.scale=d.scale||null;
   if(d.contract!==undefined)$('contractName').value=d.contract||'';
   $('orderNo').value=d.order||'';$('workDate').value=d.date||'';
@@ -1616,7 +1672,34 @@ $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new Fi
   state.features=d.features||[];state.manual=d.manual||[];recalcAll();
   undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
-};r.readAsText(f);};
+}
+/* ---------- ファイルをドラッグ＆ドロップで開く ---------- */
+(function setupDrop(){
+  const zone=$('dropZone');
+  const hasFiles=e=>e.dataTransfer&&Array.prototype.indexOf.call(e.dataTransfer.types||[],'Files')>=0;
+  let depth=0;
+  const show=on=>{ zone.classList.toggle('on',!!on); };
+  window.addEventListener('dragenter',e=>{ if(!hasFiles(e))return; e.preventDefault(); depth++; show(true); });
+  window.addEventListener('dragover', e=>{ if(!hasFiles(e))return; e.preventDefault(); e.dataTransfer.dropEffect='copy'; });
+  window.addEventListener('dragleave',e=>{ if(!hasFiles(e))return; depth=Math.max(0,depth-1); if(!depth)show(false); });
+  window.addEventListener('drop',e=>{
+    if(!hasFiles(e))return;
+    e.preventDefault(); depth=0; show(false);
+    const files=Array.prototype.slice.call(e.dataTransfer.files||[]);
+    if(!files.length)return;
+    const jsons=files.filter(f=>/\.json$/i.test(f.name));
+    const imgs =files.filter(f=>/^image\//.test(f.type)||/\.(png|jpe?g|gif|webp)$/i.test(f.name));
+    if(jsons.length){
+      if(state.features.length && !confirm('いま記録している内容を、落としたファイルの内容に置きかえます。よろしいですか。\n（先に「この公園を保存」をしていないと戻せません）')) return;
+      if(jsons.length>1) alert('.json が'+jsons.length+'個ありました。1つめ「'+jsons[0].name+'」を開きます。\n何か所ぶんかをまとめて集計したいときは、下の「複数の.jsonをまとめて集計」を使ってください。');
+      openParkFile(jsons[0]);
+    }else if(imgs.length){
+      openMapFile(imgs[0]);
+    }else{
+      alert('公園データ（.json）か、図面の画像を落としてください。');
+    }
+  });
+})();
 $('exportPng').onclick=()=>{const url=fullImageDataURL();if(!url){alert('先に図面を読み込んでください。');return;}saveFile(dataURLtoBlob(url),($('parkName').value||'求積図')+'_注記.png');};
 $('delSelBtn').onclick=()=>{removeSelected();};
 $('dupSelBtn').onclick=()=>{duplicateSelected();};
@@ -1954,7 +2037,8 @@ function rpPush(sheet,xml){ if(xml){ (rpShapes[sheet]=rpShapes[sheet]||[]).push(
 // 図面の下敷き（透明1px）を置いて、描画パーツを作らせる
 function rpSeedDrawing(wb,ws){
   const id=wb.addImage({base64:RP_DOT,extension:'png'});
-  ws.addImage(id,{tl:{col:0,row:0},br:{col:0.02,row:0.02}});
+  ws.addImage(id,{tl:{nativeCol:0,nativeColOff:0,nativeRow:0,nativeRowOff:0},
+                  br:{nativeCol:0,nativeColOff:9525,nativeRow:0,nativeRowOff:9525}});
 }
 // 図形をファイルに差し込む
 async function rpInjectShapes(buf){
@@ -2033,7 +2117,8 @@ function rpFigureXml(sheet,widths,f,ox,oy,maxW,maxH){
 /* ---------- 配置図・求積図シート（細別ごとに分けて出す） ---------- */
 const RP_MARU = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
 const RP_FONT = 'ＭＳ Ｐゴシック';
-const RP_ROWPX = 18;                 // 既定の行の高さ（13.5pt ≒ 18px）
+const RP_ROWPX = 20;                 // ExcelJSが作るシートの既定行高 15pt = 20px
+const RP_PAD = 4;                    // 図の左上の余白（px）
 var exportFilter = null;             // 図の書き出し中だけ、描く図形をしぼる
 
 // 図面＋しぼった図形だけを画像にする（凡例・選択枠は出さない）
@@ -2084,11 +2169,14 @@ function rpBrCol(widths,startCol,startFrac,wPx){
 function rpPutImage(wb,ws,dataURL,row,dispW,widths){
   const b64=String(dataURL).split(',')[1];
   const id=wb.addImage({base64:b64,extension:'png'});
-  const w=dispW.w, h=dispW.h, F=0.15;
-  const tlRow=row-1+F;
+  const w=dispW.w, h=dispW.h;
+  const x0=RP_PAD, y0=(row-1)*RP_ROWPX+RP_PAD;
+  const a=rpPos(widths,x0,y0), b=rpPos(widths,x0+w,y0+h);
+  // 小数の col/row で渡すと ExcelJS が列幅を width×10000 EMU と誤って換算し、位置がずれる。
+  // 図形とまったく同じ計算でセル位置を出して、EMUのまま渡す。
   ws.addImage(id,{
-    tl:{col:F,row:tlRow},
-    br:{col:rpBrCol(widths,0,F,w), row:tlRow+h/RP_ROWPX}
+    tl:{nativeCol:a.col,nativeColOff:a.colOff,nativeRow:a.row,nativeRowOff:a.rowOff},
+    br:{nativeCol:b.col,nativeColOff:b.colOff,nativeRow:b.row,nativeRowOff:b.rowOff}
   });
   return Math.ceil(h/RP_ROWPX)+1;
 }
@@ -2138,7 +2226,7 @@ function rpBuildHaichi(wb,park){
     ws.getCell('B'+r).value='全体図（作業箇所ぜんぶ）';
     rpStyle(ws.getCell('B'+r),{size:12,bold:true,al:'left'});
     r+=1;
-    const ox=0.15*rpColPxW(WID[0]), oy=(r-1+0.15)*RP_ROWPX;
+    const ox=RP_PAD, oy=(r-1)*RP_ROWPX+RP_PAD;
     rpPutImage(wb,ws,mapURL,r,box,WID);
     groups.forEach(g=>{ const col=featColor(g.feats[0]); g.feats.forEach(f=>drawFeat(f,ox,oy,col)); });
     r+=Math.ceil(box.h/RP_ROWPX)+1;
@@ -2161,7 +2249,7 @@ function rpBuildHaichi(wb,park){
     rpStyle(ws.getCell('B'+r),{size:11,bold:true,al:'left'});
     r+=1;
     if(mapURL){
-      const ox=0.15*rpColPxW(WID[0]), oy=(r-1+0.15)*RP_ROWPX;
+      const ox=RP_PAD, oy=(r-1)*RP_ROWPX+RP_PAD;
       rpPutImage(wb,ws,mapURL,r,box,WID);
       g.feats.forEach(f=>drawFeat(f,ox,oy,featColor(f)));   // 画面と同じ配色
       r+=Math.ceil(box.h/RP_ROWPX)+1;
@@ -2448,6 +2536,11 @@ async function exportReportXlsx(){
     alert('報告書の書き出しに失敗しました。\n'+(err&&err.message?err.message:err));
   }
 }
+$('labelReset').onclick=()=>{
+  const n=state.features.filter(f=>f.lbl).length;
+  if(!n){alert('手で動かした数字はありません。');return;}
+  pushHistory(); state.features.forEach(f=>{delete f.lbl;}); draw();
+};
 $('snapToggle').onclick=()=>{
   SNAP_ON=!SNAP_ON;
   $('snapToggle').classList.toggle('on',SNAP_ON);
