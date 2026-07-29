@@ -109,6 +109,7 @@
   .pbitem{ display:flex; flex-direction:column; border:1px solid #9aa2ac; background:#fff; }
   .pbitem .p{ aspect-ratio:4/3; display:flex; align-items:center; justify-content:center; background:#f0f2f4; overflow:hidden; }
   .pbitem .p img{ width:100%; height:100%; object-fit:cover; }
+  .pbitem .p.tree img{ object-fit:contain; background:#fff; }
   .pbitem .p .none{ color:var(--sub); font-size:13px; }
   .pbitem .c{ padding:5px 7px; font-size:12px; line-height:1.55; border-top:1px solid #9aa2ac; min-height:28mm; }
   .pbitem .c .bn{ display:inline-block; background:var(--accent); color:#fff; font-weight:800; border-radius:6px; padding:1px 9px; margin-bottom:4px; }
@@ -747,7 +748,7 @@ function frameHTML(fr){ const t=fr.t, no=fr.no;
    var cap = t.type==="exterior"
      ? `<span class="bn">No.${no}</span><br><b>${esc(t.item)||"（品名未入力）"}</b><br>数量：${esc(t.qty)||"-"} ${esc(t.unit)}${t.memo?`<br>仕様：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`
      : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業内容：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>胸高周囲：${esc(t.c)||"-"} cm${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
-   return `<div class="pbitem"><div class="p">${fr.img?`<img src="${fr.img}">`:'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
+   return `<div class="pbitem"><div class="p${t.type==='exterior'?'':' tree'}">${fr.img?`<img src="${fr.img}">`:'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
 }
 function renderBook(){
   const body=document.getElementById("bookBody"); let html="";
@@ -988,6 +989,21 @@ async function cropCover(durl, tw, th){
     img.src=durl;
   });
 }
+async function cropContain(durl, tw, th){
+  return new Promise(function(res){
+    var img=new Image();
+    img.onload=function(){
+      var s=Math.min(tw/img.width, th/img.height);
+      var nw=img.width*s, nh=img.height*s;
+      var cv=document.createElement('canvas'); cv.width=tw; cv.height=th;
+      var x=cv.getContext('2d');
+      x.fillStyle="#ffffff"; x.fillRect(0,0,tw,th);
+      x.drawImage(img,(tw-nw)/2,(th-nh)/2,nw,nh);
+      res(cv.toDataURL('image/jpeg',0.85));
+    };
+    img.src=durl;
+  });
+}
 async function exportExcel(){
   var btn=document.getElementById('xlsxBtn');
   try{
@@ -998,7 +1014,7 @@ async function exportExcel(){
     var stCopy = Object.assign({}, state); stCopy.trees = [];
     for(var i=0;i<state.trees.length;i++){
       var t=state.trees[i]; var src=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
-      var cropped=[]; for(var pi=0; pi<src.length; pi++){ cropped.push(await cropCover(src[pi],250,330)); }
+      var _fit=(t.type==="exterior")?cropCover:cropContain; var cropped=[]; for(var pi=0; pi<src.length; pi++){ cropped.push(await _fit(src[pi],250,330)); }
       stCopy.trees.push(Object.assign({}, t, {photos:cropped}));
     }
     var mapImg = state.mapImage || null;
