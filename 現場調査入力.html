@@ -659,7 +659,13 @@ function upd(i,k,v){ pushUndo("upd:"+i+":"+k); state.trees[i][k]=v; markDirty();
 
 /* 音声（対応端末のみ） */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-function voice(i,btn){ if(!SR){ alert("この端末は音声ボタン非対応です。各欄をタップし、キーボードのマイクで話してください。"); return; }
+const IS_IOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+function voiceText(i){
+  const txt=prompt("樹種・作業・高さ(H)・幹周(C)・葉張り(W)をまとめて話すか入力してください。\niPad/iPhoneはキーボードの🎤（音声入力）で話せます。\n例：ソメイヨシノ 強剪定 H12 C160 W5");
+  if(txt==null||!txt.trim()) return;
+  pushUndo("voice"+i); parseVoice(i,txt); renderTrees();
+}
+function voice(i,btn){ if(IS_IOS||!SR){ voiceText(i); return; }
   const rec=new SR(); rec.lang="ja-JP"; rec.interimResults=false; btn.classList.add("rec"); btn.textContent="●聞取中";
   rec.onresult=e=>{ parseVoice(i,e.results[0][0].transcript); renderTrees(); };
   rec.onerror=(e)=>{ btn.classList.remove("rec"); btn.textContent="🎤音声";
