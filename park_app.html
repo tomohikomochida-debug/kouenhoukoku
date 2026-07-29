@@ -937,10 +937,16 @@ function syncDelBtn(){const n=multiSel.length,any=(n>0||selected),single=(n<=1);
 const MARU='①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚';
 function maru(n){ return (n>=1&&n<=MARU.length)?MARU[n-1]:('('+n+')'); }
 let _figNos=new Map();
-// 閉じた図形（樹木以外）に、並び順で通し番号をふる。Excelの求積図もこの番号を使う。
+// 閉じた図形と線に、工種（細別）ごとに①②…をふる。Excelの求積図・配置図もこの番号を使う。
 function refreshFigNos(){
-  _figNos=new Map(); let n=0;
-  state.features.forEach(f=>{ if(f.type!=='tree') _figNos.set(f,++n); });
+  _figNos=new Map();
+  const cnt={};
+  state.features.forEach(f=>{
+    if(f.type==='tree') return;
+    const k=f.cat+' › '+f.kind;
+    cnt[k]=(cnt[k]||0)+1;
+    _figNos.set(f,cnt[k]);
+  });
 }
 function figNo(f){ return _figNos.get(f)||0; }
 function dispKey(f){ return f.cat+' › '+f.kind; }
@@ -1931,8 +1937,56 @@ function applyParkData(d,kb){
 $('exportPng').onclick=()=>{const url=fullImageDataURL();if(!url){alert('先に図面を読み込んでください。');return;}saveFile(dataURLtoBlob(url),($('parkName').value||'求積図')+'_注記.png');};
 $('delSelBtn').onclick=()=>{removeSelected();};
 $('dupSelBtn').onclick=()=>{duplicateSelected();};
-$('rotL').onclick=()=>rotateSelected(-15);
-$('rotR').onclick=()=>rotateSelected(15);
+/* ---------- 回転：↺↻ を押したままドラッグで自由に回す（Excelの図形と同じ感覚） ---------- */
+let rotDrag=null;
+function featCenter(f){ return f.pt?f.pt:((f.pts&&f.pts.length)?centroid(f.pts):null); }
+function screenOf(p){ return {x:p.x*view.zoom+view.ox, y:p.y*view.zoom+view.oy}; }
+function applyRot(rd,a){
+  const f=rd.f, c=rd.c, cs=Math.cos(a), sn=Math.sin(a);
+  const R=q=>({x:c.x+(q.x-c.x)*cs-(q.y-c.y)*sn, y:c.y+(q.x-c.x)*sn+(q.y-c.y)*cs});
+  if(f.type==='box'){ f.rot=rd.base+a; return; }
+  if(rd.strip0){ f.strip.c=rd.strip0.map(R); }
+  else if(rd.pts0){ f.pts=rd.pts0.map(R); }
+  if(rd.holes0) f.holes=rd.holes0.map(hh=>hh.map(R));
+  recalcAreaFeature(f);
+}
+function startRotDrag(e){
+  const f=selected; if(!f) return;
+  const c=featCenter(f); if(!c) return;
+  const p=evtPos(e), s=screenOf(c);
+  rotDrag={f,c,
+    base:(f.type==='box'?(f.rot||0):0),
+    pts0:(f.pts?f.pts.map(q=>({x:q.x,y:q.y})):null),
+    strip0:(f.strip?f.strip.c.map(q=>({x:q.x,y:q.y})):null),
+    holes0:(f.holes?f.holes.map(hh=>hh.map(q=>({x:q.x,y:q.y}))):null),
+    a0:Math.atan2(p.y-s.y,p.x-s.x), moved:false};
+}
+function moveRotDrag(e){
+  if(!rotDrag) return;
+  if(e.cancelable) e.preventDefault();
+  const p=evtPos(e), s=screenOf(rotDrag.c);
+  let a=Math.atan2(p.y-s.y,p.x-s.x)-rotDrag.a0;
+  if(!rotDrag.moved){ if(Math.abs(a)<0.035) return; rotDrag.moved=true; pushHistory(); }
+  a=Math.round(a*(180/Math.PI)*2)/2*(Math.PI/180);          // 0.5度きざみ
+  applyRot(rotDrag,a); draw();
+}
+function endRotDrag(dir){
+  if(!rotDrag) return;
+  const moved=rotDrag.moved; rotDrag=null;
+  if(!moved && dir) rotateSelected(dir);                     // 押しただけなら15度
+  else { renderAgg(); renderSansha(); draw(); }
+}
+[['rotL',-15],['rotR',15]].forEach(([id,dir])=>{
+  const b=$(id); if(!b) return;
+  b.addEventListener('mousedown',e=>{e.preventDefault();startRotDrag(e);});
+  b.addEventListener('touchstart',e=>{e.preventDefault();startRotDrag(e);},{passive:false});
+  b.addEventListener('mouseup',()=>endRotDrag(dir));
+  b.addEventListener('touchend',()=>endRotDrag(dir));
+});
+window.addEventListener('mousemove',e=>{ if(rotDrag) moveRotDrag(e); });
+window.addEventListener('touchmove',e=>{ if(rotDrag) moveRotDrag(e); },{passive:false});
+window.addEventListener('mouseup',()=>{ if(rotDrag) endRotDrag(0); });
+window.addEventListener('touchend',()=>{ if(rotDrag) endRotDrag(0); });
 $('symSel').onclick=()=>{const sel=multiSel.length?multiSel:(selected?[selected]:[]);const boxes=sel.filter(f=>f&&f.type==='box');if(!boxes.length)return;const allSym=boxes.every(f=>f.sym);boxes.forEach(f=>f.sym=!allSym);draw();};
 $('multiToggle').onclick=()=>{multiMode=!multiMode;$('multiToggle').classList.toggle('on',multiMode);};
 function copyRangeToWorks(targets){
