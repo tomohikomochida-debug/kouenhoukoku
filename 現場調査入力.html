@@ -181,6 +181,10 @@
         <div><label>現場（物件マスタ）</label><select id="siteSel" onchange="onSiteSel(this.value)"></select></div>
         <div><label>調査担当</label><select id="tantouSel" onchange="setTantou(this.value)"></select></div>
       </div>
+      <div class="row2">
+        <div><label>出力仕様（エクセルの見積様式）</label><select id="specSel" onchange="setSpec(this.value)"><option value="kokyo">公共（種別・工種・寸法などの各セル）</option><option value="minkan">民間・BOARD（品名にまとめて記載）</option></select></div>
+        <div></div>
+      </div>
       <div id="siteAddWrap" style="display:none"><label>一覧に無い現場を追加</label>
         <div style="display:flex;gap:6px"><input id="siteAdd" placeholder="現場名を入力" style="flex:1"><button class="iconbtn" onclick="addSiteName()">＋追加</button></div>
       </div>
@@ -326,6 +330,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   // 見積・写真帳・マスター用の共通マッピング
   function nameOf(t) { return ty(t) === "exterior" ? (t.item || "") : ((t.work || "") + "　" + (t.species || "")).trim(); }
   function specOf(t) { if (ty(t) === "exterior") return t.memo || ""; var s = "H=" + (t.h || "") + "m　C=" + (t.c || "") + "cm"; if (t.w) s += "　W=" + t.w + "m"; return s; }
+  function cellNum(v) { if (v === null || v === undefined || String(v).trim() === "") return ""; var s = String(v).trim(); return /^[0-9]+(\.[0-9]+)?$/.test(s) ? Number(s) : v; }
+  function jspec(t) { if (ty(t) === "exterior") return t.memo || ""; var a = []; if (t.h) a.push("樹高" + t.h + "m"); if (t.c) a.push("幹周" + t.c + "cm"); if (t.w) a.push("葉張り" + t.w + "m"); return a.join(" "); }
   function qtyOf(t) { return ty(t) === "exterior" ? (t.qty || "") : 1; }
   function unitOf(t) { return ty(t) === "exterior" ? (t.unit || "") : "本"; }
   function kubun(t) { return ty(t) === "exterior" ? "外構" : "樹木"; }
@@ -372,62 +378,87 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     /* ===== 内訳（統一様式：番号 品名 仕様 数量 単位 単価 金額） ===== */
     var ws = wb.addWorksheet("内訳");
-    [6, 24, 22, 7, 7, 12, 14].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
     ws.getCell("A1").value = name; ws.getCell("A1").font = font(12, true);
-    ["番号", "品名", "仕様", "数量", "単位", "単価", "金額"].forEach(function (h, i) {
-      var c = ws.getCell(3, i + 1); c.value = h; c.font = font(11, true, "FFFFFFFF"); c.fill = fill(HEAD);
-      c.alignment = { horizontal: "center", vertical: "middle" }; c.border = border();
-    });
-    var r0 = 4;
-    trees.forEach(function (t, i) {
-      var r = r0 + i;
-      var vals = [i + 1, nameOf(t), specOf(t), qtyOf(t), unitOf(t), num(t.up), { formula: "F" + r + "*D" + r }];
-      vals.forEach(function (v, k) {
-        var c = ws.getCell(r, k + 1); c.value = v; c.font = font(11); c.border = border();
-        c.alignment = { horizontal: (k === 0 || k === 3 || k === 4) ? "center" : ((k === 5 || k === 6) ? "right" : "left"), vertical: "middle" };
-        if (k === 5 || k === 6) c.numFmt = "#,##0";
-        if (k === 5) c.fill = fill(INPUT);
+    var isKokyo = (state.spec !== "minkan");
+    var r0 = 4, AMT, QTYc, UNITc, PRICEc, LAST, AMTL, QTYL, PRICEL;
+    if (isKokyo) {
+      /* 公共：番号 種別 工種 寸法(㎝) 数量 単位 単価 金額 摘要 */
+      [6, 16, 20, 9, 7, 7, 12, 14, 18].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
+      ["番号", "種別", "工種", "寸法(㎝)", "数量", "単位", "単価", "金額", "摘要"].forEach(function (h, i) {
+        var c = ws.getCell(3, i + 1); c.value = h; c.font = font(11, true, "FFFFFFFF"); c.fill = fill(HEAD);
+        c.alignment = { horizontal: "center", vertical: "middle" }; c.border = border();
       });
-    });
+      trees.forEach(function (t, i) {
+        var r = r0 + i; var isT = (ty(t) !== "exterior");
+        var vals = [i + 1, isT ? (t.species || "") : (t.item || ""), isT ? (t.work || "") : "", isT ? cellNum(t.c) : "", qtyOf(t), unitOf(t), num(t.up), { formula: "G" + r + "*E" + r }, (t.memo || "")];
+        vals.forEach(function (v, k) {
+          var c = ws.getCell(r, k + 1); c.value = v; c.font = font(11); c.border = border();
+          c.alignment = { horizontal: (k === 1 || k === 2 || k === 8) ? "left" : ((k === 6 || k === 7) ? "right" : "center"), vertical: "middle" };
+          if (k === 6 || k === 7) c.numFmt = "#,##0";
+          if (k === 6) c.fill = fill(INPUT);
+        });
+      });
+      AMT = 8; QTYc = 5; UNITc = 6; PRICEc = 7; LAST = 9; AMTL = "H"; QTYL = "E"; PRICEL = "G";
+    } else {
+      /* 民間（BOARD）：番号 品名 数量 単位 単価 金額（品名に樹高◯m 幹周◯cm 葉張り◯mを並べる） */
+      [6, 44, 7, 7, 12, 14].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
+      ["番号", "品名", "数量", "単位", "単価", "金額"].forEach(function (h, i) {
+        var c = ws.getCell(3, i + 1); c.value = h; c.font = font(11, true, "FFFFFFFF"); c.fill = fill(HEAD);
+        c.alignment = { horizontal: "center", vertical: "middle" }; c.border = border();
+      });
+      trees.forEach(function (t, i) {
+        var r = r0 + i; var isT = (ty(t) !== "exterior");
+        var hin = isT ? ((nameOf(t) || "") + (jspec(t) ? "　" + jspec(t) : "")) : ((t.item || "") + (t.memo ? "　" + t.memo : ""));
+        var vals = [i + 1, hin, qtyOf(t), unitOf(t), num(t.up), { formula: "E" + r + "*C" + r }];
+        vals.forEach(function (v, k) {
+          var c = ws.getCell(r, k + 1); c.value = v; c.font = font(11); c.border = border();
+          c.alignment = { horizontal: (k === 1) ? "left" : ((k === 4 || k === 5) ? "right" : "center"), vertical: "middle" };
+          if (k === 4 || k === 5) c.numFmt = "#,##0";
+          if (k === 4) c.fill = fill(INPUT);
+        });
+      });
+      AMT = 6; QTYc = 3; UNITc = 4; PRICEc = 5; LAST = 6; AMTL = "F"; QTYL = "C"; PRICEL = "E";
+    }
     var rlast = r0 + trees.length - 1, r = rlast + 1;
     ws.getCell(r, 2).value = "小計"; ws.getCell(r, 2).font = font(11, true);
-    ws.getCell(r, 7).value = { formula: "SUM(G" + r0 + ":G" + rlast + ")" }; ws.getCell(r, 7).font = font(11, true); ws.getCell(r, 7).numFmt = "#,##0";
+    ws.getCell(r, AMT).value = { formula: "SUM(" + AMTL + r0 + ":" + AMTL + rlast + ")" }; ws.getCell(r, AMT).font = font(11, true); ws.getCell(r, AMT).numFmt = "#,##0";
     var sub = r, ex = [];
     var exList = [["運搬費", exs.carry], ["処分費", exs.dispose], ["諸経費", exs.misc]];
     exList.forEach(function (row) {
       r += 1;
       ws.getCell(r, 2).value = row[0]; ws.getCell(r, 2).font = font(11);
-      ws.getCell(r, 4).value = 1; ws.getCell(r, 5).value = "式";
-      ws.getCell(r, 6).value = num(row[1]); ws.getCell(r, 6).numFmt = "#,##0"; ws.getCell(r, 6).fill = fill(INPUT);
-      ws.getCell(r, 7).value = { formula: "F" + r + "*D" + r }; ws.getCell(r, 7).numFmt = "#,##0";
+      ws.getCell(r, QTYc).value = 1; ws.getCell(r, UNITc).value = "式";
+      ws.getCell(r, PRICEc).value = num(row[1]); ws.getCell(r, PRICEc).numFmt = "#,##0"; ws.getCell(r, PRICEc).fill = fill(INPUT);
+      ws.getCell(r, AMT).value = { formula: PRICEL + r + "*" + QTYL + r }; ws.getCell(r, AMT).numFmt = "#,##0";
       ex.push(r);
     });
     r += 1; ws.getCell(r, 2).value = "計"; ws.getCell(r, 2).font = font(11, true);
-    ws.getCell(r, 7).value = { formula: "G" + sub + "+" + ex.map(function (x) { return "G" + x; }).join("+") };
-    ws.getCell(r, 7).font = font(11, true); ws.getCell(r, 7).numFmt = "#,##0"; var kei = r;
+    ws.getCell(r, AMT).value = { formula: AMTL + sub + "+" + ex.map(function (x) { return AMTL + x; }).join("+") };
+    ws.getCell(r, AMT).font = font(11, true); ws.getCell(r, AMT).numFmt = "#,##0"; var kei = r;
     r += 1; ws.getCell(r, 2).value = "消費税(" + Math.round(taxRate * 100) + "%)"; ws.getCell(r, 2).font = font(11);
-    ws.getCell(r, 7).value = { formula: "ROUND(G" + kei + "*" + taxRate + ",0)" }; ws.getCell(r, 7).numFmt = "#,##0"; var tax = r;
+    ws.getCell(r, AMT).value = { formula: "ROUND(" + AMTL + kei + "*" + taxRate + ",0)" }; ws.getCell(r, AMT).numFmt = "#,##0"; var tax = r;
     r += 1; ws.getCell(r, 2).value = "合計"; ws.getCell(r, 2).font = font(12, true);
-    ws.getCell(r, 7).value = { formula: "G" + kei + "+G" + tax }; ws.getCell(r, 7).font = font(12, true); ws.getCell(r, 7).numFmt = "#,##0"; ws.getCell(r, 7).fill = fill(GREY);
+    ws.getCell(r, AMT).value = { formula: AMTL + kei + "+" + AMTL + tax }; ws.getCell(r, AMT).font = font(12, true); ws.getCell(r, AMT).numFmt = "#,##0"; ws.getCell(r, AMT).fill = fill(GREY);
     var total = r;
-    for (var rr = kei; rr <= total; rr++) for (var cc = 2; cc <= 7; cc++) ws.getCell(rr, cc).border = border();
-    mi.getCell("B11").value = { formula: "'内訳'!G" + total }; mi.getCell("B11").font = font(16, true); mi.getCell("B11").numFmt = '"¥"#,##0" （税込）"';
+    for (var rr = kei; rr <= total; rr++) for (var cc = 2; cc <= LAST; cc++) ws.getCell(rr, cc).border = border();
+    mi.getCell("B11").value = { formula: "'内訳'!" + AMTL + total }; mi.getCell("B11").font = font(16, true); mi.getCell("B11").numFmt = '"¥"#,##0" （税込）"';
 
     /* ===== 調査マスター（番号 区分 品名 仕様 数量 単位 摘要） ===== */
     var ms = wb.addWorksheet("調査マスター");
-    [6, 8, 22, 22, 7, 7, 16].forEach(function (w, i) { ms.getColumn(i + 1).width = w; });
+    [6, 8, 22, 8, 8, 8, 7, 7, 20].forEach(function (w, i) { ms.getColumn(i + 1).width = w; });
     ms.getCell("A1").value = "現地調査マスター"; ms.getCell("A1").font = font(14, true);
     ms.getCell("A2").value = "案件：" + name + "／調査日：" + date; ms.getCell("A2").font = font(10);
-    ["番号", "区分", "品名", "仕様", "数量", "単位", "摘要"].forEach(function (h, i) {
+    ["番号", "区分", "品名", "H(m)", "C(cm)", "W(m)", "数量", "単位", "摘要"].forEach(function (h, i) {
       var c = ms.getCell(4, i + 1); c.value = h; c.font = font(11, true, "FFFFFFFF"); c.fill = fill(HEAD);
       c.alignment = { horizontal: "center", vertical: "middle" }; c.border = border();
     });
+    var msNum = function (v) { if (v === null || v === undefined || String(v).trim() === "") return ""; var s = String(v).trim(); return /^[0-9]+(\.[0-9]+)?$/.test(s) ? Number(s) : v; };
     trees.forEach(function (t, i) {
-      var rr = 5 + i;
-      var vals = [i + 1, kubun(t), nameOf(t), specOf(t), qtyOf(t), unitOf(t), (ty(t) === "exterior" ? "" : (t.memo || ""))];
+      var rr = 5 + i; var isT = (ty(t) !== "exterior");
+      var vals = [i + 1, kubun(t), nameOf(t), isT ? msNum(t.h) : "", isT ? msNum(t.c) : "", isT ? msNum(t.w) : "", qtyOf(t), unitOf(t), (t.memo || "")];
       vals.forEach(function (v, k) {
         var c = ms.getCell(rr, k + 1); c.value = v; c.font = font(11); c.border = border();
-        c.alignment = { horizontal: (k === 0 || k === 1 || k === 4 || k === 5) ? "center" : "left", vertical: "middle" };
+        c.alignment = { horizontal: (k === 2 || k === 8) ? "left" : "center", vertical: "middle" };
       });
     });
 
@@ -498,7 +529,7 @@ function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){ ret
 const GAS_URL="https://script.google.com/macros/s/AKfycbzI8mKXax95BDYc8u-XklRRiMBe-pz9orHf6M557GxKygVv1heSC1fAjjvDvUNN6gcuuA/exec";
 const MASTERS_URL="https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec";
 let MASTER={staff:[],siteGroups:{}};
-let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] };
+let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", spec:"kokyo", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] };
 let saveTimer=null;
 let undoStack=[], redoStack=[], lastKey=null, lastTime=0;
 function snapClone(){ return JSON.parse(JSON.stringify(state)); }
@@ -528,7 +559,7 @@ function markDirty(){ document.getElementById("saveState").textContent="保存�
   clearTimeout(saveTimer); saveTimer=setTimeout(save,500); }
 let caseId=null, casesIndex=[];
 function newId(){ return "c"+Date.now()+Math.floor(Math.random()*1000); }
-function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] }; }
+function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", spec:(state&&state.spec)||"kokyo", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] }; }
 function touchIndex(){ const meta={id:caseId,name:state.caseName||"(無題)",date:state.caseDate||"",site:state.site||"",category:state.category||"",updatedAt:Date.now(),n:(state.trees||[]).length}; const e=casesIndex.find(c=>c.id===caseId); if(e) Object.assign(e,meta); else casesIndex.unshift(meta); }
 async function save(){ try{ if(!caseId) caseId=newId(); touchIndex();
   await idbSet("case_"+caseId, JSON.parse(JSON.stringify(state))); await idbSet("cases",casesIndex); await idbSet("current",caseId);
@@ -688,7 +719,7 @@ function parseVoice(i,txt){ const t=state.trees[i]; const z=txt.replace(/[０-�
   markDirty(); }
 
 /* 描画：入力 */
-function normalize(){ if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; if(state.category===undefined) state.category=""; if(state.contract===undefined) state.contract=""; if(state.site===undefined) state.site=""; if(state.tantou===undefined) state.tantou=""; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; if(t.w===undefined) t.w=""; }); }
+function normalize(){ if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; if(state.category===undefined) state.category=""; if(state.contract===undefined) state.contract=""; if(state.site===undefined) state.site=""; if(state.tantou===undefined) state.tantou=""; if(state.spec===undefined) state.spec="kokyo"; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; if(t.w===undefined) t.w=""; }); }
 function opts(list,val){ return list.map(x=>`<option ${x===val?"selected":""}>${x}</option>`).join(""); }
 function photosHTML(t,i){ const ph=(state.trees[i].photos)||[];
   const thumbs=ph.map((p,k)=>`<div class="thumb"><img src="${p}" onclick="editPhoto(${i},${k})"><button class="rm" onclick="delPhoto(${i},${k})">×</button><div class="thmove"><button onclick="movePhoto(${i},${k},-1)">◀</button><button onclick="editPhoto(${i},${k})">✎</button><button onclick="movePhoto(${i},${k},1)">▶</button></div></div>`).join("");
@@ -731,6 +762,7 @@ function renderTrees(){
   { const pl=document.getElementById("casePlace"); if(pl) pl.value=(state.place||""); }
   document.getElementById("caseDate").value=state.caseDate;
   renderSite();
+  var sp=document.getElementById("specSel"); if(sp) sp.value=state.spec||"kokyo";
   renderMap();
   const box=document.getElementById("trees");
   if(!state.trees.length){ box.innerHTML='<div class="empty">「＋ 木を追加」から1本ずつ登録します。</div>'; return; }
@@ -846,6 +878,7 @@ function onSiteContract(v){ pushUndo("site"); state.contract=v; state.site=""; m
 function onSiteSel(v){ if(v==="__add__"){ const aw=document.getElementById("siteAddWrap"); if(aw){ aw.style.display=""; const i=document.getElementById("siteAdd"); if(i) i.focus(); } return; } pushUndo("site"); state.site=v; markDirty(); }
 function addSiteName(){ const i=document.getElementById("siteAdd"); const v=(i&&i.value||"").trim(); if(!v) return; pushUndo("site"); state.site=v; if(i) i.value=""; markDirty(); renderSite(); }
 function setTantou(v){ state.tantou=v; markDirty(); }
+function setSpec(v){ state.spec=v; markDirty(); }
 
 /* ===== 事務所へ同期（手動・案件ごと。写真はDrive、重複はキーでスキップ） ===== */
 function hashStr(s){ let h=0x811c9dc5>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,0x01000193)>>>0; } return ("0000000"+h.toString(16)).slice(-8); }
