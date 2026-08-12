@@ -216,6 +216,7 @@
       </div>
       <div class="row2">
         <div><label>諸経費(円)</label><input id="exMisc" inputmode="numeric" oninput="setExtra('misc',this.value)"></div>
+        <div><label>経費率（明細＋運搬＋処分に対して）</label><select id="miscRate" onchange="setMiscRate(this.value)"><option value="">直接入力</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option><option value="30">30%</option></select></div>
         <div><label>税率(%)</label><input id="taxRate" inputmode="decimal" oninput="setTax(this.value)"></div>
       </div>
     </div>
@@ -423,12 +424,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     ws.getCell(r, 2).value = "小計"; ws.getCell(r, 2).font = font(11, true);
     ws.getCell(r, AMT).value = { formula: "SUM(" + AMTL + r0 + ":" + AMTL + rlast + ")" }; ws.getCell(r, AMT).font = font(11, true); ws.getCell(r, AMT).numFmt = "#,##0";
     var sub = r, ex = [];
+    var miscRate = Number(state.miscRate) || 0;
     var exList = [["運搬費", exs.carry], ["処分費", exs.dispose], ["諸経費", exs.misc]];
-    exList.forEach(function (row) {
+    exList.forEach(function (row, ei) {
       r += 1;
-      ws.getCell(r, 2).value = row[0]; ws.getCell(r, 2).font = font(11);
+      ws.getCell(r, 2).value = row[0] + (ei === 2 && miscRate > 0 ? "（" + miscRate + "%）" : ""); ws.getCell(r, 2).font = font(11);
       ws.getCell(r, QTYc).value = 1; ws.getCell(r, UNITc).value = "式";
-      ws.getCell(r, PRICEc).value = num(row[1]); ws.getCell(r, PRICEc).numFmt = "#,##0"; ws.getCell(r, PRICEc).fill = fill(INPUT);
+      if (ei === 2 && miscRate > 0) {
+        ws.getCell(r, PRICEc).value = { formula: "ROUND((" + AMTL + sub + "+" + AMTL + (sub + 1) + "+" + AMTL + (sub + 2) + ")*" + (miscRate / 100) + ",0)" };
+      } else {
+        ws.getCell(r, PRICEc).value = num(row[1]); ws.getCell(r, PRICEc).fill = fill(INPUT);
+      }
+      ws.getCell(r, PRICEc).numFmt = "#,##0";
       ws.getCell(r, AMT).value = { formula: PRICEL + r + "*" + QTYL + r }; ws.getCell(r, AMT).numFmt = "#,##0";
       ex.push(r);
     });
@@ -470,14 +477,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       for (var gc = 1; gc <= gcols; gc++) mp.getColumn(gc).width = COLW;
       for (var gr = 1; gr <= grows; gr++) mp.getRow(gr).height = ROWH;
       mp.getCell("A1").value = "位置図　" + name; mp.getCell("A1").font = font(14, true);
-      var MW = 900, MH = 620, ox = 4, oy = 34;
+      var MW = 900, MH = 620, ox = 4, oy = 34, EMU = 9525;
       var mid = wb.addImage({ base64: raw(imgs.map), extension: "jpeg" });
-      mp.addImage(mid, { tl: { col: ox / WPX, row: oy / HPX }, ext: { width: MW, height: MH }, editAs: "oneCell" });
+      mp.addImage(mid, { tl: { nativeCol: 0, nativeColOff: Math.round(ox * EMU), nativeRow: 0, nativeRowOff: Math.round(oy * EMU) }, ext: { width: MW, height: MH }, editAs: "oneCell" });
       (imgs.markers || []).forEach(function (mk) {
         if (!mk || !mk.img) return;
         var sz = 42, cx = ox + mk.x * MW, cy = oy + mk.y * MH;
         var kid = wb.addImage({ base64: raw(mk.img), extension: "png" });
-        mp.addImage(kid, { tl: { col: (cx - sz / 2) / WPX, row: (cy - sz / 2) / HPX }, ext: { width: sz, height: sz }, editAs: "oneCell" });
+        mp.addImage(kid, { tl: { nativeCol: 0, nativeColOff: Math.round((cx - sz / 2) * EMU), nativeRow: 0, nativeRowOff: Math.round((cy - sz / 2) * EMU) }, ext: { width: sz, height: sz }, editAs: "oneCell" });
       });
     }
 
@@ -529,7 +536,7 @@ function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){ ret
 const GAS_URL="https://script.google.com/macros/s/AKfycbzI8mKXax95BDYc8u-XklRRiMBe-pz9orHf6M557GxKygVv1heSC1fAjjvDvUNN6gcuuA/exec";
 const MASTERS_URL="https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec";
 let MASTER={staff:[],siteGroups:{}};
-let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", spec:"kokyo", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] };
+let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", spec:"kokyo", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, miscRate:"", taxRate:0.1, trees:[] };
 let saveTimer=null;
 let undoStack=[], redoStack=[], lastKey=null, lastTime=0;
 function snapClone(){ return JSON.parse(JSON.stringify(state)); }
@@ -559,7 +566,7 @@ function markDirty(){ document.getElementById("saveState").textContent="保存�
   clearTimeout(saveTimer); saveTimer=setTimeout(save,500); }
 let caseId=null, casesIndex=[];
 function newId(){ return "c"+Date.now()+Math.floor(Math.random()*1000); }
-function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", spec:(state&&state.spec)||"kokyo", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] }; }
+function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", spec:(state&&state.spec)||"kokyo", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, miscRate:(state&&state.miscRate)||"", taxRate:0.1, trees:[] }; }
 function touchIndex(){ const meta={id:caseId,name:state.caseName||"(無題)",date:state.caseDate||"",site:state.site||"",category:state.category||"",updatedAt:Date.now(),n:(state.trees||[]).length}; const e=casesIndex.find(c=>c.id===caseId); if(e) Object.assign(e,meta); else casesIndex.unshift(meta); }
 async function save(){ try{ if(!caseId) caseId=newId(); touchIndex();
   await idbSet("case_"+caseId, JSON.parse(JSON.stringify(state))); await idbSet("cases",casesIndex); await idbSet("current",caseId);
@@ -719,7 +726,7 @@ function parseVoice(i,txt){ const t=state.trees[i]; const z=txt.replace(/[０-�
   markDirty(); }
 
 /* 描画：入力 */
-function normalize(){ if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; if(state.category===undefined) state.category=""; if(state.contract===undefined) state.contract=""; if(state.site===undefined) state.site=""; if(state.tantou===undefined) state.tantou=""; if(state.spec===undefined) state.spec="kokyo"; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; if(t.w===undefined) t.w=""; }); }
+function normalize(){ if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; if(state.category===undefined) state.category=""; if(state.contract===undefined) state.contract=""; if(state.site===undefined) state.site=""; if(state.tantou===undefined) state.tantou=""; if(state.spec===undefined) state.spec="kokyo"; if(state.miscRate===undefined) state.miscRate=""; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; if(t.w===undefined) t.w=""; }); }
 function opts(list,val){ return list.map(x=>`<option ${x===val?"selected":""}>${x}</option>`).join(""); }
 function photosHTML(t,i){ const ph=(state.trees[i].photos)||[];
   const thumbs=ph.map((p,k)=>`<div class="thumb"><img src="${p}" onclick="editPhoto(${i},${k})"><button class="rm" onclick="delPhoto(${i},${k})">×</button><div class="thmove"><button onclick="movePhoto(${i},${k},-1)">◀</button><button onclick="editPhoto(${i},${k})">✎</button><button onclick="movePhoto(${i},${k},1)">▶</button></div></div>`).join("");
@@ -812,9 +819,13 @@ function showTab(w){
 }
 function qtyNum(t){ return t.type==="exterior"?(Number(t.qty)||0):1; }
 function computeTotals(){ let items=0; (state.trees||[]).forEach(t=>{ items+=(Number(t.up)||0)*qtyNum(t); });
-  const ex=state.extras||{}; const extra=(Number(ex.carry)||0)+(Number(ex.dispose)||0)+(Number(ex.misc)||0);
+  const ex=state.extras||{}; const carry=Number(ex.carry)||0, dispose=Number(ex.dispose)||0;
+  const rate=Number(state.miscRate)||0;
+  const misc = rate>0 ? Math.round((items+carry+dispose)*rate/100) : (Number(ex.misc)||0);
+  const extra=carry+dispose+misc;
   const kei=items+extra; const tr=(state.taxRate!==""&&state.taxRate!=null)?Number(state.taxRate):0.1;
-  const tax=Math.round(kei*tr); return {items,extra,kei,tax,total:kei+tax,tr}; }
+  const tax=Math.round(kei*tr); return {items,extra,kei,tax,total:kei+tax,tr,misc}; }
+function setMiscRate(v){ pushUndo("upd:miscrate"); state.miscRate=v; markDirty(); renderQuote(); }
 function yen(n){ return "¥"+Math.round(n||0).toLocaleString(); }
 function setBookTitle(v){ pushUndo("upd:booktitle"); state.bookTitle=v; markDirty(); }
 function setPlace(v){ pushUndo("upd:place"); state.place=v; markDirty(); }
@@ -822,7 +833,10 @@ function setExtra(k,v){ pushUndo("upd:extra:"+k); state.extras=state.extras||{};
 function setTax(v){ pushUndo("upd:tax"); state.taxRate=(v===""?"":Number(v)/100); markDirty(); renderQuote(); }
 function renderQuote(){ const ex=state.extras||{};
   const c=document.getElementById("exCarry"),dsp=document.getElementById("exDispose"),m=document.getElementById("exMisc"),tx=document.getElementById("taxRate");
-  if(c) c.value=ex.carry||""; if(dsp) dsp.value=ex.dispose||""; if(m) m.value=ex.misc||"";
+  if(c) c.value=ex.carry||""; if(dsp) dsp.value=ex.dispose||"";
+  const mr=document.getElementById("miscRate"); if(mr) mr.value=state.miscRate||"";
+  const _rate=Number(state.miscRate)||0;
+  if(m){ if(_rate>0){ m.value=computeTotals().misc; m.disabled=true; } else { m.value=ex.misc||""; m.disabled=false; } }
   if(tx) tx.value=(state.taxRate!==""&&state.taxRate!=null)?Math.round(Number(state.taxRate)*100):"";
   const t=computeTotals(); const el=document.getElementById("totals");
   if(el) el.innerHTML=`<div class="trow"><span>明細小計</span><b>${yen(t.items)}</b></div>`+
