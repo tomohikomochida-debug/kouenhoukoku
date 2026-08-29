@@ -40,7 +40,8 @@
   .maprow{ margin-top:10px; }
   .mapbox{ position:relative; width:100%; min-height:150px; background:#eef0f2; border:1px dashed var(--line);
     border-radius:10px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-  .mapbox img{ width:100%; height:100%; object-fit:contain; background:#fff; }
+  .mapbox img{ display:block; width:100%; height:auto; background:#fff; }
+  .mapbox .mapimgwrap{ position:relative; display:block; line-height:0; }
   .mapbox .ph{ color:var(--sub); font-size:14px; text-align:center; }
   .mapbox input[type=file]{ position:absolute; inset:0; opacity:0; }
   .mapclear{ position:absolute; top:6px; right:6px; background:rgba(0,0,0,.55); color:#fff; border:none; border-radius:6px; padding:4px 8px; font-size:12px; }
@@ -355,7 +356,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     for (var gc = 1; gc <= gcols; gc++) mp.getColumn(gc).width = COLW;
     for (var gr = 1; gr <= grows; gr++) mp.getRow(gr).height = ROWH;
     mp.getCell("A1").value = "位置図　" + name; mp.getCell("A1").font = font(14, true);
-    var MW = 900, MH = 620, ox = 4, oy = 34, EMU = 9525;
+    var MW = (imgs.mapW || 900), MH = (imgs.mapH || 620), ox = 4, oy = 34, EMU = 9525;
     var mid = wb.addImage({ base64: raw(imgs.map), extension: "jpeg" });
     mp.addImage(mid, { tl: { nativeCol: 0, nativeColOff: Math.round(ox * EMU), nativeRow: 0, nativeRowOff: Math.round(oy * EMU) }, ext: { width: MW, height: MH }, editAs: "oneCell" });
     (imgs.markers || []).forEach(function (mk) {
@@ -640,12 +641,24 @@ function restoreAll(ev){ const f=ev.target.files[0]; if(!f) return; const rd=new
   rd.readAsText(f); ev.target.value=""; }
 
 /* 画像縮小 */
-function shrink(file,max){ return new Promise(res=>{ const img=new Image(); const rd=new FileReader();
-  rd.onload=()=>{ img.onload=()=>{ let{width:w,height:h}=img;
+async function shrink(file,max){
+  try{
+    const bmp=await createImageBitmap(file,{imageOrientation:"from-image"});
+    let w=bmp.width,h=bmp.height;
     if(Math.max(w,h)>max){ const s=max/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
     const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
-    cv.getContext("2d").drawImage(img,0,0,w,h); res(cv.toDataURL("image/jpeg",0.72)); }; img.src=rd.result; };
-  rd.readAsDataURL(file); }); }
+    cv.getContext("2d").drawImage(bmp,0,0,w,h); if(bmp.close) bmp.close();
+    return cv.toDataURL("image/jpeg",0.72);
+  }catch(e){
+    return await new Promise(res=>{ const img=new Image(); const rd=new FileReader();
+      rd.onload=()=>{ img.onload=()=>{ let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+        if(Math.max(w,h)>max){ const s=max/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+        const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
+        cv.getContext("2d").drawImage(img,0,0,w,h); res(cv.toDataURL("image/jpeg",0.72)); }; img.src=rd.result; };
+      rd.readAsDataURL(file); });
+  }
+}
+function imgSize(durl){ return new Promise(function(res,rej){ var im=new Image(); im.onload=function(){ res({w:im.naturalWidth||im.width, h:im.naturalHeight||im.height}); }; im.onerror=rej; im.src=durl; }); }
 
 /* 地図 */
 async function setMap(input){ if(!input.files[0]) return; pushUndo("map"); state.mapImage=await shrink(input.files[0],1800); markDirty(); renderMap(); }
@@ -1119,11 +1132,13 @@ async function exportExcel(){
       stCopy.trees.push(Object.assign({}, t, {photos:cropped}));
     }
     var mapImg = state.mapImage || null;
+    var mapW=0, mapH=0;
+    if(mapImg){ try{ var ns=await imgSize(mapImg); var sc=Math.min(900/ns.w, 620/ns.h); mapW=Math.round(ns.w*sc); mapH=Math.round(ns.h*sc); }catch(e){} }
     var markers = [];
     for(var mmi=0; mmi<state.trees.length; mmi++){ var tt=state.trees[mmi]; if(tt.mx!=null&&tt.my!=null) markers.push({x:tt.mx,y:tt.my,img:markerPng(mmi+1)}); }
     var wb = (stCopy.spec==="kokyo" && window.buildKokyoWorkbook)
-      ? await window.buildKokyoWorkbook(window.ExcelJS, stCopy, {map: mapImg, markers: markers}, KOKYO_TPL_B64)
-      : window.buildTreeWorkbook(window.ExcelJS, stCopy, {map: mapImg, markers: markers});
+      ? await window.buildKokyoWorkbook(window.ExcelJS, stCopy, {map: mapImg, markers: markers, mapW: mapW, mapH: mapH}, KOKYO_TPL_B64)
+      : window.buildTreeWorkbook(window.ExcelJS, stCopy, {map: mapImg, markers: markers, mapW: mapW, mapH: mapH});
     var buf=await wb.xlsx.writeBuffer();
     var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
