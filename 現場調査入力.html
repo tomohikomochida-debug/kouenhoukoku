@@ -263,6 +263,7 @@
   <button onclick="exportJSON()">事務所へ書き出し</button>
   <button onclick="saveAllPhotos()">写真を端末に保存</button>
   <button onclick="shareStaff()" id="shareStaffBtn">地図＋写真帳を送る</button>
+  <button onclick="sharePdf()" id="pdfBtn">PDFにまとめる</button>
   <button onclick="document.getElementById('imp').click()">読み込み</button>
   <input id="imp" type="file" accept="application/json" style="display:none" onchange="importJSON(event)">
 </div>
@@ -766,6 +767,56 @@ async function shareStaff(){
     alert("この端末は直接共有に非対応のため、画像を保存しました。LINEで画像を選んで送ってください。");
   }catch(e){ if(e&&e.name==="AbortError") return; alert("送信用の画像を作成できませんでした。"); }
   finally{ if(btn){ btn.textContent="地図＋写真帳を送る"; btn.disabled=false; } }
+}
+/* ===== 画像→PDF（クライアント配布用・外部ライブラリ不要） ===== */
+function imagesToPdf(pages){
+  var enc=new TextEncoder(); var chunks=[], pos=0, objOffsets={};
+  function push(u8){ chunks.push(u8); pos+=u8.length; }
+  function pushStr(s){ push(enc.encode(s)); }
+  function startObj(n){ objOffsets[n]=pos; pushStr(n+" 0 obj\n"); }
+  pushStr("%PDF-1.4\n%\u00e2\u00e3\u00cf\u00d3\n");
+  var nPages=pages.length, totalObjs=2+nPages*3;
+  startObj(1); pushStr("<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+  var kids=[]; for(var i=0;i<nPages;i++) kids.push((3+i*3)+" 0 R");
+  startObj(2); pushStr("<< /Type /Pages /Count "+nPages+" /Kids ["+kids.join(" ")+"] >>\nendobj\n");
+  for(var i=0;i<nPages;i++){
+    var pg=pages[i], k=800/Math.max(pg.w,pg.h), pw=Math.round(pg.w*k), ph=Math.round(pg.h*k);
+    var pageN=3+i*3, contentN=pageN+1, imgN=pageN+2;
+    startObj(pageN); pushStr("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "+pw+" "+ph+"] /Resources << /XObject << /Im0 "+imgN+" 0 R >> >> /Contents "+contentN+" 0 R >>\nendobj\n");
+    var content="q "+pw+" 0 0 "+ph+" 0 0 cm /Im0 Do Q\n"; var cbytes=enc.encode(content);
+    startObj(contentN); pushStr("<< /Length "+cbytes.length+" >>\nstream\n"); push(cbytes); pushStr("\nendstream\nendobj\n");
+    startObj(imgN); pushStr("<< /Type /XObject /Subtype /Image /Width "+pg.w+" /Height "+pg.h+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+pg.bytes.length+" >>\nstream\n"); push(pg.bytes); pushStr("\nendstream\nendobj\n");
+  }
+  var xrefPos=pos;
+  pushStr("xref\n0 "+(totalObjs+1)+"\n0000000000 65535 f \n");
+  for(var n=1;n<=totalObjs;n++){ pushStr(("0000000000"+(objOffsets[n]||0)).slice(-10)+" 00000 n \n"); }
+  pushStr("trailer\n<< /Size "+(totalObjs+1)+" /Root 1 0 R >>\nstartxref\n"+xrefPos+"\n%%EOF");
+  var total=0; chunks.forEach(function(c){ total+=c.length; });
+  var out=new Uint8Array(total), o=0; chunks.forEach(function(c){ out.set(c,o); o+=c.length; });
+  return out;
+}
+async function buildPdfFile(){
+  var files=[];
+  var mapF=await buildMapBlob(); if(mapF) files.push(mapF);
+  var phF=await buildPhotoBlobs(); phF.forEach(function(f){ files.push(f); });
+  if(!files.length) return null;
+  var pages=[];
+  for(var i=0;i<files.length;i++){
+    var buf=new Uint8Array(await files[i].arrayBuffer());
+    var url=URL.createObjectURL(files[i]); var im=await loadImg(url); URL.revokeObjectURL(url);
+    pages.push({ bytes:buf, w: im?im.naturalWidth:1200, h: im?im.naturalHeight:900 });
+  }
+  return new File([imagesToPdf(pages)], (state.caseName||"現場調査")+"_地図写真帳.pdf", {type:"application/pdf"});
+}
+async function sharePdf(){
+  var btn=document.getElementById("pdfBtn");
+  try{
+    if(btn){ btn.textContent="作成中…"; btn.disabled=true; }
+    var pf=await buildPdfFile(); if(!pf){ alert("地図も写真もありません。"); return; }
+    if(navigator.canShare && navigator.canShare({files:[pf]})){ await navigator.share({files:[pf], title:(state.caseName||"現場調査")}); return; }
+    var a=document.createElement("a"); a.href=URL.createObjectURL(pf); a.download=pf.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },1500);
+  }catch(e){ if(e&&e.name==="AbortError") return; alert("PDFを作成できませんでした。"); }
+  finally{ if(btn){ btn.textContent="PDFにまとめる"; btn.disabled=false; } }
 }
 
 /* モデル */
