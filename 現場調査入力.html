@@ -262,6 +262,7 @@
   <button onclick="window.print()">写真帳をPDF保存</button>
   <button onclick="exportJSON()">事務所へ書き出し</button>
   <button onclick="saveAllPhotos()">写真を端末に保存</button>
+  <button onclick="shareStaff()" id="shareStaffBtn">地図＋写真帳を送る</button>
   <button onclick="document.getElementById('imp').click()">読み込み</button>
   <input id="imp" type="file" accept="application/json" style="display:none" onchange="importJSON(event)">
 </div>
@@ -702,6 +703,70 @@ function markerPng(n){ const S=84, cv=document.createElement("canvas"); cv.width
   x.beginPath(); x.arc(S/2,S/2,S/2-5,0,Math.PI*2); x.fillStyle="rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=6; x.strokeStyle="#fff"; x.stroke();
   x.fillStyle="#fff"; x.font="bold 44px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(n),S/2,S/2);
   return cv.toDataURL("image/png"); }
+
+/* ===== 地図＋写真帳を画像化してLINE等で共有 ===== */
+function capLines(t,no){
+  if(t.type==="exterior") return ["No."+no+"　"+(t.item||"（品名）"), "数量 "+(t.qty||"-")+" "+(t.unit||""), t.memo?("仕様 "+t.memo):""].filter(Boolean);
+  var spec="H="+(t.h||"-")+"m　C="+(t.c||"-")+"cm"+(t.w?("　W="+t.w+"m"):"");
+  return ["No."+no+"　"+(t.species||"（樹種）"), (t.work||"-"), spec, t.memo?("備考 "+t.memo):""].filter(Boolean);
+}
+function loadImg(src){ return new Promise(function(r){ var i=new Image(); i.onload=function(){r(i);}; i.onerror=function(){r(null);}; i.src=src; }); }
+async function buildMapBlob(){
+  if(!state.mapImage) return null;
+  var im=await loadImg(state.mapImage); if(!im) return null;
+  var W=Math.min(im.naturalWidth||1200,1600), sc=W/(im.naturalWidth||W), H=Math.round((im.naturalHeight||W)*sc);
+  var cv=document.createElement("canvas"); cv.width=W; cv.height=H; var x=cv.getContext("2d");
+  x.fillStyle="#fff"; x.fillRect(0,0,W,H); x.drawImage(im,0,0,W,H);
+  state.trees.forEach(function(t,i){ if(t.mx!=null&&t.my!=null){ var cx=t.mx*W, cy=t.my*H, r=Math.max(16,W*0.02);
+    x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.fillStyle="rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=Math.max(2,r*0.14); x.strokeStyle="#fff"; x.stroke();
+    x.fillStyle="#fff"; x.font="bold "+Math.round(r*1.15)+"px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(i+1),cx,cy); } });
+  var blob=await new Promise(function(r){ cv.toBlob(r,"image/jpeg",0.9); });
+  return blob? new File([blob],(state.caseName||"位置図")+"_位置図.jpg",{type:"image/jpeg"}) : null;
+}
+async function buildPhotoBlobs(){
+  var frames=[];
+  state.trees.forEach(function(t,i){ var no=i+1; var ph=(t.photos&&t.photos.length)?t.photos:[];
+    if(ph.length){ ph.forEach(function(p,k){ frames.push({img:p, lines:capLines(t,no).concat(ph.length>1?["("+(k+1)+"/"+ph.length+")"]:[])}); }); } });
+  if(!frames.length) return [];
+  var cols=3, per=6, PW=1200, margin=20, titleH=54;
+  var cellW=Math.floor((PW-margin*2)/cols), photoH=Math.floor(cellW*1.15), capH=120, cellH=photoH+capH+10;
+  var PH=titleH+margin+2*cellH+margin;
+  var files=[];
+  for(var pg=0; pg<frames.length; pg+=per){
+    var chunk=frames.slice(pg,pg+per);
+    var cv=document.createElement("canvas"); cv.width=PW; cv.height=PH; var x=cv.getContext("2d");
+    x.fillStyle="#fff"; x.fillRect(0,0,PW,PH);
+    x.fillStyle="#1f3d2b"; x.font="bold 26px sans-serif"; x.textAlign="left"; x.textBaseline="top";
+    x.fillText(((state.bookTitle||"写真帳")+"　"+(state.caseName||"")+"　"+(state.caseDate||"")), margin, 14);
+    var ims=await Promise.all(chunk.map(function(fr){ return loadImg(fr.img); }));
+    chunk.forEach(function(fr,k){
+      var c=k%cols, rr=Math.floor(k/cols), x0=margin+c*cellW, y0=titleH+margin+rr*cellH;
+      var pboxW=cellW-14, pboxH=photoH, px0=x0+7, py0=y0;
+      x.strokeStyle="#ccc"; x.lineWidth=1; x.strokeRect(px0,py0,pboxW,pboxH);
+      var im=ims[k];
+      if(im){ var s=Math.min(pboxW/im.naturalWidth, pboxH/im.naturalHeight), w=im.naturalWidth*s, hh=im.naturalHeight*s; x.drawImage(im, px0+(pboxW-w)/2, py0+(pboxH-hh)/2, w, hh); }
+      x.fillStyle="#222"; x.font="15px sans-serif"; x.textAlign="left"; x.textBaseline="top";
+      var ty=py0+pboxH+6; fr.lines.forEach(function(ln){ x.fillText(ln, px0, ty, pboxW); ty+=20; });
+    });
+    var blob=await new Promise(function(r){ cv.toBlob(r,"image/jpeg",0.85); });
+    if(blob) files.push(new File([blob],(state.caseName||"写真帳")+"_写真"+(files.length+1)+".jpg",{type:"image/jpeg"}));
+  }
+  return files;
+}
+async function shareStaff(){
+  var btn=document.getElementById("shareStaffBtn");
+  try{
+    if(btn){ btn.textContent="作成中…"; btn.disabled=true; }
+    var files=[];
+    var mapF=await buildMapBlob(); if(mapF) files.push(mapF);
+    var phF=await buildPhotoBlobs(); phF.forEach(function(f){ files.push(f); });
+    if(!files.length){ alert("地図も写真もありません。"); return; }
+    if(navigator.canShare && navigator.canShare({files:files})){ await navigator.share({files:files, title:(state.caseName||"現場調査")}); return; }
+    files.forEach(function(f){ var a=document.createElement("a"); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(a.href);},1500); });
+    alert("この端末は直接共有に非対応のため、画像を保存しました。LINEで画像を選んで送ってください。");
+  }catch(e){ if(e&&e.name==="AbortError") return; alert("送信用の画像を作成できませんでした。"); }
+  finally{ if(btn){ btn.textContent="地図＋写真帳を送る"; btn.disabled=false; } }
+}
 
 /* モデル */
 function addTree(scroll,noUndo){ if(scroll===undefined) scroll=true; if(!noUndo) pushUndo("add"); state.trees.push(state.mode==="exterior"?{type:"exterior",item:"",qty:"",unit:"",memo:"",photos:[]}:{type:"tree",species:"",h:"",c:"",w:"",work:"強剪定",memo:"",photos:[]});
