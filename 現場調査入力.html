@@ -713,6 +713,11 @@ function capLines(t,no){
   return ["No."+no+"　"+(t.species||"（樹種）"), (t.work||"-"), spec, t.memo?("備考 "+t.memo):""].filter(Boolean);
 }
 function loadImg(src){ return new Promise(function(r){ var i=new Image(); i.onload=function(){r(i);}; i.onerror=function(){r(null);}; i.src=src; }); }
+function fileBase(){
+  var z=function(n){ return (n<10?"0":"")+n; };
+  var d=new Date(), stamp=d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate())+"_"+z(d.getHours())+z(d.getMinutes());
+  return [stamp, state.site, state.caseName].filter(Boolean).join("_").replace(/[\\/:*?"<>|]/g,"_") || "現場調査";
+}
 async function buildMapBlob(){
   if(!state.mapImage) return null;
   var im=await loadImg(state.mapImage); if(!im) return null;
@@ -723,7 +728,7 @@ async function buildMapBlob(){
     x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.fillStyle="rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=Math.max(2,r*0.14); x.strokeStyle="#fff"; x.stroke();
     x.fillStyle="#fff"; x.font="bold "+Math.round(r*1.15)+"px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(i+1),cx,cy); } });
   var blob=await new Promise(function(r){ cv.toBlob(r,"image/jpeg",0.9); });
-  return blob? new File([blob],(state.caseName||"位置図")+"_位置図.jpg",{type:"image/jpeg"}) : null;
+  return blob? new File([blob],fileBase()+"_位置図.jpg",{type:"image/jpeg"}) : null;
 }
 async function buildPhotoBlobs(){
   var frames=[];
@@ -751,7 +756,7 @@ async function buildPhotoBlobs(){
       var ty=py0+pboxH+6; fr.lines.forEach(function(ln){ x.fillText(ln, px0, ty, pboxW); ty+=20; });
     });
     var blob=await new Promise(function(r){ cv.toBlob(r,"image/jpeg",0.85); });
-    if(blob) files.push(new File([blob],(state.caseName||"写真帳")+"_写真"+(files.length+1)+".jpg",{type:"image/jpeg"}));
+    if(blob) files.push(new File([blob],fileBase()+"_写真"+(files.length+1)+".jpg",{type:"image/jpeg"}));
   }
   return files;
 }
@@ -807,7 +812,7 @@ async function buildPdfFile(){
     var url=URL.createObjectURL(files[i]); var im=await loadImg(url); URL.revokeObjectURL(url);
     pages.push({ bytes:buf, w: im?im.naturalWidth:1200, h: im?im.naturalHeight:900 });
   }
-  var pdfName=[state.site, state.caseName].filter(Boolean).join("_").replace(/[\\/:*?"<>|]/g,"_") || "現場調査";
+  var pdfName=fileBase();
   return new File([imagesToPdf(pages)], pdfName+".pdf", {type:"application/pdf"});
 }
 async function sharePdf(){
@@ -863,7 +868,7 @@ async function savePhotoToDevice(durl, name){
 }
 async function saveEditedPhoto(){ if(!edState) return; const nm=(state.caseName||"現場調査").replace(/[\\/:*?"<>|]/g,"_")+"_"+(edState.i+1)+"-"+(edState.k+1)+".jpg"; await savePhotoToDevice(edState.url, nm); }
 async function saveAllPhotos(){
-  const base=(state.caseName||"現場調査").replace(/[\\/:*?"<>|]/g,"_");
+  const base=fileBase();
   const files=[];
   for(let i=0;i<state.trees.length;i++){ const ph=state.trees[i].photos||[]; for(let k=0;k<ph.length;k++){ try{ const b=await blobFromDataUrl(ph[k]); files.push(new File([b], base+"_"+(i+1)+"-"+(k+1)+".jpg", {type:b.type||"image/jpeg"})); }catch(e){} } }
   if(!files.length){ alert("保存できる写真がありません。"); return; }
@@ -1263,7 +1268,7 @@ async function exportExcel(){
     var buf=await wb.xlsx.writeBuffer();
     var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=(state.caseName||'現場調査').replace(/[\/:*?"<>|\\]/g,'_')+'_'+(state.caseDate||'')+'.xlsx';
+    a.download=fileBase()+'.xlsx';
     a.click();
   }catch(e){ alert('Excel作成でエラー: '+(e&&e.message?e.message:e)); }
   finally{ if(btn){ btn.textContent='Excel書き出し'; btn.disabled=false; } }
