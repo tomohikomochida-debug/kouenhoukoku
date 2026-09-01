@@ -136,6 +136,7 @@
 <body>
 <header>
   <h1>現場調査 → 写真帳</h1>
+  <span class="muted" style="color:#bfe3cd;font-size:11px;margin-left:6px">位置図修正 v0901c</span>
   <button id="undoBtn" class="hbtn" onclick="doUndo()" title="元に戻す" disabled>↶</button>
   <button id="redoBtn" class="hbtn" onclick="doRedo()" title="やり直し" disabled>↷</button>
   <span class="muted" id="saveState" style="color:#dff3e6">保存済</span>
@@ -360,13 +361,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     for (var gr = 1; gr <= grows; gr++) mp.getRow(gr).height = ROWH;
     mp.getCell("A1").value = "位置図　" + name; mp.getCell("A1").font = font(14, true);
     var MW = (imgs.mapW || 900), MH = (imgs.mapH || 620), ox = 4, oy = 34, EMU = 9525;
+    function anchorPx(px, cellPx){ var idx = Math.floor(px / cellPx); if (idx < 0) idx = 0; return { i: idx, off: Math.round((px - idx * cellPx) * EMU) }; }
+    var mA = anchorPx(ox, WPX), mB = anchorPx(oy, HPX);
     var mid = wb.addImage({ base64: raw(imgs.map), extension: "jpeg" });
-    mp.addImage(mid, { tl: { nativeCol: 0, nativeColOff: Math.round(ox * EMU), nativeRow: 0, nativeRowOff: Math.round(oy * EMU) }, ext: { width: MW, height: MH }, editAs: "oneCell" });
+    mp.addImage(mid, { tl: { nativeCol: mA.i, nativeColOff: mA.off, nativeRow: mB.i, nativeRowOff: mB.off }, ext: { width: MW, height: MH }, editAs: "oneCell" });
     (imgs.markers || []).forEach(function (mk) {
       if (!mk || !mk.img) return;
       var sz = 42, cx = ox + mk.x * MW, cy = oy + mk.y * MH;
+      var aX = anchorPx(cx - sz / 2, WPX), aY = anchorPx(cy - sz / 2, HPX);
       var kid = wb.addImage({ base64: raw(mk.img), extension: "png" });
-      mp.addImage(kid, { tl: { nativeCol: 0, nativeColOff: Math.round((cx - sz / 2) * EMU), nativeRow: 0, nativeRowOff: Math.round((cy - sz / 2) * EMU) }, ext: { width: sz, height: sz }, editAs: "oneCell" });
+      mp.addImage(kid, { tl: { nativeCol: aX.i, nativeColOff: aX.off, nativeRow: aY.i, nativeRowOff: aY.off }, ext: { width: sz, height: sz }, editAs: "oneCell" });
     });
   }
   function kPhotoSheet(wb, ExcelJS, state, trees, name, date) {
@@ -718,7 +722,7 @@ function fileBase(){
   var d=new Date(), stamp=d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate())+"_"+z(d.getHours())+z(d.getMinutes());
   return [stamp, state.site, state.caseName].filter(Boolean).join("_").replace(/[\\/:*?"<>|]/g,"_") || "現場調査";
 }
-async function buildMapBlob(){
+async function mapCanvas(){
   if(!state.mapImage) return null;
   var im=await loadImg(state.mapImage); if(!im) return null;
   var W=Math.min(im.naturalWidth||1200,1600), sc=W/(im.naturalWidth||W), H=Math.round((im.naturalHeight||W)*sc);
@@ -727,9 +731,14 @@ async function buildMapBlob(){
   state.trees.forEach(function(t,i){ if(t.mx!=null&&t.my!=null){ var cx=t.mx*W, cy=t.my*H, r=Math.max(16,W*0.02);
     x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.fillStyle="rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=Math.max(2,r*0.14); x.strokeStyle="#fff"; x.stroke();
     x.fillStyle="#fff"; x.font="bold "+Math.round(r*1.15)+"px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(i+1),cx,cy); } });
+  return cv;
+}
+async function buildMapBlob(){
+  var cv=await mapCanvas(); if(!cv) return null;
   var blob=await new Promise(function(r){ cv.toBlob(r,"image/jpeg",0.9); });
   return blob? new File([blob],fileBase()+"_位置図.jpg",{type:"image/jpeg"}) : null;
 }
+async function mapCompositeURL(){ var cv=await mapCanvas(); return cv? cv.toDataURL("image/jpeg",0.9) : null; }
 async function buildPhotoBlobs(){
   var frames=[];
   state.trees.forEach(function(t,i){ var no=i+1; var ph=(t.photos&&t.photos.length)?t.photos:[];
@@ -1260,6 +1269,7 @@ async function exportExcel(){
     var mapImg = state.mapImage || null;
     var mapW=0, mapH=0;
     if(mapImg){ try{ var ns=await imgSize(mapImg); var sc=Math.min(900/ns.w, 620/ns.h); mapW=Math.round(ns.w*sc); mapH=Math.round(ns.h*sc); }catch(e){} }
+    if(!(mapW>0)||!(mapH>0)){ mapW=900; mapH=620; }
     var markers = [];
     for(var mmi=0; mmi<state.trees.length; mmi++){ var tt=state.trees[mmi]; if(tt.mx!=null&&tt.my!=null) markers.push({x:tt.mx,y:tt.my,img:markerPng(mmi+1)}); }
     var wb = (stCopy.spec==="kokyo" && window.buildKokyoWorkbook)
