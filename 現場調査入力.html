@@ -45,7 +45,7 @@
   .mapbox .ph{ color:var(--sub); font-size:14px; text-align:center; }
   .mapbox input[type=file]{ position:absolute; inset:0; opacity:0; }
   .mapclear{ position:absolute; top:6px; right:6px; background:rgba(0,0,0,.55); color:#fff; border:none; border-radius:6px; padding:4px 8px; font-size:12px; }
-  .mapimgwrap{ position:relative; display:inline-block; width:100%; line-height:0; }
+  .mapimgwrap{ position:relative; display:inline-block; line-height:0; }
   .mapimgwrap img{ width:100%; display:block; }
   .mk{ position:absolute; transform:translate(-50%,-50%); min-width:24px; height:24px; padding:0 2px; border-radius:50%; touch-action:none; cursor:move;
        background:rgba(214,40,40,.9); color:#fff; font-weight:800; font-size:13px; line-height:24px; text-align:center;
@@ -264,6 +264,7 @@
   <button onclick="saveAllPhotos()">写真を端末に保存</button>
   <button onclick="shareStaff()" id="shareStaffBtn">地図＋写真帳を送る</button>
   <button onclick="sharePdf()" id="pdfBtn">PDFにまとめる</button>
+  <button onclick="printBook()">印刷</button>
   <button onclick="document.getElementById('imp').click()">読み込み</button>
   <input id="imp" type="file" accept="application/json" style="display:none" onchange="importJSON(event)">
 </div>
@@ -806,7 +807,8 @@ async function buildPdfFile(){
     var url=URL.createObjectURL(files[i]); var im=await loadImg(url); URL.revokeObjectURL(url);
     pages.push({ bytes:buf, w: im?im.naturalWidth:1200, h: im?im.naturalHeight:900 });
   }
-  return new File([imagesToPdf(pages)], (state.caseName||"現場調査")+"_地図写真帳.pdf", {type:"application/pdf"});
+  var pdfName=[state.site, state.caseName].filter(Boolean).join("_").replace(/[\\/:*?"<>|]/g,"_") || "現場調査";
+  return new File([imagesToPdf(pages)], pdfName+".pdf", {type:"application/pdf"});
 }
 async function sharePdf(){
   var btn=document.getElementById("pdfBtn");
@@ -1191,6 +1193,9 @@ function renderCaseBrowser(){
     el.innerHTML=html;
   }
 }
+
+function printBook(){ try{ renderBook(); }catch(e){} setTimeout(function(){ window.print(); }, 100); }
+window.addEventListener("beforeprint", function(){ try{ renderBook(); }catch(e){} });
 
 /* 起動 */
 document.getElementById("caseName").addEventListener("input",e=>{ state.caseName=e.target.value; markDirty(); });
