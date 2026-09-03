@@ -203,6 +203,7 @@
           <span class="muted" id="mkcount"></span>
           <button class="iconbtn" onclick="clearMarkers()">番号を全消去</button>
           <button class="iconbtn" onclick="clearMap()">画像を変更</button>
+          <button class="iconbtn" onclick="saveSiteMapTemplate()">この地図を現場のひな形に登録</button>
         </div>
       </div>
     </div>
@@ -669,6 +670,28 @@ function imgSize(durl){ return new Promise(function(res,rej){ var im=new Image()
 
 /* 地図 */
 async function setMap(input){ if(!input.files[0]) return; pushUndo("map"); state.mapImage=await shrink(input.files[0],1800); markDirty(); renderMap(); }
+/* ===== 現場の地図ひな形（スタッフ共有） ===== */
+let siteMapSet=new Set();
+async function loadSiteMaps(){ try{ const r=await fetch(GAS_URL+"?action=sitemaps"); const j=await r.json(); if(j&&j.ok&&Array.isArray(j.sites)) siteMapSet=new Set(j.sites); }catch(e){} }
+async function loadSiteMapTemplate(site){
+  if(!site || state.mapImage || !siteMapSet.has(site)) return;
+  try{
+    const r=await fetch(GAS_URL+"?action=getsitemap&site="+encodeURIComponent(site));
+    const j=await r.json();
+    if(j&&j.ok&&j.dataURL){ state.mapImage=j.dataURL; markDirty(); renderMap(); }
+  }catch(e){}
+}
+async function saveSiteMapTemplate(){
+  if(!state.site){ alert("先に「現場」を選んでください。"); return; }
+  if(!state.mapImage){ alert("先に地図画像をセットしてください。"); return; }
+  if(!confirm("「"+state.site+"」の地図ひな形として登録します。次回この現場を選ぶと自動で入ります。よろしいですか？")) return;
+  try{
+    const res=await fetch(GAS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"savesitemap",site:state.site,dataURL:state.mapImage})});
+    const j=await res.json();
+    if(j&&j.ok){ siteMapSet.add(state.site); alert("登録しました。この現場を選ぶと自動で地図が入ります。"); }
+    else alert("登録できませんでした。"+((j&&j.error)||""));
+  }catch(e){ alert("電波を確認して、もう一度お試しください（未登録）。"); }
+}
 function clearMap(){ pushUndo("map"); state.mapImage=""; markDirty(); renderMap(); }
 let activePlace=-1;
 function renderMap(){ const box=document.getElementById("mapbox"); const tools=document.getElementById("maptools");
@@ -1082,7 +1105,7 @@ function renderSite(){
 }
 function onSiteCat(v){ pushUndo("site"); state.category=v; state.contract=""; state.site=""; markDirty(); renderSite(); }
 function onSiteContract(v){ pushUndo("site"); state.contract=v; state.site=""; markDirty(); renderSite(); }
-function onSiteSel(v){ if(v==="__add__"){ const aw=document.getElementById("siteAddWrap"); if(aw){ aw.style.display=""; const i=document.getElementById("siteAdd"); if(i) i.focus(); } return; } pushUndo("site"); state.site=v; markDirty(); }
+function onSiteSel(v){ if(v==="__add__"){ const aw=document.getElementById("siteAddWrap"); if(aw){ aw.style.display=""; const i=document.getElementById("siteAdd"); if(i) i.focus(); } return; } pushUndo("site"); state.site=v; markDirty(); loadSiteMapTemplate(v); }
 function addSiteName(){ const i=document.getElementById("siteAdd"); const v=(i&&i.value||"").trim(); if(!v) return; pushUndo("site"); state.site=v; if(i) i.value=""; markDirty(); renderSite(); }
 function setTantou(v){ state.tantou=v; markDirty(); }
 function setSpec(v){ state.spec=v; markDirty(); }
@@ -1221,7 +1244,7 @@ document.getElementById("caseDate").addEventListener("input",e=>{ state.caseDate
   casesIndex=(await idbGet("cases"))||[]; caseId=await idbGet("current");
   if(!casesIndex.length){ const legacy=await idbGet("state"); if(legacy&&legacy.trees){ caseId=newId(); state=Object.assign(emptyState(),legacy); } else { caseId=newId(); state=emptyState(); } normalize(); await save(); }
   else { if(!caseId||!casesIndex.find(c=>c.id===caseId)) caseId=casesIndex[0].id; state=(await idbGet("case_"+caseId))||emptyState(); normalize(); }
-  syncMode(); renderTrees(); renderMap(); renderCaseBar(); updateStorage(); updUndoBtn(); loadMasters(); })();
+  syncMode(); renderTrees(); renderMap(); renderCaseBar(); updateStorage(); updUndoBtn(); loadMasters(); loadSiteMaps(); })();
 
 /* --- Excel書き出し（アプリ内生成） --- */
 /* ブラウザ用: 写真を枠にトリミングしてExcel(.xlsx)を端末上で生成・保存（AI不要） */
