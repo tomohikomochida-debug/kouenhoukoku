@@ -40,12 +40,11 @@
   .maprow{ margin-top:10px; }
   .mapbox{ position:relative; width:100%; min-height:150px; background:#eef0f2; border:1px dashed var(--line);
     border-radius:10px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-  .mapbox img{ display:block; width:100%; height:auto; background:#fff; }
-  .mapbox .mapimgwrap{ position:relative; display:block; line-height:0; }
+  .mapbox img{ width:100%; height:100%; object-fit:contain; background:#fff; }
   .mapbox .ph{ color:var(--sub); font-size:14px; text-align:center; }
   .mapbox input[type=file]{ position:absolute; inset:0; opacity:0; }
   .mapclear{ position:absolute; top:6px; right:6px; background:rgba(0,0,0,.55); color:#fff; border:none; border-radius:6px; padding:4px 8px; font-size:12px; }
-  .mapimgwrap{ position:relative; display:inline-block; line-height:0; }
+  .mapimgwrap{ position:relative; display:inline-block; width:100%; line-height:0; }
   .mapimgwrap img{ width:100%; display:block; }
   .mk{ position:absolute; transform:translate(-50%,-50%); min-width:24px; height:24px; padding:0 2px; border-radius:50%; touch-action:none; cursor:move;
        background:rgba(214,40,40,.9); color:#fff; font-weight:800; font-size:13px; line-height:24px; text-align:center;
@@ -53,6 +52,10 @@
   .maptools{ display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap; }
   .maptools .iconbtn{ border:1px solid var(--line); background:#fff; border-radius:8px; padding:6px 10px; font-size:13px; color:var(--sub); }
   .tree{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; }
+  .tree.flash{ box-shadow:0 0 0 3px var(--accent); border-color:var(--accent); animation:flashfade 1.4s ease-out; }
+  @keyframes flashfade{ 0%{ box-shadow:0 0 0 3px var(--accent); } 100%{ box-shadow:0 0 0 3px rgba(33,74,55,0); } }
+  .tomap{ position:fixed; right:12px; bottom:66px; z-index:16; background:var(--accent); color:#fff; border:none;
+    border-radius:999px; padding:10px 16px; font-weight:700; font-size:14px; box-shadow:0 2px 10px rgba(0,0,0,.28); }
   .tree .top{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
   .no{ background:var(--accent); color:#fff; font-weight:800; border-radius:8px; min-width:38px; height:34px;
     display:flex; align-items:center; justify-content:center; font-size:16px; }
@@ -110,7 +113,6 @@
   .pbitem{ display:flex; flex-direction:column; border:1px solid #9aa2ac; background:#fff; }
   .pbitem .p{ aspect-ratio:4/3; display:flex; align-items:center; justify-content:center; background:#f0f2f4; overflow:hidden; }
   .pbitem .p img{ width:100%; height:100%; object-fit:cover; }
-  .pbitem .p.tree img{ object-fit:contain; background:#fff; }
   .pbitem .p .none{ color:var(--sub); font-size:13px; }
   .pbitem .c{ padding:5px 7px; font-size:12px; line-height:1.55; border-top:1px solid #9aa2ac; min-height:28mm; }
   .pbitem .c .bn{ display:inline-block; background:var(--accent); color:#fff; font-weight:800; border-radius:6px; padding:1px 9px; margin-bottom:4px; }
@@ -136,7 +138,6 @@
 <body>
 <header>
   <h1>現場調査 → 写真帳</h1>
-  <span class="muted" style="color:#bfe3cd;font-size:11px;margin-left:6px">位置図修正 v0901c</span>
   <button id="undoBtn" class="hbtn" onclick="doUndo()" title="元に戻す" disabled>↶</button>
   <button id="redoBtn" class="hbtn" onclick="doRedo()" title="やり直し" disabled>↷</button>
   <span class="muted" id="saveState" style="color:#dff3e6">保存済</span>
@@ -151,7 +152,6 @@
   <section id="input">
     <div class="casebar">
       <select id="caseSel" onchange="switchCase(this.value)"></select>
-      <button class="iconbtn" onclick="openCaseBrowser()">📁 フォルダ</button>
       <button class="iconbtn" onclick="newCase()">＋新規</button>
       <button class="iconbtn" onclick="deleteCase()">削除</button>
     </div>
@@ -166,29 +166,10 @@
       <button id="mTree" class="mbtn on" onclick="setMode('tree')">🌳 樹木管理</button>
       <button id="mExt" class="mbtn" onclick="setMode('exterior')">🏡 庭・外構</button>
     </div>
-    <div class="casebar2">
-      <button class="iconbtn" id="syncBtn" onclick="syncCase()">↑ この案件を事務所に同期</button>
-      <span class="muted" id="syncState" style="flex:1"></span>
-    </div>
     <div class="case">
       <div class="row2">
         <div><label>案件名</label><input id="caseName" placeholder="例：かしの木台ハイツ 樹木剪定"></div>
         <div><label>調査日</label><input id="caseDate" type="date"></div>
-      </div>
-      <div class="row2">
-        <div><label>種類</label><select id="siteCat" onchange="onSiteCat(this.value)"></select></div>
-        <div id="siteContractWrap" style="display:none"><label>委託名</label><select id="siteContract" onchange="onSiteContract(this.value)"></select></div>
-      </div>
-      <div class="row2">
-        <div><label>現場（物件マスタ）</label><select id="siteSel" onchange="onSiteSel(this.value)"></select></div>
-        <div><label>調査担当</label><select id="tantouSel" onchange="setTantou(this.value)"></select></div>
-      </div>
-      <div class="row2">
-        <div><label>出力仕様（エクセルの見積様式）</label><select id="specSel" onchange="setSpec(this.value)"><option value="kokyo">公共（種別・工種・寸法などの各セル）</option><option value="minkan">民間・BOARD（品名にまとめて記載）</option></select></div>
-        <div></div>
-      </div>
-      <div id="siteAddWrap" style="display:none"><label>一覧に無い現場を追加</label>
-        <div style="display:flex;gap:6px"><input id="siteAdd" placeholder="現場名を入力" style="flex:1"><button class="iconbtn" onclick="addSiteName()">＋追加</button></div>
       </div>
       <div><label>工事場所（御見積書に記載）</label><input id="casePlace" placeholder="例：川崎市〇〇区〇〇 1-2-3" oninput="setPlace(this.value)"></div>
       <div><label>写真帳の見出し</label><input id="bookTitle" placeholder="写真帳" oninput="setBookTitle(this.value)"></div>
@@ -199,11 +180,10 @@
           <input type="file" accept="image/*" onchange="setMap(this)">
         </div>
         <div class="maptools" id="maptools" style="display:none">
-          <span class="muted">空きをタップで番号カードを追加／マーカーはドラッグで移動</span>
+          <span class="muted">空きをタップで番号カードを追加／番号をタップでその木へ移動／番号をドラッグで位置調整</span>
           <span class="muted" id="mkcount"></span>
           <button class="iconbtn" onclick="clearMarkers()">番号を全消去</button>
           <button class="iconbtn" onclick="clearMap()">画像を変更</button>
-          <button class="iconbtn" onclick="saveSiteMapTemplate()">この地図を現場のひな形に登録</button>
         </div>
       </div>
     </div>
@@ -219,7 +199,6 @@
       </div>
       <div class="row2">
         <div><label>諸経費(円)</label><input id="exMisc" inputmode="numeric" oninput="setExtra('misc',this.value)"></div>
-        <div><label>経費率（明細＋運搬＋処分に対して）</label><select id="miscRate" onchange="setMiscRate(this.value)"><option value="">直接入力</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option><option value="30">30%</option></select></div>
         <div><label>税率(%)</label><input id="taxRate" inputmode="decimal" oninput="setTax(this.value)"></div>
       </div>
     </div>
@@ -228,30 +207,12 @@
   <section id="book"><div id="bookBody"></div></section>
 </main>
 
-<!-- 物件（現場）ごとの案件ブラウザ：この端末内の案件をまとめる -->
-<div id="caseBrowser" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:flex-start;justify-content:center">
-  <div style="background:#fff;margin:36px 0;width:92%;max-width:620px;max-height:82vh;overflow:auto;border-radius:12px;padding:14px;box-shadow:0 8px 30px rgba(0,0,0,.25)">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-      <b style="font-size:16px">📁 案件フォルダ</b>
-      <span style="flex:1"></span>
-      <button class="iconbtn" onclick="closeCaseBrowser()">閉じる</button>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <button id="cbTabAuto" onclick="setCbTab('auto')" style="flex:1;border:1px solid #214a37;border-radius:8px;padding:8px;cursor:pointer;background:#214a37;color:#fff">種類・現場</button>
-      <button id="cbTabFolder" onclick="setCbTab('folder')" style="flex:1;border:1px solid #214a37;border-radius:8px;padding:8px;cursor:pointer;background:#fff;color:#214a37">マイフォルダ</button>
-    </div>
-    <input id="cbSearch" placeholder="現場名・案件名で絞り込み" oninput="renderCaseBrowser()" style="width:100%;box-sizing:border-box;padding:9px;border:1px solid #dcd9d0;border-radius:8px;margin-bottom:10px">
-    <div id="cbList"></div>
-  </div>
-</div>
-
 <div id="photoEditor" class="peditor" style="display:none">
   <div class="pehead">
     <button onclick="edRotate(-1)">↺</button>
     <button onclick="edRotate(1)">↻</button>
     <span class="muted" style="color:#bbb">画像をドラッグでトリミング範囲</span>
     <span style="flex:1"></span>
-    <button onclick="saveEditedPhoto()">📥 端末に保存</button>
     <button onclick="edCancel()">キャンセル</button>
     <button class="solid" onclick="edApply()">適用</button>
   </div>
@@ -259,14 +220,11 @@
     <img id="edImg"><div id="edSel" class="edsel" style="display:none"></div>
   </div>
 </div>
+<button id="toMapBtn" class="tomap noprint" onclick="toMap()" style="display:none">🗺 地図へ</button>
 <div class="bar noprint">
   <button id="xlsxBtn" class="solid" onclick="exportExcel()">Excel書き出し</button>
   <button onclick="window.print()">写真帳をPDF保存</button>
   <button onclick="exportJSON()">事務所へ書き出し</button>
-  <button onclick="saveAllPhotos()">写真を端末に保存</button>
-  <button onclick="shareStaff()" id="shareStaffBtn">地図＋写真帳を送る</button>
-  <button onclick="sharePdf()" id="pdfBtn">PDFにまとめる</button>
-  <button onclick="printBook()">印刷</button>
   <button onclick="document.getElementById('imp').click()">読み込み</button>
   <input id="imp" type="file" accept="application/json" style="display:none" onchange="importJSON(event)">
 </div>
@@ -336,9 +294,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   // 見積・写真帳・マスター用の共通マッピング
   function nameOf(t) { return ty(t) === "exterior" ? (t.item || "") : ((t.work || "") + "　" + (t.species || "")).trim(); }
-  function specOf(t) { if (ty(t) === "exterior") return t.memo || ""; var s = "H=" + (t.h || "") + "m　C=" + (t.c || "") + "cm"; if (t.w) s += "　W=" + t.w + "m"; return s; }
-  function cellNum(v) { if (v === null || v === undefined || String(v).trim() === "") return ""; var s = String(v).trim(); return /^[0-9]+(\.[0-9]+)?$/.test(s) ? Number(s) : v; }
-  function jspec(t) { if (ty(t) === "exterior") return t.memo || ""; var a = []; if (t.h) a.push("樹高" + t.h + "m"); if (t.c) a.push("幹周" + t.c + "cm"); if (t.w) a.push("葉張り" + t.w + "m"); return a.join(" "); }
+  function specOf(t) { return ty(t) === "exterior" ? (t.memo || "") : ("H=" + (t.h || "") + "m　C=" + (t.c || "") + "cm"); }
   function qtyOf(t) { return ty(t) === "exterior" ? (t.qty || "") : 1; }
   function unitOf(t) { return ty(t) === "exterior" ? (t.unit || "") : "本"; }
   function kubun(t) { return ty(t) === "exterior" ? "外構" : "樹木"; }
@@ -353,96 +309,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return c;
   }
 
-  function kMapSheet(wb, ExcelJS, imgs, name) {
-    if (!imgs || !imgs.map) return;
-    var COLW = 8, ROWH = 15, WPX = COLW * 7 + 5, HPX = ROWH * 4 / 3;
-    var mp = wb.addWorksheet("位置図", { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1 } });
-    var gcols = Math.ceil(1000 / WPX) + 2, grows = Math.ceil(760 / HPX) + 4;
-    for (var gc = 1; gc <= gcols; gc++) mp.getColumn(gc).width = COLW;
-    for (var gr = 1; gr <= grows; gr++) mp.getRow(gr).height = ROWH;
-    mp.getCell("A1").value = "位置図　" + name; mp.getCell("A1").font = font(14, true);
-    var MW = (imgs.mapW || 900), MH = (imgs.mapH || 620), ox = 4, oy = 34, EMU = 9525;
-    function anchorPx(px, cellPx){ var idx = Math.floor(px / cellPx); if (idx < 0) idx = 0; return { i: idx, off: Math.round((px - idx * cellPx) * EMU) }; }
-    var mA = anchorPx(ox, WPX), mB = anchorPx(oy, HPX);
-    var mid = wb.addImage({ base64: raw(imgs.map), extension: "jpeg" });
-    mp.addImage(mid, { tl: { nativeCol: mA.i, nativeColOff: mA.off, nativeRow: mB.i, nativeRowOff: mB.off }, ext: { width: MW, height: MH }, editAs: "oneCell" });
-    (imgs.markers || []).forEach(function (mk) {
-      if (!mk || !mk.img) return;
-      var sz = 42, cx = ox + mk.x * MW, cy = oy + mk.y * MH;
-      var aX = anchorPx(cx - sz / 2, WPX), aY = anchorPx(cy - sz / 2, HPX);
-      var kid = wb.addImage({ base64: raw(mk.img), extension: "png" });
-      mp.addImage(kid, { tl: { nativeCol: aX.i, nativeColOff: aX.off, nativeRow: aY.i, nativeRowOff: aY.off }, ext: { width: sz, height: sz }, editAs: "oneCell" });
-    });
-  }
-  function kPhotoSheet(wb, ExcelJS, state, trees, name, date) {
-    var pb = wb.addWorksheet("写真帳", { pageSetup: { orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } } });
-    [2, 35, 2, 35, 2, 35].forEach(function (w, i) { pb.getColumn(i + 1).width = w; });
-    pb.getCell("A1").value = ((state.bookTitle || "写真帳") + "　" + name); pb.getCell("A1").font = font(14, true);
-    pb.getCell("A2").value = date + "　全" + trees.length + "件"; pb.getCell("A2").font = font(10);
-    var frames = [];
-    trees.forEach(function (t, i) {
-      var no = i + 1;
-      var ph = (t.photos && t.photos.length) ? t.photos : (t.photo ? [t.photo] : []);
-      if (ph.length) { ph.forEach(function (p, k) { var cap = caption(t, no) + (ph.length > 1 ? ("\n（" + (k + 1) + "/" + ph.length + "）") : ""); frames.push({ img: p, cap: cap }); }); }
-      else { frames.push({ img: null, cap: caption(t, no) }); }
-    });
-    var COLS = [1, 3, 5], FW = 250, FH = 330, photoPt = FH * 0.75 + 3, capPt = 80, top = 3;
-    for (var pg = 0; pg < frames.length; pg += 6) {
-      var chunk = frames.slice(pg, pg + 6);
-      pb.getRow(top).height = photoPt; pb.getRow(top + 2).height = photoPt;
-      pb.getRow(top + 1).height = capPt; pb.getRow(top + 3).height = capPt;
-      chunk.forEach(function (fr, k) {
-        var colIdx = COLS[k % 3], prow = top + (k < 3 ? 0 : 2), crow = prow + 1;
-        if (fr.img) { var iid = wb.addImage({ base64: raw(fr.img), extension: "jpeg" }); pb.addImage(iid, { tl: { col: colIdx, row: prow - 1 }, ext: { width: FW, height: FH }, editAs: "oneCell" }); }
-        pb.getCell(prow, colIdx + 1).border = border();
-        var cc = pb.getCell(crow, colIdx + 1); cc.value = fr.cap; cc.font = font(10);
-        cc.alignment = { horizontal: "left", vertical: "top", wrapText: true }; cc.border = border();
-      });
-      if (pg + 6 < frames.length) pb.getRow(top + 3).addPageBreak();
-      top += 4;
-    }
-  }
-  async function buildKokyoWorkbook(ExcelJS, state, imgs, tplB64) {
-    imgs = imgs || { photos: {} };
-    var trees = state.trees || [];
-    var name = state.caseName || "現場調査";
-    var date = state.caseDate || "";
-    var exs = state.extras || {};
-    var num = function (v) { return (v !== "" && v != null && !isNaN(v)) ? Number(v) : null; };
-    var miscRate = Number(state.miscRate) || 0;
-    var wb = new ExcelJS.Workbook();
-    var binStr = atob(tplB64), bytes = new Uint8Array(binStr.length);
-    for (var bi = 0; bi < binStr.length; bi++) bytes[bi] = binStr.charCodeAt(bi);
-    await wb.xlsx.load(bytes);
-    var ws = wb.getWorksheet("内訳"), cov = wb.getWorksheet("樹木剪定");
-    if (cov) { cov.getCell("D8").value = name; cov.getCell("D10").value = state.place || ""; }
-    var TPL = 12, first = 4, N = trees.length;
-    if (N > TPL) ws.duplicateRow(first + TPL - 1, N - TPL, true);
-    else if (N < TPL) ws.spliceRows(first + N, TPL - N);
-    for (var i = 0; i < N; i++) {
-      var t = trees[i], r = first + i, isT = (ty(t) !== "exterior"), up = num(t.up);
-      ws.getCell(r, 1).value = i + 1;
-      ws.getCell(r, 2).value = isT ? (t.species || "") : (t.item || "");
-      ws.getCell(r, 3).value = isT ? (t.work || "") : "";
-      ws.getCell(r, 4).value = isT ? cellNum(t.c) : "";
-      ws.getCell(r, 5).value = qtyOf(t);
-      ws.getCell(r, 6).value = unitOf(t);
-      ws.getCell(r, 7).value = up != null ? up : "";
-      ws.getCell(r, 8).value = up != null ? { formula: "G" + r + "*E" + r } : "";
-      ws.getCell(r, 9).value = t.memo || "";
-    }
-    var cR = first + N, dR = first + N + 1, mR = first + N + 2, kR = first + N + 3;
-    ws.getCell(cR, 2).value = "運搬費"; ws.getCell(cR, 5).value = 1; ws.getCell(cR, 6).value = "式"; ws.getCell(cR, 8).value = num(exs.carry);
-    ws.getCell(dR, 2).value = "処理費"; ws.getCell(dR, 5).value = 1; ws.getCell(dR, 6).value = "式"; ws.getCell(dR, 8).value = num(exs.dispose);
-    ws.getCell(mR, 2).value = "諸経費" + (miscRate > 0 ? "（" + miscRate + "%）" : ""); ws.getCell(mR, 5).value = 1; ws.getCell(mR, 6).value = "式";
-    if (miscRate > 0) ws.getCell(mR, 8).value = { formula: "ROUND(SUM(H" + first + ":H" + dR + ")*" + (miscRate / 100) + ",0)" };
-    else ws.getCell(mR, 8).value = num(exs.misc);
-    ws.getCell(kR, 2).value = "計"; ws.getCell(kR, 8).value = { formula: "SUM(H" + first + ":H" + mR + ")" };
-    if (cov) cov.getCell("D12").value = { formula: 'TEXT(内訳!H' + kR + ',"￥＃、＃－")' };
-    kMapSheet(wb, ExcelJS, imgs, name);
-    kPhotoSheet(wb, ExcelJS, state, trees, name, date);
-    return wb;
-  }
   function buildTreeWorkbook(ExcelJS, state, imgs) {
     imgs = imgs || { photos: {} };
     var trees = state.trees || [];
@@ -475,125 +341,129 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     /* ===== 内訳（統一様式：番号 品名 仕様 数量 単位 単価 金額） ===== */
     var ws = wb.addWorksheet("内訳");
+    [6, 24, 22, 7, 7, 12, 14].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
     ws.getCell("A1").value = name; ws.getCell("A1").font = font(12, true);
-    var isKokyo = (state.spec !== "minkan");
-    var r0 = 4, AMT, QTYc, UNITc, PRICEc, LAST, AMTL, QTYL, PRICEL;
-    if (isKokyo) {
-      /* 公共：番号 種別 工種 寸法(㎝) 数量 単位 単価 金額 摘要 */
-      [6, 16, 20, 9, 7, 7, 12, 14, 18].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
-      ["番号", "種別", "工種", "寸法(㎝)", "数量", "単位", "単価", "金額", "摘要"].forEach(function (h, i) {
-        var c = ws.getCell(3, i + 1); c.value = h; c.font = font(11, true, "FFFFFFFF"); c.fill = fill(HEAD);
-        c.alignment = { horizontal: "center", vertical: "middle" }; c.border = border();
+    ["番号", "品名", "仕様", "数量", "単位", "単価", "金額"].forEach(function (h, i) {
+      var c = ws.getCell(3, i + 1); c.value = h; c.font = font(11, true, "FFFFFFFF"); c.fill = fill(HEAD);
+      c.alignment = { horizontal: "center", vertical: "middle" }; c.border = border();
+    });
+    var r0 = 4;
+    trees.forEach(function (t, i) {
+      var r = r0 + i;
+      var vals = [i + 1, nameOf(t), specOf(t), qtyOf(t), unitOf(t), num(t.up), { formula: "F" + r + "*D" + r }];
+      vals.forEach(function (v, k) {
+        var c = ws.getCell(r, k + 1); c.value = v; c.font = font(11); c.border = border();
+        c.alignment = { horizontal: (k === 0 || k === 3 || k === 4) ? "center" : ((k === 5 || k === 6) ? "right" : "left"), vertical: "middle" };
+        if (k === 5 || k === 6) c.numFmt = "#,##0";
+        if (k === 5) c.fill = fill(INPUT);
       });
-      trees.forEach(function (t, i) {
-        var r = r0 + i; var isT = (ty(t) !== "exterior");
-        var vals = [i + 1, isT ? (t.species || "") : (t.item || ""), isT ? (t.work || "") : "", isT ? cellNum(t.c) : "", qtyOf(t), unitOf(t), num(t.up), { formula: "G" + r + "*E" + r }, (t.memo || "")];
-        vals.forEach(function (v, k) {
-          var c = ws.getCell(r, k + 1); c.value = v; c.font = font(11); c.border = border();
-          c.alignment = { horizontal: (k === 1 || k === 2 || k === 8) ? "left" : ((k === 6 || k === 7) ? "right" : "center"), vertical: "middle" };
-          if (k === 6 || k === 7) c.numFmt = "#,##0";
-          if (k === 6) c.fill = fill(INPUT);
-        });
-      });
-      AMT = 8; QTYc = 5; UNITc = 6; PRICEc = 7; LAST = 9; AMTL = "H"; QTYL = "E"; PRICEL = "G";
-    } else {
-      /* 民間（BOARD）：番号 品名 数量 単位 単価 金額（品名に樹高◯m 幹周◯cm 葉張り◯mを並べる） */
-      [6, 44, 7, 7, 12, 14].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
-      ["番号", "品名", "数量", "単位", "単価", "金額"].forEach(function (h, i) {
-        var c = ws.getCell(3, i + 1); c.value = h; c.font = font(11, true, "FFFFFFFF"); c.fill = fill(HEAD);
-        c.alignment = { horizontal: "center", vertical: "middle" }; c.border = border();
-      });
-      trees.forEach(function (t, i) {
-        var r = r0 + i; var isT = (ty(t) !== "exterior");
-        var hin = isT ? ((nameOf(t) || "") + (jspec(t) ? "　" + jspec(t) : "")) : ((t.item || "") + (t.memo ? "　" + t.memo : ""));
-        var vals = [i + 1, hin, qtyOf(t), unitOf(t), num(t.up), { formula: "E" + r + "*C" + r }];
-        vals.forEach(function (v, k) {
-          var c = ws.getCell(r, k + 1); c.value = v; c.font = font(11); c.border = border();
-          c.alignment = { horizontal: (k === 1) ? "left" : ((k === 4 || k === 5) ? "right" : "center"), vertical: "middle" };
-          if (k === 4 || k === 5) c.numFmt = "#,##0";
-          if (k === 4) c.fill = fill(INPUT);
-        });
-      });
-      AMT = 6; QTYc = 3; UNITc = 4; PRICEc = 5; LAST = 6; AMTL = "F"; QTYL = "C"; PRICEL = "E";
-    }
+    });
     var rlast = r0 + trees.length - 1, r = rlast + 1;
     ws.getCell(r, 2).value = "小計"; ws.getCell(r, 2).font = font(11, true);
-    ws.getCell(r, AMT).value = { formula: "SUM(" + AMTL + r0 + ":" + AMTL + rlast + ")" }; ws.getCell(r, AMT).font = font(11, true); ws.getCell(r, AMT).numFmt = "#,##0";
+    ws.getCell(r, 7).value = { formula: "SUM(G" + r0 + ":G" + rlast + ")" }; ws.getCell(r, 7).font = font(11, true); ws.getCell(r, 7).numFmt = "#,##0";
     var sub = r, ex = [];
-    var miscRate = Number(state.miscRate) || 0;
     var exList = [["運搬費", exs.carry], ["処分費", exs.dispose], ["諸経費", exs.misc]];
-    exList.forEach(function (row, ei) {
+    exList.forEach(function (row) {
       r += 1;
-      ws.getCell(r, 2).value = row[0] + (ei === 2 && miscRate > 0 ? "（" + miscRate + "%）" : ""); ws.getCell(r, 2).font = font(11);
-      ws.getCell(r, QTYc).value = 1; ws.getCell(r, UNITc).value = "式";
-      if (ei === 2 && miscRate > 0) {
-        ws.getCell(r, PRICEc).value = { formula: "ROUND((" + AMTL + sub + "+" + AMTL + (sub + 1) + "+" + AMTL + (sub + 2) + ")*" + (miscRate / 100) + ",0)" };
-      } else {
-        ws.getCell(r, PRICEc).value = num(row[1]); ws.getCell(r, PRICEc).fill = fill(INPUT);
-      }
-      ws.getCell(r, PRICEc).numFmt = "#,##0";
-      ws.getCell(r, AMT).value = { formula: PRICEL + r + "*" + QTYL + r }; ws.getCell(r, AMT).numFmt = "#,##0";
+      ws.getCell(r, 2).value = row[0]; ws.getCell(r, 2).font = font(11);
+      ws.getCell(r, 4).value = 1; ws.getCell(r, 5).value = "式";
+      ws.getCell(r, 6).value = num(row[1]); ws.getCell(r, 6).numFmt = "#,##0"; ws.getCell(r, 6).fill = fill(INPUT);
+      ws.getCell(r, 7).value = { formula: "F" + r + "*D" + r }; ws.getCell(r, 7).numFmt = "#,##0";
       ex.push(r);
     });
     r += 1; ws.getCell(r, 2).value = "計"; ws.getCell(r, 2).font = font(11, true);
-    ws.getCell(r, AMT).value = { formula: AMTL + sub + "+" + ex.map(function (x) { return AMTL + x; }).join("+") };
-    ws.getCell(r, AMT).font = font(11, true); ws.getCell(r, AMT).numFmt = "#,##0"; var kei = r;
+    ws.getCell(r, 7).value = { formula: "G" + sub + "+" + ex.map(function (x) { return "G" + x; }).join("+") };
+    ws.getCell(r, 7).font = font(11, true); ws.getCell(r, 7).numFmt = "#,##0"; var kei = r;
     r += 1; ws.getCell(r, 2).value = "消費税(" + Math.round(taxRate * 100) + "%)"; ws.getCell(r, 2).font = font(11);
-    ws.getCell(r, AMT).value = { formula: "ROUND(" + AMTL + kei + "*" + taxRate + ",0)" }; ws.getCell(r, AMT).numFmt = "#,##0"; var tax = r;
+    ws.getCell(r, 7).value = { formula: "ROUND(G" + kei + "*" + taxRate + ",0)" }; ws.getCell(r, 7).numFmt = "#,##0"; var tax = r;
     r += 1; ws.getCell(r, 2).value = "合計"; ws.getCell(r, 2).font = font(12, true);
-    ws.getCell(r, AMT).value = { formula: AMTL + kei + "+" + AMTL + tax }; ws.getCell(r, AMT).font = font(12, true); ws.getCell(r, AMT).numFmt = "#,##0"; ws.getCell(r, AMT).fill = fill(GREY);
+    ws.getCell(r, 7).value = { formula: "G" + kei + "+G" + tax }; ws.getCell(r, 7).font = font(12, true); ws.getCell(r, 7).numFmt = "#,##0"; ws.getCell(r, 7).fill = fill(GREY);
     var total = r;
-    for (var rr = kei; rr <= total; rr++) for (var cc = 2; cc <= LAST; cc++) ws.getCell(rr, cc).border = border();
-    mi.getCell("B11").value = { formula: "'内訳'!" + AMTL + total }; mi.getCell("B11").font = font(16, true); mi.getCell("B11").numFmt = '"¥"#,##0" （税込）"';
+    for (var rr = kei; rr <= total; rr++) for (var cc = 2; cc <= 7; cc++) ws.getCell(rr, cc).border = border();
+    mi.getCell("B11").value = { formula: "'内訳'!G" + total }; mi.getCell("B11").font = font(16, true); mi.getCell("B11").numFmt = '"¥"#,##0" （税込）"';
 
     /* ===== 調査マスター（番号 区分 品名 仕様 数量 単位 摘要） ===== */
     var ms = wb.addWorksheet("調査マスター");
-    [6, 8, 22, 8, 8, 8, 7, 7, 20].forEach(function (w, i) { ms.getColumn(i + 1).width = w; });
+    [6, 8, 22, 22, 7, 7, 16].forEach(function (w, i) { ms.getColumn(i + 1).width = w; });
     ms.getCell("A1").value = "現地調査マスター"; ms.getCell("A1").font = font(14, true);
     ms.getCell("A2").value = "案件：" + name + "／調査日：" + date; ms.getCell("A2").font = font(10);
-    ["番号", "区分", "品名", "H(m)", "C(cm)", "W(m)", "数量", "単位", "摘要"].forEach(function (h, i) {
+    ["番号", "区分", "品名", "仕様", "数量", "単位", "摘要"].forEach(function (h, i) {
       var c = ms.getCell(4, i + 1); c.value = h; c.font = font(11, true, "FFFFFFFF"); c.fill = fill(HEAD);
       c.alignment = { horizontal: "center", vertical: "middle" }; c.border = border();
     });
-    var msNum = function (v) { if (v === null || v === undefined || String(v).trim() === "") return ""; var s = String(v).trim(); return /^[0-9]+(\.[0-9]+)?$/.test(s) ? Number(s) : v; };
     trees.forEach(function (t, i) {
-      var rr = 5 + i; var isT = (ty(t) !== "exterior");
-      var vals = [i + 1, kubun(t), nameOf(t), isT ? msNum(t.h) : "", isT ? msNum(t.c) : "", isT ? msNum(t.w) : "", qtyOf(t), unitOf(t), (t.memo || "")];
+      var rr = 5 + i;
+      var vals = [i + 1, kubun(t), nameOf(t), specOf(t), qtyOf(t), unitOf(t), (ty(t) === "exterior" ? "" : (t.memo || ""))];
       vals.forEach(function (v, k) {
         var c = ms.getCell(rr, k + 1); c.value = v; c.font = font(11); c.border = border();
-        c.alignment = { horizontal: (k === 2 || k === 8) ? "left" : "center", vertical: "middle" };
+        c.alignment = { horizontal: (k === 0 || k === 1 || k === 4 || k === 5) ? "center" : "left", vertical: "middle" };
       });
     });
 
-    /* ===== 位置図 ===== */
-    kMapSheet(wb, ExcelJS, imgs, name);
+    /* ===== 位置図（マーカーは独立オブジェクト＝Excelで移動/削除可） ===== */
+    if (imgs.map) {
+      var COLW = 8, ROWH = 15, WPX = COLW * 7 + 5, HPX = ROWH * 4 / 3; // 均一グリッドで座標→セル換算
+      var mp = wb.addWorksheet("位置図", { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1 } });
+      var gcols = Math.ceil(1000 / WPX) + 2, grows = Math.ceil(760 / HPX) + 4;
+      for (var gc = 1; gc <= gcols; gc++) mp.getColumn(gc).width = COLW;
+      for (var gr = 1; gr <= grows; gr++) mp.getRow(gr).height = ROWH;
+      mp.getCell("A1").value = "位置図　" + name; mp.getCell("A1").font = font(14, true);
+      var MW = 900, MH = 620, ox = 4, oy = 34;
+      var mid = wb.addImage({ base64: raw(imgs.map), extension: "jpeg" });
+      mp.addImage(mid, { tl: { col: ox / WPX, row: oy / HPX }, ext: { width: MW, height: MH }, editAs: "oneCell" });
+      (imgs.markers || []).forEach(function (mk) {
+        if (!mk || !mk.img) return;
+        var sz = 42, cx = ox + mk.x * MW, cy = oy + mk.y * MH;
+        var kid = wb.addImage({ base64: raw(mk.img), extension: "png" });
+        mp.addImage(kid, { tl: { col: (cx - sz / 2) / WPX, row: (cy - sz / 2) / HPX }, ext: { width: sz, height: sz }, editAs: "oneCell" });
+      });
+    }
 
-    /* ===== 写真帳 ===== */
-    kPhotoSheet(wb, ExcelJS, state, trees, name, date);
+    /* ===== 写真帳（複数写真対応・3列×2段＝6枚/ページ・写真下コメント） ===== */
+    var pb = wb.addWorksheet("写真帳", { pageSetup: { orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } } });
+    [2, 35, 2, 35, 2, 35].forEach(function (w, i) { pb.getColumn(i + 1).width = w; });
+    pb.getCell("A1").value = ((state.bookTitle||"写真帳")+"　"+name); pb.getCell("A1").font = font(14, true);
+    pb.getCell("A2").value = date + "　全" + trees.length + "件"; pb.getCell("A2").font = font(10);
+    var frames = [];
+    trees.forEach(function (t, i) {
+      var no = i + 1;
+      var ph = (t.photos && t.photos.length) ? t.photos : (t.photo ? [t.photo] : []);
+      if (ph.length) { ph.forEach(function (p, k) { var cap = caption(t, no) + (ph.length > 1 ? ("\n（" + (k + 1) + "/" + ph.length + "）") : ""); frames.push({ img: p, cap: cap }); }); }
+      else { frames.push({ img: null, cap: caption(t, no) }); }
+    });
+    var COLS = [1, 3, 5], FW = 250, FH = 330, photoPt = FH * 0.75 + 3, capPt = 80, top = 3;
+    for (var pg = 0; pg < frames.length; pg += 6) {
+      var chunk = frames.slice(pg, pg + 6);
+      pb.getRow(top).height = photoPt; pb.getRow(top + 2).height = photoPt;
+      pb.getRow(top + 1).height = capPt; pb.getRow(top + 3).height = capPt;
+      chunk.forEach(function (fr, k) {
+        var colIdx = COLS[k % 3], prow = top + (k < 3 ? 0 : 2), crow = prow + 1;
+        if (fr.img) { var iid = wb.addImage({ base64: raw(fr.img), extension: "jpeg" }); pb.addImage(iid, { tl: { col: colIdx, row: prow - 1 }, ext: { width: FW, height: FH }, editAs: "oneCell" }); }
+        pb.getCell(prow, colIdx + 1).border = border();
+        var cc = pb.getCell(crow, colIdx + 1); cc.value = fr.cap; cc.font = font(10);
+        cc.alignment = { horizontal: "left", vertical: "top", wrapText: true }; cc.border = border();
+      });
+      if (pg + 6 < frames.length) pb.getRow(top + 3).addPageBreak();
+      top += 4;
+    }
     return wb;
   }
 
   root.buildTreeWorkbook = buildTreeWorkbook;
-  root.buildKokyoWorkbook = buildKokyoWorkbook;
-  if (typeof module !== "undefined" && module.exports) module.exports = { buildTreeWorkbook: buildTreeWorkbook, buildKokyoWorkbook: buildKokyoWorkbook };
+  if (typeof module !== "undefined" && module.exports) module.exports = { buildTreeWorkbook: buildTreeWorkbook };
 })(typeof window !== "undefined" ? window : globalThis);
 
 </script>
 <script>
 const SPECIES=["シラカシ","ケヤキ","コナラ","サクラ","エゴノキ","マテバシイ","クスノキ","ヒノキ","スギ","イチョウ","クヌギ","モミジ","ツバキ","キンモクセイ"];
-const WORKS=["剪定","強剪定","枯れ枝剪定","萌芽更新","高さ低減剪定","透かし剪定","支障木剪定","除草","薬剤散布","伐採","その他"];
+const WORKS=["強剪定","枯れ枝剪定","萌芽更新","高さ低減剪定","透かし剪定","伐採","その他"];
 const ITEMS=["土間コンクリート","化粧ブロック積み","ブロック積み","フェンス設置","目隠しフェンス","カーポート","テラス屋根","ウッドデッキ","人工芝","芝張り","植栽","高木植栽","低木植栽","生垣","石張り","乱形石張り","インターロッキング","洗い出し","門柱","表札","ポスト","花壇","立水栓","防草シート","砂利敷き","整地","残土処分","解体撤去"];
 const UNITS=["㎡","m","箇所","本","式","㎥","t","台","枚","組"];
 /* ローカル日付（YYYY-MM-DD）。toISOString()はUTCなので早朝に前日日付になるのを防ぐ */
 function today(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
 /* HTML挿し込み用エスケープ（メモ等に " や < が入っても崩れないように） */
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-/* 事務所同期：survey専用GAS。物件マスタは日報GASの ?action=masters を流用 */
-const GAS_URL="https://script.google.com/macros/s/AKfycby-7j8xP1y_uwNZvqCOKyt9siYBtasPmYqR_keh6Qyw-0EFRajC5mxafaGFV17VyoU5/exec";
-const KOKYO_TPL_B64="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";
-const MASTERS_URL="https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec";
-let MASTER={staff:[],siteGroups:{}};
-let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", spec:"kokyo", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, miscRate:"", taxRate:0.1, trees:[] };
+let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] };
 let saveTimer=null;
 let undoStack=[], redoStack=[], lastKey=null, lastTime=0;
 function snapClone(){ return JSON.parse(JSON.stringify(state)); }
@@ -623,8 +493,8 @@ function markDirty(){ document.getElementById("saveState").textContent="保存�
   clearTimeout(saveTimer); saveTimer=setTimeout(save,500); }
 let caseId=null, casesIndex=[];
 function newId(){ return "c"+Date.now()+Math.floor(Math.random()*1000); }
-function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", category:"", contract:"", site:"", tantou:"", spec:(state&&state.spec)||"kokyo", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, miscRate:(state&&state.miscRate)||"", taxRate:0.1, trees:[] }; }
-function touchIndex(){ const meta={id:caseId,name:state.caseName||"(無題)",date:state.caseDate||"",site:state.site||"",category:state.category||"",updatedAt:Date.now(),n:(state.trees||[]).length}; const e=casesIndex.find(c=>c.id===caseId); if(e) Object.assign(e,meta); else casesIndex.unshift(meta); }
+function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", mapImage:"", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] }; }
+function touchIndex(){ const meta={id:caseId,name:state.caseName||"(無題)",date:state.caseDate||"",updatedAt:Date.now(),n:(state.trees||[]).length}; const e=casesIndex.find(c=>c.id===caseId); if(e) Object.assign(e,meta); else casesIndex.unshift(meta); }
 async function save(){ try{ if(!caseId) caseId=newId(); touchIndex();
   await idbSet("case_"+caseId, JSON.parse(JSON.stringify(state))); await idbSet("cases",casesIndex); await idbSet("current",caseId);
   document.getElementById("saveState").textContent="保存済"; renderCaseBar(); updateStorage();
@@ -649,54 +519,20 @@ function restoreAll(ev){ const f=ev.target.files[0]; if(!f) return; const rd=new
   rd.readAsText(f); ev.target.value=""; }
 
 /* 画像縮小 */
-async function shrink(file,max){
-  try{
-    const bmp=await createImageBitmap(file,{imageOrientation:"from-image"});
-    let w=bmp.width,h=bmp.height;
+function shrink(file,max){ return new Promise(res=>{ const img=new Image(); const rd=new FileReader();
+  rd.onload=()=>{ img.onload=()=>{ let{width:w,height:h}=img;
     if(Math.max(w,h)>max){ const s=max/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
     const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
-    cv.getContext("2d").drawImage(bmp,0,0,w,h); if(bmp.close) bmp.close();
-    return cv.toDataURL("image/jpeg",0.72);
-  }catch(e){
-    return await new Promise(res=>{ const img=new Image(); const rd=new FileReader();
-      rd.onload=()=>{ img.onload=()=>{ let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
-        if(Math.max(w,h)>max){ const s=max/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
-        const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
-        cv.getContext("2d").drawImage(img,0,0,w,h); res(cv.toDataURL("image/jpeg",0.72)); }; img.src=rd.result; };
-      rd.readAsDataURL(file); });
-  }
-}
-function imgSize(durl){ return new Promise(function(res,rej){ var im=new Image(); im.onload=function(){ res({w:im.naturalWidth||im.width, h:im.naturalHeight||im.height}); }; im.onerror=rej; im.src=durl; }); }
+    cv.getContext("2d").drawImage(img,0,0,w,h); res(cv.toDataURL("image/jpeg",0.72)); }; img.src=rd.result; };
+  rd.readAsDataURL(file); }); }
 
 /* 地図 */
 async function setMap(input){ if(!input.files[0]) return; pushUndo("map"); state.mapImage=await shrink(input.files[0],1800); markDirty(); renderMap(); }
-/* ===== 現場の地図ひな形（スタッフ共有） ===== */
-let siteMapSet=new Set();
-async function loadSiteMaps(){ try{ const r=await fetch(GAS_URL+"?action=sitemaps"); const j=await r.json(); if(j&&j.ok&&Array.isArray(j.sites)) siteMapSet=new Set(j.sites); }catch(e){} }
-async function loadSiteMapTemplate(site){
-  if(!site || state.mapImage || !siteMapSet.has(site)) return;
-  try{
-    const r=await fetch(GAS_URL+"?action=getsitemap&site="+encodeURIComponent(site));
-    const j=await r.json();
-    if(j&&j.ok&&j.dataURL){ state.mapImage=j.dataURL; markDirty(); renderMap(); }
-  }catch(e){}
-}
-async function saveSiteMapTemplate(){
-  if(!state.site){ alert("先に「現場」を選んでください。"); return; }
-  if(!state.mapImage){ alert("先に地図画像をセットしてください。"); return; }
-  if(!confirm("「"+state.site+"」の地図ひな形として登録します。次回この現場を選ぶと自動で入ります。よろしいですか？")) return;
-  try{
-    const res=await fetch(GAS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"savesitemap",site:state.site,dataURL:state.mapImage})});
-    const j=await res.json();
-    if(j&&j.ok){ siteMapSet.add(state.site); alert("登録しました。この現場を選ぶと自動で地図が入ります。"); }
-    else alert("登録できませんでした。"+((j&&j.error)||""));
-  }catch(e){ alert("電波を確認して、もう一度お試しください（未登録）。"); }
-}
 function clearMap(){ pushUndo("map"); state.mapImage=""; markDirty(); renderMap(); }
 let activePlace=-1;
 function renderMap(){ const box=document.getElementById("mapbox"); const tools=document.getElementById("maptools");
   if(state.mapImage){
-    const mks=state.trees.map((t,i)=>(t.mx!=null&&t.my!=null)?`<div class="mk" data-i="${i}" onpointerdown="mkDown(event,${i})" onclick="mkAbsorb(event)" style="left:${t.mx*100}%;top:${t.my*100}%">${i+1}</div>`:"").join("");
+    const mks=state.trees.map((t,i)=>(t.mx!=null&&t.my!=null)?`<div class="mk" data-i="${i}" title="タップでその木のカードへ／ドラッグで移動" onpointerdown="mkDown(event,${i})" onclick="mkAbsorb(event)" style="left:${t.mx*100}%;top:${t.my*100}%">${i+1}</div>`:"").join("");
     box.innerHTML = `<div class="mapimgwrap" onclick="mapClick(event)"><img src="${state.mapImage}">${mks}</div>`;
     if(tools){ tools.style.display="flex"; const c=document.getElementById("mkcount");
       const placed=state.trees.filter(t=>t.mx!=null).length;
@@ -715,151 +551,39 @@ function mapClick(ev){ if(Date.now()-(window.__jd||0)<300) return;
   if(x<0||x>1||y<0||y>1) return;
   pushUndo("pin"); let idx=activePlace; if(idx<0){ addTree(false,true); idx=state.trees.length-1; }
   state.trees[idx].mx=x; state.trees[idx].my=y; activePlace=-1; markDirty(); renderTrees(); renderMap(); }
-let dragIdx=-1, dragRect=null;
+let dragIdx=-1, dragRect=null, dragStart=null, dragMoved=false;
 function mkAbsorb(ev){ ev.stopPropagation(); }
-function mkDown(ev,i){ ev.preventDefault(); ev.stopPropagation(); pushUndo("drag"+i); dragIdx=i;
+function mkDown(ev,i){ ev.preventDefault(); ev.stopPropagation(); dragIdx=i; dragMoved=false; dragStart={x:ev.clientX,y:ev.clientY};
   const img=document.querySelector(".mapimgwrap img"); dragRect=img?img.getBoundingClientRect():null;
   window.addEventListener("pointermove",mkMove); window.addEventListener("pointerup",mkUp); }
 function mkMove(ev){ if(dragIdx<0||!dragRect) return;
+  if(!dragMoved){ if(Math.abs(ev.clientX-dragStart.x)<5 && Math.abs(ev.clientY-dragStart.y)<5) return; dragMoved=true; pushUndo("drag"+dragIdx); }
   let x=(ev.clientX-dragRect.left)/dragRect.width, y=(ev.clientY-dragRect.top)/dragRect.height;
   x=Math.max(0,Math.min(1,x)); y=Math.max(0,Math.min(1,y));
   state.trees[dragIdx].mx=x; state.trees[dragIdx].my=y;
   const el=document.querySelector('#mapbox .mk[data-i="'+dragIdx+'"]'); if(el){ el.style.left=(x*100)+"%"; el.style.top=(y*100)+"%"; } }
-function mkUp(){ if(dragIdx<0) return; window.__jd=Date.now(); dragIdx=-1; dragRect=null;
-  window.removeEventListener("pointermove",mkMove); window.removeEventListener("pointerup",mkUp); markDirty(); renderTrees(); }
+function mkUp(){ if(dragIdx<0) return; const i=dragIdx, moved=dragMoved; window.__jd=Date.now(); dragIdx=-1; dragRect=null; dragStart=null; dragMoved=false;
+  window.removeEventListener("pointermove",mkMove); window.removeEventListener("pointerup",mkUp);
+  if(moved){ markDirty(); renderTrees(); } else { scrollToTree(i); } }
+/* マーカー番号をタップ→その入力カードへスクロール＋一瞬ハイライト */
+function scrollToTree(i){ const cards=document.querySelectorAll('#trees .tree'); const el=cards[i]; if(!el||!el.scrollIntoView) return;
+  el.scrollIntoView({behavior:"smooth",block:"center"}); el.classList.add("flash"); setTimeout(function(){ el.classList.remove("flash"); },1400); }
+/* 下のカードから地図へ戻る */
+function toMap(){ const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"start"}); }
+function updateToMap(){ const b=document.getElementById("toMapBtn"); if(!b) return;
+  const inp=document.getElementById("input"); const onInput=inp&&inp.style.display!=="none";
+  const mb=document.getElementById("mapbox"); let show=false;
+  if(onInput&&state.mapImage&&mb){ const r=mb.getBoundingClientRect(); if(r.bottom<80) show=true; }
+  b.style.display=show?"block":"none"; }
+window.addEventListener("scroll",updateToMap,{passive:true});
 function clearMarkers(){ if(!state.trees.some(t=>t.mx!=null)) return; if(confirm("地図の番号配置を全て消去しますか？")){ pushUndo("clearpins"); state.trees.forEach(t=>{t.mx=null;t.my=null;}); activePlace=-1; markDirty(); renderTrees(); renderMap(); } }
 function markerPng(n){ const S=84, cv=document.createElement("canvas"); cv.width=S; cv.height=S; const x=cv.getContext("2d");
   x.beginPath(); x.arc(S/2,S/2,S/2-5,0,Math.PI*2); x.fillStyle="rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=6; x.strokeStyle="#fff"; x.stroke();
   x.fillStyle="#fff"; x.font="bold 44px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(n),S/2,S/2);
   return cv.toDataURL("image/png"); }
 
-/* ===== 地図＋写真帳を画像化してLINE等で共有 ===== */
-function capLines(t,no){
-  if(t.type==="exterior") return ["No."+no+"　"+(t.item||"（品名）"), "数量 "+(t.qty||"-")+" "+(t.unit||""), t.memo?("仕様 "+t.memo):""].filter(Boolean);
-  var spec="H="+(t.h||"-")+"m　C="+(t.c||"-")+"cm"+(t.w?("　W="+t.w+"m"):"");
-  return ["No."+no+"　"+(t.species||"（樹種）"), (t.work||"-"), spec, t.memo?("備考 "+t.memo):""].filter(Boolean);
-}
-function loadImg(src){ return new Promise(function(r){ var i=new Image(); i.onload=function(){r(i);}; i.onerror=function(){r(null);}; i.src=src; }); }
-function fileBase(){
-  var z=function(n){ return (n<10?"0":"")+n; };
-  var d=new Date(), stamp=d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate())+"_"+z(d.getHours())+z(d.getMinutes());
-  return [stamp, state.site, state.caseName].filter(Boolean).join("_").replace(/[\\/:*?"<>|]/g,"_") || "現場調査";
-}
-async function mapCanvas(){
-  if(!state.mapImage) return null;
-  var im=await loadImg(state.mapImage); if(!im) return null;
-  var W=Math.min(im.naturalWidth||1200,1600), sc=W/(im.naturalWidth||W), H=Math.round((im.naturalHeight||W)*sc);
-  var cv=document.createElement("canvas"); cv.width=W; cv.height=H; var x=cv.getContext("2d");
-  x.fillStyle="#fff"; x.fillRect(0,0,W,H); x.drawImage(im,0,0,W,H);
-  state.trees.forEach(function(t,i){ if(t.mx!=null&&t.my!=null){ var cx=t.mx*W, cy=t.my*H, r=Math.max(16,W*0.02);
-    x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.fillStyle="rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=Math.max(2,r*0.14); x.strokeStyle="#fff"; x.stroke();
-    x.fillStyle="#fff"; x.font="bold "+Math.round(r*1.15)+"px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(i+1),cx,cy); } });
-  return cv;
-}
-async function buildMapBlob(){
-  var cv=await mapCanvas(); if(!cv) return null;
-  var blob=await new Promise(function(r){ cv.toBlob(r,"image/jpeg",0.9); });
-  return blob? new File([blob],fileBase()+"_位置図.jpg",{type:"image/jpeg"}) : null;
-}
-async function mapCompositeURL(){ var cv=await mapCanvas(); return cv? cv.toDataURL("image/jpeg",0.9) : null; }
-async function buildPhotoBlobs(){
-  var frames=[];
-  state.trees.forEach(function(t,i){ var no=i+1; var ph=(t.photos&&t.photos.length)?t.photos:[];
-    if(ph.length){ ph.forEach(function(p,k){ frames.push({img:p, lines:capLines(t,no).concat(ph.length>1?["("+(k+1)+"/"+ph.length+")"]:[])}); }); } });
-  if(!frames.length) return [];
-  var cols=3, per=6, PW=1200, margin=20, titleH=54;
-  var cellW=Math.floor((PW-margin*2)/cols), photoH=Math.floor(cellW*1.15), capH=120, cellH=photoH+capH+10;
-  var PH=titleH+margin+2*cellH+margin;
-  var files=[];
-  for(var pg=0; pg<frames.length; pg+=per){
-    var chunk=frames.slice(pg,pg+per);
-    var cv=document.createElement("canvas"); cv.width=PW; cv.height=PH; var x=cv.getContext("2d");
-    x.fillStyle="#fff"; x.fillRect(0,0,PW,PH);
-    x.fillStyle="#1f3d2b"; x.font="bold 26px sans-serif"; x.textAlign="left"; x.textBaseline="top";
-    x.fillText(((state.bookTitle||"写真帳")+"　"+(state.caseName||"")+"　"+(state.caseDate||"")), margin, 14);
-    var ims=await Promise.all(chunk.map(function(fr){ return loadImg(fr.img); }));
-    chunk.forEach(function(fr,k){
-      var c=k%cols, rr=Math.floor(k/cols), x0=margin+c*cellW, y0=titleH+margin+rr*cellH;
-      var pboxW=cellW-14, pboxH=photoH, px0=x0+7, py0=y0;
-      x.strokeStyle="#ccc"; x.lineWidth=1; x.strokeRect(px0,py0,pboxW,pboxH);
-      var im=ims[k];
-      if(im){ var s=Math.min(pboxW/im.naturalWidth, pboxH/im.naturalHeight), w=im.naturalWidth*s, hh=im.naturalHeight*s; x.drawImage(im, px0+(pboxW-w)/2, py0+(pboxH-hh)/2, w, hh); }
-      x.fillStyle="#222"; x.font="15px sans-serif"; x.textAlign="left"; x.textBaseline="top";
-      var ty=py0+pboxH+6; fr.lines.forEach(function(ln){ x.fillText(ln, px0, ty, pboxW); ty+=20; });
-    });
-    var blob=await new Promise(function(r){ cv.toBlob(r,"image/jpeg",0.85); });
-    if(blob) files.push(new File([blob],fileBase()+"_写真"+(files.length+1)+".jpg",{type:"image/jpeg"}));
-  }
-  return files;
-}
-async function shareStaff(){
-  var btn=document.getElementById("shareStaffBtn");
-  try{
-    if(btn){ btn.textContent="作成中…"; btn.disabled=true; }
-    var files=[];
-    var mapF=await buildMapBlob(); if(mapF) files.push(mapF);
-    var phF=await buildPhotoBlobs(); phF.forEach(function(f){ files.push(f); });
-    if(!files.length){ alert("地図も写真もありません。"); return; }
-    if(navigator.canShare && navigator.canShare({files:files})){ await navigator.share({files:files, title:(state.caseName||"現場調査")}); return; }
-    files.forEach(function(f){ var a=document.createElement("a"); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(a.href);},1500); });
-    alert("この端末は直接共有に非対応のため、画像を保存しました。LINEで画像を選んで送ってください。");
-  }catch(e){ if(e&&e.name==="AbortError") return; alert("送信用の画像を作成できませんでした。"); }
-  finally{ if(btn){ btn.textContent="地図＋写真帳を送る"; btn.disabled=false; } }
-}
-/* ===== 画像→PDF（クライアント配布用・外部ライブラリ不要） ===== */
-function imagesToPdf(pages){
-  var enc=new TextEncoder(); var chunks=[], pos=0, objOffsets={};
-  function push(u8){ chunks.push(u8); pos+=u8.length; }
-  function pushStr(s){ push(enc.encode(s)); }
-  function startObj(n){ objOffsets[n]=pos; pushStr(n+" 0 obj\n"); }
-  pushStr("%PDF-1.4\n%\u00e2\u00e3\u00cf\u00d3\n");
-  var nPages=pages.length, totalObjs=2+nPages*3;
-  startObj(1); pushStr("<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-  var kids=[]; for(var i=0;i<nPages;i++) kids.push((3+i*3)+" 0 R");
-  startObj(2); pushStr("<< /Type /Pages /Count "+nPages+" /Kids ["+kids.join(" ")+"] >>\nendobj\n");
-  for(var i=0;i<nPages;i++){
-    var pg=pages[i], k=800/Math.max(pg.w,pg.h), pw=Math.round(pg.w*k), ph=Math.round(pg.h*k);
-    var pageN=3+i*3, contentN=pageN+1, imgN=pageN+2;
-    startObj(pageN); pushStr("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "+pw+" "+ph+"] /Resources << /XObject << /Im0 "+imgN+" 0 R >> >> /Contents "+contentN+" 0 R >>\nendobj\n");
-    var content="q "+pw+" 0 0 "+ph+" 0 0 cm /Im0 Do Q\n"; var cbytes=enc.encode(content);
-    startObj(contentN); pushStr("<< /Length "+cbytes.length+" >>\nstream\n"); push(cbytes); pushStr("\nendstream\nendobj\n");
-    startObj(imgN); pushStr("<< /Type /XObject /Subtype /Image /Width "+pg.w+" /Height "+pg.h+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+pg.bytes.length+" >>\nstream\n"); push(pg.bytes); pushStr("\nendstream\nendobj\n");
-  }
-  var xrefPos=pos;
-  pushStr("xref\n0 "+(totalObjs+1)+"\n0000000000 65535 f \n");
-  for(var n=1;n<=totalObjs;n++){ pushStr(("0000000000"+(objOffsets[n]||0)).slice(-10)+" 00000 n \n"); }
-  pushStr("trailer\n<< /Size "+(totalObjs+1)+" /Root 1 0 R >>\nstartxref\n"+xrefPos+"\n%%EOF");
-  var total=0; chunks.forEach(function(c){ total+=c.length; });
-  var out=new Uint8Array(total), o=0; chunks.forEach(function(c){ out.set(c,o); o+=c.length; });
-  return out;
-}
-async function buildPdfFile(){
-  var files=[];
-  var mapF=await buildMapBlob(); if(mapF) files.push(mapF);
-  var phF=await buildPhotoBlobs(); phF.forEach(function(f){ files.push(f); });
-  if(!files.length) return null;
-  var pages=[];
-  for(var i=0;i<files.length;i++){
-    var buf=new Uint8Array(await files[i].arrayBuffer());
-    var url=URL.createObjectURL(files[i]); var im=await loadImg(url); URL.revokeObjectURL(url);
-    pages.push({ bytes:buf, w: im?im.naturalWidth:1200, h: im?im.naturalHeight:900 });
-  }
-  var pdfName=fileBase();
-  return new File([imagesToPdf(pages)], pdfName+".pdf", {type:"application/pdf"});
-}
-async function sharePdf(){
-  var btn=document.getElementById("pdfBtn");
-  try{
-    if(btn){ btn.textContent="作成中…"; btn.disabled=true; }
-    var pf=await buildPdfFile(); if(!pf){ alert("地図も写真もありません。"); return; }
-    if(navigator.canShare && navigator.canShare({files:[pf]})){ await navigator.share({files:[pf], title:(state.caseName||"現場調査")}); return; }
-    var a=document.createElement("a"); a.href=URL.createObjectURL(pf); a.download=pf.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },1500);
-  }catch(e){ if(e&&e.name==="AbortError") return; alert("PDFを作成できませんでした。"); }
-  finally{ if(btn){ btn.textContent="PDFにまとめる"; btn.disabled=false; } }
-}
-
 /* モデル */
-function addTree(scroll,noUndo){ if(scroll===undefined) scroll=true; if(!noUndo) pushUndo("add"); state.trees.push(state.mode==="exterior"?{type:"exterior",item:"",qty:"",unit:"",memo:"",photos:[]}:{type:"tree",species:"",h:"",c:"",w:"",work:"強剪定",memo:"",photos:[]});
+function addTree(scroll,noUndo){ if(scroll===undefined) scroll=true; if(!noUndo) pushUndo("add"); state.trees.push(state.mode==="exterior"?{type:"exterior",item:"",qty:"",unit:"",memo:"",photos:[]}:{type:"tree",species:"",h:"",c:"",work:"強剪定",memo:"",photos:[]});
   markDirty(); renderTrees(); if(scroll){ const el=document.querySelector("#trees .tree:last-child"); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"center"}); } }
 function delTree(i){ if(confirm((i+1)+"番を削除しますか？")){ pushUndo("del"); state.trees.splice(i,1); markDirty(); renderTrees(); } }
 function move(i,d){ const j=i+d; if(j<0||j>=state.trees.length) return; pushUndo("move"); [state.trees[i],state.trees[j]]=[state.trees[j],state.trees[i]]; markDirty(); renderTrees(); }
@@ -888,65 +612,31 @@ function edApply(){ pushUndo("photoedit"); const url=edState.url, sel=edState.se
 function edCommit(url){ state.trees[edState.i].photos[edState.k]=url; markDirty(); renderTrees(); edClose(); }
 function edCancel(){ edClose(); }
 function edClose(){ document.getElementById("photoEditor").style.display="none"; edState=null; edDrag=null; }
-/* ===== 写真を端末（カメラロール等）に保存 ===== */
-async function blobFromDataUrl(durl){ return (await fetch(durl)).blob(); }
-async function savePhotoToDevice(durl, name){
-  try{
-    const blob=await blobFromDataUrl(durl);
-    const file=new File([blob], name, {type:blob.type||"image/jpeg"});
-    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file]}); return; }
-    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1500);
-  }catch(e){ if(e&&e.name==="AbortError") return; alert("保存できませんでした。写真を長押しして「画像を保存」でも保存できます。"); }
-}
-async function saveEditedPhoto(){ if(!edState) return; const nm=(state.caseName||"現場調査").replace(/[\\/:*?"<>|]/g,"_")+"_"+(edState.i+1)+"-"+(edState.k+1)+".jpg"; await savePhotoToDevice(edState.url, nm); }
-async function saveAllPhotos(){
-  const base=fileBase();
-  const files=[];
-  for(let i=0;i<state.trees.length;i++){ const ph=state.trees[i].photos||[]; for(let k=0;k<ph.length;k++){ try{ const b=await blobFromDataUrl(ph[k]); files.push(new File([b], base+"_"+(i+1)+"-"+(k+1)+".jpg", {type:b.type||"image/jpeg"})); }catch(e){} } }
-  if(!files.length){ alert("保存できる写真がありません。"); return; }
-  try{
-    if(navigator.canShare && navigator.canShare({files})){ await navigator.share({files, title:base}); return; }
-    files.forEach(f=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1500); });
-  }catch(e){ if(e&&e.name==="AbortError") return; alert("まとめて保存できませんでした。枚数が多い場合は、写真を1枚ずつ長押しで保存してください。"); }
-}
 function upd(i,k,v){ pushUndo("upd:"+i+":"+k); state.trees[i][k]=v; markDirty(); if(k!=="memo") document.getElementById("saveState").textContent="保存中…"; }
 
 /* 音声（対応端末のみ） */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-const IS_IOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
-function voiceText(i){
-  const txt=prompt("樹種・作業・高さ(H)・幹周(C)・葉張り(W)をまとめて話すか入力してください。\niPad/iPhoneはキーボードの🎤（音声入力）で話せます。\n例：ソメイヨシノ 強剪定 H12 C160 W5");
-  if(txt==null||!txt.trim()) return;
-  pushUndo("voice"+i); parseVoice(i,txt); renderTrees();
-}
-function voice(i,btn){ if(IS_IOS||!SR){ voiceText(i); return; }
+function voice(i,btn){ if(!SR){ alert("この端末は音声ボタン非対応です。各欄をタップし、キーボードのマイクで話してください。"); return; }
   const rec=new SR(); rec.lang="ja-JP"; rec.interimResults=false; btn.classList.add("rec"); btn.textContent="●聞取中";
   rec.onresult=e=>{ parseVoice(i,e.results[0][0].transcript); renderTrees(); };
-  rec.onerror=(e)=>{ btn.classList.remove("rec"); btn.textContent="🎤音声";
-    const c=e&&e.error;
-    if(c==="not-allowed"||c==="service-not-allowed") alert("マイクの使用が許可されていません。アドレスバーのマイク（🎤）アイコン、またはブラウザの設定で、このサイトのマイクを「許可」にしてください。");
-    else if(c==="no-speech") alert("音声が聞き取れませんでした。もう一度、はっきりお話しください。");
-    else if(c==="audio-capture") alert("マイクが見つかりません。端末のマイクをご確認ください。");
-    else if(c==="network") alert("音声認識サーバーに接続できませんでした。電波を確認して、もう一度お試しください。");
-    else if(c) alert("音声認識でエラーが発生しました（"+c+"）。"); };
+  rec.onerror=()=>{ btn.classList.remove("rec"); btn.textContent="🎤音声"; };
   rec.onend=()=>{ btn.classList.remove("rec"); btn.textContent="🎤音声"; };
-  try{ rec.start(); }catch(err){ btn.classList.remove("rec"); btn.textContent="🎤音声"; alert("音声認識を開始できませんでした。少し待ってからもう一度お試しください。"); } }
+  rec.start(); }
 function parseVoice(i,txt){ const t=state.trees[i]; const z=txt.replace(/[０-９]/g,d=>"0123456789"["０１２３４５６７８９".indexOf(d)]);
   for(const s of SPECIES) if(txt.includes(s)) t.species=s;
   for(const w of WORKS) if(txt.includes(w)) t.work=w;
-  let m=z.match(/(?:高さ|たかさ|エイチ|エッチ|[hH])\s*([0-9]+(?:\.[0-9]+)?)/); if(m) t.h=m[1];
-  m=z.match(/(?:幹周|みきしゅう|みきまわり|胸高周囲|周囲|しゅうい|シー|スィー|[cC])\s*([0-9]+(?:\.[0-9]+)?)/); if(m) t.c=m[1];
-  m=z.match(/(?:葉張り|葉張|はばり|ようちょう|ダブリュー|ダブル|だぶりゅー|[wW])\s*([0-9]+(?:\.[0-9]+)?)/); if(m) t.w=m[1];
-  if(!t.h){ m=z.match(/([0-9]+(?:\.[0-9]+)?)\s*メートル/); if(m) t.h=m[1]; }
+  let m=z.match(/(高さ|たかさ)\s*([0-9]+(?:\.[0-9])?)/); if(m) t.h=m[2];
+  m=z.match(/(幹周|みきまわり|周囲|しゅうい)\s*([0-9]+)/); if(m) t.c=m[2];
+  if(!t.h){ m=z.match(/([0-9]+)\s*メートル/); if(m) t.h=m[1]; }
   if(!t.c){ m=z.match(/([0-9]+)\s*センチ/); if(m) t.c=m[1]; }
   markDirty(); }
 
 /* 描画：入力 */
-function normalize(){ if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; if(state.category===undefined) state.category=""; if(state.contract===undefined) state.contract=""; if(state.site===undefined) state.site=""; if(state.tantou===undefined) state.tantou=""; if(state.spec===undefined) state.spec="kokyo"; if(state.miscRate===undefined) state.miscRate=""; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; if(t.w===undefined) t.w=""; }); }
+function normalize(){ if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; }); }
 function opts(list,val){ return list.map(x=>`<option ${x===val?"selected":""}>${x}</option>`).join(""); }
 function photosHTML(t,i){ const ph=(state.trees[i].photos)||[];
   const thumbs=ph.map((p,k)=>`<div class="thumb"><img src="${p}" onclick="editPhoto(${i},${k})"><button class="rm" onclick="delPhoto(${i},${k})">×</button><div class="thmove"><button onclick="movePhoto(${i},${k},-1)">◀</button><button onclick="editPhoto(${i},${k})">✎</button><button onclick="movePhoto(${i},${k},1)">▶</button></div></div>`).join("");
-  return `<div class="photos">${thumbs}<label class="addph">📷 撮影<input type="file" accept="image/*" capture="environment" multiple onchange="addPhoto(${i},this)"></label><label class="addph">🖼 選ぶ<input type="file" accept="image/*" multiple onchange="addPhoto(${i},this)"></label></div>`;
+  return `<div class="photos">${thumbs}<label class="addph">＋写真<input type="file" accept="image/*" capture="environment" multiple onchange="addPhoto(${i},this)"></label></div>`;
 }
 function fieldsHTML(t,i){
   if(t.type==="exterior"){
@@ -961,17 +651,16 @@ function fieldsHTML(t,i){
   return `<div style="text-align:right;margin-bottom:6px"><button class="mic" onclick="voice(${i},this)">🎤音声</button></div>
      <div class="grid3">
        <div class="fld"><label>樹種</label><input list="splist" class="yellow" value="${esc(t.species)}" oninput="upd(${i},'species',this.value)" placeholder="樹種"></div>
-       <div class="fld"><label>作業内容</label><select class="yellow" onchange="upd(${i},'work',this.value)">${opts(WORKS,t.work)}</select></div>
-       <div class="fld"><label>高さ (H・m)</label><input class="yellow" inputmode="decimal" value="${esc(t.h)}" oninput="upd(${i},'h',this.value)" placeholder="例 12"></div>
-       <div class="fld"><label>幹周 (C・cm)</label><input class="yellow" value="${esc(t.c)}" oninput="upd(${i},'c',this.value)" placeholder="例 160（93・97）"></div>
-       <div class="fld"><label>葉張り (W・m)</label><input class="yellow" inputmode="decimal" value="${esc(t.w)}" oninput="upd(${i},'w',this.value)" placeholder="例 5"></div>
+       <div class="fld"><label>作業方針</label><select class="yellow" onchange="upd(${i},'work',this.value)">${opts(WORKS,t.work)}</select></div>
+       <div class="fld"><label>高さ (m)</label><input class="yellow" inputmode="decimal" value="${esc(t.h)}" oninput="upd(${i},'h',this.value)" placeholder="例 12"></div>
+       <div class="fld"><label>胸高周囲 (cm)</label><input class="yellow" value="${esc(t.c)}" oninput="upd(${i},'c',this.value)" placeholder="例 160（93・97）"></div>
        <div class="fld"><label>単価(円)</label><input class="yellow" inputmode="numeric" value="${esc(t.up)}" oninput="upd(${i},'up',this.value)" placeholder="任意"></div>
      </div>
      <div class="fld" style="margin-top:8px"><label>メモ（任意）</label><input value="${esc(t.memo)}" oninput="upd(${i},'memo',this.value)" placeholder="キノコ・空洞 など"></div>`;
 }
 function setType(i,type){ var t=state.trees[i]; if(t.type===type) return; pushUndo("type"+i); t.type=type;
   if(type==="exterior"){ if(t.item===undefined)t.item=""; if(t.qty===undefined)t.qty=""; if(t.unit===undefined)t.unit=""; }
-  else { if(t.species===undefined)t.species=""; if(t.h===undefined)t.h=""; if(t.c===undefined)t.c=""; if(t.w===undefined)t.w=""; if(t.work===undefined)t.work="強剪定"; }
+  else { if(t.species===undefined)t.species=""; if(t.h===undefined)t.h=""; if(t.c===undefined)t.c=""; if(t.work===undefined)t.work="強剪定"; }
   markDirty(); renderTrees(); }
 function setMode(m){ state.mode=m; markDirty();
   var bt=document.getElementById("mTree"), be=document.getElementById("mExt");
@@ -984,8 +673,6 @@ function renderTrees(){
   { const bt=document.getElementById("bookTitle"); if(bt) bt.value=(state.bookTitle||""); }
   { const pl=document.getElementById("casePlace"); if(pl) pl.value=(state.place||""); }
   document.getElementById("caseDate").value=state.caseDate;
-  renderSite();
-  var sp=document.getElementById("specSel"); if(sp) sp.value=state.spec||"kokyo";
   renderMap();
   const box=document.getElementById("trees");
   if(!state.trees.length){ box.innerHTML='<div class="empty">「＋ 木を追加」から1本ずつ登録します。</div>'; return; }
@@ -1001,6 +688,7 @@ function renderTrees(){
      ${photosHTML(t,i)}
      ${fieldsHTML(t,i)}
    </div>`).join("");
+  if(typeof updateToMap==="function") updateToMap();
 }
 
 /* 描画：写真帳（地図ページ＋3枚/ページ） */
@@ -1008,8 +696,8 @@ function pageHead(sub){ return `<div class="pghead"><h2>${esc(state.bookTitle||"
 function frameHTML(fr){ const t=fr.t, no=fr.no;
    var cap = t.type==="exterior"
      ? `<span class="bn">No.${no}</span><br><b>${esc(t.item)||"（品名未入力）"}</b><br>数量：${esc(t.qty)||"-"} ${esc(t.unit)}${t.memo?`<br>仕様：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`
-     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業内容：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>胸高周囲：${esc(t.c)||"-"} cm${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
-   return `<div class="pbitem"><div class="p${t.type==='exterior'?'':' tree'}">${fr.img?`<img src="${fr.img}">`:'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
+     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>胸高周囲：${esc(t.c)||"-"} cm${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
+   return `<div class="pbitem"><div class="p">${fr.img?`<img src="${fr.img}">`:'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
 }
 function renderBook(){
   const body=document.getElementById("bookBody"); let html="";
@@ -1032,16 +720,13 @@ function showTab(w){
   Object.keys(map).forEach(k=>{ const b=document.getElementById(map[k]); if(b) b.classList.toggle("on",k===w); });
   if(w==="book") renderBook();
   if(w==="quote") renderQuote();
+  if(typeof updateToMap==="function") updateToMap();
 }
 function qtyNum(t){ return t.type==="exterior"?(Number(t.qty)||0):1; }
 function computeTotals(){ let items=0; (state.trees||[]).forEach(t=>{ items+=(Number(t.up)||0)*qtyNum(t); });
-  const ex=state.extras||{}; const carry=Number(ex.carry)||0, dispose=Number(ex.dispose)||0;
-  const rate=Number(state.miscRate)||0;
-  const misc = rate>0 ? Math.round((items+carry+dispose)*rate/100) : (Number(ex.misc)||0);
-  const extra=carry+dispose+misc;
+  const ex=state.extras||{}; const extra=(Number(ex.carry)||0)+(Number(ex.dispose)||0)+(Number(ex.misc)||0);
   const kei=items+extra; const tr=(state.taxRate!==""&&state.taxRate!=null)?Number(state.taxRate):0.1;
-  const tax=Math.round(kei*tr); return {items,extra,kei,tax,total:kei+tax,tr,misc}; }
-function setMiscRate(v){ pushUndo("upd:miscrate"); state.miscRate=v; markDirty(); renderQuote(); }
+  const tax=Math.round(kei*tr); return {items,extra,kei,tax,total:kei+tax,tr}; }
 function yen(n){ return "¥"+Math.round(n||0).toLocaleString(); }
 function setBookTitle(v){ pushUndo("upd:booktitle"); state.bookTitle=v; markDirty(); }
 function setPlace(v){ pushUndo("upd:place"); state.place=v; markDirty(); }
@@ -1049,10 +734,7 @@ function setExtra(k,v){ pushUndo("upd:extra:"+k); state.extras=state.extras||{};
 function setTax(v){ pushUndo("upd:tax"); state.taxRate=(v===""?"":Number(v)/100); markDirty(); renderQuote(); }
 function renderQuote(){ const ex=state.extras||{};
   const c=document.getElementById("exCarry"),dsp=document.getElementById("exDispose"),m=document.getElementById("exMisc"),tx=document.getElementById("taxRate");
-  if(c) c.value=ex.carry||""; if(dsp) dsp.value=ex.dispose||"";
-  const mr=document.getElementById("miscRate"); if(mr) mr.value=state.miscRate||"";
-  const _rate=Number(state.miscRate)||0;
-  if(m){ if(_rate>0){ m.value=computeTotals().misc; m.disabled=true; } else { m.value=ex.misc||""; m.disabled=false; } }
+  if(c) c.value=ex.carry||""; if(dsp) dsp.value=ex.dispose||""; if(m) m.value=ex.misc||"";
   if(tx) tx.value=(state.taxRate!==""&&state.taxRate!=null)?Math.round(Number(state.taxRate)*100):"";
   const t=computeTotals(); const el=document.getElementById("totals");
   if(el) el.innerHTML=`<div class="trow"><span>明細小計</span><b>${yen(t.items)}</b></div>`+
@@ -1072,168 +754,6 @@ function importJSON(ev){ const f=ev.target.files[0]; if(!f) return; const rd=new
     pushUndo("import"); state=Object.assign({mode:"tree",caseName:"",caseDate:"",mapImage:"",mapMarkers:[],trees:[]},d); normalize(); markDirty(); setMode(state.mode||"tree"); showTab("input"); alert("読み込みました（"+state.trees.length+"件）"); }
     catch(e){ alert("読み込めませんでした"); } }; rd.readAsText(f); ev.target.value=""; }
 
-/* ===== 物件マスタ参照（種類→委託→現場）＋担当 ===== */
-async function loadMasters(){
-  try{
-    const r=await fetch(MASTERS_URL+"?action=masters");
-    const j=await r.json();
-    MASTER={ staff:(j.staff||[]), siteGroups:(j.siteGroups||{}) };
-    try{ await idbSet("masters_cache", MASTER); }catch(e){}
-  }catch(e){
-    const c=await idbGet("masters_cache"); if(c) MASTER=c;
-  }
-  renderSite();
-}
-function hasContracts(cat){ const g=MASTER.siteGroups[cat]; return g && !Array.isArray(g); }
-function siteList(){ const g=MASTER.siteGroups[state.category]; if(!g) return []; return Array.isArray(g)?g:(g[state.contract]||[]); }
-function renderSite(){
-  const catSel=document.getElementById("siteCat"); if(!catSel) return;
-  const cats=Object.keys(MASTER.siteGroups||{});
-  catSel.innerHTML='<option value="">種類を選ぶ…</option>'+cats.map(c=>`<option ${c===state.category?"selected":""}>${esc(c)}</option>`).join("");
-  const cw=document.getElementById("siteContractWrap"), cs=document.getElementById("siteContract");
-  if(hasContracts(state.category)){ cw.style.display="";
-    const ks=Object.keys(MASTER.siteGroups[state.category]||{});
-    cs.innerHTML='<option value="">委託を選ぶ…</option>'+ks.map(k=>`<option ${k===state.contract?"selected":""}>${esc(k)}</option>`).join("");
-  } else { cw.style.display="none"; }
-  const ss=document.getElementById("siteSel");
-  let list=siteList().slice();
-  if(state.site && list.indexOf(state.site)<0) list=[state.site].concat(list);
-  ss.innerHTML='<option value="">現場を選ぶ…</option>'+list.map(s=>`<option ${s===state.site?"selected":""}>${esc(s)}</option>`).join("")+'<option value="__add__">＋ 一覧に無い現場を追加…</option>';
-  const aw=document.getElementById("siteAddWrap"); if(aw) aw.style.display="none";
-  const ts=document.getElementById("tantouSel");
-  if(ts){ ts.innerHTML='<option value="">調査担当…</option>'+(MASTER.staff||[]).map(n=>`<option ${n===state.tantou?"selected":""}>${esc(n)}</option>`).join(""); }
-}
-function onSiteCat(v){ pushUndo("site"); state.category=v; state.contract=""; state.site=""; markDirty(); renderSite(); }
-function onSiteContract(v){ pushUndo("site"); state.contract=v; state.site=""; markDirty(); renderSite(); }
-function onSiteSel(v){ if(v==="__add__"){ const aw=document.getElementById("siteAddWrap"); if(aw){ aw.style.display=""; const i=document.getElementById("siteAdd"); if(i) i.focus(); } return; } pushUndo("site"); state.site=v; markDirty(); loadSiteMapTemplate(v); }
-function addSiteName(){ const i=document.getElementById("siteAdd"); const v=(i&&i.value||"").trim(); if(!v) return; pushUndo("site"); state.site=v; if(i) i.value=""; markDirty(); renderSite(); }
-function setTantou(v){ state.tantou=v; markDirty(); }
-function setSpec(v){ state.spec=v; markDirty(); }
-
-/* ===== 事務所へ同期（手動・案件ごと。写真はDrive、重複はキーでスキップ） ===== */
-function hashStr(s){ let h=0x811c9dc5>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,0x01000193)>>>0; } return ("0000000"+h.toString(16)).slice(-8); }
-async function syncCase(){
-  const btn=document.getElementById("syncBtn"), st=document.getElementById("syncState");
-  try{
-    await save();
-    if(btn) btn.disabled=true; if(st){ st.textContent="同期中…"; st.style.color="#5B5750"; }
-    let known=[];
-    try{ const kr=await fetch(GAS_URL+"?action=knownphotos&caseId="+encodeURIComponent(caseId)); const kj=await kr.json(); known=(kj&&kj.keys)||[]; }catch(e){}
-    const knownSet=new Set(known), seen=new Set(), photos=[];
-    const items=state.trees.map((t,i)=>{
-      const keys=(t.photos||[]).map(durl=>{ const k=hashStr(durl); if(!knownSet.has(k)&&!seen.has(k)){ seen.add(k); photos.push({key:k,dataURL:durl}); } return k; });
-      return { idx:i, kind:(t.type==="exterior"?"exterior":"tree"), species:t.species||"", item:t.item||"",
-        h:t.h||"", c:t.c||"", w:t.w||"", work:t.work||"", qty:t.qty||"", unit:t.unit||"", up:t.up||"", memo:t.memo||"",
-        mx:(t.mx==null?null:t.mx), my:(t.my==null?null:t.my), photoKeys:keys };
-    });
-    const payload={ action:"sync",
-      case:{ caseId:caseId, caseName:state.caseName||"", category:state.category||"", contract:state.contract||"",
-             site:state.site||"", caseDate:state.caseDate||"", place:state.place||"", mode:state.mode||"tree",
-             taxRate:state.taxRate, extras:state.extras||{}, tantou:state.tantou||"", updatedAt:new Date().toISOString() },
-      items:items, photos:photos };
-    const res=await fetch(GAS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
-    const j=await res.json();
-    if(!j.ok) throw new Error(j.error||"error");
-    const now=new Date(), hm=("0"+now.getHours()).slice(-2)+":"+("0"+now.getMinutes()).slice(-2);
-    if(st){ st.textContent="同期済 "+hm+(j.uploaded?("／写真"+j.uploaded+"枚アップ"):""); st.style.color="#2E7D55"; }
-    const meta=casesIndex.find(c=>c.id===caseId); if(meta){ meta.syncedAt=Date.now(); try{ await idbSet("cases",casesIndex); }catch(e){} }
-  }catch(e){
-    if(st){ st.textContent="電波を確認して、もう一度お試しください（未同期）"; st.style.color="#B0533F"; }
-  }finally{ if(btn) btn.disabled=false; }
-}
-
-/* ===== 物件（現場）ごとの案件ブラウザ（端末内） ===== */
-async function ensureCaseSites(){
-  let changed=false;
-  for(const c of casesIndex){
-    if(c.site===undefined){
-      const st=await idbGet("case_"+c.id);
-      c.site=(st&&st.site)||""; c.category=(st&&st.category)||""; changed=true;
-    }
-  }
-  if(changed){ try{ await idbSet("cases",casesIndex); }catch(e){} }
-}
-let folders=[]; let cbTab="auto"; const cbOpen=new Set();
-async function loadFolders(){ folders=(await idbGet("folders"))||[]; }
-async function saveFolders(){ try{ await idbSet("folders",folders); }catch(e){} }
-function kSafe(s){ return String(s).replace(/['"\\<>]/g,"_"); }
-async function openCaseBrowser(){ await save(); await ensureCaseSites(); await loadFolders(); const b=document.getElementById("cbSearch"); if(b) b.value=""; document.getElementById("caseBrowser").style.display="flex"; renderCaseBrowser(); }
-function closeCaseBrowser(){ document.getElementById("caseBrowser").style.display="none"; }
-function setCbTab(t){ cbTab=t; renderCaseBrowser(); }
-function toggleOpen(k){ if(cbOpen.has(k)) cbOpen.delete(k); else cbOpen.add(k); renderCaseBrowser(); }
-async function pickCase(id){ closeCaseBrowser(); await switchCase(id); }
-
-function folderSelectHtml(c){
-  const cur=c.folderId||"";
-  const opts=['<option value="">未分類</option>'].concat(folders.map(f=>`<option value="${esc(f.id)}" ${f.id===cur?"selected":""}>${esc(f.name)}</option>`)).join("");
-  return `<select onchange="assignCase('${c.id}',this.value)" onclick="event.stopPropagation()" style="font-size:12px;border:1px solid #dcd9d0;border-radius:6px;padding:5px;max-width:120px">${opts}</select>`;
-}
-async function assignCase(id,fid){ const m=casesIndex.find(c=>c.id===id); if(!m) return; if(fid) m.folderId=fid; else delete m.folderId; try{ await idbSet("cases",casesIndex); }catch(e){} renderCaseBrowser(); }
-async function createFolder(){ const nm=(prompt("フォルダ名を入力")||"").trim(); if(!nm) return; folders.push({id:"f"+Date.now()+Math.floor(Math.random()*1000),name:nm}); await saveFolders(); renderCaseBrowser(); }
-async function renameFolder(id){ const f=folders.find(x=>x.id===id); if(!f) return; const nm=(prompt("フォルダ名",f.name)||"").trim(); if(!nm) return; f.name=nm; await saveFolders(); renderCaseBrowser(); }
-async function deleteFolder(id){ if(!confirm("このフォルダを削除しますか？（中の案件は未分類に戻ります。案件自体は消えません）")) return; folders=folders.filter(x=>x.id!==id); casesIndex.forEach(c=>{ if(c.folderId===id) delete c.folderId; }); await saveFolders(); try{ await idbSet("cases",casesIndex); }catch(e){} renderCaseBrowser(); }
-
-function caseRowHtml(c){
-  return `<div style="display:flex;gap:6px;align-items:center;margin-top:6px">
-    <button onclick="pickCase('${c.id}')" style="flex:1;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;background:${c.id===caseId?'#e5ede7':'#fff'};border:1px solid #dcd9d0;border-radius:8px;padding:10px;cursor:pointer">
-      <span style="font-weight:600">${esc(c.name||"(無題)")}</span>
-      <span style="color:#8a8270;font-size:12px;white-space:nowrap">${esc(c.date||"日付なし")}・${c.n||0}件</span></button>
-    ${folderSelectHtml(c)}</div>`;
-}
-function folderHdr(label,count,openKey,extra){
-  const open=cbOpen.has(openKey);
-  return `<div onclick="toggleOpen('${openKey}')" style="display:flex;align-items:center;gap:6px;padding:8px 4px;border-bottom:1px solid #e5e5e5;cursor:pointer;user-select:none">
-    <span style="width:14px;color:#8a8270">${open?"▾":"▸"}</span><span style="font-weight:700">${esc(label)}</span>
-    <span style="color:#8a8270;font-size:12px">${esc(count)}</span><span style="flex:1"></span>${extra||""}</div>`;
-}
-function renderCaseBrowser(){
-  const ta=document.getElementById("cbTabAuto"), tf=document.getElementById("cbTabFolder");
-  if(ta&&tf){ const on="flex:1;border:1px solid #214a37;border-radius:8px;padding:8px;cursor:pointer;background:#214a37;color:#fff", off="flex:1;border:1px solid #214a37;border-radius:8px;padding:8px;cursor:pointer;background:#fff;color:#214a37";
-    ta.setAttribute("style", cbTab==="auto"?on:off); tf.setAttribute("style", cbTab==="folder"?on:off); }
-  const q=(document.getElementById("cbSearch").value||"").trim();
-  const el=document.getElementById("cbList");
-  const match=c=>!q || String(c.name||"").includes(q) || String(c.site||"").includes(q) || String(c.category||"").includes(q);
-  if(cbTab==="auto"){
-    const cats={};
-    casesIndex.filter(match).forEach(c=>{ const ck=(c.category&&String(c.category).trim())||"（種類未設定）"; (cats[ck]=cats[ck]||[]).push(c); });
-    const catKeys=Object.keys(cats).sort((a,b)=>String(a).localeCompare(String(b),"ja"));
-    if(!catKeys.length){ el.innerHTML='<div style="color:#8a8270;padding:16px;text-align:center">該当する案件がありません。</div>'; return; }
-    el.innerHTML=catKeys.map(ck=>{
-      const list=cats[ck], catKey="cat:"+kSafe(ck); let html=folderHdr("📁 "+ck, "調査"+list.length+"件", catKey);
-      if(cbOpen.has(catKey)||q){
-        const sites={}; list.forEach(c=>{ const sk=(c.site&&String(c.site).trim())||"（現場未設定）"; (sites[sk]=sites[sk]||[]).push(c); });
-        const siteKeys=Object.keys(sites).sort((a,b)=>String(a).localeCompare(String(b),"ja"));
-        html+='<div style="margin-left:14px">'+siteKeys.map(sk=>{
-          const sl=sites[sk].slice().sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
-          const siteKey="site:"+kSafe(ck)+"|"+kSafe(sk); let sh=folderHdr("📂 "+sk, sl.length+"件", siteKey);
-          if(cbOpen.has(siteKey)||q){ sh+='<div style="margin-left:14px">'+sl.map(caseRowHtml).join("")+'</div>'; }
-          return sh;
-        }).join("")+'</div>';
-      }
-      return `<div style="margin-bottom:10px">${html}</div>`;
-    }).join("");
-  } else {
-    let html='<div style="margin-bottom:10px"><button class="iconbtn" onclick="createFolder()">＋ フォルダを作成</button></div>';
-    folders.forEach(f=>{
-      const list=casesIndex.filter(c=>c.folderId===f.id).filter(match).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
-      const key="fld:"+f.id;
-      const extra=`<button onclick="event.stopPropagation();renameFolder('${f.id}')" style="font-size:12px;color:#5b5750;background:none;border:none;cursor:pointer">名前</button><button onclick="event.stopPropagation();deleteFolder('${f.id}')" style="font-size:12px;color:#b0533f;background:none;border:none;cursor:pointer">削除</button>`;
-      html+='<div style="margin-bottom:10px">'+folderHdr("📁 "+f.name, list.length+"件", key, extra);
-      if(cbOpen.has(key)||q){ html+= list.length ? '<div style="margin-left:14px">'+list.map(caseRowHtml).join("")+'</div>' : '<div style="margin-left:14px;color:#8a8270;font-size:12px;padding:8px">まだ案件がありません。各案件の右のプルダウンでこのフォルダを選ぶと入ります。</div>'; }
-      html+='</div>';
-    });
-    const un=casesIndex.filter(c=>!c.folderId).filter(match).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
-    const unKey="fld:__none__";
-    html+='<div style="margin-bottom:10px">'+folderHdr("🗂 未分類", un.length+"件", unKey);
-    if(cbOpen.has(unKey)||q){ html+= un.length ? '<div style="margin-left:14px">'+un.map(caseRowHtml).join("")+'</div>' : '<div style="margin-left:14px;color:#8a8270;font-size:12px;padding:8px">未分類の案件はありません。</div>'; }
-    html+='</div>';
-    el.innerHTML=html;
-  }
-}
-
-function printBook(){ try{ renderBook(); }catch(e){} setTimeout(function(){ window.print(); }, 100); }
-window.addEventListener("beforeprint", function(){ try{ renderBook(); }catch(e){} });
-
 /* 起動 */
 document.getElementById("caseName").addEventListener("input",e=>{ state.caseName=e.target.value; markDirty(); });
 document.getElementById("caseDate").addEventListener("input",e=>{ state.caseDate=e.target.value; markDirty(); });
@@ -1244,7 +764,7 @@ document.getElementById("caseDate").addEventListener("input",e=>{ state.caseDate
   casesIndex=(await idbGet("cases"))||[]; caseId=await idbGet("current");
   if(!casesIndex.length){ const legacy=await idbGet("state"); if(legacy&&legacy.trees){ caseId=newId(); state=Object.assign(emptyState(),legacy); } else { caseId=newId(); state=emptyState(); } normalize(); await save(); }
   else { if(!caseId||!casesIndex.find(c=>c.id===caseId)) caseId=casesIndex[0].id; state=(await idbGet("case_"+caseId))||emptyState(); normalize(); }
-  syncMode(); renderTrees(); renderMap(); renderCaseBar(); updateStorage(); updUndoBtn(); loadMasters(); loadSiteMaps(); })();
+  syncMode(); renderTrees(); renderMap(); renderCaseBar(); updateStorage(); updUndoBtn(); })();
 
 /* --- Excel書き出し（アプリ内生成） --- */
 /* ブラウザ用: 写真を枠にトリミングしてExcel(.xlsx)を端末上で生成・保存（AI不要） */
@@ -1261,21 +781,6 @@ async function cropCover(durl, tw, th){
     img.src=durl;
   });
 }
-async function cropContain(durl, tw, th){
-  return new Promise(function(res){
-    var img=new Image();
-    img.onload=function(){
-      var s=Math.min(tw/img.width, th/img.height);
-      var nw=img.width*s, nh=img.height*s;
-      var cv=document.createElement('canvas'); cv.width=tw; cv.height=th;
-      var x=cv.getContext('2d');
-      x.fillStyle="#ffffff"; x.fillRect(0,0,tw,th);
-      x.drawImage(img,(tw-nw)/2,(th-nh)/2,nw,nh);
-      res(cv.toDataURL('image/jpeg',0.85));
-    };
-    img.src=durl;
-  });
-}
 async function exportExcel(){
   var btn=document.getElementById('xlsxBtn');
   try{
@@ -1286,22 +791,17 @@ async function exportExcel(){
     var stCopy = Object.assign({}, state); stCopy.trees = [];
     for(var i=0;i<state.trees.length;i++){
       var t=state.trees[i]; var src=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
-      var _fit=(t.type==="exterior")?cropCover:cropContain; var cropped=[]; for(var pi=0; pi<src.length; pi++){ cropped.push(await _fit(src[pi],250,330)); }
+      var cropped=[]; for(var pi=0; pi<src.length; pi++){ cropped.push(await cropCover(src[pi],250,330)); }
       stCopy.trees.push(Object.assign({}, t, {photos:cropped}));
     }
     var mapImg = state.mapImage || null;
-    var mapW=0, mapH=0;
-    if(mapImg){ try{ var ns=await imgSize(mapImg); var sc=Math.min(900/ns.w, 620/ns.h); mapW=Math.round(ns.w*sc); mapH=Math.round(ns.h*sc); }catch(e){} }
-    if(!(mapW>0)||!(mapH>0)){ mapW=900; mapH=620; }
     var markers = [];
     for(var mmi=0; mmi<state.trees.length; mmi++){ var tt=state.trees[mmi]; if(tt.mx!=null&&tt.my!=null) markers.push({x:tt.mx,y:tt.my,img:markerPng(mmi+1)}); }
-    var wb = (stCopy.spec==="kokyo" && window.buildKokyoWorkbook)
-      ? await window.buildKokyoWorkbook(window.ExcelJS, stCopy, {map: mapImg, markers: markers, mapW: mapW, mapH: mapH}, KOKYO_TPL_B64)
-      : window.buildTreeWorkbook(window.ExcelJS, stCopy, {map: mapImg, markers: markers, mapW: mapW, mapH: mapH});
+    var wb=window.buildTreeWorkbook(window.ExcelJS, stCopy, {map: mapImg, markers: markers});
     var buf=await wb.xlsx.writeBuffer();
     var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=fileBase()+'.xlsx';
+    a.download=(state.caseName||'現場調査').replace(/[\/:*?"<>|\\]/g,'_')+'_'+(state.caseDate||'')+'.xlsx';
     a.click();
   }catch(e){ alert('Excel作成でエラー: '+(e&&e.message?e.message:e)); }
   finally{ if(btn){ btn.textContent='Excel書き出し'; btn.disabled=false; } }
