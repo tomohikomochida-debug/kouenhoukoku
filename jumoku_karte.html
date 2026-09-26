@@ -231,6 +231,9 @@ img.pick{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px so
 #draw .tools .lbl{color:#cfd3cc;font-size:12.5px;align-self:center}
 #draw .tools button.del{background:#8c3b25;border-color:#a9503a}
 .kc.gl{cursor:help;text-decoration:underline dotted rgba(46,125,85,.8);text-underline-offset:2px}
+.qtyline{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:18px;line-height:2}
+.qtyline .qty{width:90px;min-height:46px;font-size:20px;text-align:center}
+.qtychip{border-style:solid!important;background:#F3F8F4!important}
 .aswhy{margin:0 0 8px;padding-left:20px;font-size:13.5px;line-height:1.6;color:var(--bark)}
 .gltext{margin:0 0 6px;line-height:1.7}
 .site{display:flex;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:10px;box-shadow:var(--shadow);cursor:pointer}
@@ -326,6 +329,15 @@ details.mng>.card{box-shadow:none;margin:0 10px 10px}
   <h2 id="phTitle"></h2>
   <div class="row" id="phBtns" style="flex-direction:column;align-items:stretch"></div>
   <input type="file" id="phFile" accept="image/*" hidden>
+</dialog>
+<dialog id="dlgQty">
+  <h2>数字を入れる</h2>
+  <div id="qtyBody"></div>
+  <p class="hint">空欄のままにすると「○」のまま入ります。</p>
+  <div class="row" style="margin-top:12px;justify-content:flex-end">
+    <button class="btn" type="button" data-close>やめる</button>
+    <button class="btn pri" type="button" id="qtyOk">入れる</button>
+  </div>
 </dialog>
 <dialog id="dlgAssist">
   <h2>外観判定の候補（川崎市 表３－２）</h2>
@@ -742,10 +754,10 @@ function gaikanPreset(F) {
   T('G9', '活力診断の所見', 'area', { phrases: DEFAULT_PHRASES.vital }); O('H11', '活力判定');
   for (const [k, lab] of [[13, '樹皮枯死・欠損・腐朽'], [14, '芯に達していない開口空洞'], [15, '芯に達した開口空洞']]) for (const p of ['root', 'trunk', 'branch']) O(col3[p] + k, `${lab}（${PL[p]}）`, 'single', { def: [0] });
   T('M17', '根元：被害部幅（cm）', 'num'); T('Q17', '根元：被害部周囲長（cm）', 'num'); T('X17', '幹：被害部幅（cm）', 'num'); T('AB17', '幹：被害部周囲長（cm）', 'num');
-  O('AL16', '枯枝', 'single', { def: [0] }); T('AP16', '枯枝の内容'); O('AL17', 'スタブカット', 'single', { def: [0] }); T('AP17', 'スタブカットの内容');
+  O('AL16', '枯枝', 'single', { def: [0] }); T('AP16', '枯枝の内容', 'text', { phrases: MANUAL.size }); O('AL17', 'スタブカット', 'single', { def: [0] }); T('AP17', 'スタブカットの内容');
   const PH = { 18: MANUAL.fungi, 20: MANUAL.fork, 21: MANUAL.disease, 22: MANUAL.pest };
-  for (const [lab, r] of [['キノコ（子実体）', 18], ['木槌打診（異常音）', 19], ['分岐部・付根の異常', 20], ['胴枯れなどの病害', 21], ['虫穴・虫フン、ヤニ', 22]]) for (const p of ['root', 'trunk', 'branch']) { O(col3[p] + r, `${lab}（${PL[p]}）`, 'single', { def: [0] }); T(txt3[p] + r, `${lab}（${PL[p]}）の内容`, 'text', PH[r] ? { phrases: PH[r] } : {}); }
-  for (const [lab, r] of [['根元の揺らぎ', 23], ['鋼棒貫入異常', 24], ['巻き根', 25], ['露出根被害', 27], ['不自然な傾斜', 28]]) { O('M' + r, lab, 'single', { def: [0] }); T('Q' + r, `${lab}の内容`); }
+  for (const [lab, r] of [['キノコ（子実体）', 18], ['木槌打診（異常音）', 19], ['分岐部・付根の異常', 20], ['胴枯れなどの病害', 21], ['虫穴・虫フン、ヤニ', 22]]) for (const p of ['root', 'trunk', 'branch']) { O(col3[p] + r, `${lab}（${PL[p]}）`, 'single', { def: [0] }); T(txt3[p] + r, `${lab}（${PL[p]}）の内容`, 'text', { phrases: [...(PH[r] || []), ...MANUAL.size] }); }
+  for (const [lab, r] of [['根元の揺らぎ', 23], ['鋼棒貫入異常', 24], ['巻き根', 25], ['露出根被害', 27], ['不自然な傾斜', 28]]) { O('M' + r, lab, 'single', { def: [0] }); T('Q' + r, `${lab}の内容`, 'text', { phrases: MANUAL.size }); }
   O('M26', 'ルートカラー', 'single', { def: [0] }); T('T26', 'ルートカラーの内容');
   for (const [s, sl] of [['Z', '車道側'], ['AK', '歩道側']]) { O(s + 24, `建築限界越え ${sl}・幹`); T(s + 25, `建築限界越え ${sl}・幹の内容`); O(s + 26, `建築限界越え ${sl}・枝`); T(s + 27, `建築限界越え ${sl}・枝の内容`); }
   T('G29', '部位診断の所見', 'area', { phrases: DEFAULT_PHRASES.part });
@@ -830,7 +842,8 @@ const MANUAL = {
   fungi: ['コフキタケ（コフキサルノコシカケ）', 'ベッコウタケ', 'カワラタケ', 'マンネンタケ', 'スエヒロタケ', 'ナラタケ', 'ナラタケモドキ', 'スルメタケ', '種類不明'],
   disease: ['胴枯性病害', '永年性がんしゅ病', 'てんぐ（天狗）巣病', 'エンジュさび病', 'こうやく（膏薬）病', '溝腐病'],
   pest: ['コスカシバ', 'クビアカツヤカミキリ', 'カシノナガキクイムシ', 'クスベニヒラタカスミカメ', '穿孔性害虫', '穿入孔', 'フラス', 'ヤニ', 'アリ（蟻道）'],
-  fork: ['入り皮', 'ライオンテイル', '亀裂', 'フラッシュカット'],
+  fork: ['入り皮', 'ライオンテイル', '亀裂 長さ○cm', 'フラッシュカット'],
+  size: ['○×○cm', '幅○cm', '長さ○cm', '周囲長○cm', 'φ○cm', '深さ○cm', '高さ○m', '○本', '○箇所', '○°'],
 };
 
 
@@ -908,7 +921,8 @@ async function saveType(ty) { ty.updated = Date.now(); await DB.put('types', ty)
 /* =========================================================
    木（1本分の記録）と値
    ========================================================= */
-const BUILTIN_VER = '6';
+const BUILTIN_VER = '7';
+const settingsLists = () => { try { return localStorage.getItem('jk_lists') !== '0'; } catch (e) { return true; } };
 const CHK = 1000; // 3段階の□で「☑（前回必要）」を表す値のずらし幅
 const boxGlyph = (orig, sel, i) => sel.has(i) ? tick(orig, true) : sel.has(i + CHK) ? '☑' : tick(orig, false);
 let trees = [];
@@ -1285,7 +1299,7 @@ function openEditor(key) {
     body.append(h('datalist', { id: 'edList' }, past.map(o => h('option', { value: o }))));
   }
   const phr = spec.phrases || [];
-  if (phr.length) body.append(h('div', { class: 'chips' }, phr.map(p => h('button', { type: 'button', onclick: () => { inp.value += p; set(); inp.focus(); } }, '＋' + p))));
+  if (phr.length) body.append(h('div', { class: 'chips' }, phr.map(p => h('button', { type: 'button', class: p.includes('○') ? 'qtychip' : '', onclick: async () => { const v = await fillPlaceholders(p); if (v) { inp.value += v; set(); } inp.focus(); } }, '＋' + p))));
   const gl = glossaryFor(spec.label);
   if (gl.length) body.append(h('div', { class: 'row', style: 'margin-top:8px' }, ...gl.map(g => h('button', { type: 'button', class: 'btn', onclick: () => showGlossary([g]) }, '📖 ' + g[0]))));
   $('#edGps').classList.toggle('hidden', !spec.gps);
@@ -1560,7 +1574,23 @@ function photoMenu(slot) {
 const COLORS = ['#E53935', '#FB8C00', '#FDD835', '#43A047', '#1E88E5', '#FFFFFF', '#111111'];
 const TOOLS = [['move', '✋ 移動'], ['arrow2', '➜ 矢印'], ['callout', '💬 コメント'], ['num', '① 番号'], ['ellipse', '○'], ['rect', '□'], ['pen', 'ペン'], ['marker', 'マーカー'], ['text', '文字']];
 const DFONT = "'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',sans-serif";
-const DEFAULT_CALLOUTS = ['異物の食い込み（金物）', '枯枝', '剪定位置', '樹高低減の目標ライン', '葉の密度の低下・葉色の黄化', '開口空洞', '腐朽部', 'キノコ（子実体）', '樹皮の枯死・欠損', '分岐部の異常', '巻き根', '露出根の損傷', '不自然な傾斜', '建物側へ傾斜', '支障枝', '萌芽', '支柱・ワイヤー設置位置'];
+// ○ の所は、選んだときに数字を入れる（例：「枯枝 φ○cm」→ 数字だけ入力）
+const DEFAULT_CALLOUTS = ['枯枝 φ○cm', '枯枝 ○本', '樹皮枯死・欠損 ○×○cm（周囲長○cm）', '開口空洞 幅○×高さ○cm', '空洞 深さ○cm／幹径○cm', '腐朽 ○×○cm', '亀裂 長さ○cm', 'キノコ（子実体）', '木槌打診異常 範囲○cm', '異物の食い込み（金物）', '建築限界越え 高さ○m', '樹高低減 目標H○m', '剪定位置（H○m）', '支障枝 ○本', '不自然な傾斜 ○°', '巻き根', '露出根の損傷 ○cm', '葉の密度の低下・葉色の黄化', '萌芽', '支柱・ワイヤー設置位置'];
+async function fillPlaceholders(text) {
+  if (!String(text).includes('○')) return text;
+  return new Promise(res => {
+    const d = $('#dlgQty'), box = $('#qtyBody'); box.innerHTML = '';
+    const parts = String(text).split('○'); const inputs = [];
+    const line = h('div', { class: 'qtyline' });
+    parts.forEach((p, i) => { if (p) line.append(h('span', {}, p)); if (i < parts.length - 1) { const inp = h('input', { class: 'inp qty', inputmode: 'decimal', enterkeyhint: i === parts.length - 2 ? 'done' : 'next', 'aria-label': `数値${i + 1}` }); inputs.push(inp); line.append(inp); } });
+    box.append(line);
+    inputs.forEach((inp, i) => inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); if (inputs[i + 1]) inputs[i + 1].focus(); else $('#qtyOk').click(); } }));
+    let done = false; const finish = v => { if (done) return; done = true; res(v); };
+    $('#qtyOk').onclick = () => { let k = 0; finish(String(text).replace(/○/g, () => (inputs[k++].value.trim() || '○'))); d.close(); };
+    d.onclose = () => finish(null);
+    d.showModal(); setTimeout(() => inputs[0] && inputs[0].focus(), 60);
+  });
+}
 let dr = null;
 const halo = c => (c === '#FFFFFF' || c === '#FDD835' ? '#000' : '#fff');
 const inkOn = c => (c === '#FFFFFF' ? '#000' : c === '#FDD835' ? '#111' : c);
@@ -1694,7 +1724,7 @@ function askText(title, init = '', presets = true) {
     const d = $('#dlgCallout'); $('#coTitle').textContent = title;
     const ta = $('#coText'); ta.value = init;
     const chips = $('#coChips'); chips.innerHTML = '';
-    const paintChips = () => { chips.innerHTML = ''; if (presets) for (const p of calloutPresets()) chips.append(h('button', { type: 'button', onclick: () => { ta.value = ta.value ? ta.value + '\n' + p : p; } }, p)); };
+    const paintChips = () => { chips.innerHTML = ''; if (presets) for (const p of calloutPresets()) chips.append(h('button', { type: 'button', class: p.includes('○') ? 'qtychip' : '', onclick: async () => { const v = await fillPlaceholders(p); if (v) ta.value = ta.value ? ta.value + '\n' + v : v; } }, p)); };
     paintChips();
     $('#coEditBox').classList.add('hidden'); $('#coEdit').classList.toggle('hidden', !presets);
     $('#coEdit').onclick = () => { const box = $('#coEditBox'); box.classList.toggle('hidden'); $('#coPresets').value = calloutPresets().join('\n'); };
@@ -1831,6 +1861,86 @@ function closeDraw(save) {
   c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
   window.addEventListener('resize', () => { if (dr) { fitCanvas(); redraw(); } });
 })();
+
+
+/* =========================================================
+   一覧表（出力するExcelの先頭に付ける）
+   ========================================================= */
+function selIdx(t, ty, ref) { const v = getV(t, ty, ref); return Array.isArray(v) ? v.filter(i => i < CHK) : []; }
+function selNames(t, ty, tpl, ref) { const n = optionNames(baseText(ty, tpl, ref)); return selIdx(t, ty, ref).map(i => n[i]).filter(Boolean); }
+const mark = (t, ty, ref, i = 0) => (selIdx(t, ty, ref).includes(i) ? '○' : '');
+const tval = (t, ty, ref) => { const s = ty.fields[ref]; if (!s) return ''; const v = getV(t, ty, ref); return s.k === 'date' ? fmtDate(v) : (v ?? ''); };
+const blank = (t, ref, i = 0) => ((t.v || {})[ref + '#b' + i] || '').trim();
+const CYCLE_BY_JUDGE = { A: '長期', B1: '長期', B2: '中期', B3: '短期' };
+function listSpecs(ty, tpl, arr, names, fileName) {
+  const J = (t, ref) => judgeKey(selNames(t, ty, tpl, ref)[0] || '');
+  if (ty.id === 'kw_gaikan') {
+    const rows1 = arr.map((t, i) => [i + 1, tval(t, ty, 'D2'), tval(t, ty, 'J2'), tval(t, ty, 'D3'), tval(t, ty, 'N2'), '', tval(t, ty, 'K3'), tval(t, ty, 'N3'), tval(t, ty, 'Q3'), J(t, 'D54'), tval(t, ty, 'D56'), `${fileName}（${names[i]}）`]);
+    const rows2 = arr.map((t, i) => {
+      const hts = [['M29', '根元'], ['M30', '幹'], ['M31', '大枝']].filter(([r]) => selIdx(t, ty, r).length).map(([r, l]) => l + (blank(t, r) ? blank(t, r) + 'm' : '')).join(' ');
+      const other = selNames(t, ty, tpl, 'D109').slice(selIdx(t, ty, 'D109').includes(0) ? 1 : 0).join('・');
+      const memo = [['剪定', 'E105'], ['支柱', 'E107'], ['薬剤散布', 'H108'], ['その他', 'E110']].map(([l, r]) => tval(t, ty, r) ? `${l}：${tval(t, ty, r)}` : '').filter(Boolean).join('／');
+      const j = J(t, 'D54');
+      return [i + 1, tval(t, ty, 'J2'), tval(t, ty, 'D3'), j, hts, (selNames(t, ty, tpl, 'D101')[0] || '').replace(/周期.*/, ''), CYCLE_BY_JUDGE[j] || '',
+        mark(t, ty, 'D102'), mark(t, ty, 'D103'), ...[1, 2, 3, 4, 5, 6].map(k => mark(t, ty, 'D104', k)), ...[1, 2, 3, 4, 5].map(k => mark(t, ty, 'D106', k)), mark(t, ty, 'D108'), other || mark(t, ty, 'D109'), memo];
+    });
+    return [
+      { name: '樹木診断一覧表', title: '樹木診断一覧表', corner: '【様式2】', heads: [['', 4], ['路線名', 14], ['樹木No.', 12], ['樹種名', 10], ['診断日', 13], ['樹木位置\nデータ', 10], ['樹高\nH\n（m）', 6], ['幹周\nC\n（cm）', 6], ['枝張\nW\n（m）', 6], ['健全度\n判定', 7], ['判定理由', 46], ['樹木診断カルテ\n（外観診断）\nファイル名', 22]], rows: rows1, wrapCols: [10, 11] },
+      { name: '今後の処置等一覧表', title: '今後の処置等一覧表', corner: '【様式3】', heads: [['', 4], ['樹木No.', 10], ['樹種名', 10], ['健全\n度\n判定', 5.5], ['精密\n診断\n高さ', 12], ['観察\n周期', 5.5], ['標準\n周期', 5.5], ['撤去', 5], ['幹の\n切除', 5], ['剪定\n枯枝', 5], ['剪定\n支障\n枝', 5], ['剪定\n基本\n剪定', 5], ['剪定\n樹高\n低減', 5], ['剪定\n切り\n戻し', 5], ['剪定\nその\n他', 5], ['支柱\n撤去', 5], ['支柱\n再\n設置', 5], ['支柱\n結束\n直し', 5], ['支柱\nﾜｲﾔｰ\n結束', 5], ['支柱\nその\n他', 5], ['薬剤\n散布', 5], ['その\n他', 10], ['摘要', 30]], rows: rows2, wrapCols: [4, 21, 22], center: true },
+    ];
+  }
+  if (ty.id === 'gaikan') {
+    const treat = t => [...selNames(t, ty, tpl, 'AX5').map((n, k) => k === 0 && selIdx(t, ty, 'AX5')[0] === 0 ? n : n), ...['AX6', 'BR6', 'AX7', 'BR7', 'AX8', 'BR8'].flatMap(r => selNames(t, ty, tpl, r))].join('・');
+    const rows = arr.map((t, i) => [i + 1, tval(t, ty, 'D2'), tval(t, ty, 'G4'), tval(t, ty, 'G3'), tval(t, ty, 'E5'), tval(t, ty, 'AL3'), tval(t, ty, 'Y4'), tval(t, ty, 'AF4'), tval(t, ty, 'AN4'),
+      (selNames(t, ty, tpl, 'H11')[0] || ''), J(t, 'G46'), J(t, 'G60'), selNames(t, ty, tpl, 'BD3')[0] || '', selNames(t, ty, tpl, 'BY3')[0] || '', treat(t),
+      [...selNames(t, ty, tpl, 'BD62'), ...selNames(t, ty, tpl, 'BL62').map(n => n + (blank(t, 'BL62') ? `（${blank(t, 'BL62')}）` : '')), ...selNames(t, ty, tpl, 'CC62')].join('・'),
+      (selNames(t, ty, tpl, 'BD63')[0] || '') + (blank(t, 'BD63') ? `（${blank(t, 'BD63')}年度）` : ''), tval(t, ty, 'F48'), names[i]]);
+    return [{ name: '樹木診断一覧表', title: '街路樹診断 一覧表', corner: '', heads: [['', 4], ['No.', 6], ['樹木番号', 11], ['路線名', 14], ['樹種名', 10], ['診断日', 13], ['樹高\n（m）', 6], ['幹周\n（cm）', 6], ['枝張\n（m）', 6], ['活力判定', 12], ['外観\n診断\n判定', 6], ['総合\n判定', 6], ['処置の\n必要性', 7], ['緊急性', 7], ['処置内容', 24], ['次回診断', 18], ['次回フォロー\nアップ時期', 14], ['判定理由', 40], ['シート名', 16]], rows, wrapCols: [9, 14, 15, 17] }];
+  }
+  // 取り込んだ様式など：一覧に出す役割の欄でつくる
+  const R = r => roleRef(ty, r);
+  const rows = arr.map((t, i) => [i + 1, R('no') ? tval(t, ty, R('no')) : '', R('treeNo') ? tval(t, ty, R('treeNo')) : '', R('site') ? tval(t, ty, R('site')) : '', R('species') ? tval(t, ty, R('species')) : '', R('date') ? tval(t, ty, R('date')) : '', R('judge') ? J(t, R('judge')) : '', names[i]]);
+  return [{ name: '一覧表', title: `${ty.name} 一覧表`, corner: '', heads: [['', 4], ['No.', 6], ['樹木番号', 12], ['路線名・現場名', 16], ['樹種名', 12], ['診断日', 13], ['判定', 7], ['シート名', 20]], rows, wrapCols: [] }];
+}
+// 一覧表のシートをブックの先頭に足す
+async function addListSheets(zip, pkg, specs, wdoc, relsXml) {
+  const rd = p => zip.file(p).async('string');
+  // 書式（太字・罫線・折り返し）を styles.xml に追加
+  const sdoc = parseXml(await rd('xl/styles.xml'));
+  const add = (parentName, xml) => { const p = byTag(sdoc, parentName)[0]; const el = parseXml(`<x xmlns="${NS_MAIN}">${xml}</x>`).documentElement.firstElementChild; p.appendChild(sdoc.importNode(el, true)); p.setAttribute('count', String(kidsOf(p).length)); return kidsOf(p).length - 1; };
+  const fB = add('fonts', '<font><b/><sz val="10"/><name val="ＭＳ Ｐゴシック"/><family val="3"/><charset val="128"/></font>');
+  const fT = add('fonts', '<font><b/><sz val="14"/><name val="ＭＳ Ｐゴシック"/><family val="3"/><charset val="128"/></font>');
+  const fN = add('fonts', '<font><sz val="10"/><name val="ＭＳ Ｐゴシック"/><family val="3"/><charset val="128"/></font>');
+  const bd = add('borders', '<border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border>');
+  const xf = (f, b, al) => add('cellXfs', `<xf numFmtId="0" fontId="${f}" fillId="0" borderId="${b}" applyFont="1" applyBorder="1" applyAlignment="1"><alignment ${al}/></xf>`);
+  const X = { title: xf(fT, 0, 'horizontal="center" vertical="center"'), corner: xf(fN, 0, 'horizontal="right" vertical="center"'), head: xf(fB, bd, 'horizontal="center" vertical="center" wrapText="1"'), cell: xf(fN, bd, 'vertical="center"'), cellC: xf(fN, bd, 'horizontal="center" vertical="center"'), wrap: xf(fN, bd, 'vertical="center" wrapText="1"') };
+  zip.file('xl/styles.xml', serXml(sdoc));
+  const sheetsEl = byTag(wdoc, 'sheets')[0]; let maxId = Math.max(...byTag(wdoc, 'sheet').map(s => +s.getAttribute('sheetId')));
+  const used = new Set(byTag(wdoc, 'sheet').map(s => s.getAttribute('name').toLowerCase()));
+  const k = specs.length; const firstSheet = kidsOf(sheetsEl, 'sheet')[0];
+  const cellX = (ref, v, s) => { if (v === '' || v == null) return `<c r="${ref}" s="${s}"/>`; if (typeof v === 'number' || /^-?\d+(\.\d+)?$/.test(String(v)) && !/^0\d/.test(String(v))) return `<c r="${ref}" s="${s}"><v>${Number(v)}</v></c>`; return `<c r="${ref}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`; };
+  specs.forEach((sp, si) => {
+    let nm = sp.name, j = 2; while (used.has(nm.toLowerCase())) nm = `${sp.name}(${j++})`; used.add(nm.toLowerCase()); sp.sheet = nm;
+    const nc = sp.heads.length, last = colName(nc);
+    let rows = `<row r="1" ht="24" customHeight="1">${cellX('A1', sp.title, X.title)}${sp.corner ? cellX(last + '1', sp.corner, X.corner) : ''}</row>`;
+    rows += `<row r="2" ht="48" customHeight="1">${sp.heads.map(([hd], c) => cellX(colName(c + 1) + '2', hd, X.head)).join('')}</row>`;
+    sp.rows.forEach((r, ri) => { rows += `<row r="${ri + 3}">${r.map((v, c) => cellX(colName(c + 1) + (ri + 3), v, sp.wrapCols.includes(c) ? X.wrap : c === 0 || sp.center && c >= 3 && c < nc - 1 ? X.cellC : X.cell)).join('')}</row>`; });
+    const cols = sp.heads.map(([, w], c) => `<col min="${c + 1}" max="${c + 1}" width="${w}" customWidth="1"/>`).join('');
+    const merge = sp.corner ? `A1:${colName(nc - 1)}1` : `A1:${last}1`;
+    const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"${si === 0 ? ' tabSelected="1"' : ''}><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${cols}</cols><sheetData>${rows}</sheetData><mergeCells count="1"><mergeCell ref="${merge}"/></mergeCells><pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`;
+    const path = `xl/worksheets/list_${si + 1}.xml`; zip.file(path, xml);
+    pkg.ct = pkg.ct.replace('</Types>', `<Override PartName="/${path}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`);
+    const rid = `rIdList${si + 1}`; relsXml.v = relsXml.v.replace('</Relationships>', `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/list_${si + 1}.xml"/></Relationships>`);
+    const se = wdoc.createElementNS(NS_MAIN, 'sheet'); se.setAttribute('name', nm); se.setAttribute('sheetId', String(++maxId)); se.setAttributeNS(NS_R, 'r:id', rid);
+    sheetsEl.insertBefore(se, firstSheet);
+  });
+  // 既存シートの番号（localSheetId）を後ろにずらし、一覧表には見出し行の印刷タイトルを付ける
+  let dnsEl = byTag(wdoc, 'definedNames')[0];
+  for (const d of byTag(wdoc, 'definedName')) { const l = d.getAttribute('localSheetId'); if (l != null) d.setAttribute('localSheetId', String(+l + k)); }
+  if (!dnsEl) { dnsEl = wdoc.createElementNS(NS_MAIN, 'definedNames'); const calc = byTag(wdoc, 'calcPr')[0]; wdoc.documentElement.insertBefore(dnsEl, calc || null); }
+  specs.forEach((sp, si) => { const d = wdoc.createElementNS(NS_MAIN, 'definedName'); d.setAttribute('name', '_xlnm.Print_Titles'); d.setAttribute('localSheetId', String(si)); d.textContent = `${quoteSheet(sp.sheet)}!$1:$2`; dnsEl.insertBefore(d, dnsEl.firstChild); });
+  for (const v of byTag(wdoc, 'workbookView')) { v.setAttribute('activeTab', '0'); v.setAttribute('firstSheet', '0'); }
+}
 
 
 /* =========================================================
@@ -2162,13 +2272,14 @@ function replaceSheetRef(text, oldN, newN) {
   if (/^[A-Za-z_　-鿿＀-￯][\w.　-鿿＀-￯]*$/.test(oldN)) s = s.replace(new RegExp(`(^|[^'\\w])${escRe(oldN)}!`, 'g'), `$1${quoteSheet(newN)}!`);
   return s;
 }
-async function buildWorkbook(ty, list) {
+async function buildWorkbook(ty, list, fileName = '') {
   const tpl = await loadTpl(ty);
   const zip = await JSZip.loadAsync(ty.file);
   const rd = p => zip.file(p).async('string');
   const info = await workbookInfo(zip);
   const sh = info.sheets.find(s => s.name === ty.sheet) || info.sheets[0];
   const idx = sh.index, n = list.length;
+  const withLists = settingsLists();
   const pkg = { ct: await rd('[Content_Types].xml') };
   const addDefault = (ext, type) => { if (!new RegExp(`Extension="${ext}"`, 'i').test(pkg.ct)) pkg.ct = pkg.ct.replace(/<Types[^>]*>/, m => m + `<Default Extension="${ext}" ContentType="${type}"/>`); };
   addDefault('jpeg', 'image/jpeg'); addDefault('png', 'image/png');
@@ -2195,7 +2306,7 @@ async function buildWorkbook(ty, list) {
       if (!other && /^[A-Z]+\d+$/.test(r)) vals[r] = { bool: !!getV(t, ty, c.key) }; // リンク先セルに TRUE/FALSE
     }
     fillCells(doc, vals);
-    for (const sv of byTag(doc, 'sheetView')) { sv.removeAttribute('topLeftCell'); if (i === 0) sv.setAttribute('tabSelected', '1'); else sv.removeAttribute('tabSelected'); }
+    for (const sv of byTag(doc, 'sheetView')) { sv.removeAttribute('topLeftCell'); sv.removeAttribute('tabSelected'); if (i === 0 && !withLists) sv.setAttribute('tabSelected', '1'); }
     // フォームのチェックボックス
     const srels = await readRels(zip, sp);
     for (const c of tpl.ctrls) {
@@ -2284,6 +2395,7 @@ async function buildWorkbook(ty, list) {
   let calc = byTag(wdoc, 'calcPr')[0];
   if (!calc) { calc = wdoc.createElementNS(NS_MAIN, 'calcPr'); const ref = kidsOf(wdoc.documentElement).find(e => ['oleSize', 'customWorkbookViews', 'pivotCaches', 'smartTagPr', 'smartTagTypes', 'webPublishing', 'fileRecoveryPr', 'webPublishObjects', 'extLst'].includes(e.localName)); wdoc.documentElement.insertBefore(calc, ref || null); }
   calc.setAttribute('fullCalcOnLoad', '1');
+  if (withLists) { const rx = { v: wbRels }; await addListSheets(zip, pkg, listSpecs(ty, tpl, list, names, fileName), wdoc, rx); wbRels = rx.v; }
   zip.file('xl/workbook.xml', serXml(wdoc)); zip.file('xl/_rels/workbook.xml.rels', wbRels);
   for (const s of info.sheets) if (s.index !== idx && s.path && zip.file(s.path)) zip.file(s.path, (await rd(s.path)).replace(/ tabSelected="(1|true)"/g, ''));
   // シート名の一覧（app.xml）は古いままだと紛らわしいので外す
@@ -2306,10 +2418,11 @@ async function exportTrees(ids) {
   for (const [ty, arr] of byType) {
     arr.sort((a, b) => siteOf(a).localeCompare(siteOf(b)) || (parseFloat(roleVal(a, ty, 'no')) || 1e9) - (parseFloat(roleVal(b, ty, 'no')) || 1e9) || a.created - b.created);
     try {
-      const { blob, ext } = await buildWorkbook(ty, arr);
       const sites = [...new Set(arr.map(siteOf).filter(Boolean))];
-      const nm = arr.length === 1 ? `${ty.name}_${siteOf(arr[0])}_${roleVal(arr[0], ty, 'species')}${roleVal(arr[0], ty, 'no') ? '_No' + roleVal(arr[0], ty, 'no') : ''}.${ext}` : `${ty.name}_${sites.join('・') || '樹木'}_${arr.length}本.${ext}`;
-      await shareOrDownload(new File([blob], nm.replace(/[\\/:*?"<>|]/g, '').replace(/_+/g, '_'), { type: blob.type }));
+      const base = (arr.length === 1 ? `${ty.name}_${siteOf(arr[0])}_${roleVal(arr[0], ty, 'species')}${roleVal(arr[0], ty, 'no') ? '_No' + roleVal(arr[0], ty, 'no') : ''}` : `${ty.name}_${sites.join('・') || '樹木'}_${arr.length}本`).replace(/[\\/:*?"<>|]/g, '').replace(/_+/g, '_');
+      const macro = /\.xlsm$/i.test(ty.fileName || '');
+      const { blob, ext } = await buildWorkbook(ty, arr, base + (macro ? '.xlsm' : '.xlsx'));
+      await shareOrDownload(new File([blob], base + '.' + ext, { type: blob.type }));
     } catch (e) { console.error(e); alert(`「${ty.name}」のExcelを作れませんでした：` + e.message); }
   }
 }
@@ -2486,10 +2599,10 @@ function kawasakiPreset(F) {
     O(c + 7, `樹皮枯死・欠損（${pl}）`, 'single', { def: [0] }); O(c + 8, `材の腐朽（${pl}）`, 'single', { def: [0] });
     O(c + 9, `芯達開口空洞（${pl}）`, 'single', { def: [0] }); O(c + 10, `芯未達開口空洞（${pl}）`, 'single', { def: [0] });
     for (const [r, lab] of [[11, 'キノコ'], [12, '木槌打診異常'], [13, 'がんしゅ等病害'], [14, '虫ふん等虫害']]) {
-      O(c + r, `${lab}（${pl}）`, 'single', { def: [0] }); T(t + r, `${lab}（${pl}）の内容`, 'text', r === 11 ? { phrases: MANUAL.fungi } : r === 13 ? { phrases: MANUAL.disease } : r === 14 ? { phrases: MANUAL.pest } : {});
+      O(c + r, `${lab}（${pl}）`, 'single', { def: [0] }); T(t + r, `${lab}（${pl}）の内容`, 'text', { phrases: [...(r === 11 ? MANUAL.fungi : r === 13 ? MANUAL.disease : r === 14 ? MANUAL.pest : []), ...MANUAL.size] });
     }
   }
-  for (const [r, lab] of [[15, '不自然な傾斜'], [16, '根元の揺らぎ'], [17, '鋼棒貫入異常'], [18, '巻根'], [19, '異物の食込み'], [22, '露出根の被害']]) { O('D' + r, lab, 'single', { def: [0] }); T('F' + r, `${lab}の内容`); }
+  for (const [r, lab] of [[15, '不自然な傾斜'], [16, '根元の揺らぎ'], [17, '鋼棒貫入異常'], [18, '巻根'], [19, '異物の食込み'], [22, '露出根の被害']]) { O('D' + r, lab, 'single', { def: [0] }); T('F' + r, `${lab}の内容`, 'text', { phrases: MANUAL.size }); }
   O('J15', '枯幹', 'single', { def: [0] }); P.I16 = { k: 'off', blanks: true, label: '枯幹（φ・ℓ）' };
   O('O15', '枯枝', 'single', { def: [0] }); P.N16 = { k: 'off', blanks: true, label: '枯枝の内容' };
   for (const [r, s] of [[18, '車道側'], [21, '歩道側']]) {
@@ -2497,7 +2610,7 @@ function kawasakiPreset(F) {
     P['I' + (r + 1)] = { k: 'off', blanks: true, label: `建築限界越え ${s}（幹）の高さ` }; P['N' + (r + 1)] = { k: 'off', blanks: true, label: `建築限界越え ${s}（骨格大枝）の高さ` };
   }
   O('D20', 'ルートカラー', 'single', { def: [0] }); O('D21', 'ルートカラーが見えない理由（深植え・盛土）', 'multi', { blanks: true });
-  T('D23', '特記事項', 'area');
+  T('D23', '特記事項', 'area', { phrases: MANUAL.size });
   for (const [r, pl] of [[28, '活力'], [29, '根元'], [30, '幹'], [31, '骨格大枝及び付根部']]) {
     O('E' + r, `外観判定（${pl}）：概ね異常なし`, 'multi', { group: 'kwj' + r }); O('H' + r, `外観判定（${pl}）：今後観察が必要`, 'multi', { group: 'kwj' + r });
     if (r >= 30) O('K' + r, `外観判定（${pl}）：剪定が必要`, 'multi');
