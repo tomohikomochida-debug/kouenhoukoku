@@ -150,6 +150,47 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--ok);outline-offs
 #draw .stage{flex:1;display:grid;place-items:center;overflow:hidden;touch-action:none}
 #draw canvas{background:#fff;touch-action:none;max-width:100%;max-height:100%}
 
+/* 入力画面のサブヘッダー */
+.sub{position:sticky;z-index:19;background:var(--paper);border-bottom:1px solid var(--line)}
+.sub .nav{position:static;border:0}
+.modes{display:flex;gap:6px;padding:8px 12px 0}
+.modes button{flex:1;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px;font-size:14px;min-height:40px}
+.modes button.on{background:var(--leaf);border-color:var(--leaf);color:#fff;font-weight:600}
+.ktools{display:flex;gap:6px;align-items:center;overflow-x:auto;padding:8px 12px;scrollbar-width:none}
+.ktools::-webkit-scrollbar{display:none}
+.ktools button{flex:none;border:1px solid var(--line);background:var(--card);border-radius:9px;min-height:38px;padding:5px 10px;font-size:13.5px}
+.ktools button.on{background:var(--leaf);border-color:var(--leaf);color:#fff}
+.ktools .sw{width:32px;height:32px;padding:0;border-radius:50%;border:3px solid var(--card);box-shadow:0 0 0 1px var(--line)}
+.ktools .sw.on{box-shadow:0 0 0 2px var(--leaf)}
+.ktools .sep{width:1px;height:26px;background:var(--line);flex:none}
+.ktools .pentools{display:contents}
+.ktools .pentools.off{display:none}
+
+/* カルテ画面 */
+#karte{padding:10px 8px calc(40px + env(safe-area-inset-bottom));overflow-x:auto}
+.kpw{margin:0 auto 14px;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.12);position:relative}
+.kpage{position:absolute;left:0;top:0;transform-origin:0 0;background:#fff;color:#000;
+  font-family:'MS PGothic','ＭＳ Ｐゴシック','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif}
+.kpage svg{position:absolute;left:0;top:0;pointer-events:none}
+.kc{position:absolute;display:flex;padding:0 1px;line-height:1.15;overflow:visible;white-space:nowrap;letter-spacing:-.02em}
+.kc.wrap{white-space:pre-wrap;overflow:hidden;word-break:break-all}
+.kc.vert{white-space:pre;text-align:center;line-height:1.1}
+.kc .ob{border:0;background:none;padding:0 1px;margin:0;font:inherit;color:inherit;cursor:pointer;border-radius:3px;line-height:inherit;letter-spacing:inherit}
+.kc .ob:active,.kc .tx:active{background:rgba(46,125,85,.25)}
+.kc .ob.sel{color:#0d4d2c;font-weight:700;background:rgba(46,125,85,.12)}
+.kc.tx{cursor:pointer;background:rgba(46,125,85,.06)}
+.kc.tx.filled{background:transparent;color:#0b3d8c}
+.kc.tx:hover{background:rgba(46,125,85,.14)}
+.kc .tail{border-bottom:1px dotted #0b3d8c;color:#0b3d8c;cursor:pointer;min-width:3em;display:inline-block}
+.kphoto{position:absolute;display:grid;place-items:center;cursor:pointer;background:rgba(46,125,85,.05)}
+.kphoto img{width:100%;height:100%;object-fit:contain;display:block}
+.kphoto{overflow:hidden}
+.kphoto span{font-size:12px;color:var(--ok);background:#fff;border:1px dashed var(--ok);border-radius:8px;padding:4px 8px}
+.kink{position:absolute;left:0;top:0;pointer-events:none;touch-action:auto}
+.inkmode .kink{pointer-events:auto;touch-action:none}
+.inkmode.penseen .kink{touch-action:pan-x pan-y}
+#edBody textarea{min-height:150px}
+#edMic.rec{background:var(--danger);color:#fff;border-color:var(--danger)}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);
   background:#22231F;color:#fff;border-radius:12px;padding:10px 16px;font-size:14px;z-index:200;
   box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:90vw}
@@ -202,8 +243,16 @@ dialog h2{margin:0 0 10px;font-size:17px;color:var(--leaf)}
     <button class="bbtn" id="btnNext" title="現場名などを引き継いで次の木へ">次の木＋</button>
     <button class="bbtn" id="btnOne">Excel</button>
   </div>
-  <div class="nav" id="nav"></div>
+  <div class="sub" id="sub">
+    <div class="modes" role="tablist">
+      <button type="button" data-m="karte" role="tab">📋 カルテ画面</button>
+      <button type="button" data-m="form" role="tab">☰ 入力フォーム</button>
+    </div>
+    <div class="nav" id="nav"></div>
+    <div class="ktools hidden" id="ktools"></div>
+  </div>
   <main id="form"></main>
+  <div id="karte" class="hidden"></div>
 </section>
 
 <!-- 書き込みエディタ -->
@@ -212,6 +261,23 @@ dialog h2{margin:0 0 10px;font-size:17px;color:var(--leaf)}
   <div class="stage" id="drawStage"><canvas id="drawCanvas"></canvas></div>
 </div>
 
+<dialog id="dlgEdit">
+  <h2 id="edTitle"></h2>
+  <div id="edBody"></div>
+  <p class="hint" id="edHint">キーボードのマイクで話す／🎤ボタンで話す／iPadならApple Pencilで欄に直接書く（スクリブル）と文字になります。</p>
+  <div class="row" style="margin-top:10px">
+    <button class="btn" type="button" id="edMic">🎤 話して入力</button>
+    <button class="btn hidden" type="button" id="edGps">📍 今いる位置</button>
+    <span style="flex:1"></span>
+    <button class="btn warn" type="button" id="edClear">消す</button>
+    <button class="btn pri" type="button" id="edOk">OK</button>
+  </div>
+</dialog>
+<dialog id="dlgPhoto">
+  <h2 id="phTitle"></h2>
+  <div class="row" id="phBtns" style="flex-direction:column;align-items:stretch"></div>
+  <input type="file" id="phFile" accept="image/*" hidden>
+</dialog>
 <dialog id="dlgSettings">
   <h2>設定</h2>
   <div class="grid w2">
@@ -581,7 +647,7 @@ function buildForm() {
   /* 7. 写真・図 */
   const phCard = card('photo', '写真・図（カルテ2ページ目の枠）');
   const phBox = h('div');
-  const addIn = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true, onchange: e => addPhotos(e.target.files, phBox) });
+  const addIn = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true, onchange: e => { const fs = [...e.target.files]; e.target.value = ''; addPhotos(fs, phBox); } });
   phCard.append(
     h('p', { class: 'hint' }, '写真を入れて、赤ペンや丸で書き込みができます（Apple Pencil 可）。「どの枠に入れるか」を選ぶと、Excelのその枠に貼られます。'),
     h('div', { class: 'row', style: 'margin-bottom:10px' },
@@ -590,7 +656,7 @@ function buildForm() {
       addIn),
     phBox);
   f.append(phCard);
-  renderPhotos(phBox);
+  formPhotoBox = phBox; renderPhotos(phBox);
 
   /* 8. その他 */
   f.append(card('other', 'その他特記事項・次回診断',
@@ -613,7 +679,8 @@ function buildForm() {
   }
   updateTitle();
 }
-function jump(id) { const el = document.getElementById('sec-' + id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+function jump(id) {
+  if (viewMode !== 'form') showMode('form'); const el = document.getElementById('sec-' + id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 function updateTitle() { if (cur) $('#editTitle').textContent = `${cur.no ? 'No.' + cur.no + ' ' : ''}${cur.species || '樹木'}${cur.site ? '（' + cur.site + '）' : ''}`; }
 
 function getGPS() {
@@ -646,23 +713,31 @@ async function shrink(file, max = 1800) {
   } finally { URL.revokeObjectURL(src); }
 }
 function freeSlot() { const used = new Set(cur.photos.map(p => p.slot)); return ['p1', 'p2', 'p3', 'overview'].find(s => !used.has(s)) || ''; }
-async function addPhotos(files, box) {
+let formPhotoBox = null;
+function photosChanged() {
+  if (formPhotoBox && document.contains(formPhotoBox)) renderPhotos(formPhotoBox);
+  if (viewMode === 'karte' && cur) refreshKarte(true);
+}
+function takeSlot(slot) { for (const o of cur.photos) if (o.slot === slot) o.slot = ''; return slot; }
+async function addPhotos(files, box, slot) {
+  let first = null;
   for (const file of files) {
     try {
       const { blob, w, h: hh } = await shrink(file);
       const id = uid(); await DB.put('photos', { id, blob });
-      cur.photos.push({ id, slot: freeSlot(), caption: '', strokes: [], w, h: hh });
+      const p = { id, slot: slot && !first ? takeSlot(slot) : freeSlot(), caption: '', strokes: [], w, h: hh };
+      cur.photos.push(p); first = first || p;
     } catch (e) { toast('写真を読み込めませんでした'); }
   }
-  touch(); renderPhotos(box);
+  touch(); photosChanged(); return first;
 }
-async function addSketch(box) {
+async function addSketch(box, slot) {
   const c = document.createElement('canvas'); c.width = 1200; c.height = 1200;
   const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
   const blob = await canvasBlob(c, .9); const id = uid(); await DB.put('photos', { id, blob });
   const used = new Set(cur.photos.map(p => p.slot));
-  const p = { id, slot: used.has('site') ? freeSlot() : 'site', caption: '', strokes: [], w: 1200, h: 1200 };
-  cur.photos.push(p); touch(); renderPhotos(box); openDraw(p, box);
+  const p = { id, slot: slot ? takeSlot(slot) : used.has('site') ? freeSlot() : 'site', caption: '', strokes: [], w: 1200, h: 1200 };
+  cur.photos.push(p); touch(); photosChanged(); openDraw(p, box);
 }
 async function renderPhotos(box) {
   box.innerHTML = '';
@@ -677,7 +752,7 @@ async function renderPhotos(box) {
     sel.value = p.slot || '';
     sel.onchange = () => {
       if (sel.value) for (const o of cur.photos) if (o !== p && o.slot === sel.value) o.slot = '';
-      p.slot = sel.value; touch(); renderPhotos(box);
+      p.slot = sel.value; touch(); photosChanged();
     };
     const cap = h('input', { placeholder: '写真の説明（写真①〜③の下に入ります）' });
     cap.value = p.caption || ''; cap.oninput = () => { p.caption = cap.value; touch(); };
@@ -685,7 +760,7 @@ async function renderPhotos(box) {
       h('div', { class: 'row' },
         h('button', { type: 'button', class: 'btn', onclick: () => openDraw(p, box) }, '✏️ 書き込む'),
         h('button', { type: 'button', class: 'btn', onclick: () => savePhoto(p) }, '保存'),
-        h('button', { type: 'button', class: 'btn warn', onclick: async () => { if (!confirm('この写真を削除しますか？')) return; cur.photos = cur.photos.filter(o => o !== p); await DB.del('photos', p.id); touch(); renderPhotos(box); } }, '削除')))));
+        h('button', { type: 'button', class: 'btn warn', onclick: async () => { if (!confirm('この写真を削除しますか？')) return; cur.photos = cur.photos.filter(o => o !== p); await DB.del('photos', p.id); touch(); photosChanged(); } }, '削除')))));
   }
 }
 const composeCache = new Map();
@@ -768,7 +843,7 @@ function redraw() {
   drawStrokes(x, dr.active ? [...dr.strokes, dr.active] : dr.strokes, c.width, c.height);
 }
 function closeDraw(save) {
-  if (save) { dr.p.strokes = dr.strokes; touch(); renderPhotos(dr.box); }
+  if (save) { dr.p.strokes = dr.strokes; touch(); photosChanged(); }
   $('#draw').classList.add('hidden'); document.body.style.overflow = ''; dr = null;
 }
 (function drawEvents() {
@@ -808,15 +883,15 @@ async function openTree(id) {
   const base = newTree();
   for (const k of Object.keys(base)) if (cur[k] === undefined) cur[k] = base[k];
   $('#listView').classList.add('hidden'); $('#editView').classList.remove('hidden');
-  buildForm(); window.scrollTo(0, 0);
-  const navH = $('#editView .bar').offsetHeight; $('#nav').style.top = navH + 'px';
+  window.scrollTo(0, 0); showMode(viewMode, true);
+  $('#sub').style.top = $('#editView .bar').offsetHeight + 'px';
   history.pushState({ v: 'edit' }, '');
 }
 async function createTree(base) {
   const t = newTree(base); trees.push(t); await DB.put('trees', t); openTree(t.id);
 }
 async function backToList() {
-  await flush(); cur = null;
+  await flush(); cur = null; kCells = []; kPages = []; $('#karte').innerHTML = ''; stopVoice();
   $('#editView').classList.add('hidden'); $('#listView').classList.remove('hidden');
   renderList(); window.scrollTo(0, 0);
 }
@@ -944,7 +1019,7 @@ function karteCells(t) {
   c.AX8 = box(tr.renew.on) + '更新（'; c.BA8 = tr.renew.t;
   c.BR8 = box(tr.other.on) + 'その他（'; c.BV8 = tr.other.t;
   c.AY9 = tr.memo;
-  const capOf = s => (t.photos.find(p => p.slot === s) || {}).caption || '';
+  const capOf = s => (t.photos.find(p => p.slot === s) || {}).caption || (t.caps || {})[s] || '';
   c.AW54 = capOf('p1'); c.BK54 = capOf('p2'); c.BY54 = capOf('p3');
   c.AW56 = t.special;
   c.BD62 = box(t.next.follow) + 'フォローアップ診断（';
@@ -1069,6 +1144,21 @@ async function buildWorkbook(list) {
       drels += `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${media}"/>`;
       pics += picAnchor(m, bx, img.naturalWidth, img.naturalHeight, rid, pid++);
     }
+    // 手書きレイヤー（ページ全体に透明PNGで重ねる）
+    for (const pi of [0, 1]) {
+      const st = (t.ink || {})[pi]; if (!st || !st.length) continue;
+      const pg = PAGES[pi]; let Wd = 0, Hd = 0, x0 = 0;
+      for (let c = 0; c < pg.c0; c++) x0 += m.cw(c);
+      for (let c = pg.c0; c <= pg.c1; c++) Wd += m.cw(c); for (let r = pg.r0; r <= pg.r1; r++) Hd += m.rh(r);
+      const cv = document.createElement('canvas'); cv.width = Math.round(Wd / 9525 * 2.5); cv.height = Math.round(Hd / 9525 * 2.5);
+      drawStrokes(cv.getContext('2d'), st, cv.width, cv.height);
+      const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+      const media = `karte${k}_tegaki${pi + 1}.png`; zip.file(`xl/media/${media}`, await blob.arrayBuffer());
+      const rid = `rIdP${pid}`;
+      drels += `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${media}"/>`;
+      pics += `<xdr:twoCellAnchor><xdr:from><xdr:col>${pg.c0}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${pg.r0}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>${pg.c1 + 1}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${pg.r1 + 1}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${pid}" name="手書き ${pi + 1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="${x0}" y="0"/><a:ext cx="${Math.round(Wd)}" cy="${Math.round(Hd)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`;
+      pid++;
+    }
     let dx = baseDrawing;
     if (!/xmlns:r=/.test(dx)) dx = dx.replace('<xdr:wsDr ', '<xdr:wsDr xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ');
     dx = dx.replace('</xdr:wsDr>', pics + '</xdr:wsDr>');
@@ -1118,6 +1208,427 @@ async function exportTrees(ids) {
 }
 
 /* =========================================================
+   カルテ画面（Excel様式そのままの画面で、タップ・手書き・音声入力）
+   テンプレートExcelの罫線・文字・結合セルを読み取って画面に描く。
+   □をタップ→■、文字欄をタップ→入力（音声・スクリブル可）、
+   ✏️手書きモードでは紙に書くようにペンで書き込める（Excelにも重ねて出力）。
+   ========================================================= */
+let viewMode = (() => { try { return localStorage.getItem('jk_mode') || 'karte'; } catch (e) { return 'karte'; } })();
+const PAGES = [{ c0: 0, c1: 45, r0: 0, r1: 64 }, { c0: 46, c1: 90, r0: 0, r1: 64 }]; // A〜AT / AU〜CM, 1〜65行
+let LAYOUT = null, kState = { zoom: 1, ink: false, tool: 'pen', color: '#111111', size: 1 }, kCells = [], kPages = [];
+
+async function loadLayout() {
+  if (LAYOUT) return LAYOUT;
+  const zip = await JSZip.loadAsync(b64bytes(TEMPLATE_B64));
+  const P = async p => new DOMParser().parseFromString(await zip.file(p).async('string'), 'application/xml');
+  const sheet = await P('xl/worksheets/sheet1.xml'), styles = await P('xl/styles.xml'), ssDoc = await P('xl/sharedStrings.xml'), drw = await P('xl/drawings/drawing1.xml');
+  const E = (d, n) => [...d.getElementsByTagNameNS(NS_MAIN, n)];
+  const kids = (el, n) => [...el.children].filter(x => !n || x.localName === n);
+  const ss = E(ssDoc, 'si').map(si => kids(si).map(n => n.localName === 't' ? n.textContent : n.localName === 'r' ? kids(n, 't').map(x => x.textContent).join('') : '').join(''));
+  const fonts = kids(E(styles, 'fonts')[0]).map(f => ({ sz: parseFloat(kids(f, 'sz')[0]?.getAttribute('val') || '11'), b: kids(f, 'b').length > 0 }));
+  const borders = kids(E(styles, 'borders')[0]).map(b => {
+    const o = {}; for (const x of kids(b)) { const st = x.getAttribute('style'); if (st) o[x.localName] = st; }
+    if (o.diagonal) { if (b.getAttribute('diagonalDown') === '1') o.dd = o.diagonal; if (b.getAttribute('diagonalUp') === '1') o.du = o.diagonal; }
+    return o;
+  });
+  const xfs = kids(E(styles, 'cellXfs')[0]).map(x => {
+    const a = kids(x, 'alignment')[0];
+    return { font: fonts[+x.getAttribute('fontId') || 0], border: borders[+x.getAttribute('borderId') || 0], h: a?.getAttribute('horizontal') || '', v: a?.getAttribute('vertical') || 'bottom', wrap: a?.getAttribute('wrapText') === '1', rot: a?.getAttribute('textRotation') || '' };
+  });
+  const m = sheetMetrics(new XMLSerializer().serializeToString(sheet));
+  const colPx = [], rowPx = [];
+  for (let i = 0; i <= 91; i++) colPx[i] = m.cw(i) / 9525;
+  for (let i = 0; i <= 70; i++) rowPx[i] = m.rh(i) / 9525;
+  const cells = [];
+  for (const c of E(sheet, 'c')) {
+    const [col, row] = splitRef(c.getAttribute('r')); const t = c.getAttribute('t');
+    let val = '';
+    if (t === 's') val = ss[+(kids(c, 'v')[0]?.textContent)] ?? '';
+    else if (t === 'inlineStr') val = [...c.getElementsByTagNameNS(NS_MAIN, 't')].map(x => x.textContent).join('');
+    else val = kids(c, 'v')[0]?.textContent ?? '';
+    cells.push({ ref: c.getAttribute('r'), c: col - 1, r: row - 1, xf: xfs[+c.getAttribute('s') || 0], val });
+  }
+  const merges = {}, covered = new Set();
+  for (const mc of E(sheet, 'mergeCell')) {
+    const [a, b] = mc.getAttribute('ref').split(':'); const [c1, r1] = splitRef(a), [c2, r2] = splitRef(b);
+    merges[a] = { c1: c1 - 1, r1: r1 - 1, c2: c2 - 1, r2: r2 - 1 };
+    for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) if (r !== r1 || c !== c1) covered.add(`${c - 1},${r - 1}`);
+  }
+  const lines = [];
+  const XD = 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing';
+  for (const an of drw.getElementsByTagNameNS(XD, 'twoCellAnchor')) {
+    const g = (el, n) => +el.getElementsByTagNameNS(XD, n)[0].textContent;
+    const f = an.getElementsByTagNameNS(XD, 'from')[0], t = an.getElementsByTagNameNS(XD, 'to')[0];
+    lines.push({ c1: g(f, 'col'), x1: g(f, 'colOff') / 9525, r1: g(f, 'row'), y1: g(f, 'rowOff') / 9525, c2: g(t, 'col'), x2: g(t, 'colOff') / 9525, r2: g(t, 'row'), y2: g(t, 'rowOff') / 9525 });
+  }
+  LAYOUT = { colPx, rowPx, cells, merges, covered, lines };
+  return LAYOUT;
+}
+
+/* セルごとの操作（□の並び順に対応する動作 / 文字入力） */
+let CTRL = null;
+function buildCtrl() {
+  const C = {};
+  const T = (ref, p, l, o = {}) => { C[ref] = { t: 'text', p, l, ...o }; };
+  const O = (ref, acts, o = {}) => { C[ref] = { t: 'opt', acts, ...o }; };
+  const sel = (p, vals) => vals.map(v => ({ p, v }));
+  const tog = p => ({ p, v: true });
+  const LV = ['0', '1', '2', '3'], JU = ['A', 'B1', 'B2', 'C'], NA = ['なし', 'あり'];
+  const partL = Object.fromEntries(PARTS);
+  T('D2', 'no', 'No.', { k: 'num' }); T('AX2', 'no', 'No.', { k: 'num' }); T('AI2', 'diag', '診断者名');
+  T('G3', 'site', '現場名', { list: 'site' }); T('X3', 'doctor', '樹木医'); T('AL3', 'date', '診断日', { k: 'date' });
+  T('G4', 'treeNo', '樹木番号'); T('Y4', 'H', '樹高（H）m', { k: 'num' }); T('AF4', 'C', '幹周（C）cm', { k: 'num' }); T('AN4', 'W', '枝張（W）m', { k: 'num' });
+  T('E5', 'species', '樹種名', { list: 'sp' });
+  O('Q5', sel('plant', ['単独桝', '植栽帯', '緑地内', 'その他'])); O('AK5', sel('support', ['良好', 'なし', '破損']));
+  O('AF7', sel('vigor', [1, 2, 3, 4, 5])); O('AF8', sel('form', [1, 2, 3, 4, 5]));
+  T('G9', 'vitalNote', '活力診断の所見', { k: 'area', ph: 'vital' });
+  O('H11', sel('vitalJudge', LV));
+  const col3 = { root: 'M', trunk: 'X', branch: 'AI' }, txt3 = { root: 'Q', trunk: 'AB', branch: 'AM' }, colJ = { root: 'P', trunk: 'Z', branch: 'AJ' };
+  for (const [k, , r] of RATIO) for (const [p] of PARTS) O(col3[p] + r, sel(`ratio.${k}.${p}`, ['なし', '1/3未満', '1/3以上']));
+  T('M17', 'maxDmg.root.w', '根元：被害部幅（cm）', { k: 'num' }); T('Q17', 'maxDmg.root.c', '根元：被害部周囲長（cm）', { k: 'num' });
+  T('X17', 'maxDmg.trunk.w', '幹：被害部幅（cm）', { k: 'num' }); T('AB17', 'maxDmg.trunk.c', '幹：被害部周囲長（cm）', { k: 'num' });
+  O('AL16', sel('deadBranch.v', NA)); T('AP16', 'deadBranch.t', '枯枝の内容');
+  O('AL17', sel('stub.v', NA)); T('AP17', 'stub.t', 'スタブカットの内容');
+  for (const [k, lab, r] of NA3) for (const [p] of PARTS) { O(col3[p] + r, sel(`na3.${k}.${p}.v`, NA)); T(txt3[p] + r, `na3.${k}.${p}.t`, `${lab}（${partL[p]}）の内容`); }
+  for (const [k, lab, r] of NAROOT) {
+    if (k === 'rootCollar') { O('M26', sel('root.rootCollar.v', ['見える', '見えない'])); T('T26', 'root.rootCollar.t', 'ルートカラーの内容'); }
+    else { O('M' + r, sel(`root.${k}.v`, NA)); T('Q' + r, `root.${k}.t`, `${lab}の内容`); }
+  }
+  for (const [s, sl, cc, tc] of [['car', '車道側', 'Z', 'Z'], ['walk', '歩道側', 'AK', 'AK']]) {
+    O(cc + 24, sel(`clear.${s}.trunk.v`, NA)); T(tc + 25, `clear.${s}.trunk.t`, `建築限界越え ${sl}・幹`);
+    O(cc + 26, sel(`clear.${s}.branch.v`, NA)); T(tc + 27, `clear.${s}.branch.t`, `建築限界越え ${sl}・枝`);
+  }
+  T('G29', 'partNote', '部位診断の所見', { k: 'area', ph: 'part' });
+  for (const [p] of PARTS) {
+    for (let i = 0; i < 4; i++) O(colJ[p] + (40 + i), [{ p: `partJudge.${p}`, v: String(i) }]);
+    O(colJ[p] + 44, [tog(`needPrune.${p}`)]); O(colJ[p] + 45, [tog(`needDevice.${p}`)]);
+  }
+  O('G46', sel('extJudge', JU)); T('F48', 'extReason', '外観診断の判定理由', { k: 'area', ph: 'reason' });
+  for (const i of [0, 1]) {
+    const r = 52 + i;
+    T('L' + r, `dev.${i}.part`, `測定データ${i + 1}：部位`); T('T' + r, `dev.${i}.rate`, `測定データ${i + 1}：腐朽空洞率（%）`, { k: 'num' });
+    ['AC', 'AG', 'AK', 'AO'].forEach((c, k) => T(c + r, `dev.${i}.tr.${k}`, `測定データ${i + 1}：t/R率 ${'①②③④'[k]}`, { k: 'num' }));
+  }
+  T('F54', 'devNote', '機器診断の所見', { k: 'area' });
+  O('G60', sel('total', JU)); T('F62', 'totalReason', '総合判定の理由', { k: 'area', ph: 'reason' });
+  O('BD3', sel('treat.need', NA)); O('BY3', sel('treat.urgent', NA));
+  O('AX4', [tog('treat.obsLong'), tog('treat.obsShort')]);
+  O('AX5', [tog('treat.prune'), ...PRUNES.map(([k]) => tog(`treat.pr.${k}`))]);
+  for (const [a, b, k] of [['AX6', 'BC6', 'protect'], ['BR6', 'BY6', 'soil'], ['AX7', 'BC7', 'rootUp'], ['BR7', 'BX7', 'pest'], ['AX8', 'BA8', 'renew'], ['BR8', 'BV8', 'other']]) {
+    O(a, [tog(`treat.${k}.on`)]); T(b, `treat.${k}.t`, TREATS.find(x => x[0] === k)[1] + 'の内容', k === 'soil' ? { phrases: ['土壌改良材鋤込み・竪穴式土壌改良'] } : {});
+  }
+  T('AY9', 'treat.memo', '処置の摘要', { k: 'area', ph: 'treat' });
+  T('AW54', 'cap:p1', '写真①の説明'); T('BK54', 'cap:p2', '写真②の説明'); T('BY54', 'cap:p3', '写真③の説明');
+  T('AW56', 'special', 'その他特記事項', { k: 'area', ph: 'treat' });
+  O('BD62', [tog('next.follow')]);
+  O('BL62', [tog('next.device')], { tail: { p: 'next.devicePart', sep: '：', keep: 'btn', l: '要機器診断の測定部位' } });
+  O('CC62', [tog('next.ext')]);
+  O('BD63', sel('nextWhen', ['1', '2', '3']), { tail: { p: 'nextYear', sep: '（', keep: 'tail', l: '次回再診断（　　年度）例：令和10' } });
+  T('BI64', 'lat', '緯度', { k: 'num', gps: true }); T('BZ64', 'lon', '経度', { k: 'num', gps: true });
+  return C;
+}
+function ctrlGet(p) {
+  if (p.startsWith('cap:')) { const s = p.slice(4); const ph = cur.photos.find(x => x.slot === s); return ph ? ph.caption || '' : (cur.caps || {})[s] || ''; }
+  return getP(cur, p) ?? '';
+}
+function ctrlSet(p, v) {
+  if (p.startsWith('cap:')) { const s = p.slice(4); const ph = cur.photos.find(x => x.slot === s); if (ph) ph.caption = v; else { cur.caps = cur.caps || {}; cur.caps[s] = v; } }
+  else setP(cur, p, v);
+  touch(); refreshKarte();
+}
+function applyAct(a) {
+  const now = getP(cur, a.p);
+  if (a.v === true) setP(cur, a.p, !now);
+  else setP(cur, a.p, now === a.v ? (typeof a.v === 'number' ? 0 : '') : a.v);
+  // 剪定の中身を選んだら「剪定」にもチェック
+  if (a.p.startsWith('treat.pr.') && getP(cur, a.p)) cur.treat.prune = true;
+  touch(); refreshKarte();
+}
+
+/* ---------- 描画 ---------- */
+const BW = { thin: 1, hair: .6, dotted: 1, dashed: 1, mediumDashed: 2, medium: 2, thick: 3, double: 3 };
+const BD = { dotted: '1.2 2', hair: '1 1.5', dashed: '4 2', mediumDashed: '5 2' };
+async function renderKarte() {
+  const root = $('#karte'); root.innerHTML = '';
+  const L = await loadLayout(); CTRL = CTRL || buildCtrl();
+  kCells = []; kPages = [];
+  const KC = karteCells(cur);
+  for (const [pi, pg] of PAGES.entries()) {
+    const xs = [0]; for (let c = pg.c0; c <= pg.c1; c++) xs.push(xs[xs.length - 1] + L.colPx[c]);
+    const ys = [0]; for (let r = pg.r0; r <= pg.r1; r++) ys.push(ys[ys.length - 1] + L.rowPx[r]);
+    const X = c => xs[c - pg.c0], Y = r => ys[r - pg.r0], W = xs[xs.length - 1], H = ys[ys.length - 1];
+    const wrap = h('div', { class: 'kpw' }); const page = h('div', { class: 'kpage', style: `width:${W}px;height:${H}px` });
+    wrap.append(page); root.append(wrap);
+    // 罫線
+    let path = '';
+    const segs = {};
+    const add = (st, x1, y1, x2, y2) => { (segs[st] = segs[st] || []).push(`M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}`); };
+    for (const c of L.cells) {
+      if (c.c < pg.c0 || c.c > pg.c1 || c.r < pg.r0 || c.r > pg.r1) continue;
+      const b = c.xf.border; if (!b) continue;
+      const x0 = X(c.c), x1 = X(c.c + 1), y0 = Y(c.r), y1 = Y(c.r + 1);
+      if (b.left) add(b.left, x0, y0, x0, y1); if (b.right) add(b.right, x1, y0, x1, y1);
+      if (b.top) add(b.top, x0, y0, x1, y0); if (b.bottom) add(b.bottom, x0, y1, x1, y1);
+      const mg = L.merges[c.ref];
+      if (b.dd && !L.covered.has(`${c.c},${c.r}`)) { const q = mg || { c1: c.c, r1: c.r, c2: c.c, r2: c.r }; add(b.dd, X(q.c1), Y(q.r1), X(Math.min(q.c2, pg.c1) + 1), Y(q.r2 + 1)); }
+    }
+    for (const ln of L.lines) if (ln.c1 >= pg.c0 && ln.c1 <= pg.c1) add('connector', X(ln.c1) + ln.x1, Y(ln.r1) + ln.y1, X(ln.c2) + ln.x2, Y(ln.r2) + ln.y2);
+    for (const [st, arr] of Object.entries(segs)) {
+      const w = st === 'connector' ? .8 : BW[st] || 1;
+      path += `<path d="${arr.join('')}" stroke="${st === 'connector' ? '#4472C4' : '#000'}" stroke-width="${w}" fill="none" ${BD[st] ? `stroke-dasharray="${BD[st]}"` : ''} shape-rendering="crispEdges"/>`;
+    }
+    page.insertAdjacentHTML('beforeend', `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${path}</svg>`);
+    // 文字・操作
+    for (const c of L.cells) {
+      if (c.c < pg.c0 || c.c > pg.c1 || c.r < pg.r0 || c.r > pg.r1) continue;
+      if (L.covered.has(`${c.c},${c.r}`)) continue;
+      const spec = CTRL[c.ref];
+      if (!spec && c.val === '' && !(c.ref in KC)) continue;
+      const mg = L.merges[c.ref] || { c1: c.c, r1: c.r, c2: c.c, r2: c.r };
+      const x = c.xf, fs = x.font.sz * 4 / 3;
+      const el = h('div', { class: 'kc' + (x.wrap ? ' wrap' : '') + (x.rot === '255' ? ' vert' : '') });
+      el.style.cssText += `left:${X(mg.c1)}px;top:${Y(mg.r1)}px;width:${X(Math.min(mg.c2, pg.c1) + 1) - X(mg.c1)}px;height:${Y(mg.r2 + 1) - Y(mg.r1)}px;font-size:${fs}px;${x.font.b ? 'font-weight:700;' : ''}`
+        + `justify-content:${x.rot === '255' ? 'center' : { center: 'center', right: 'flex-end', centerContinuous: 'center', distributed: 'space-between' }[x.h] || 'flex-start'};`
+        + `align-items:${{ top: 'flex-start', center: 'center', bottom: 'flex-end' }[x.v] || 'flex-end'};`;
+      if (x.rot === '255') el.style.alignItems = 'center';
+      if (x.h === 'distributed' && !spec) el.style.letterSpacing = '.3em';
+      page.append(el);
+      if (spec || L.merges[c.ref]) el.dataset.fit = '1'; // 結合セル・入力欄だけ縮小（単独セルはExcel同様に隣へはみ出す）
+      const cell = { ref: c.ref, el, spec, tmpl: c.val };
+      kCells.push(cell); paintCell(cell, KC);
+    }
+    // 写真枠
+    if (pi === 1) for (const [slot, bx] of Object.entries(PHOTO_BOX)) {
+      const d = h('div', { class: 'kphoto', role: 'button', 'aria-label': (SLOTS.find(s => s[0] === slot) || [])[1] });
+      d.style.cssText = `left:${X(bx.c1) + 3}px;top:${Y(bx.r1) + 3}px;width:${X(bx.c2 + 1) - X(bx.c1) - 6}px;height:${Y(bx.r2 + 1) - Y(bx.r1) - 6}px`;
+      d.onclick = () => photoMenu(slot); page.append(d);
+      kCells.push({ photo: slot, el: d });
+    }
+    // 手書きレイヤー
+    const cv = h('canvas', { class: 'kink' }); cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    page.append(cv);
+    kPages.push({ pi, W, H, wrap, page, cv });
+    inkEvents(cv, pi);
+  }
+  for (const c of kCells) if (c.photo) paintPhoto(c);
+  fitKarte(); for (const p of kPages) paintInk(p);
+}
+function fitText(el) { // Excelの「縮小して全体を表示」と同じように、はみ出す文字を小さくする
+  if (!el.isConnected || !el.dataset.fit) return;
+  if (el._fs == null) el._fs = parseFloat(el.style.fontSize);
+  el.style.fontSize = el._fs + 'px';
+  const vert = el.classList.contains('vert'), wrap = el.classList.contains('wrap');
+  const rg = document.createRange(); rg.selectNodeContents(el);
+  const cr = rg.getBoundingClientRect(), er = el.getBoundingClientRect();
+  if (!er.width || !er.height) return;
+  const over = wrap ? el.scrollHeight / el.clientHeight : vert ? cr.height / er.height : cr.width / er.width;
+  if (over > 1.01) el.style.fontSize = Math.max(5, el._fs / (wrap ? Math.sqrt(over) : over) * .97) + 'px';
+  if (wrap && el.scrollHeight > el.clientHeight + 1) el.style.fontSize = Math.max(5, parseFloat(el.style.fontSize) * el.clientHeight / el.scrollHeight * .95) + 'px';
+}
+function paintCell(cell, KC) {
+  const { el, spec, ref } = cell; el.innerHTML = '';
+  requestAnimationFrame(() => fitText(el));
+  const val = ref in KC ? KC[ref] : cell.tmpl;
+  if (!spec) { el.textContent = el.classList.contains('vert') ? [...String(val)].filter(ch => ch.trim()).join('\n') : val; return; }
+  if (spec.t === 'text') {
+    el.classList.add('tx'); el.classList.toggle('filled', String(val) !== '');
+    el.textContent = val; el.title = spec.l;
+    el.onclick = () => openEditor(spec);
+    return;
+  }
+  // □の並びを分割してボタンにする
+  const s = String(val); const idx = []; for (let i = 0; i < s.length; i++) if (s[i] === '□' || s[i] === '■') idx.push(i);
+  if (idx[0] > 0) el.append(s.slice(0, idx[0]));
+  idx.forEach((st, i) => {
+    let seg = s.slice(st, idx[i + 1] ?? s.length), tail = null;
+    if (spec.tail && i === idx.length - 1) {
+      const k = seg.indexOf(spec.tail.sep);
+      if (k >= 0) { const cut = spec.tail.keep === 'btn' ? k + spec.tail.sep.length : k; tail = seg.slice(cut); seg = seg.slice(0, cut); }
+    }
+    const a = spec.acts[i];
+    const b = h('button', { type: 'button', class: 'ob' + (seg[0] === '■' ? ' sel' : '') }, seg);
+    if (a) b.onclick = e => { e.stopPropagation(); applyAct(a); if (a.p === 'next.device' && cur.next.device && !cur.next.devicePart) openEditor({ t: 'text', p: spec.tail.p, l: spec.tail.l }); };
+    el.append(b);
+    if (tail != null) {
+      const tb = h('span', { class: 'tail', role: 'button' }, spec.tail.keep === 'btn' ? (getP(cur, spec.tail.p) || '　　　　') : tail);
+      tb.onclick = e => { e.stopPropagation(); openEditor({ t: 'text', p: spec.tail.p, l: spec.tail.l }); };
+      el.append(tb);
+    }
+  });
+}
+async function paintPhoto(c) {
+  const p = cur.photos.find(x => x.slot === c.photo);
+  c.el.innerHTML = '';
+  if (!p) { c.el.append(h('span', {}, '＋ ' + (c.photo === 'site' ? '図・写真' : '写真'))); return; }
+  const img = h('img', { alt: '' }); c.el.append(img); img.src = await composeURL(p);
+}
+function refreshKarte(photos) {
+  if (!kCells.length) return;
+  const KC = karteCells(cur);
+  for (const c of kCells) { if (c.photo) { if (photos) paintPhoto(c); } else paintCell(c, KC); }
+}
+function fitKarte() {
+  const root = $('#karte'); if (!kPages.length) return;
+  const avail = Math.max(300, root.clientWidth - 16);
+  for (const p of kPages) {
+    const s = avail / kPages[0].W * kState.zoom;
+    p.page.style.transform = `scale(${s})`; p.wrap.style.width = p.W * s + 'px'; p.wrap.style.height = p.H * s + 'px';
+    p.scale = s;
+    const dpr = Math.min(3, (window.devicePixelRatio || 1) * s);
+    const w = Math.round(p.W * dpr), hh = Math.round(p.H * dpr);
+    if (p.cv.width !== w) { p.cv.width = w; p.cv.height = hh; paintInk(p); }
+  }
+}
+function paintInk(p) {
+  const x = p.cv.getContext('2d'); x.clearRect(0, 0, p.cv.width, p.cv.height);
+  const st = (cur.ink || {})[p.pi] || [];
+  drawStrokes(x, p.active ? [...st, p.active] : st, p.cv.width, p.cv.height);
+}
+function inkEvents(cv, pi) {
+  const pos = e => { const r = cv.getBoundingClientRect(); return [+((e.clientX - r.left) / r.width).toFixed(5), +((e.clientY - r.top) / r.height).toFixed(5)]; };
+  const pg = () => kPages.find(p => p.pi === pi);
+  let pid = null;
+  cv.addEventListener('pointerdown', e => {
+    if (!kState.ink) return;
+    if (e.pointerType === 'pen') $('#karte').classList.add('penseen');
+    if ($('#karte').classList.contains('penseen') && e.pointerType === 'touch') return; // Apple Pencil使用中は指でスクロール
+    e.preventDefault(); cv.setPointerCapture(e.pointerId); pid = e.pointerId;
+    const [x, y] = pos(e);
+    if (kState.tool === 'eraser') { eraseAt(pi, x, y); return; }
+    const p = pg(); p.active = { t: kState.tool === 'marker' ? 'marker' : 'pen', c: kState.color, w: (kState.tool === 'marker' ? .012 : .0024) * kState.size, pts: [[x, y]] };
+    paintInk(p);
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!kState.ink || e.pointerId !== pid) return;
+    const [x, y] = pos(e);
+    if (kState.tool === 'eraser') { eraseAt(pi, x, y); return; }
+    const p = pg(); if (!p.active) return;
+    p.active.pts.push([x, y]); paintInk(p);
+  });
+  const end = e => {
+    if (e.pointerId !== pid) return; pid = null;
+    const p = pg(); if (!p.active) return;
+    cur.ink = cur.ink || {}; (cur.ink[pi] = cur.ink[pi] || []).push(p.active); p.active = null; kLastPage = pi; touch(); paintInk(p);
+  };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+}
+function eraseAt(pi, x, y) {
+  const st = (cur.ink || {})[pi]; if (!st || !st.length) return;
+  const p = kPages.find(q => q.pi === pi); const rx = 10 / (p.W * p.scale), ry = 10 / (p.H * p.scale);
+  const n = st.length;
+  cur.ink[pi] = st.filter(s => !(s.pts || []).some(([a, b]) => Math.abs(a - x) < rx && Math.abs(b - y) < ry));
+  if (cur.ink[pi].length !== n) { touch(); paintInk(p); }
+}
+function renderKTools() {
+  const t = $('#ktools'); t.innerHTML = '';
+  const b = (label, on, fn, cls = '') => h('button', { type: 'button', class: (on ? 'on ' : '') + cls, onclick: fn }, label);
+  t.append(b(kState.ink ? '✏️ 手書き中（タップで終了）' : '✏️ 手書きで書き込む', kState.ink, () => { kState.ink = !kState.ink; $('#karte').classList.toggle('inkmode', kState.ink); renderKTools(); }));
+  const pen = h('span', { class: 'pentools' + (kState.ink ? '' : ' off') });
+  pen.append(
+    b('ペン', kState.tool === 'pen', () => { kState.tool = 'pen'; renderKTools(); }),
+    b('マーカー', kState.tool === 'marker', () => { kState.tool = 'marker'; if (kState.color === '#111111') kState.color = '#FDD835'; renderKTools(); }),
+    b('消しゴム', kState.tool === 'eraser', () => { kState.tool = 'eraser'; renderKTools(); }),
+    ...['#111111', '#E53935', '#1E88E5', '#43A047', '#FDD835'].map(c => h('button', { type: 'button', class: 'sw' + (kState.color === c ? ' on' : ''), style: `background:${c}`, 'aria-label': '色', onclick: () => { kState.color = c; if (kState.tool === 'eraser') kState.tool = 'pen'; renderKTools(); } })),
+    ...[[.7, '細'], [1, '中'], [1.8, '太']].map(([v, l]) => b(l, kState.size === v, () => { kState.size = v; renderKTools(); })),
+    b('↶ 戻す', false, () => {
+      const st = cur.ink || {}; let pi = kLastPage;
+      if (pi == null || !(st[pi] || []).length) pi = (st[1] || []).length ? 1 : (st[0] || []).length ? 0 : null;
+      if (pi == null) return; st[pi].pop(); touch(); paintInk(kPages.find(p => p.pi === pi));
+    }),
+    b('全消し', false, () => { if (!confirm('手書きの書き込みを全部消しますか？（入力した文字やチェックは消えません）')) return; cur.ink = {}; touch(); kPages.forEach(paintInk); }),
+    h('span', { class: 'sep' }));
+  t.append(pen,
+    b('－', false, () => { kState.zoom = Math.max(1, kState.zoom - .5); fitKarte(); }),
+    b('＋ 拡大', false, () => { kState.zoom = Math.min(3, kState.zoom + .5); fitKarte(); }),
+    h('span', { class: 'sep' }),
+    b('Excelに出力', false, () => exportTrees([cur.id]), 'on'));
+}
+let kLastPage = null;
+
+/* ---------- 文字入力（音声・スクリブル） ---------- */
+let edSpec = null, rec = null;
+function openEditor(spec) {
+  edSpec = spec;
+  $('#edTitle').textContent = spec.l;
+  const body = $('#edBody'); body.innerHTML = '';
+  const v = ctrlGet(spec.p);
+  let inp;
+  if (spec.k === 'area') inp = h('textarea', { rows: 6 });
+  else if (spec.k === 'date') inp = h('input', { type: 'date', class: 'inp' });
+  else inp = h('input', { class: 'inp', inputmode: spec.k === 'num' ? 'decimal' : null, list: spec.list === 'site' ? 'dlSite2' : spec.list === 'sp' ? 'dlSp2' : null, enterkeyhint: 'done' });
+  inp.value = v; inp.id = 'edInput';
+  inp.addEventListener('input', () => ctrlSet(spec.p, inp.value));
+  if (inp.tagName === 'INPUT') inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); closeEditor(); } });
+  body.append(inp);
+  if (spec.list) {
+    const opts = spec.list === 'site' ? sites() : [...new Set(trees.map(x => x.species).filter(Boolean).concat(['タブノキ', 'クスノキ', 'ケヤキ', 'サクラ（ソメイヨシノ）', 'イチョウ', 'スダジイ', 'シラカシ', 'マテバシイ', 'クロマツ', 'ヒマラヤスギ', 'プラタナス', 'トウカエデ', 'エノキ', 'ムクノキ', 'ユリノキ', 'タイサンボク', 'クロガネモチ']))];
+    body.append(h('datalist', { id: spec.list === 'site' ? 'dlSite2' : 'dlSp2' }, opts.map(o => h('option', { value: o }))));
+  }
+  const phr = spec.phrases || (spec.ph ? settings.phrases[spec.ph] : null);
+  if (phr && phr.length) body.append(h('div', { class: 'chips' }, phr.map(p => h('button', { type: 'button', onclick: () => { inp.value += p; ctrlSet(spec.p, inp.value); inp.focus(); } }, '＋' + p))));
+  $('#edGps').classList.toggle('hidden', !spec.gps);
+  $('#edMic').classList.toggle('hidden', spec.k === 'date');
+  $('#dlgEdit').showModal();
+  if (!('ontouchend' in document)) setTimeout(() => inp.focus(), 50);
+}
+function closeEditor() { stopVoice(); if ($('#dlgEdit').open) $('#dlgEdit').close(); }
+function stopVoice() { if (rec) { try { rec.stop(); } catch (e) { } rec = null; } $('#edMic').classList.remove('rec'); $('#edMic').textContent = '🎤 話して入力'; }
+function toggleVoice() {
+  if (rec) return stopVoice();
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const inp = $('#edInput');
+  if (!SR) { toast('この端末ではボタンでの音声入力が使えません。キーボードのマイク🎤を押して話してください', 4000); inp.focus(); return; }
+  const r = new SR(); r.lang = 'ja-JP'; r.interimResults = true; r.continuous = true;
+  const base = inp.value;
+  r.onresult = e => {
+    let s = ''; for (const res of e.results) s += res[0].transcript;
+    if (edSpec.k === 'num') s = s.replace(/[０-９．]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/[^\d.\-]/g, '');
+    inp.value = base + s; ctrlSet(edSpec.p, inp.value);
+  };
+  r.onerror = e => { toast('音声入力：' + (e.error === 'not-allowed' ? 'マイクの使用が許可されていません' : e.error)); stopVoice(); };
+  r.onend = () => { if (rec === r) stopVoice(); };
+  try { r.start(); rec = r; $('#edMic').classList.add('rec'); $('#edMic').textContent = '■ 止める（話し終わったら）'; } catch (e) { toast('音声入力を開始できませんでした'); }
+}
+
+/* ---------- 写真枠のメニュー ---------- */
+function photoMenu(slot) {
+  if (kState.ink) return;
+  const label = (SLOTS.find(s => s[0] === slot) || [])[1];
+  const p = cur.photos.find(x => x.slot === slot);
+  $('#phTitle').textContent = label;
+  const box = $('#phBtns'); box.innerHTML = '';
+  const close = () => $('#dlgPhoto').close();
+  const B = (t, fn, cls = '') => h('button', { type: 'button', class: 'btn ' + cls, onclick: fn }, t);
+  const file = $('#phFile');
+  file.onchange = async e => { close(); const fs = [...e.target.files]; e.target.value = ''; if (fs.length) { const np = await addPhotos(fs, null, slot); if (np && confirm('この写真に書き込みますか？')) openDraw(np, null); } };
+  if (p) box.append(B('✏️ この写真に書き込む', () => { close(); openDraw(p, null); }, 'pri'));
+  box.append(B(p ? '📷 別の写真に差し替える' : '📷 写真を撮る・選ぶ', () => file.click(), p ? '' : 'pri'));
+  box.append(B('✏️ 白紙に手描きする', () => { close(); addSketch(null, slot); }));
+  const others = cur.photos.filter(x => x.slot !== slot);
+  if (others.length) box.append(h('p', { class: 'hint' }, 'ほかの写真から選ぶ：'), h('div', { class: 'row' }, others.map(o => {
+    const im = h('img', { alt: '', style: 'width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:pointer' });
+    composeURL(o).then(u => im.src = u);
+    im.onclick = () => { takeSlot(slot); o.slot = slot; touch(); photosChanged(); close(); };
+    return im;
+  })));
+  if (p) box.append(B('この枠から外す（写真は残る）', () => { p.slot = ''; touch(); photosChanged(); close(); }, 'warn'));
+  box.append(B('閉じる', close));
+  $('#dlgPhoto').showModal();
+}
+
+/* ---------- 表示切り替え ---------- */
+async function showMode(mode, fresh) {
+  viewMode = mode; try { localStorage.setItem('jk_mode', mode); } catch (e) { }
+  for (const b of document.querySelectorAll('.modes button')) { const on = b.dataset.m === mode; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); }
+  $('#form').classList.toggle('hidden', mode !== 'form'); $('#nav').classList.toggle('hidden', mode !== 'form');
+  $('#karte').classList.toggle('hidden', mode !== 'karte'); $('#ktools').classList.toggle('hidden', mode !== 'karte');
+  updateTitle();
+  if (mode === 'form') { kCells = []; kPages = []; $('#karte').innerHTML = ''; buildForm(); }
+  else { $('#form').innerHTML = ''; formPhotoBox = null; renderKTools(); try { await renderKarte(); } catch (e) { console.error(e); toast('カルテ画面を表示できませんでした：' + e.message); } }
+  if (!fresh) window.scrollTo(0, 0);
+}
+
+/* =========================================================
    起動
    ========================================================= */
 function openSettings() {
@@ -1147,6 +1658,18 @@ function saveSettingsDlg() {
   $('#btnBack').onclick = () => history.state && history.state.v === 'edit' ? history.back() : backToList();
   $('#btnNext').onclick = nextTree;
   $('#btnOne').onclick = () => exportTrees([cur.id]);
+  for (const b of document.querySelectorAll('.modes button')) b.onclick = () => showMode(b.dataset.m);
+  $('#edMic').onclick = toggleVoice;
+  $('#edOk').onclick = closeEditor;
+  $('#edClear').onclick = () => { const i = $('#edInput'); i.value = ''; ctrlSet(edSpec.p, ''); i.focus(); };
+  $('#edGps').onclick = () => {
+    if (!navigator.geolocation) return toast('この端末では位置が取れません');
+    toast('位置を取得中…');
+    navigator.geolocation.getCurrentPosition(p => { cur.lat = p.coords.latitude.toFixed(6); cur.lon = p.coords.longitude.toFixed(6); touch(); refreshKarte(); $('#edInput').value = ctrlGet(edSpec.p); toast(`位置を入れました（誤差 約${Math.round(p.coords.accuracy)}m）`); },
+      e => toast('位置が取れませんでした: ' + e.message), { enableHighAccuracy: true, timeout: 20000 });
+  };
+  $('#dlgEdit').addEventListener('close', () => { stopVoice(); refreshKarte(); });
+  window.addEventListener('resize', () => { if (viewMode === 'karte' && kPages.length) fitKarte(); });
   window.addEventListener('popstate', () => { if (dr) closeDraw(false); if (cur) backToList(); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
   window.addEventListener('pagehide', () => { flush(); });
