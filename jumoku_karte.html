@@ -248,6 +248,8 @@ img.pick{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px so
 details.mng{padding:0}details.mng>summary{cursor:pointer;padding:14px;list-style:none}details.mng>summary h2{display:inline;font-size:15px;color:var(--leaf)}
 details.mng>summary::before{content:"▸ ";color:var(--bark)}details.mng[open]>summary::before{content:"▾ "}
 details.mng>.card{box-shadow:none;margin:0 10px 10px}
+label.chk{display:flex;gap:10px;align-items:flex-start;padding:8px 0;font-size:14.5px;line-height:1.5}label.chk input{width:22px;height:22px;flex:none;margin-top:1px}
+#draw .tools .seg2{display:inline-flex}#draw .tools .seg2 button:first-child{border-radius:9px 0 0 9px}#draw .tools .seg2 button:last-child{border-radius:0 9px 9px 0;border-left:0}
 #coChips button{font-size:13.5px;padding:7px 11px}
 </style>
 </head>
@@ -267,7 +269,7 @@ details.mng>.card{box-shadow:none;margin:0 10px 10px}
     <div id="listHead"></div>
     <div id="treeList"></div>
     <div id="listMore" style="margin:6px 0 16px"></div>
-    <details class="card mng"><summary><h2>カルテの型（様式）・バックアップ</h2></summary>
+    <details class="card mng"><summary><h2>カルテの型（様式）・Excel出力・バックアップ</h2></summary>
     <div class="card">
       <h2>カルテの型（様式）</h2>
       <p class="hint">お手持ちのExcelのカルテを取り込むと、その様式で入力・出力できます。□・チェックボックス・空欄・写真枠は自動で入力欄になります。細かい直しは、カルテ画面の「🛠 カルテを調整」でセルをタップしてできます。</p>
@@ -275,6 +277,12 @@ details.mng>.card{box-shadow:none;margin:0 10px 10px}
       <div class="row" style="margin-top:8px">
         <label class="btn pri">＋ Excelのカルテを取り込む<input type="file" id="fileImport" accept=".xlsx,.xlsm,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>
       </div>
+    </div>
+    <div class="card">
+      <h2>Excel出力の設定</h2>
+      <label class="chk"><input type="checkbox" id="optShapes"> 写真の矢印・コメントを<b>Excelの図形</b>で出す（Excelで動かす・文字を直すことができる）</label>
+      <p class="hint">外すと、書き込みを写真に焼き込んで出します（どのソフトでも同じ見た目になります）。</p>
+      <label class="chk"><input type="checkbox" id="optLists"> 一覧表のシートを先頭につける</label>
     </div>
     <div class="card">
       <h2>バックアップ・機種変更</h2>
@@ -1512,11 +1520,11 @@ async function composeURL(p) {
   if (p.strokes.length) u = URL.createObjectURL(await composeBlob(p, 900));
   composeCache.set(key, u); return u;
 }
-async function composeBlob(p, max = 1600) {
+async function composeBlob(p, max = 1600, ink = true) {
   const img = await loadImg(await photoURL(p.id));
   const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
   const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
-  const x = c.getContext('2d'); x.drawImage(img, 0, 0, c.width, c.height); drawStrokes(x, p.strokes, c.width, c.height);
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0, c.width, c.height); if (ink) drawStrokes(x, p.strokes, c.width, c.height);
   return canvasBlob(c, .85);
 }
 function photosChanged() { refreshView(true); }
@@ -1570,9 +1578,10 @@ function photoMenu(slot) {
 /* ---------- 写真への書き込みエディタ ----------
    矢印・コメント（引き出し線つきの枠）・番号・○・□・ペン・マーカー・文字。
    置いたあとも「✋ 移動」で動かす・文字を直す・大きさ／色を変える・消すができる。
-   座標は写真の幅・高さに対する割合（0〜1）で持つので、どの大きさで描いても同じ位置になる。 */
+   座標は写真の幅・高さに対する割合（0〜1）で持つので、どの大きさで描いても同じ位置になる。
+   矢印・コメントの引き出し線は「表」＝まっすぐ、「裏」（幹の裏側など見えない所）＝雷形（b:1）。 */
 const COLORS = ['#E53935', '#FB8C00', '#FDD835', '#43A047', '#1E88E5', '#FFFFFF', '#111111'];
-const TOOLS = [['move', '✋ 移動'], ['arrow2', '➜ 矢印'], ['callout', '💬 コメント'], ['num', '① 番号'], ['ellipse', '○'], ['rect', '□'], ['pen', 'ペン'], ['marker', 'マーカー'], ['text', '文字']];
+const TOOLS = [['move', '✋ 選ぶ'], ['arrow2', '➜ 矢印'], ['callout', '💬 コメント'], ['num', '① 番号'], ['ellipse', '○'], ['rect', '□'], ['pen', 'ペン'], ['marker', 'マーカー'], ['text', '文字']];
 const DFONT = "'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',sans-serif";
 // ○ の所は、選んだときに数字を入れる（例：「枯枝 φ○cm」→ 数字だけ入力）
 const DEFAULT_CALLOUTS = ['枯枝 φ○cm', '枯枝 ○本', '樹皮枯死・欠損 ○×○cm（周囲長○cm）', '開口空洞 幅○×高さ○cm', '空洞 深さ○cm／幹径○cm', '腐朽 ○×○cm', '亀裂 長さ○cm', 'キノコ（子実体）', '木槌打診異常 範囲○cm', '異物の食い込み（金物）', '建築限界越え 高さ○m', '樹高低減 目標H○m', '剪定位置（H○m）', '支障枝 ○本', '不自然な傾斜 ○°', '巻き根', '露出根の損傷 ○cm', '葉の密度の低下・葉色の黄化', '萌芽', '支柱・ワイヤー設置位置'];
@@ -1594,6 +1603,13 @@ async function fillPlaceholders(text) {
 let dr = null;
 const halo = c => (c === '#FFFFFF' || c === '#FDD835' ? '#000' : '#fff');
 const inkOn = c => (c === '#FFFFFF' ? '#000' : c === '#FDD835' ? '#111' : c);
+// 雷形（裏側）の折れ線：根元 → 中ほどで「く」の字に折り返す → 先端
+function zigPts(x1, y1, x2, y2) {
+  const len = Math.hypot(x2 - x1, y2 - y1); if (len < 2) return [[x1, y1], [x1, y1], [x2, y2], [x2, y2]];
+  const ux = (x2 - x1) / len, uy = (y2 - y1) / len, d = len * .09;
+  return [[x1, y1], [x1 + ux * len * .54 - uy * d, y1 + uy * len * .54 + ux * d], [x1 + ux * len * .46 + uy * d, y1 + uy * len * .46 - ux * d], [x2, y2]];
+}
+function calloutEdge(g, tx, ty) { return [Math.max(g.bx, Math.min(tx, g.bx + g.bw)), Math.max(g.by, Math.min(ty, g.by + g.bh))]; }
 function calloutGeom(x, s, W, H) {
   const fs = s.s * W; x.font = `bold ${fs}px ${DFONT}`;
   const lines = String(s.text || '…').split('\n'); const pad = fs * .45;
@@ -1626,6 +1642,17 @@ function drawStrokes(x, strokes, W, H) {
       x.beginPath(); x.moveTo(x1, y1); x.lineTo(x2, y2);
       x.moveTo(x2, y2); x.lineTo(x2 - L * Math.cos(a - .45), y2 - L * Math.sin(a - .45));
       x.moveTo(x2, y2); x.lineTo(x2 - L * Math.cos(a + .45), y2 - L * Math.sin(a + .45)); x.stroke();
+    } else if (s.t === 'arrow2' && s.b) { // 裏側の矢印（雷形）
+      const q = zigPts(s.x1 * W, s.y1 * H, s.x2 * W, s.y2 * H), [x2, y2] = q[3], [px, py] = q[2], len = Math.hypot(x2 - px, y2 - py);
+      if (len > 2) {
+        const a = Math.atan2(y2 - py, x2 - px), t = Math.max(3, s.w * W * .8), hl = Math.min(len * .7, t * 4.6), hw = t * 2.5;
+        const ca = Math.cos(a), sa = Math.sin(a), bx = x2 - hl * ca, by = y2 - hl * sa, hlw = Math.max(2, t * .4);
+        const head = () => { x.beginPath(); x.moveTo(x2, y2); x.lineTo(bx - sa * hw, by + ca * hw); x.lineTo(bx + sa * hw, by - ca * hw); x.closePath(); };
+        const line = () => { x.beginPath(); x.moveTo(...q[0]); x.lineTo(...q[1]); x.lineTo(...q[2]); x.lineTo(bx + ca * t, by + sa * t); };
+        x.lineJoin = 'miter'; x.lineCap = 'butt'; x.strokeStyle = halo(s.c);
+        line(); x.lineWidth = t + hlw * 2; x.stroke(); head(); x.lineWidth = hlw; x.stroke();
+        x.strokeStyle = x.fillStyle = s.c; line(); x.lineWidth = t; x.stroke(); head(); x.fill();
+      }
     } else if (s.t === 'arrow2') { // 太い矢印（ふち取りつき）
       const x1 = s.x1 * W, y1 = s.y1 * H, x2 = s.x2 * W, y2 = s.y2 * H, len = Math.hypot(x2 - x1, y2 - y1);
       if (len > 2) {
@@ -1639,9 +1666,8 @@ function drawStrokes(x, strokes, W, H) {
       const g = calloutGeom(x, s, W, H), tx = s.tx * W, ty = s.ty * H;
       const inside = tx >= g.bx && tx <= g.bx + g.bw && ty >= g.by && ty <= g.by + g.bh;
       if (!inside) {
-        const ex = Math.max(g.bx, Math.min(tx, g.bx + g.bw)), ey = Math.max(g.by, Math.min(ty, g.by + g.bh));
-        const lw = Math.max(2, g.fs * .12);
-        x.beginPath(); x.moveTo(ex, ey); x.lineTo(tx, ty); x.strokeStyle = halo(s.c); x.lineWidth = lw + 3; x.stroke();
+        const [ex, ey] = calloutEdge(g, tx, ty), lw = Math.max(2, g.fs * .12);
+        x.beginPath(); (s.b ? zigPts(ex, ey, tx, ty) : [[ex, ey], [tx, ty]]).forEach(([u, v], i) => i ? x.lineTo(u, v) : x.moveTo(u, v)); if (s.b) x.lineJoin = 'miter'; x.strokeStyle = halo(s.c); x.lineWidth = lw + 3; x.stroke();
         x.strokeStyle = s.c; x.lineWidth = lw; x.stroke();
         x.beginPath(); x.arc(tx, ty, Math.max(3, g.fs * .2), 0, Math.PI * 2); x.fillStyle = s.c; x.fill(); x.lineWidth = 1.5; x.strokeStyle = halo(s.c); x.stroke();
       }
@@ -1668,6 +1694,7 @@ function objBox(x, s, W, H) {
   if (s.t === 'num') { const r = s.s * W * .75; return { a: s.x * W - r, b: s.y * H - r, c: s.x * W + r, d: s.y * H + r }; }
   if (s.t === 'text') { const fs = s.s * W; x.font = `bold ${fs}px ${DFONT}`; const ls = s.text.split('\n'); return { a: s.x * W, b: s.y * H, c: s.x * W + Math.max(...ls.map(l => x.measureText(l).width)), d: s.y * H + ls.length * fs * 1.2 }; }
   if (s.t === 'ellipse' || s.t === 'rect') { const g = boxPx(s, W, H); const cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => fromLocal(g, u * g.w / 2, v * g.h / 2)); return { a: Math.min(...cs.map(p => p[0])), b: Math.min(...cs.map(p => p[1])), c: Math.max(...cs.map(p => p[0])), d: Math.max(...cs.map(p => p[1])) }; }
+  if (s.t === 'arrow2' && s.b) { const q = zigPts(s.x1 * W, s.y1 * H, s.x2 * W, s.y2 * H); return { a: Math.min(...q.map(p => p[0])), b: Math.min(...q.map(p => p[1])), c: Math.max(...q.map(p => p[0])), d: Math.max(...q.map(p => p[1])) }; }
   return { a: Math.min(s.x1, s.x2) * W, b: Math.min(s.y1, s.y2) * H, c: Math.max(s.x1, s.x2) * W, d: Math.max(s.y1, s.y2) * H };
 }
 function hitTest(x, strokes, px, py, W, H, tol, sel, unit) {
@@ -1683,7 +1710,8 @@ function hitTest(x, strokes, px, py, W, H, tol, sel, unit) {
     if (s.t === 'arrow' || s.t === 'arrow2') {
       if (Math.hypot(px - s.x2 * W, py - s.y2 * H) < tol) return { i, part: 'head' };
       if (Math.hypot(px - s.x1 * W, py - s.y1 * H) < tol) return { i, part: 'tail' };
-      if (dseg(s.x1 * W, s.y1 * H, s.x2 * W, s.y2 * H) < tol + (s.w || 0) * W) return { i, part: 'all' };
+      const q = s.b ? zigPts(s.x1 * W, s.y1 * H, s.x2 * W, s.y2 * H) : [[s.x1 * W, s.y1 * H], [s.x2 * W, s.y2 * H]];
+      if (q.some((p, k) => k && dseg(...q[k - 1], ...p) < tol + (s.w || 0) * W)) return { i, part: 'all' };
       continue;
     }
     if (s.t === 'ellipse' || s.t === 'rect') {
@@ -1738,8 +1766,8 @@ function askText(title, init = '', presets = true) {
 
 async function openDraw(p, box) {
   const img = await loadImg(await photoURL(p.id));
-  let tool = 'arrow2'; try { tool = localStorage.getItem('jk_drawTool') || tool; } catch (e) { }
-  dr = { p, box, img, strokes: clone(p.strokes), tool, color: COLORS[0], size: 1, active: null, penSeen: false, sel: null };
+  let tool = 'arrow2', back = false; try { tool = localStorage.getItem('jk_drawTool') || tool; back = localStorage.getItem('jk_back') === '1'; } catch (e) { }
+  dr = { p, box, img, strokes: clone(p.strokes), tool, back, color: COLORS[0], size: 1, active: null, penSeen: false, sel: null };
   $('#draw').classList.remove('hidden'); document.body.style.overflow = 'hidden';
   paintTools(); fitCanvas(); redraw();
 }
@@ -1748,17 +1776,24 @@ function paintTools() {
   const B = (label, on, fn, cls = '') => h('button', { type: 'button', class: (on ? 'on ' : '') + cls, onclick: fn }, label);
   tb.append(...TOOLS.map(([k, l]) => B(l, dr.tool === k, () => { dr.tool = k; dr.sel = null; try { localStorage.setItem('jk_drawTool', k); } catch (e) { } paintTools(); redraw(); })));
   tb.append(...COLORS.map(c => h('button', { type: 'button', class: 'sw' + (dr.color === c ? ' on' : ''), style: `background:${c}`, 'aria-label': '色', onclick: () => { dr.color = c; if (dr.sel != null) { dr.strokes[dr.sel].c = c; redraw(); } paintTools(); } })));
-  tb.append(...[[0.6, '細'], [1, '中'], [1.8, '太']].map(([v, l]) => B(l, dr.size === v, () => { dr.size = v; paintTools(); })));
+  tb.append(...[[0.6, '細'], [1, '中'], [1.8, '太']].map(([v, l]) => B(l, dr.size === v, () => { dr.size = v; if (dr.sel != null) { const s = dr.strokes[dr.sel], base = s.base || 1; scaleObj(s, v / base); s.base = v; redraw(); } paintTools(); })));
+  const ss = dr.sel != null ? dr.strokes[dr.sel] : null;
+  if (['arrow2', 'callout'].includes(ss ? ss.t : dr.tool)) { // 表＝まっすぐ／裏＝雷形
+    const back = ss ? !!ss.b : dr.back;
+    const setB = v => { if (ss) { if (v) ss.b = 1; else delete ss.b; redraw(); } dr.back = v; try { localStorage.setItem('jk_back', v ? '1' : '0'); } catch (e) { } paintTools(); };
+    tb.append(h('span', { class: 'seg2' }, B('表 ➜', !back, () => setB(false)), B('裏 ⚡', back, () => setB(true))));
+  }
   if (dr.sel != null) {
     const s = dr.strokes[dr.sel];
-    tb.append(h('span', { class: 'gap' }), h('span', { class: 'lbl' }, '選択中：'));
+    tb.append(h('span', { class: 'gap' }), h('span', { class: 'lbl' }, { arrow2: '矢印', callout: 'コメント', num: '番号', text: '文字', ellipse: '○', rect: '□', pen: 'ペン', marker: 'マーカー' }[s.t] + 'を選択中：'));
     if (s.t === 'callout' || s.t === 'text') tb.append(B('✏️ 文字を直す', false, async () => { const t = await askText('文字を直す', s.text, s.t === 'callout'); if (t) { s.text = t; redraw(); } }));
     if (s.t === 'ellipse' || s.t === 'rect') tb.append(h('span', { class: 'lbl' }, '青い点で回転・大きさ'),
       B('↺ 15°', false, () => { s.r = (s.r || 0) - Math.PI / 12; redraw(); }), B('↻ 15°', false, () => { s.r = (s.r || 0) + Math.PI / 12; redraw(); }));
     if (s.t === 'num') tb.append(B('番号を変える', false, async () => { const t = await askText('番号', String(s.n), false); if (t) { s.n = t; redraw(); } }));
     tb.append(B('大きく', false, () => { scaleObj(s, 1.2); redraw(); }), B('小さく', false, () => { scaleObj(s, 1 / 1.2); redraw(); }),
-      B('🗑 消す', false, () => { dr.strokes.splice(dr.sel, 1); dr.sel = null; paintTools(); redraw(); }, 'del'));
-  }
+      B('🗑 消す', false, () => { dr.strokes.splice(dr.sel, 1); dr.sel = null; paintTools(); redraw(); }, 'del'),
+      B('選択をやめる', false, () => { dr.sel = null; paintTools(); redraw(); }));
+  } else if (dr.strokes.some(o => o.t !== 'pen' && o.t !== 'marker')) tb.append(h('span', { class: 'lbl' }, '置いた矢印・コメントはタップで選んで直せます'));
   tb.append(h('span', { class: 'gap' }),
     B('↶ 戻す', false, () => { dr.strokes.pop(); dr.sel = null; paintTools(); redraw(); }),
     B('全消し', false, () => { if (confirm('書き込みを全部消しますか？')) { dr.strokes = []; dr.sel = null; paintTools(); redraw(); } }),
@@ -1801,30 +1836,38 @@ function closeDraw(save) {
   const c = $('#drawCanvas');
   const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
   const tol = () => 14 * c.width / c.getBoundingClientRect().width;
+  const add = o => { dr.strokes.push(o); dr.sel = o.pts ? null : dr.strokes.length - 1; paintTools(); redraw(); };
   c.addEventListener('pointerdown', async e => {
     if (!dr) return;
     if (e.pointerType === 'pen') dr.penSeen = true;
     if (dr.penSeen && e.pointerType === 'touch') return; // Apple Pencil 使用中は手のひらを無視
     e.preventDefault(); c.setPointerCapture(e.pointerId);
     const [px, py] = pos(e); const W = c.width, H = c.height; const x = c.getContext('2d');
-    dr.pid = e.pointerId; dr.start = [px, py]; dr.last = [px, py];
-    if (dr.tool === 'move') {
+    dr.pid = e.pointerId; dr.start = [px, py]; dr.last = [px, py]; dr.drag = null;
+    // 置いてある矢印・コメントなどをタップ → 選んで動かす（ペン・マーカーの時は描くのを優先）
+    if (dr.tool !== 'pen' && dr.tool !== 'marker' || dr.sel != null) {
       const hit = hitTest(x, dr.strokes, px * W, py * H, W, H, tol(), dr.sel, W / c.getBoundingClientRect().width);
-      dr.sel = hit ? hit.i : null; dr.drag = hit; paintTools(); redraw(); return;
+      const ok = hit && (dr.tool === 'move' || hit.i === dr.sel || !dr.strokes[hit.i].pts);
+      if (ok || dr.tool === 'move') {
+        dr.wasSel = !!hit && hit.i === dr.sel; dr.sel = ok ? hit.i : null; dr.drag = ok ? hit : null;
+        if (ok) { const o = dr.strokes[hit.i]; dr.color = o.c; dr.size = o.base || 1; if (o.t === 'arrow2' || o.t === 'callout') dr.back = !!o.b; }
+        paintTools(); redraw(); return;
+      }
+      if (dr.sel != null) { dr.sel = null; paintTools(); }
     }
     const sz = dr.size;
-    if (dr.tool === 'text') { dr.pid = null; const t = await askText('写真に書く文字', '', false); if (t) { dr.strokes.push({ t: 'text', c: dr.color, x: px, y: py, s: .045 * sz, text: t }); redraw(); } return; }
-    if (dr.tool === 'num') { dr.pid = null; const n = dr.strokes.filter(s => s.t === 'num').reduce((m, s) => Math.max(m, parseInt(s.n, 10) || 0), 0) + 1; dr.strokes.push({ t: 'num', c: dr.color, x: px, y: py, s: .04 * sz, n: String(n) }); redraw(); return; }
-    if (dr.tool === 'callout') { dr.active = { t: 'callout', c: dr.color, tx: px, ty: py, x: px, y: py, s: .032 * sz, text: '…' }; redraw(); return; }
+    if (dr.tool === 'text') { dr.pid = null; const t = await askText('写真に書く文字', '', false); if (t) { add({ t: 'text', c: dr.color, x: px, y: py, s: .045 * sz, text: t, base: sz }); } return; }
+    if (dr.tool === 'num') { dr.pid = null; const n = dr.strokes.filter(s => s.t === 'num').reduce((m, s) => Math.max(m, parseInt(s.n, 10) || 0), 0) + 1; add({ t: 'num', c: dr.color, x: px, y: py, s: .04 * sz, n: String(n), base: sz }); return; }
+    if (dr.tool === 'callout') { dr.active = { t: 'callout', c: dr.color, tx: px, ty: py, x: px, y: py, s: .032 * sz, text: '…', base: sz }; if (dr.back) dr.active.b = 1; redraw(); return; }
     const w = { pen: .006, marker: .035, ellipse: .007, rect: .007, arrow2: .012 }[dr.tool] * sz;
-    dr.active = dr.tool === 'pen' || dr.tool === 'marker' ? { t: dr.tool, c: dr.color, w, pts: [[px, py]] } : { t: dr.tool, c: dr.color, w, x1: px, y1: py, x2: px, y2: py };
+    dr.active = dr.tool === 'pen' || dr.tool === 'marker' ? { t: dr.tool, c: dr.color, w, pts: [[px, py]] } : { t: dr.tool, c: dr.color, w, x1: px, y1: py, x2: px, y2: py, base: sz };
+    if (dr.tool === 'arrow2' && dr.back) dr.active.b = 1;
     redraw();
   });
   c.addEventListener('pointermove', e => {
     if (!dr || e.pointerId !== dr.pid) return;
     const [px, py] = pos(e);
-    if (dr.tool === 'move') {
-      if (!dr.drag) return;
+    if (dr.drag) {
       const s = dr.strokes[dr.drag.i], W = c.width, H = c.height;
       if (dr.drag.part === 'rot') { // つまみの方向に回す（15°刻みの近くでは吸い付く）
         const b = boxPx(s, W, H); let a = Math.atan2(py * H - b.cy, px * W - b.cx) + Math.PI / 2;
@@ -1843,24 +1886,100 @@ function closeDraw(save) {
   });
   const end = async e => {
     if (!dr || e.pointerId !== dr.pid) return; dr.pid = null;
-    if (dr.tool === 'move') { dr.drag = null; return; }
+    if (dr.drag) { // 選んである物をもう一度タップ → 文字・番号を直す
+      const d = dr.drag, s = dr.strokes[d.i], still = Math.hypot(dr.last[0] - dr.start[0], dr.last[1] - dr.start[1]) < .01; dr.drag = null;
+      if (still && dr.wasSel && s && (s.t === 'callout' || s.t === 'text')) { const t = await askText('文字を直す', s.text, s.t === 'callout'); if (t) { s.text = t; redraw(); } }
+      else if (still && dr.wasSel && s && s.t === 'num') { const t = await askText('番号', String(s.n), false); if (t) { s.n = t; redraw(); } }
+      return;
+    }
+    if (dr.tool === 'move') return;
     const a = dr.active; if (!a) return; dr.active = null;
     if (a.t === 'callout') {
       // 指を動かさずに離したら、枠は右上に自動で置く
       if (Math.hypot(a.x - a.tx, a.y - a.ty) < .03) { a.x = Math.min(.85, a.tx + .18); a.y = Math.max(.08, a.ty - .12); }
       redraw();
       const t = await askText('コメント（よく使う言葉はボタンで入ります）');
-      if (t) { a.text = t; dr.strokes.push(a); }
-      redraw(); return;
+      if (t) { a.text = t; add(a); } else redraw();
+      return;
     }
     if ((a.t === 'arrow2' || a.t === 'ellipse' || a.t === 'rect') && Math.hypot(a.x2 - a.x1, a.y2 - a.y1) < .01) { // タップだけのとき
       if (a.t === 'arrow2') { a.x1 = a.x2 - .12; a.y1 = a.y2 + .1; } else { a.x1 -= .06; a.y1 -= .05; a.x2 += .06; a.y2 += .05; }
     }
-    dr.strokes.push(a); redraw();
+    add(a);
   };
   c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
   window.addEventListener('resize', () => { if (dr) { fitCanvas(); redraw(); } });
 })();
+
+/* ---------- Excel には「図形」で出す ----------
+   写真は書き込みなしで貼り、矢印・コメント・番号・○□などを Excel の図形として重ね、写真とまとめて1つのグループにする。
+   Excel で写真を動かせば書き込みも一緒に動き、グループの中をクリックすれば矢印の向き・コメントの文字も直せる。 */
+const settingsShapes = () => { try { return localStorage.getItem('jk_shapes') !== '0'; } catch (e) { return true; } };
+function shapesGroupXml(R, strokes, pic, idc, name) {
+  const E = 9525, Wp = R.w / E, Hp = R.h / E; // 写真を 96dpi の画素に置き換えた大きさ
+  const mc = document.createElement('canvas').getContext('2d');
+  const X = v => Math.round(R.x + v * E), Y = v => Math.round(R.y + v * E), L = v => Math.max(1, Math.round(v * E));
+  const hx = c => { let v = String(c || '#E53935').replace('#', '').toUpperCase(); if (v.length === 3) v = v.replace(/./g, d => d + d); return v; };
+  const fill = (c, al = 1) => `<a:solidFill><a:srgbClr val="${hx(c)}">${al < 1 ? `<a:alpha val="${Math.round(al * 100000)}"/>` : ''}</a:srgbClr></a:solidFill>`;
+  const glow = (c, px) => `<a:effectLst><a:glow rad="${Math.max(9525, Math.round(px * E))}"><a:srgbClr val="${hx(halo(c))}"><a:alpha val="75000"/></a:srgbClr></a:glow></a:effectLst>`;
+  const ln = (px, c, o = {}) => `<a:ln w="${L(px)}"${o.cap ? ' cap="rnd"' : ''}>${c ? fill(c, o.al) : '<a:noFill/>'}${o.miter ? '<a:miter lim="800000"/>' : '<a:round/>'}${o.tail ? `<a:tailEnd type="${o.tail}" w="${o.tw || 'lg'}" len="${o.tw || 'lg'}"/>` : ''}</a:ln>`;
+  const xf = (a, b, w, hh, o = {}) => `<a:xfrm${o.rot ? ` rot="${o.rot}"` : ''}${o.fh ? ' flipH="1"' : ''}${o.fv ? ' flipV="1"' : ''}><a:off x="${a}" y="${b}"/><a:ext cx="${w}" cy="${hh}"/></a:xfrm>`;
+  const nv = (tag, nm, extra = '') => `<xdr:nv${tag}Pr><xdr:cNvPr id="${idc.n++}" name="${xmlEsc(nm)}"/><xdr:cNv${tag}Pr${extra}/></xdr:nv${tag}Pr>`;
+  const run = (t, pt, c, b, o = {}) => `<a:r><a:rPr lang="ja-JP" altLang="en-US" sz="${Math.max(100, Math.round(pt * 100))}" b="${b ? 1 : 0}">${o.outline ? `<a:ln w="${L(o.outline)}">${fill(o.oc)}</a:ln>` : ''}${fill(c)}<a:latin typeface="Meiryo UI"/><a:ea typeface="Meiryo UI"/></a:rPr><a:t>${xmlEsc(t)}</a:t></a:r>`;
+  const body = (lines, pt, c, o = {}) => `<xdr:txBody><a:bodyPr vertOverflow="overflow" horzOverflow="overflow" wrap="none" lIns="${L(o.pad || 0)}" tIns="${L(o.pad || 0)}" rIns="${L(o.pad || 0)}" bIns="${L(o.pad || 0)}" anchor="${o.anchor || 't'}" rtlCol="0"><a:spAutoFit/></a:bodyPr><a:lstStyle/>${lines.map(t => `<a:p><a:pPr algn="${o.algn || 'l'}"><a:lnSpc><a:spcPct val="${o.sp || 100000}"/></a:lnSpc></a:pPr>${run(t, pt, c, true, o)}</a:p>`).join('')}</xdr:txBody>`;
+  const box = (a, b, c, d) => [a, b, c, d];
+  // 部品：まっすぐな線（Excel の「矢印」＝端をつまんで動かせる）・折れ線（頂点の編集で直せる）
+  const straight = (nm, x1, y1, x2, y2, lnx, eff) => {
+    const a = Math.min(X(x1), X(x2)), b = Math.min(Y(y1), Y(y2)), w = Math.abs(X(x2) - X(x1)), hh = Math.abs(Y(y2) - Y(y1));
+    return { xml: `<xdr:cxnSp macro="">${nv('CxnSp', nm)}<xdr:spPr>${xf(a, b, w, hh, { fh: x2 < x1, fv: y2 < y1 })}<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom>${lnx}${eff || ''}</xdr:spPr></xdr:cxnSp>`, box: box(a, b, a + w, b + hh) };
+  };
+  const poly = (nm, pts, lnx, eff) => {
+    const xs = pts.map(p => X(p[0])), ys = pts.map(p => Y(p[1])), a = Math.min(...xs), b = Math.min(...ys), w = Math.max(1, Math.max(...xs) - a), hh = Math.max(1, Math.max(...ys) - b);
+    const path = xs.map((u, i) => `<a:${i ? 'lnTo' : 'moveTo'}><a:pt x="${u - a}" y="${ys[i] - b}"/></a:${i ? 'lnTo' : 'moveTo'}>`).join('');
+    return { xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm)}<xdr:spPr>${xf(a, b, w, hh)}<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="${w}" h="${hh}" fill="none">${path}</a:path></a:pathLst></a:custGeom><a:noFill/>${lnx}${eff || ''}</xdr:spPr></xdr:sp>`, box: box(a, b, a + w, b + hh) };
+  };
+  const group = (nm, kids) => {
+    const a = Math.min(...kids.map(k => k.box[0])), b = Math.min(...kids.map(k => k.box[1])), c = Math.max(...kids.map(k => k.box[2])), d = Math.max(...kids.map(k => k.box[3]));
+    const w = Math.max(1, c - a), hh = Math.max(1, d - b);
+    return { xml: `<xdr:grpSp>${nv('GrpSp', nm)}<xdr:grpSpPr><a:xfrm><a:off x="${a}" y="${b}"/><a:ext cx="${w}" cy="${hh}"/><a:chOff x="${a}" y="${b}"/><a:chExt cx="${w}" cy="${hh}"/></a:xfrm></xdr:grpSpPr>${kids.map(k => k.xml).join('')}</xdr:grpSp>`, box: box(a, b, a + w, b + hh) };
+  };
+  const kids = [pic], cnt = {};
+  const label = t => { cnt[t] = (cnt[t] || 0) + 1; return `${t} ${cnt[t]}`; };
+  for (const s of strokes) {
+    const W = Wp, H = Hp;
+    if (s.t === 'arrow2' || s.t === 'arrow') {
+      const t = Math.max(3, (s.w || .006) * W) * (s.b ? .8 : 1), nm = label(s.b ? '矢印（裏）' : '矢印');
+      const lx = ln(t, s.c, { tail: 'triangle', tw: s.t === 'arrow' ? 'med' : 'lg', miter: !!s.b }), eff = glow(s.c, Math.max(1.5, t * .3));
+      kids.push(s.b ? poly(nm, zigPts(s.x1 * W, s.y1 * H, s.x2 * W, s.y2 * H), lx, eff) : straight(nm, s.x1 * W, s.y1 * H, s.x2 * W, s.y2 * H, lx, eff));
+    } else if (s.t === 'callout') {
+      const g = calloutGeom(mc, s, W, H), tx = s.tx * W, ty = s.ty * H, nm = label('コメント'), parts = [];
+      const inside = tx >= g.bx && tx <= g.bx + g.bw && ty >= g.by && ty <= g.by + g.bh;
+      if (!inside) {
+        const [ex, ey] = calloutEdge(g, tx, ty), lw = Math.max(2, g.fs * .12), lx = ln(lw, s.c, { tail: 'oval', tw: 'sm', miter: !!s.b }), eff = glow(s.c, 1.5);
+        parts.push(s.b ? poly(nm + ' 線', zigPts(ex, ey, tx, ty), lx, eff) : straight(nm + ' 線', ex, ey, tx, ty, lx, eff));
+      }
+      const bw = g.bw * 1.12, a = X(g.bx), b = Y(g.by), w = L(bw), hh = L(g.bh);
+      parts.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm + ' 枠', ' txBox="1"')}<xdr:spPr>${xf(a, b, w, hh)}<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val ${Math.round(Math.min(50000, g.fs * .3 / Math.min(bw, g.bh) * 100000))}"/></a:avLst></a:prstGeom>${fill('#FFFFFF', .93)}${ln(Math.max(2, g.fs * .1), s.c === '#FFFFFF' ? '#111111' : s.c)}</xdr:spPr>${body(g.lines, g.fs * .75, inkOn(s.c), { pad: g.pad, sp: 104000 })}</xdr:sp>`, box: box(a, b, a + w, b + hh) });
+      kids.push(parts.length > 1 ? group(nm, parts) : parts[0]);
+    } else if (s.t === 'num') {
+      const r = s.s * W * .75, a = X(s.x * W - r), b = Y(s.y * H - r), d = L(r * 2);
+      kids.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', label('番号'))}<xdr:spPr>${xf(a, b, d, d)}<a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>${fill(s.c)}${ln(Math.max(2, r * .15), halo(s.c))}</xdr:spPr>${body([String(s.n)], r * 1.15 * .75, halo(s.c), { anchor: 'ctr', algn: 'ctr' }).replace('<a:spAutoFit/>', '<a:noAutofit/>')}</xdr:sp>`, box: box(a, b, a + d, b + d) });
+    } else if (s.t === 'text') {
+      const fs = s.s * W; mc.font = `bold ${fs}px ${DFONT}`; const ls = String(s.text).split('\n');
+      const a = X(s.x * W), b = Y(s.y * H), w = L(Math.max(...ls.map(l => mc.measureText(l).width)) * 1.06 + fs * .2), hh = L(ls.length * fs * 1.2);
+      kids.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', label('文字'), ' txBox="1"')}<xdr:spPr>${xf(a, b, w, hh)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></xdr:spPr>${body(ls, fs * .75, s.c, { outline: fs * .1, oc: halo(s.c), sp: 110000 })}</xdr:sp>`, box: box(a, b, a + w, b + hh) });
+    } else if (s.t === 'ellipse' || s.t === 'rect') {
+      const g = boxPx(s, W, H), a = X(g.cx - g.w / 2), b = Y(g.cy - g.h / 2), w = L(g.w), hh = L(g.h), lw = (s.w || .007) * W;
+      const deg = ((g.r * 180 / Math.PI) % 360 + 360) % 360, rot = Math.round(deg * 60000) % 21600000;
+      const cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => fromLocal(g, u * g.w / 2, v * g.h / 2));
+      kids.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', label(s.t === 'ellipse' ? '丸囲い' : '四角囲い'))}<xdr:spPr>${xf(a, b, w, hh, { rot })}<a:prstGeom prst="${s.t}"><a:avLst/></a:prstGeom><a:noFill/>${ln(lw, s.c)}${glow(s.c, Math.max(1.5, lw * .4))}</xdr:spPr></xdr:sp>`, box: box(X(Math.min(...cs.map(p => p[0]))), Y(Math.min(...cs.map(p => p[1]))), X(Math.max(...cs.map(p => p[0]))), Y(Math.max(...cs.map(p => p[1])))) });
+    } else if (s.pts && s.pts.length) {
+      const pts = s.pts.length === 1 ? [s.pts[0], [s.pts[0][0] + .001, s.pts[0][1]]] : s.pts;
+      kids.push(poly(label(s.t === 'marker' ? 'マーカー' : '手書き'), pts.map(([u, v]) => [u * W, v * H]), ln((s.w || .006) * W, s.c, { cap: true, al: s.t === 'marker' ? .42 : 1 })));
+    }
+  }
+  return group(name, kids);
+}
 
 
 /* =========================================================
@@ -2248,15 +2367,30 @@ function fillCells(doc, cells) {
     else { cell.setAttribute('t', 'inlineStr'); const is = mk('is'), te = mk('t'); te.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve'); te.textContent = String(v); is.append(te); cell.append(is); }
   }
 }
-function picXml(tpl, g, iw, ih, rid, id, name) {
+function picRect(tpl, g, iw, ih) {
   let x0 = 0, y0 = 0; for (let i = 0; i < g.c1; i++) x0 += tpl.cw(i); for (let i = 0; i < g.r1; i++) y0 += tpl.rh(i);
   let W = 0, H = 0; for (let i = g.c1; i <= g.c2; i++) W += tpl.cw(i); for (let i = g.r1; i <= g.r2; i++) H += tpl.rh(i);
   const pad = 6 * 9525; W -= pad * 2; H -= pad * 2;
   const s = Math.min(W / iw, H / ih); const w = Math.round(iw * s), hh = Math.round(ih * s);
-  const x = x0 + pad + Math.round((W - w) / 2), y = y0 + pad + Math.round((H - hh) / 2);
-  const at = (abs, size) => { let i = 0, acc = 0; while (acc + size(i) <= abs && i < 5000) { acc += size(i); i++; } return [i, Math.round(abs - acc)]; };
-  const [fc, fco] = at(x, tpl.cw), [fr, fro] = at(y, tpl.rh), [tc, tco] = at(x + w, tpl.cw), [tr, tro] = at(y + hh, tpl.rh);
-  return anchorXml(fc, fco, fr, fro, tc, tco, tr, tro, x, y, w, hh, rid, id, name, 'oneCell');
+  return { x: x0 + pad + Math.round((W - w) / 2), y: y0 + pad + Math.round((H - hh) / 2), w, h: hh };
+}
+function cellsOf(tpl, x, y, w, hh) { // EMU の位置 → 左上・右下のセルとずれ
+  const at = (abs, size) => { abs = Math.max(0, abs); let i = 0, acc = 0; while (acc + size(i) <= abs && i < 5000) { acc += size(i); i++; } return [i, Math.round(abs - acc)]; };
+  return [...at(x, tpl.cw), ...at(y, tpl.rh), ...at(x + w, tpl.cw), ...at(y + hh, tpl.rh)];
+}
+function picXml(tpl, g, iw, ih, rid, id, name) {
+  const R = picRect(tpl, g, iw, ih), [fc, fco, fr, fro, tc, tco, tr, tro] = cellsOf(tpl, R.x, R.y, R.w, R.h);
+  return anchorXml(fc, fco, fr, fro, tc, tco, tr, tro, R.x, R.y, R.w, R.h, rid, id, name, 'oneCell');
+}
+function picElem(R, rid, id, name) {
+  return `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="${xmlEsc(name)}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="${R.x}" y="${R.y}"/><a:ext cx="${R.w}" cy="${R.h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>`;
+}
+// 写真＋書き込み（図形）を1つのグループにして貼る
+function annotatedPicXml(tpl, g, iw, ih, rid, id, name, strokes, idc) {
+  const R = picRect(tpl, g, iw, ih);
+  const G = shapesGroupXml(R, strokes, { xml: picElem(R, rid, id, name + '（写真）'), box: [R.x, R.y, R.x + R.w, R.y + R.h] }, idc, name);
+  const [a, b, c, d] = G.box, [fc, fco, fr, fro, tc, tco, tr, tro] = cellsOf(tpl, a, b, c - a, d - b);
+  return `<xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>${fc}</xdr:col><xdr:colOff>${fco}</xdr:colOff><xdr:row>${fr}</xdr:row><xdr:rowOff>${fro}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${tc}</xdr:col><xdr:colOff>${tco}</xdr:colOff><xdr:row>${tr}</xdr:row><xdr:rowOff>${tro}</xdr:rowOff></xdr:to>${G.xml}<xdr:clientData/></xdr:twoCellAnchor>`;
 }
 function anchorXml(fc, fco, fr, fro, tc, tco, tr, tro, x, y, w, hh, rid, id, name, editAs) {
   return `<xdr:twoCellAnchor${editAs ? ` editAs="${editAs}"` : ''}><xdr:from><xdr:col>${fc}</xdr:col><xdr:colOff>${fco}</xdr:colOff><xdr:row>${fr}</xdr:row><xdr:rowOff>${fro}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${tc}</xdr:col><xdr:colOff>${tco}</xdr:colOff><xdr:row>${tr}</xdr:row><xdr:rowOff>${tro}</xdr:rowOff></xdr:to><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="${xmlEsc(name)}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${hh}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`;
@@ -2324,13 +2458,15 @@ async function buildWorkbook(ty, list, fileName = '') {
       zip.file(vrel.path, vml);
     }
     // 写真・手書き
-    let pics = '', drels = '', pid = 1000;
+    let pics = '', drels = '', pid = 1000; const idc = { n: 20000 }, asShapes = settingsShapes();
     for (const p of t.photos || []) {
       const spec = ty.fields[p.slot]; if (!spec || spec.k !== 'photo') continue;
-      const blob = await composeBlob(p, 1600); const img = await loadImg(URL.createObjectURL(blob));
+      const shp = asShapes && p.strokes && p.strokes.length;
+      const blob = await composeBlob(p, 1600, !shp); const img = await loadImg(URL.createObjectURL(blob));
       const media = `karte_${uid()}.jpeg`; zip.file(`xl/media/${media}`, await blob.arrayBuffer());
       const rid = `rIdP${pid}`; drels += `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${media}"/>`;
-      pics += picXml(tpl, tpl.rangeOf(p.slot), img.naturalWidth, img.naturalHeight, rid, pid, spec.label || '写真'); pid++;
+      pics += shp ? annotatedPicXml(tpl, tpl.rangeOf(p.slot), img.naturalWidth, img.naturalHeight, rid, pid, spec.label || '写真', p.strokes, idc)
+        : picXml(tpl, tpl.rangeOf(p.slot), img.naturalWidth, img.naturalHeight, rid, pid, spec.label || '写真'); pid++;
     }
     for (const [pi, strokes] of Object.entries(t.ink || {})) {
       const pg = tpl.pages[+pi]; if (!pg || !strokes || !strokes.length) continue;
@@ -2563,6 +2699,9 @@ async function migrateOld() {
   let qTimer = null;
   $('#listSearch').oninput = e => { clearTimeout(qTimer); qTimer = setTimeout(() => { LS.q = e.target.value; LS.limit = 120; renderList(); }, 200); };
   $('#btnBackup').onclick = backup;
+  for (const [id, key, get] of [['#optShapes', 'jk_shapes', settingsShapes], ['#optLists', 'jk_lists', settingsLists]]) {
+    const el = $(id); el.checked = get(); el.onchange = () => { try { localStorage.setItem(key, el.checked ? '1' : '0'); } catch (e) { } };
+  }
   $('#fileRestore').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) restore(f); };
   $('#fileImport').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importExcel(f); };
   $('#btnBack').onclick = () => history.state && history.state.v === 'edit' ? history.back() : backToList();
