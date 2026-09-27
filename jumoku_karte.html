@@ -480,7 +480,6 @@ dialog.ask{max-width:440px}
   <p id="askMsg" style="white-space:pre-line;margin:4px 0 14px;font-size:16px"></p>
   <div class="row"><span style="flex:1"></span><button class="btn" type="button" id="askNo">やめる</button><button class="btn pri" type="button" id="askOk">OK</button></div>
 </dialog>
-<button type="button" id="btnZoom" class="hidden">🔍 元の大きさに戻す</button>
 
 <dialog id="dlgMore">
   <h2>この木</h2>
@@ -3609,28 +3608,74 @@ function inkEvents(cv, pi) {
   const pg = () => kPages.find(p => p.pi === pi);
   let pid = null;
   cv.addEventListener('pointerdown', e => {
-    if (!kState.ink) return;
+    if (!kState.ink || kPinch) return;
     if (e.pointerType === 'pen') $('#karte').classList.add('penseen');
     if ($('#karte').classList.contains('penseen') && e.pointerType === 'touch') return; // Apple Pencil使用中は指でスクロール
-    e.preventDefault(); cv.setPointerCapture(e.pointerId); pid = e.pointerId;
+    e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (_) { } pid = e.pointerId;
     const [x, y] = pos(e);
     if (kState.tool === 'eraser') { eraseAt(pi, x, y); return; }
     const p = pg(); p.active = { t: kState.tool === 'marker' ? 'marker' : 'pen', c: kState.color, w: (kState.tool === 'marker' ? .012 : .0024) * kState.size, pts: [[x, y]] };
     paintInk(p);
   });
+  let holdAt = null, holdT = null;
   cv.addEventListener('pointermove', e => {
-    if (!kState.ink || e.pointerId !== pid) return;
+    if (!kState.ink || e.pointerId !== pid || kPinch) return;
     const [x, y] = pos(e);
     if (kState.tool === 'eraser') { eraseAt(pi, x, y); return; }
-    const p = pg(); if (!p.active) return; p.active.pts.push([x, y]); paintInk(p);
+    const p = pg(); if (!p.active || p.active.snapped) return; p.active.pts.push([x, y]); paintInk(p);
+    // 止めたまま少し待つと、線・円・四角などに整える
+    const W = p.cv.width, H = p.cv.height, u = W / p.cv.getBoundingClientRect().width;
+    if (!holdAt || Math.hypot((x - holdAt[0]) * W, (y - holdAt[1]) * H) > 5 * u) {
+      holdAt = [x, y]; clearTimeout(holdT);
+      holdT = setTimeout(() => {
+        if (pid == null || !p.active || p.active.pts.length < 5) return;
+        const sh = recognizeShape(p.active.pts.map(([a, b]) => [a * W, b * H])); if (!sh) return;
+        p.active.pts = shapePoints(sh.k === 'line' ? snapLine(sh) : sh).map(([a, b]) => [+(a / W).toFixed(5), +(b / H).toFixed(5)]);
+        p.active.snapped = true; paintInk(p); if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { }
+      }, HOLD_MS);
+    }
   });
   const end = e => {
-    if (e.pointerId !== pid) return; pid = null;
-    const p = pg(); if (!p.active) return;
+    if (e.pointerId !== pid) return; pid = null; clearTimeout(holdT); holdAt = null;
+    const p = pg(); if (!p.active) return; delete p.active.snapped;
     cur.ink = cur.ink || {}; (cur.ink[pi] = cur.ink[pi] || []).push(p.active); p.active = null; kLastPage = pi; touch(); paintInk(p);
   };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
 }
+// 手書きモード中の2本指：カルテの拡大・縮小と移動（1本指・ペンは書く）
+let kPinch = null;
+(function karteTouch() {
+  const root = $('#karte'), touches = new Map();
+  let raf = 0;
+  root.addEventListener('pointerdown', e => {
+    if (!kState.ink || e.pointerType !== 'touch') return;
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+    if (touches.size === 2) {
+      for (const p of kPages) if (p.active) { p.active = null; paintInk(p); } // 書きかけは取り消す
+      const [a, b] = [...touches.values()], r = root.getBoundingClientRect(), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      kPinch = { d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, z0: kState.zoom, cx: m[0] - r.left + root.scrollLeft, cy: m[1] + window.scrollY - (r.top + window.scrollY) };
+      e.stopPropagation(); e.preventDefault();
+    }
+  }, true);
+  root.addEventListener('pointermove', e => {
+    if (!touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+    if (!kPinch || touches.size < 2) return;
+    e.stopPropagation();
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      if (!kPinch) return;
+      const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const z = Math.max(1, Math.min(4, kPinch.z0 * d / kPinch.d0)), f = z / kPinch.z0;
+      if (Math.abs(z - kState.zoom) > .005) { kState.zoom = z; fitKarte(); }
+      const top = root.getBoundingClientRect().top + window.scrollY;
+      root.scrollLeft = kPinch.cx * f - (m[0] - root.getBoundingClientRect().left);
+      window.scrollTo(window.scrollX, top + kPinch.cy * f - m[1]);
+    });
+  }, true);
+  const end = e => { if (!touches.has(e.pointerId)) return; touches.delete(e.pointerId); if (kPinch && touches.size === 0) { kPinch = null; renderKTools(); } if (kPinch) e.stopPropagation(); };
+  root.addEventListener('pointerup', end, true); root.addEventListener('pointercancel', end, true);
+})();
 function eraseAt(pi, x, y) {
   const st = (cur.ink || {})[pi]; if (!st || !st.length) return;
   const p = kPages.find(q => q.pi === pi); const rx = 10 / (p.W * p.scale), ry = 10 / (p.H * p.scale); const n = st.length;
@@ -3666,7 +3711,7 @@ function renderKTools() {
   }
   t.append(h('span', { class: 'sep' }),
     b('－', false, () => { kState.zoom = Math.max(1, kState.zoom - .5); fitKarte(); }),
-    b('＋ 拡大', false, () => { kState.zoom = Math.min(3, kState.zoom + .5); fitKarte(); }),
+    b('＋ 拡大', false, () => { kState.zoom = Math.min(4, kState.zoom + .5); fitKarte(); }),
     h('span', { class: 'sep' }),
     b('Excelに出力', false, () => exportTrees([cur.id]), 'on'));
 }
@@ -4258,7 +4303,8 @@ async function openDraw(p, box) {
   const img = await loadImg(await photoURL(p.id));
   let tool = 'callout', back = false, plan = false; try { tool = localStorage.getItem('jk_drawTool') || tool; back = localStorage.getItem('jk_back') === '1'; plan = localStorage.getItem('jk_plan') === '1'; } catch (e) { }
   if (tool === 'plan' || tool === 'callout') tool = 'callout';
-  dr = { p, box, img, strokes: clone(p.strokes), tool, back, plan, color: COLORS[0], size: 1, active: null, penSeen: false, sel: null, pending: null };
+  dr = { p, box, img, strokes: clone(p.strokes), tool, back, plan, color: COLORS[0], size: 1, active: null, penSeen: false, sel: null, pending: null, view: { z: 1, x: 0, y: 0 } };
+  $('#drawCanvas').style.transform = '';
   $('#draw').classList.remove('hidden'); document.body.style.overflow = 'hidden'; resetZoom();
   paintTools(); fitCanvas(); redraw();
 }
@@ -4274,7 +4320,7 @@ function paintTools() {
   else if (dr.tool === 'callout' && dr.sel == null) sb.append(B('💬 言葉を選ぶ', false, chooseCallout, 'hl'));
   tb.append(...COLORS.map(c => h('button', { type: 'button', class: 'sw' + (dr.color === c ? ' on' : ''), style: `background:${c}`, 'aria-label': '色', onclick: () => { dr.color = c; if (dr.sel != null) { dr.strokes[dr.sel].c = c; redraw(); } paintTools(); } })));
   tb.append(...[[0.6, '細'], [1, '中'], [1.8, '太']].map(([v, l]) => B(l, dr.size === v, () => { dr.size = v; if (dr.sel != null) { const s = dr.strokes[dr.sel], base = s.base || 1; scaleObj(s, v / base); s.base = v; redraw(); } paintTools(); })));
-  tb.append(h('span', { class: 'gap' }),
+  tb.append(h('span', { class: 'gap' }), ...(dr.view && dr.view.z > 1.01 ? [B('🔍 全体を表示', false, () => window.resetDrawView(), 'hl')] : []),
     B('↶ 戻す', false, () => { dr.strokes.pop(); dr.sel = null; paintTools(); redraw(); }),
     B('全消し', false, async () => { if (await ask('書き込みを全部消しますか？', '全部消す', true)) { dr.strokes = []; dr.sel = null; paintTools(); redraw(); } }),
     B('やめる', false, closeDraw.bind(null, false)),
@@ -4318,7 +4364,8 @@ function fitCanvas() {
   const W = st.clientWidth - 8, H = st.clientHeight - 8 - 62, iw = dr.img.naturalWidth, ih = dr.img.naturalHeight; // 下の操作バーの分をあけておく
   const s = Math.min(W / iw, H / ih); const dpr = Math.min(2, window.devicePixelRatio || 1);
   c.style.width = Math.round(iw * s) + 'px'; c.style.height = Math.round(ih * s) + 'px';
-  c.width = Math.round(iw * s * dpr); c.height = Math.round(ih * s * dpr);
+  c.width = Math.round(iw * s * dpr); c.height = Math.round(ih * s * dpr); dr.baseW = c.width; dr.baseH = c.height;
+  dr.view = { z: 1, x: 0, y: 0 }; c.style.transform = '';
 }
 function redraw() {
   const c = $('#drawCanvas'), x = c.getContext('2d');
@@ -4352,12 +4399,12 @@ function closeDraw(save) {
   // 置いた物は選択しない（続けて色や表／裏を変えても、いま置いた物は変わらない）。直すときはタップで選ぶ
   const add = o => { dr.strokes.push(o); dr.sel = null; paintTools(); redraw(); };
   c.addEventListener('pointerdown', async e => {
-    if (!dr) return;
+    if (!dr || dr.pinch) return;
     if (e.pointerType === 'pen') dr.penSeen = true;
     if (dr.penSeen && e.pointerType === 'touch') return; // Apple Pencil 使用中は手のひらを無視
-    e.preventDefault(); c.setPointerCapture(e.pointerId);
+    e.preventDefault(); try { c.setPointerCapture(e.pointerId); } catch (_) { }
     const [px, py] = pos(e); const W = c.width, H = c.height; const x = c.getContext('2d');
-    dr.pid = e.pointerId; dr.start = [px, py]; dr.last = [px, py]; dr.drag = null;
+    dr.pid = e.pointerId; dr.pidType = e.pointerType; dr.start = [px, py]; dr.last = [px, py]; dr.drag = null;
     // 置いてある矢印・コメントなどをタップ → 選んで動かす（ペン・マーカーの時は描くのを優先）
     if ((dr.tool !== 'pen' && dr.tool !== 'marker' || dr.sel != null) && !dr.pending) {
       const hit = hitTest(x, dr.strokes, px * W, py * H, W, H, tol(), dr.sel, W / c.getBoundingClientRect().width);
@@ -4366,7 +4413,7 @@ function closeDraw(save) {
       const same = o && !o.pts && (o.t === kind || (o.t === 'arrow' && kind === 'arrow2') || (o.t === 'stamp' && kind === 'st_' + o.k));
       const ok = hit && (dr.tool === 'move' || hit.i === dr.sel || same);
       if (ok || dr.tool === 'move') {
-        dr.wasSel = !!hit && hit.i === dr.sel; dr.sel = ok ? hit.i : null; dr.drag = ok ? hit : null;
+        dr.wasSel = !!hit && hit.i === dr.sel; dr.sel = ok ? hit.i : null; dr.drag = ok ? hit : null; dr.dragOrig = ok ? clone(dr.strokes[hit.i]) : null;
         if (ok) { const o = dr.strokes[hit.i]; dr.color = o.c; dr.size = o.base || 1; if (o.t === 'arrow2' || o.t === 'callout') dr.back = !!o.b; }
         paintTools(); redraw(); return;
       }
@@ -4390,7 +4437,7 @@ function closeDraw(save) {
     redraw();
   });
   c.addEventListener('pointermove', e => {
-    if (!dr || e.pointerId !== dr.pid) return;
+    if (!dr || e.pointerId !== dr.pid || dr.pinch) return;
     const [px, py] = pos(e);
     if (dr.drag) {
       const s = dr.strokes[dr.drag.i], W = c.width, H = c.height;
@@ -4403,8 +4450,12 @@ function closeDraw(save) {
       } else moveObj(s, dr.drag.part, px - dr.last[0], py - dr.last[1]);
       dr.last = [px, py]; redraw(); return;
     }
-    if (!dr.active) return;
-    if (dr.active.pts) dr.active.pts.push([+px.toFixed(4), +py.toFixed(4)]);
+    if (!dr.active || dr.snapped) return;
+    if (dr.active.pts) { // 描いている途中で止めると、形を整える
+      dr.active.pts.push([+px.toFixed(4), +py.toFixed(4)]);
+      const W = c.width, H = c.height, u = c.width / c.getBoundingClientRect().width;
+      if (!dr.holdAt || Math.hypot((px - dr.holdAt[0]) * W, (py - dr.holdAt[1]) * H) > 5 * u) { dr.holdAt = [px, py]; clearTimeout(dr.holdT); dr.holdT = setTimeout(snapActive, HOLD_MS); }
+    }
     else if (dr.active.t === 'callout') { dr.active.x = px; dr.active.y = py; }
     else {
       dr.active.x2 = px; dr.active.y2 = py;
@@ -4415,8 +4466,24 @@ function closeDraw(save) {
     }
     redraw();
   });
+  // 手描きを整った形に置きかえる（ペン→線・円・四角などの図形、マーカー→整った線）
+  const snapActive = () => {
+    if (!dr || dr.pid == null || !dr.active || !dr.active.pts || dr.active.pts.length < 5) return;
+    const a = dr.active, W = c.width, H = c.height;
+    const sh = recognizeShape(a.pts.map(([x, y]) => [x * W, y * H])); if (!sh) return;
+    const N = p => [+(p[0] / W).toFixed(4), +(p[1] / H).toFixed(4)];
+    let o;
+    if (a.t === 'marker') o = { t: 'marker', c: a.c, w: a.w, pts: shapePoints(sh.k === 'line' ? snapLine(sh) : sh).map(N) };
+    else if (sh.k === 'line') { snapLine(sh); const [x1, y1] = N(sh.a), [x2, y2] = N(sh.z); o = { t: 'line', c: a.c, w: a.w, x1, y1, x2, y2, base: dr.size }; }
+    else if (sh.k === 'ellipse') o = { t: 'ellipse', c: a.c, w: a.w, x1: (sh.cx - sh.a) / W, y1: (sh.cy - sh.b) / H, x2: (sh.cx + sh.a) / W, y2: (sh.cy + sh.b) / H, r: sh.r, base: dr.size };
+    else if (sh.k === 'rect') o = { t: 'rect', c: a.c, w: a.w, x1: (sh.cx - sh.w / 2) / W, y1: (sh.cy - sh.h / 2) / H, x2: (sh.cx + sh.w / 2) / W, y2: (sh.cy + sh.h / 2) / H, r: sh.r, base: dr.size };
+    else o = { t: 'pen', c: a.c, w: a.w, pts: sh.pts.map(N) };
+    dr.active = o; dr.snapped = true; redraw();
+    if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { }
+  };
   const end = async e => {
-    if (!dr || e.pointerId !== dr.pid) return; dr.pid = null;
+    if (!dr || e.pointerId !== dr.pid) return; dr.pid = null; clearTimeout(dr.holdT); dr.holdAt = null; const snapped = dr.snapped; dr.snapped = false;
+    if (snapped && dr.active) { const a = dr.active; dr.active = null; add(a); return; }
     if (dr.drag) { // 選んである物をもう一度タップ → 文字・番号を直す
       const d = dr.drag, s = dr.strokes[d.i], still = Math.hypot(dr.last[0] - dr.start[0], dr.last[1] - dr.start[1]) < .01; dr.drag = null;
       if (still && dr.wasSel && s && ['callout', 'text', 'line', 'dim', 'stamp'].includes(s.t) && (s.text || s.t === 'callout' || s.t === 'text')) { const t = await askText('文字を直す', s.text, s.t === 'callout'); if (t != null && (t || s.t !== 'callout')) { s.text = t; redraw(); } }
@@ -4453,7 +4520,46 @@ function closeDraw(save) {
   };
   c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
   window.addEventListener('resize', () => { if (dr) { fitCanvas(); redraw(); } });
-  document.addEventListener('gesturestart', e => { if (dr) e.preventDefault(); }); // 書き込み中は画面を拡大させない
+  document.addEventListener('gesturestart', e => { if (dr) e.preventDefault(); }); // 画面ごとの拡大はさせず、写真だけを2本指で拡大する
+  // 2本指：写真の拡大・縮小と移動（1本指・ペンは描く）
+  const st = $('#drawStage'), touches = new Map();
+  const cancelCurrent = () => {
+    if (!dr) return; clearTimeout(dr.holdT); dr.snapped = false; dr.holdAt = null;
+    if (dr.drag && dr.dragOrig) dr.strokes[dr.drag.i] = dr.dragOrig; // 動かしかけた物は元に戻す
+    dr.active = null; dr.drag = null; dr.pid = null; redraw();
+  };
+  const applyView = () => { const v = dr.view; c.style.transformOrigin = '0 0'; c.style.transform = v.z === 1 && !v.x && !v.y ? '' : `translate(${v.x}px,${v.y}px) scale(${v.z})`; };
+  st.addEventListener('pointerdown', e => {
+    if (!dr || e.pointerType !== 'touch') return;
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+    if (touches.size === 2) {
+      if (dr.pid != null && dr.pidType === 'pen') return; // ペンで描いている間の手のひらは無視
+      cancelCurrent();
+      const [p, q] = [...touches.values()], v = dr.view || (dr.view = { z: 1, x: 0, y: 0 });
+      dr.pinch = { d0: Math.hypot(p[0] - q[0], p[1] - q[1]) || 1, m0: [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], v0: { ...v } };
+      e.stopPropagation(); e.preventDefault();
+    }
+  }, true);
+  st.addEventListener('pointermove', e => {
+    if (!dr || !touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+    if (!dr.pinch || touches.size < 2) return;
+    e.stopPropagation();
+    const [p, q] = [...touches.values()], d = Math.hypot(p[0] - q[0], p[1] - q[1]), m = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+    const { d0, m0, v0 } = dr.pinch, z = Math.max(1, Math.min(6, v0.z * d / d0));
+    const r = c.getBoundingClientRect(), ox = r.left - (dr.view.x), oy = r.top - (dr.view.y); // 変形前のキャンバス左上
+    const cx = (m0[0] - ox - v0.x) / v0.z, cy = (m0[1] - oy - v0.y) / v0.z; // 指の間にあった写真の点
+    dr.view = { z, x: z === 1 ? 0 : m[0] - ox - cx * z, y: z === 1 ? 0 : m[1] - oy - cy * z };
+    applyView();
+  }, true);
+  const tEnd = e => {
+    if (!touches.has(e.pointerId)) return; touches.delete(e.pointerId);
+    if (dr && dr.pinch) { e.stopPropagation(); if (touches.size === 0) { dr.pinch = null; sharpen(); paintTools(); } }
+  };
+  st.addEventListener('pointerup', tEnd, true); st.addEventListener('pointercancel', tEnd, true);
+  // 拡大したら、キャンバスの画素も増やしてくっきり描く
+  const sharpen = () => { if (!dr || !dr.baseW) return; const k = Math.min(3, Math.max(1, dr.view.z)); const w = Math.round(dr.baseW * k), hh = Math.round(dr.baseH * k); if (c.width !== w) { c.width = w; c.height = hh; redraw(); } };
+  window.resetDrawView = () => { if (dr) { dr.view = { z: 1, x: 0, y: 0 }; applyView(); sharpen(); paintTools(); } };
 })();
 
 /* ---------- Excel には「図形」で出す ----------
@@ -4556,6 +4662,89 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
   }
   return group(name, kids);
 }
+
+/* ---------- 手描きの図形を整える ----------
+   ペンで描いて、最後に指（ペン）を止めたまま少し待つと、まっすぐな線・円（楕円）・四角・三角・折れ線に整える。
+   座標は画素（px）で受け取り、形を返す。 */
+function rdp(P, eps) {
+  if (P.length < 3) return P.slice();
+  const [a, z] = [P[0], P[P.length - 1]], dx = z[0] - a[0], dy = z[1] - a[1], L = Math.hypot(dx, dy) || 1;
+  let mi = 0, md = 0;
+  for (let i = 1; i < P.length - 1; i++) { const d = Math.abs(dy * P[i][0] - dx * P[i][1] + z[0] * a[1] - z[1] * a[0]) / L; if (d > md) { md = d; mi = i; } }
+  if (md <= eps) return [a, z];
+  return [...rdp(P.slice(0, mi + 1), eps).slice(0, -1), ...rdp(P.slice(mi), eps)];
+}
+function resample(P, n) {
+  const seg = []; let L = 0; for (let i = 1; i < P.length; i++) { const d = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); seg.push(d); L += d; }
+  if (!L) return [P[0]];
+  const out = [P[0]], step = L / (n - 1); let acc = 0, i = 1, need = step;
+  while (i < P.length && out.length < n) {
+    const d = seg[i - 1];
+    if (acc + d >= need) { const t = (need - acc) / d; out.push([P[i - 1][0] + (P[i][0] - P[i - 1][0]) * t, P[i - 1][1] + (P[i][1] - P[i - 1][1]) * t]); need += step; }
+    else { acc += d; i++; }
+  }
+  while (out.length < n) out.push(P[P.length - 1]);
+  return out;
+}
+function recognizeShape(P) {
+  if (!P || P.length < 5) return null;
+  const xs = P.map(p => p[0]), ys = P.map(p => p[1]), D = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  if (D < 18) return null;
+  let L = 0; for (let i = 1; i < P.length; i++) L += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
+  const a = P[0], z = P[P.length - 1], chord = Math.hypot(z[0] - a[0], z[1] - a[1]);
+  // まっすぐな線
+  if (chord > L * .8) { const md = Math.max(...P.map(p => Math.abs((z[1] - a[1]) * p[0] - (z[0] - a[0]) * p[1] + z[0] * a[1] - z[1] * a[0]) / (chord || 1))); if (md < Math.max(8, chord * .07)) return { k: 'line', a, z }; }
+  const closed = chord < Math.max(20, D * .25);
+  if (closed) {
+    const Q = resample(P, 72);
+    const cx = Q.reduce((s, p) => s + p[0], 0) / Q.length, cy = Q.reduce((s, p) => s + p[1], 0) / Q.length;
+    let sxx = 0, syy = 0, sxy = 0; for (const [x, y] of Q) { sxx += (x - cx) ** 2; syy += (y - cy) ** 2; sxy += (x - cx) * (y - cy); }
+    sxx /= Q.length; syy /= Q.length; sxy /= Q.length;
+    const tr = sxx + syy, det = sxx * syy - sxy * sxy, l1 = tr / 2 + Math.sqrt(Math.max(0, tr * tr / 4 - det)), l2 = tr / 2 - Math.sqrt(Math.max(0, tr * tr / 4 - det));
+    let th = .5 * Math.atan2(2 * sxy, sxx - syy), ea = Math.sqrt(2 * l1), eb = Math.sqrt(2 * Math.max(l2, 1));
+    const rot = (x, y, t) => [(x - cx) * Math.cos(t) + (y - cy) * Math.sin(t), -(x - cx) * Math.sin(t) + (y - cy) * Math.cos(t)];
+    const eErr = Q.reduce((s, [x, y]) => { const [u, v] = rot(x, y, th); return s + Math.abs(Math.hypot(u / ea, v / eb) - 1); }, 0) / Q.length;
+    // 角の数
+    // 閉じた線は、いちばん遠い点で2つに分けてから角を探す
+    let f = 0, fd = 0; Q.forEach((p, i) => { const d = Math.hypot(p[0] - Q[0][0], p[1] - Q[0][1]); if (d > fd) { fd = d; f = i; } });
+    let S = [...rdp(Q.slice(0, f + 1), D * .07).slice(0, -1), ...rdp([...Q.slice(f), Q[0]], D * .07).slice(0, -1)];
+    // 始点が辺の途中なら、ほぼまっすぐな角を取り除く
+    const straight = (p, q, r) => { const a1 = Math.atan2(q[1] - p[1], q[0] - p[0]), a2 = Math.atan2(r[1] - q[1], r[0] - q[0]); let d = Math.abs(a1 - a2); if (d > Math.PI) d = 2 * Math.PI - d; return d < .35; };
+    for (let k = 0; k < 3 && S.length > 3; k++) { const m = S.length; const i = S.findIndex((q, j) => straight(S[(j + m - 1) % m], q, S[(j + 1) % m])); if (i < 0) break; S.splice(i, 1); }
+    const n = S.length;
+    const ang = i => { const p = S[(i + n - 1) % n], q = S[i], r = S[(i + 1) % n]; const a1 = Math.atan2(p[1] - q[1], p[0] - q[0]), a2 = Math.atan2(r[1] - q[1], r[0] - q[0]); let d = Math.abs(a1 - a2) * 180 / Math.PI; return d > 180 ? 360 - d : d; };
+    if (n === 4 && [0, 1, 2, 3].every(i => Math.abs(ang(i) - 90) < 28)) { // 四角：いちばん長い辺の向きにそろえる
+      let best = 0, bl = 0; for (let i = 0; i < 4; i++) { const l = Math.hypot(S[(i + 1) % 4][0] - S[i][0], S[(i + 1) % 4][1] - S[i][1]); if (l > bl) { bl = l; best = i; } }
+      let t = Math.atan2(S[(best + 1) % 4][1] - S[best][1], S[(best + 1) % 4][0] - S[best][0]);
+      t = ((t % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2); if (t > Math.PI / 4) t -= Math.PI / 2;
+      if (Math.abs(t) < .1) t = 0;
+      const R = Q.map(([x, y]) => rot(x, y, t)), u0 = Math.min(...R.map(p => p[0])), u1 = Math.max(...R.map(p => p[0])), v0 = Math.min(...R.map(p => p[1])), v1 = Math.max(...R.map(p => p[1]));
+      const mu = (u0 + u1) / 2, mv = (v0 + v1) / 2;
+      return { k: 'rect', cx: cx + mu * Math.cos(t) - mv * Math.sin(t), cy: cy + mu * Math.sin(t) + mv * Math.cos(t), w: u1 - u0, h: v1 - v0, r: t };
+    }
+    if (n === 3) return { k: 'poly', pts: [...S, S[0]] };
+    if (eErr < .2 || n > 5) {
+      if (Math.abs(ea - eb) / Math.max(ea, eb) < .12) { ea = eb = (ea + eb) / 2; th = 0; } // ほぼ円なら真円
+      if (Math.abs(th) < .12) th = 0;
+      return { k: 'ellipse', cx, cy, a: ea, b: eb, r: th };
+    }
+    return { k: 'poly', pts: [...S, S[0]] };
+  }
+  const S = rdp(P, D * .06); if (S.length <= 5) return { k: 'poly', pts: S };
+  return null;
+}
+// 形を折れ線の点に（カルテの手書き・マーカー用）
+function shapePoints(sh) {
+  if (sh.k === 'line') return [sh.a, sh.z];
+  if (sh.k === 'poly') return sh.pts;
+  const out = [];
+  if (sh.k === 'ellipse') for (let i = 0; i <= 72; i++) { const t = i / 72 * Math.PI * 2, u = sh.a * Math.cos(t), v = sh.b * Math.sin(t); out.push([sh.cx + u * Math.cos(sh.r) - v * Math.sin(sh.r), sh.cy + u * Math.sin(sh.r) + v * Math.cos(sh.r)]); }
+  if (sh.k === 'rect') for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]]) { const x = u * sh.w / 2, y = v * sh.h / 2; out.push([sh.cx + x * Math.cos(sh.r) - y * Math.sin(sh.r), sh.cy + x * Math.sin(sh.r) + y * Math.cos(sh.r)]); }
+  return out;
+}
+// 水平・垂直の近くの線はまっすぐに
+function snapLine(sh) { const dx = sh.z[0] - sh.a[0], dy = sh.z[1] - sh.a[1], a = Math.atan2(dy, dx), st = Math.PI / 4, n = Math.round(a / st) * st; if (Math.abs(a - n) < .1) { const L = Math.hypot(dx, dy); sh.z = [sh.a[0] + Math.cos(n) * L, sh.a[1] + Math.sin(n) * L]; } return sh; }
+const HOLD_MS = 550;
 
 
 /* =========================================================
@@ -5676,13 +5865,7 @@ async function migrateOld() {
   let qTimer = null;
   $('#listSearch').oninput = e => { clearTimeout(qTimer); qTimer = setTimeout(() => { LS.q = e.target.value; LS.limit = 120; renderList(); }, 200); };
   $('#btnBackup').onclick = backup;
-  // 拡大されたままになったら「元の大きさに戻す」ボタンを出す（ダイアログを閉じたときも戻す）
-  if (window.visualViewport) {
-    const zb = $('#btnZoom'), v = visualViewport;
-    const upd = () => { const z = v.scale > 1.05; zb.classList.toggle('hidden', !z); if (z) zb.style.transform = `translate(${v.offsetLeft + 12 / v.scale}px, ${v.offsetTop + v.height - (zb.offsetHeight + 16) / v.scale}px) scale(${1 / v.scale})`; };
-    v.addEventListener('resize', upd); v.addEventListener('scroll', upd);
-    zb.onclick = () => { resetZoom(); setTimeout(upd, 500); };
-  }
+  // ダイアログを閉じたら、拡大されていた画面を元の大きさに戻す
   document.addEventListener('close', e => { if (e.target.tagName === 'DIALOG' && !document.querySelector('dialog[open]')) resetZoom(); }, true);
   for (const id of ['#fileInbox', '#mInboxFile']) $(id).onchange = e => { const fs = [...e.target.files]; e.target.value = ''; $('#dlgMore').close(); openInbox(fs); };
   camInit();
