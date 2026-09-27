@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>樹木診断カルテ</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -3703,6 +3703,27 @@ let kPinch = null;
   }, true);
   const end = e => { if (!touches.has(e.pointerId)) return; touches.delete(e.pointerId); if (kPinch && touches.size === 0) { kPinch = null; renderKTools(); } if (kPinch) e.stopPropagation(); };
   root.addEventListener('pointerup', end, true); root.addEventListener('pointercancel', end, true);
+  // iPad（Safari）：画面ごとの拡大はさせず、2本指のピンチはカルテの拡大・縮小にする
+  let gz = null;
+  document.addEventListener('gesturestart', e => {
+    e.preventDefault();
+    if (kPinch || kState.ink || typeof dr !== 'undefined' && dr || !cur || viewMode !== 'karte' || document.querySelector('dialog[open]')) return;
+    const r = root.getBoundingClientRect(), mx = e.clientX ?? r.left + r.width / 2, my = e.clientY ?? window.innerHeight / 2;
+    gz = { z0: kState.zoom, cx: mx - r.left + root.scrollLeft, cy: my - r.top, mx, my };
+  }, { passive: false });
+  document.addEventListener('gesturechange', e => {
+    e.preventDefault(); if (!gz) return;
+    const sc = e.scale || 1; cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      if (!gz) return;
+      const z = Math.max(1, Math.min(4, gz.z0 * sc)), f = z / gz.z0;
+      if (Math.abs(z - kState.zoom) > .005) { kState.zoom = z; fitKarte(); }
+      const top = root.getBoundingClientRect().top + window.scrollY;
+      root.scrollLeft = gz.cx * f - (gz.mx - root.getBoundingClientRect().left);
+      window.scrollTo(window.scrollX, top + gz.cy * f - gz.my);
+    });
+  }, { passive: false });
+  document.addEventListener('gestureend', e => { e.preventDefault(); if (gz) { gz = null; renderKTools(); } }, { passive: false });
 })();
 function eraseAt(pi, x, y) {
   const st = (cur.ink || {})[pi]; if (!st || !st.length) return;
@@ -3739,8 +3760,9 @@ function renderKTools() {
     }
   }
   t.append(h('span', { class: 'sep' }),
-    b('－', false, () => { kState.zoom = Math.max(1, kState.zoom - .5); fitKarte(); }),
-    b('＋ 拡大', false, () => { kState.zoom = Math.min(4, kState.zoom + .5); fitKarte(); }),
+    b('－', false, () => { kState.zoom = Math.max(1, kState.zoom - .5); fitKarte(); renderKTools(); }),
+    b('＋ 拡大', false, () => { kState.zoom = Math.min(4, kState.zoom + .5); fitKarte(); renderKTools(); }),
+    ...(kState.zoom > 1.01 ? [b(`🔍 全体（${Math.round(kState.zoom * 100)}%）`, false, () => { kState.zoom = 1; fitKarte(); renderKTools(); })] : []),
     h('span', { class: 'sep' }),
     b('Excelに出力', false, () => exportTrees([cur.id]), 'on'));
 }
