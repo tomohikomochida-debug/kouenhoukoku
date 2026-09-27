@@ -275,6 +275,9 @@ label.chk{display:flex;gap:10px;align-items:flex-start;padding:8px 0;font-size:1
 #cph .cth{width:40px;height:54px;object-fit:cover;border-radius:6px;border:3px solid #FB8C00}#cph .cth.ok{border-color:#43A047}#cph .cth.ng{border-color:#E53935}
 #cph .cshut{width:78px;height:78px;border-radius:50%;background:#fff;border:6px solid #fff8;box-shadow:0 0 0 3px #000 inset}#cph .cshut:active{transform:scale(.92)}
 #cph .cstd{width:96px;height:54px;background:#0009;color:#fff;border:1px solid #fff6;border-radius:12px;font-size:13px;white-space:pre-line}
+#dlgInbox{width:min(720px,96vw)}#ibBody{max-height:62vh;overflow:auto}
+.ibrow{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #e6e2d6}.ibrow img{width:92px;height:92px;object-fit:cover;border-radius:8px;flex:none;background:#eee}
+.ibinfo{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}.ibinfo select{width:100%}.ibt{font-size:13px;color:#666}.ibrow.skip img{opacity:.45}
 #coChips button{font-size:13.5px;padding:7px 11px}
 </style>
 </head>
@@ -289,6 +292,7 @@ label.chk{display:flex;gap:10px;align-items:flex-start;padding:8px 0;font-size:1
   <main>
     <div class="row" style="margin-bottom:12px">
       <button class="btn pri" id="btnNew" style="flex:1">＋ 新しい木を診断する</button>
+      <label class="btn" title="AirDropした写真やiPadの写真を、撮った時刻で各木に割り振る">📥 写真をまとめて入れる<input type="file" id="fileInbox" accept="image/*" multiple hidden></label>
     </div>
     <input class="inp" id="listSearch" type="search" placeholder="🔍 No.・樹木番号・樹種・現場名でさがす" aria-label="さがす" style="margin-bottom:10px">
     <div id="listHead"></div>
@@ -444,10 +448,18 @@ label.chk{display:flex;gap:10px;align-items:flex-start;padding:8px 0;font-size:1
   </div>
 </dialog>
 
+<dialog id="dlgInbox">
+  <h2>📥 写真をまとめて入れる</h2>
+  <p class="hint" id="ibHint"></p>
+  <div id="ibBody"></div>
+  <div class="row" style="margin-top:10px"><button class="btn" type="button" data-close>やめる</button><span style="flex:1"></span><button class="btn pri" type="button" id="ibOk">入れる</button></div>
+</dialog>
+
 <dialog id="dlgMore">
   <h2>この木</h2>
   <div class="row" style="flex-direction:column;align-items:stretch">
     <button class="btn pri" type="button" id="mExcel">この木のカルテをExcelに出力</button>
+    <label class="btn">📥 写真をまとめて入れる<input type="file" id="mInboxFile" accept="image/*" multiple hidden></label>
     <button class="btn" type="button" id="mDup">この木を複製</button>
     <button class="btn warn" type="button" id="mDel">この木を削除</button>
     <button class="btn" type="button" data-close>閉じる</button>
@@ -4551,6 +4563,15 @@ function camInit() {
 }
 
 /* ---------- iPhone 側：撮影画面 ---------- */
+// 送れていない写真は iPhone の中（IndexedDB）に残し、ページを閉じても次に開いたときに送る
+const CAMQ = {
+  db: null,
+  open() { return this.db || (this.db = new Promise((res, rej) => { const r = indexedDB.open('jk_camq', 1); r.onupgradeneeded = () => r.result.createObjectStore('q', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); })); },
+  async run(mode, fn) { const db = await this.open(); return new Promise((res, rej) => { const tx = db.transaction('q', mode); const rq = fn(tx.objectStore('q')); tx.oncomplete = () => res(rq && rq.result); tx.onerror = () => rej(tx.error); }); },
+  put(it) { return this.run('readwrite', s => s.put(it)).catch(() => { }); },
+  del(id) { return this.run('readwrite', s => s.delete(id)).catch(() => { }); },
+  all() { return this.run('readonly', s => s.getAll()).catch(() => []); },
+};
 async function camPhone(hostId) {
   document.title = '📱 カルテ用カメラ';
   for (const s of document.querySelectorAll('body > section')) s.remove();
@@ -4570,7 +4591,7 @@ async function camPhone(hostId) {
   document.body.append(root);
   let peer = null, conn = null, connecting = false, last = null, stream = null, devs = [];
   const pending = new Map();
-  const setStat = (t, cls) => { stat.textContent = t; dot.className = 'cdot ' + (cls || ''); };
+  const setStat = (t, cls) => { stat.textContent = t + (pending.size && !/枚/.test(t) ? `（未送信${pending.size}枚はiPhoneに保存中）` : ''); dot.className = 'cdot ' + (cls || ''); };
   const showTarget = () => {
     if (!last) { tgt.textContent = '送り先：—'; return; }
     tgt.textContent = last.ok ? `${last.title} ▸ ${last.label} ▾` : last.title;
@@ -4589,11 +4610,15 @@ async function camPhone(hostId) {
   // --- つなぐ ---
   const onData = d => {
     if (!d || typeof d !== 'object') return;
-    if (d.type === 'target') { last = d; showTarget(); }
+    if (d.type === 'target') {
+      last = d; showTarget();
+      if (d.ok && conn && conn.open) for (const [, it] of pending) if (it.el.classList.contains('ng')) { it.el.className = 'cth wait'; if (!it.msg.tree) { it.msg.tree = d.tree; it.msg.slot = d.slot; } conn.send(it.msg); } // カルテが開かれたら送り直す
+    }
     if (d.type === 'ack') {
-      const it = pending.get(d.id); pending.delete(d.id);
+      const it = pending.get(d.id);
       if (it) it.el.className = 'cth ' + (d.ok ? 'ok' : 'ng');
-      if (d.ok) setStat(`✓ ${d.label || '送りました'}`, 'ok'); else setStat(`⚠️ ${d.msg || '送れませんでした'}`, 'ng');
+      if (d.ok) { pending.delete(d.id); CAMQ.del(d.id); setStat(`✓ ${d.label || '送りました'}${pending.size ? `（残り${pending.size}枚）` : ''}`, 'ok'); }
+      else setStat(`⚠️ ${d.msg || '送れませんでした'}。開いたら送ります`, 'ng');
     }
   };
   const connect = () => {
@@ -4602,7 +4627,7 @@ async function camPhone(hostId) {
     const c = peer.connect(hostId, { reliable: true, serialization: 'binary' });
     const to = setTimeout(() => { if (!c.open) { connecting = false; try { c.close(); } catch (e) { } } }, 9000);
     c.on('open', () => {
-      clearTimeout(to); connecting = false; conn = c; setStat('iPadとつながりました', 'ok'); c.send({ type: 'hello' });
+      clearTimeout(to); connecting = false; conn = c; setStat(pending.size ? `iPadとつながりました。残りの${pending.size}枚を送ります` : 'iPadとつながりました', 'ok'); c.send({ type: 'hello' });
       for (const [id, it] of pending) c.send(it.msg); // つながる前に撮った分を送る
     });
     c.on('data', onData);
@@ -4616,7 +4641,7 @@ async function camPhone(hostId) {
     peer.on('error', e => {
       connecting = false;
       if (e.type === 'peer-unavailable') setStat('iPadが見つかりません。iPadでカルテアプリを開いてください', 'ng');
-      else if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(e.type)) setStat('ネットにつながりません', 'ng');
+      else if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(e.type)) setStat('ネットにつながりません。撮った写真はiPhoneに残し、つながったら送ります', 'ng');
     });
   };
   if (typeof Peer === 'undefined') setStat('部品を読み込めませんでした', 'ng'); else startPeer();
@@ -4655,9 +4680,16 @@ async function camPhone(hostId) {
     const msg = { type: 'photo', id, tree: last && last.tree, slot: last && last.ok ? last.slot : null, buf, w, h: hh };
     const el = h('img', { class: 'cth wait', src: URL.createObjectURL(blob), alt: '' });
     thumb.prepend(el); while (thumb.children.length > 3) thumb.lastChild.remove();
-    pending.set(id, { msg, el });
-    if (conn && conn.open) { setStat('送っています…', 'wait'); conn.send(msg); } else setStat('iPadにつながったら送ります', 'wait');
+    pending.set(id, { msg, el }); CAMQ.put({ id, msg: { ...msg, buf: blob }, at: Date.now() });
+    if (conn && conn.open) { setStat('送っています…', 'wait'); conn.send(msg); } else setStat(`iPhoneに残しました。iPadにつながったら送ります（${pending.size}枚）`, 'wait');
   };
+  // 前回送れなかった写真
+  for (const it of (await CAMQ.all()).sort((a, b) => a.at - b.at)) {
+    const blob = it.msg.buf; const msg = { ...it.msg, buf: await blob.arrayBuffer() };
+    const el = h('img', { class: 'cth wait', src: URL.createObjectURL(blob), alt: '' }); thumb.prepend(el); while (thumb.children.length > 3) thumb.lastChild.remove();
+    pending.set(it.id, { msg, el });
+  }
+  if (pending.size) { if (conn && conn.open) for (const [, it] of pending) conn.send(it.msg); else setStat(`まだ送れていない写真が${pending.size}枚あります。iPadにつながったら送ります`, 'wait'); }
   const shoot = async () => {
     if (!video.videoWidth) return;
     flash.classList.remove('go'); void flash.offsetWidth; flash.classList.add('go');
@@ -4681,13 +4713,108 @@ async function camPhone(hostId) {
   });
 }
 
+/* ---------- 写真をあとでまとめて入れる ----------
+   iPhone で撮って AirDrop した写真や、iPad の写真を何十枚かまとめて選ぶと、
+   撮った時刻（写真の EXIF）と「その木のカルテを開いていた時間」を突き合わせて、どの木のどの枠かを自動で割り振る。
+   割り振りは一覧で確かめて直してから入れる。 */
+// カルテを開いていた時間を木ごとに記録（[開始, 終了] の組）
+// （「更新日時」は変えずに保存する）
+function sessStart(t) { if (!t) return; const now = Date.now(); t.sess = (t.sess || []).slice(-30); t.sess.push([now, now]); DB.put('trees', t); }
+function sessEnd(t) { if (!t || !t.sess || !t.sess.length) return; t.sess[t.sess.length - 1][1] = Date.now(); if (!(t === cur && saveTimer)) DB.put('trees', t); }
+setInterval(() => { if (cur && cur.sess && cur.sess.length && document.visibilityState === 'visible') cur.sess[cur.sess.length - 1][1] = Date.now(); }, 30000);
+
+// JPEG の撮影日時（EXIF DateTimeOriginal）。読めなければ null
+async function exifTime(file) {
+  try {
+    const b = new DataView(await file.slice(0, 256 * 1024).arrayBuffer());
+    if (b.getUint16(0) !== 0xFFD8) return null;
+    let o = 2;
+    while (o + 4 < b.byteLength) {
+      const m = b.getUint16(o), len = b.getUint16(o + 2);
+      if (m === 0xFFE1 && b.getUint32(o + 4) === 0x45786966) { // "Exif"
+        const T = o + 10, le = b.getUint16(T) === 0x4949, u16 = p => b.getUint16(T + p, le), u32 = p => b.getUint32(T + p, le);
+        const tags = ifd => { const n = u16(ifd), r = {}; for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12; r[u16(e)] = e; } return r; };
+        const str = e => { const n = u32(e + 4), p = n > 4 ? u32(e + 8) : e + 8; let s = ''; for (let i = 0; i < n - 1; i++) s += String.fromCharCode(b.getUint8(T + p + i)); return s; };
+        const t0 = tags(u32(4)); let s = null;
+        if (t0[0x8769]) { const ex = tags(u32(t0[0x8769] + 8)); if (ex[0x9003]) s = str(ex[0x9003]); }
+        if (!s && t0[0x0132]) s = str(t0[0x0132]);
+        const mm = s && /^(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)/.exec(s);
+        return mm ? new Date(+mm[1], mm[2] - 1, +mm[3], +mm[4], +mm[5], +mm[6]).getTime() : null;
+      }
+      if ((m & 0xFF00) !== 0xFF00 || m === 0xFFDA) break;
+      o += 2 + len;
+    }
+  } catch (e) { }
+  return null;
+}
+// 撮影時刻に開いていた（いちばん近い）木。20分以上離れていれば割り振らない
+function treeAt(ms) {
+  let best = null, bd = Infinity;
+  for (const t of trees) for (const [a, z] of (t.sess && t.sess.length ? t.sess : [[t.created, t.created]])) {
+    const d = ms < a ? a - ms : ms > z ? ms - z : 0;
+    if (d < bd || (d === bd && d === 0 && best && a > best.a)) { bd = d; best = { t, a }; }
+  }
+  return best && bd <= 20 * 60 * 1000 ? best.t : null;
+}
+async function openInbox(files) {
+  if (!files.length) return;
+  toast(`${files.length}枚を読み込んでいます…`, 1500);
+  const rows = [];
+  for (const f of files) { const ms = await exifTime(f) || (f.lastModified && f.lastModified < Date.now() - 60000 ? f.lastModified : null); rows.push({ f, ms, url: URL.createObjectURL(f) }); }
+  rows.sort((a, b) => (a.ms || Infinity) - (b.ms || Infinity)); // 時刻不明は最後
+  // 自動割り振り：木ごとに撮った順で、空いている写真枠（写真・全景を優先）→ 余りは「ほかの写真」
+  const taken = new Map();
+  const freeSlots = t => { if (!taken.has(t.id)) { const used = new Set((t.photos || []).map(p => p.slot)); taken.set(t.id, photoSlots(typeOf(t)).filter(s => !used.has(s.k)).map(s => s.k)); } return taken.get(t.id); };
+  for (const r of rows) { r.t = r.ms ? treeAt(r.ms) : (cur || null); r.slot = r.t ? (freeSlots(r.t).shift() || '') : ''; }
+  // 選べる木：現場ごと・No.順
+  const s0 = LS.sort; LS.sort = 'no'; const infos = sortInfos(trees.map(treeInfo).filter(Boolean)); LS.sort = s0; const bySite = new Map();
+  for (const x of infos) { if (!bySite.has(x.site)) bySite.set(x.site, []); bySite.get(x.site).push(x); }
+  const treeOpts = ['<option value="">（入れない）</option>', ...[...bySite].map(([site, xs]) => `<optgroup label="${xmlEsc(site === NO_SITE ? '（現場名なし）' : site)}">${xs.map(x => `<option value="${x.t.id}">${xmlEsc(treeTitle(x.t, x.ty))}${x.tn ? ' ' + xmlEsc(x.tn) : ''}</option>`).join('')}</optgroup>`)].join('');
+  const fmt = ms => { if (!ms) return '時刻不明'; const d = new Date(ms); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  const body = $('#ibBody'); body.innerHTML = '';
+  const slotSel = r => {
+    const s = h('select', { class: 'inp' });
+    const ty = r.t && typeOf(r.t);
+    s.innerHTML = '<option value="">ほかの写真（あとで枠を選ぶ）</option>' + (ty ? photoSlots(ty).map(x => `<option value="${x.k}">${xmlEsc(x.label)}${(r.t.photos || []).some(p => p.slot === x.k) ? '（差し替え）' : ''}</option>`).join('') : '');
+    s.value = r.slot || ''; s.disabled = !r.t; s.onchange = () => { r.slot = s.value; }; return s;
+  };
+  for (const r of rows) {
+    const ts = h('select', { class: 'inp' }); ts.innerHTML = treeOpts; ts.value = r.t ? r.t.id : '';
+    const cell = h('div', { class: 'ibslot' }, slotSel(r));
+    ts.onchange = () => { r.t = trees.find(t => t.id === ts.value) || null; r.slot = r.t ? (freeSlots(r.t).shift() || '') : ''; cell.innerHTML = ''; cell.append(slotSel(r)); row.classList.toggle('skip', !r.t); };
+    const row = h('div', { class: 'ibrow' + (r.t ? '' : ' skip') }, h('img', { src: r.url, alt: '', loading: 'lazy' }), h('div', { class: 'ibinfo' }, h('span', { class: 'ibt' }, fmt(r.ms)), ts, cell));
+    body.append(row);
+  }
+  const n = rows.filter(r => r.t).length;
+  $('#ibHint').textContent = `${rows.length}枚のうち ${n}枚を、撮った時刻とカルテを開いていた時刻から自動で割り振りました。違うところは直してから「入れる」を押してください。`;
+  $('#ibOk').onclick = async () => {
+    const go = rows.filter(r => r.t); $('#ibOk').disabled = true;
+    try {
+      for (const r of go) {
+        const { blob, w, h: hh } = await shrink(r.f); const id = uid(); await DB.put('photos', { id, blob });
+        r.t.photos = r.t.photos || [];
+        if (r.slot) for (const o of r.t.photos) if (o.slot === r.slot) o.slot = '';
+        r.t.photos.push({ id, slot: r.slot, strokes: [], w, h: hh }); touch(r.t);
+      }
+      await flush();
+    } finally { $('#ibOk').disabled = false; }
+    $('#dlgInbox').close(); rows.forEach(r => URL.revokeObjectURL(r.url));
+    if (cur) photosChanged(); else renderList();
+    toast(`${go.length}枚をカルテに入れました`);
+  };
+  $('#dlgInbox').onclose = () => rows.forEach(r => URL.revokeObjectURL(r.url));
+  $('#dlgInbox').showModal();
+}
+
 
 /* =========================================================
    木の操作
    ========================================================= */
 async function openTree(id) {
+  if (cur) sessEnd(cur);
   await flush();
   cur = trees.find(t => t.id === id); if (!cur) return;
+  sessStart(cur);
   curType = typeOf(cur); cur.typeId = curType.id; cur.v = cur.v || {}; cur.photos = cur.photos || []; cur.ink = cur.ink || {};
   curTpl = await loadTpl(curType);
   kState.design = false; kState.ink = false;
@@ -4699,6 +4826,7 @@ async function openTree(id) {
 }
 async function createTree(ty, base) { const t = newTree(ty, base); trees.push(t); await DB.put('trees', t); await openTree(t.id); }
 async function backToList() {
+  if (cur) sessEnd(cur);
   await flush(); stopVoice(); cur = null; kCells = []; kPages = []; formRows = []; $('#karte').innerHTML = ''; $('#form').innerHTML = '';
   $('#editView').classList.add('hidden'); $('#listView').classList.remove('hidden');
   renderList(); window.scrollTo(0, 0); camSync();
@@ -5301,6 +5429,8 @@ async function migrateOld() {
    起動
    ========================================================= */
 (async function init() {
+  // 電波のない現場でも開けるように、このページを端末に保存しておく
+  try { if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('jumoku_sw.js').catch(() => { }); } catch (e) { }
   if (CAM_MODE) { camPhone(CAM_MODE); return; } // iPhone：撮影画面だけを出す
   try { await DB.open(); [trees, types] = await Promise.all([DB.all('trees'), DB.all('types')]); }
   catch (e) { alert('この端末では保存が使えません（プライベートブラウズ中かもしれません）'); }
@@ -5321,6 +5451,7 @@ async function migrateOld() {
   let qTimer = null;
   $('#listSearch').oninput = e => { clearTimeout(qTimer); qTimer = setTimeout(() => { LS.q = e.target.value; LS.limit = 120; renderList(); }, 200); };
   $('#btnBackup').onclick = backup;
+  for (const id of ['#fileInbox', '#mInboxFile']) $(id).onchange = e => { const fs = [...e.target.files]; e.target.value = ''; $('#dlgMore').close(); openInbox(fs); };
   camInit();
   for (const [id, key, get] of [['#optShapes', 'jk_shapes', settingsShapes], ['#optLists', 'jk_lists', settingsLists]]) {
     const el = $(id); el.checked = get(); el.onchange = () => { try { localStorage.setItem(key, el.checked ? '1' : '0'); } catch (e) { } };
