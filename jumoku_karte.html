@@ -336,6 +336,7 @@ dialog.wide{max-width:720px}
       <h2>Excel出力の設定</h2>
       <label class="chk"><input type="checkbox" id="optShapes"> 写真の矢印・コメントを<b>Excelの図形</b>で出す（Excelで動かす・文字を直すことができる）</label>
       <p class="hint">外すと、書き込みを写真に焼き込んで出します（どのソフトでも同じ見た目になります）。</p>
+      <label class="chk" style="align-items:center">写真の書き込みの文字（Excel）：最小 <select class="inp" id="optMinPt" style="width:auto;min-height:36px;padding:4px 8px"><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="14">14</option></select> ポイント</label>
       <label class="chk"><input type="checkbox" id="optLists"> 一覧表のシートを先頭につける</label>
       <h3 style="margin:12px 0 2px;font-size:14.5px">保存のしかた（Excel・バックアップ・写真）</h3>
       <label class="chk"><input type="radio" name="optSave" value="ask"> 毎回、保存先を選ぶ<br><small class="hint">iPad：出てくるメニューで「“ファイル”に保存」→ フォルダ（iCloud Drive・このiPad内・OneDrive など）を選ぶ。AirDrop・メールでも送れます。パソコン：保存ダイアログでフォルダとファイル名を選ぶ。</small></label>
@@ -4661,6 +4662,7 @@ function closeDraw(save) {
 /* ---------- Excel には「図形」で出す ----------
    写真は書き込みなしで貼り、矢印・コメント・番号・○□などを Excel の図形として重ね、写真とまとめて1つのグループにする。
    Excel で写真を動かせば書き込みも一緒に動き、グループの中をクリックすれば矢印の向き・コメントの文字も直せる。 */
+const settingsMinPt = () => { try { const v = +localStorage.getItem('jk_minpt'); return v >= 6 && v <= 20 ? v : 10; } catch (e) { return 10; } };
 const settingsShapes = () => { try { return localStorage.getItem('jk_shapes') !== '0'; } catch (e) { return true; } };
 function shapesGroupXml(R, strokes, pic, idc, name) {
   const E = 9525, Wp = R.w / E, Hp = R.h / E; // 写真を 96dpi の画素に置き換えた大きさ
@@ -4700,8 +4702,18 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
   const ellipse = (nm, cx, cy, r, lnx, fl) => { const a = X(cx - r), b = Y(cy - r), d = L(r * 2); return { xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm)}<xdr:spPr>${xf(a, b, d, d)}<a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>${fl || '<a:noFill/>'}${lnx}</xdr:spPr></xdr:sp>`, box: box(a, b, a + d, b + d) }; };
   const kids = [pic], cnt = {};
   const nmOf = t => { cnt[t] = (cnt[t] || 0) + 1; return `${t} ${cnt[t]}`; };
-  for (const s of strokes) {
-    const W = Wp, H = Hp;
+  // Excelでは文字を小さくしすぎない（写真の枠が小さいと縮んで読めないので、最小のポイント数にそろえる）
+  const minPx = settingsMinPt() / .75;
+  const big = s0 => {
+    const s = { ...s0 };
+    if (s.t === 'callout' || s.t === 'text') s.s = Math.max(s.s, minPx / Wp);
+    else if (s.t === 'line' || s.t === 'dim') { if (s.text) s.s = Math.max(s.s || .03, minPx / Wp); }
+    else if (s.t === 'hatch') s.s = Math.max(s.s || .028, minPx / Wp);
+    else if (s.t === 'num') s.s = Math.max(s.s, settingsMinPt() / (Wp * .647));
+    return s;
+  };
+  for (const s0 of strokes) {
+    const s = big(s0), W = Wp, H = Hp;
     if (s.t === 'arrow2' || s.t === 'arrow') {
       const t = Math.max(3, (s.w || .006) * W) * (s.b ? .8 : 1), nm = nmOf(s.b ? '矢印（裏）' : '矢印');
       const lx = ln(t, s.c, { tail: 'triangle', tw: s.t === 'arrow' ? 'med' : 'lg', miter: !!s.b }), eff = glow(s.c, Math.max(1.5, t * .3));
@@ -4743,9 +4755,9 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
       else if (s.k === 'north') {
         const r = s.r || 0, rot = (lx, ly) => [cx + lx * Math.cos(r) - ly * Math.sin(r), cy + lx * Math.sin(r) + ly * Math.cos(r)];
         parts.push(straight(nm + ' 矢印', ...rot(0, R * .7), ...rot(0, -R), ln(Math.max(2, R * .18), s.c, { tail: 'triangle', tw: 'lg' }), glow(s.c, 1.5)));
-        parts.push(label(nm + ' N', 'N', ...rot(0, -R * 1.05), R * .8, s.c, 'center'));
+        parts.push(label(nm + ' N', 'N', ...rot(0, -R * 1.05), Math.max(R * .8, minPx), s.c, 'center'));
       }
-      if (s.text) { const lp = stampLabelPos(s, W, H); parts.push(label(nm + ' 文字', s.text, lp.x, lp.y, lp.fs, s.c, lp.align)); }
+      if (s.text) { const lp = stampLabelPos(s, W, H); parts.push(label(nm + ' 文字', s.text, lp.x, lp.y, Math.max(lp.fs, minPx), s.c, lp.align)); }
       if (parts.length) kids.push(parts.length > 1 ? group(nm, parts) : parts[0]);
     } else if (s.t === 'num') {
       const r = s.s * W * .75, a = X(s.x * W - r), b = Y(s.y * H - r), d = L(r * 2);
@@ -6319,6 +6331,7 @@ async function migrateOld() {
   document.addEventListener('close', e => { if (e.target.tagName === 'DIALOG' && !document.querySelector('dialog[open]')) resetZoom(); }, true);
   for (const id of ['#fileInbox', '#mInboxFile']) $(id).onchange = e => { const fs = [...e.target.files]; e.target.value = ''; $('#dlgMore').close(); openInbox(fs); };
   camInit();
+  { const el = $('#optMinPt'); el.value = String(settingsMinPt()); el.onchange = () => { try { localStorage.setItem('jk_minpt', el.value); } catch (e) { } }; }
   for (const r of document.querySelectorAll('input[name="optSave"]')) { r.checked = r.value === settingsSave(); r.onchange = () => { try { localStorage.setItem('jk_save', r.value); } catch (e) { } }; }
   for (const [id, key, get] of [['#optShapes', 'jk_shapes', settingsShapes], ['#optLists', 'jk_lists', settingsLists]]) {
     const el = $(id); el.checked = get(); el.onchange = () => { try { localStorage.setItem(key, el.checked ? '1' : '0'); } catch (e) { } };
