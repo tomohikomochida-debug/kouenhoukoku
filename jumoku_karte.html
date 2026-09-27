@@ -295,6 +295,13 @@ html{touch-action:manipulation}
 .pickw{position:relative;display:inline-block}.pickdel{position:absolute;right:-6px;top:-6px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;background:#8c3b25;color:#fff;font-size:13px;line-height:1;padding:0}
 #btnZoom{position:fixed;left:0;top:0;z-index:9999;transform-origin:0 0;background:#1E88E5;color:#fff;border:0;border-radius:12px;padding:10px 14px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.3)}
 dialog.ask{max-width:440px}
+dialog.wide{max-width:720px}
+.rgd{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.rgd label{display:flex;flex-direction:column;gap:4px;font-size:14px;flex:1;min-width:150px}
+.rgrow{display:grid;grid-template-columns:34px 80px 1fr 1fr 1fr;gap:6px;align-items:center;margin:4px 0}.rgrow b{font-size:20px;text-align:center}.rghead{font-size:12.5px;color:#666}
+.rgwarn{margin-top:8px;background:#fdecea;color:#8c1d18;border-radius:8px;padding:8px 10px;font-weight:600}
+.rgres{background:#f5f3ec;border-radius:10px;padding:10px 12px;margin-top:10px;line-height:1.9;font-size:15px}.rgres b{font-size:17px}.rgres b.ng{color:#c62828}.rgrate{margin-top:4px}
+.calcmap{margin-top:14px;border-top:1px solid #e6e2d6;padding-top:8px}.calcrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;font-size:14px}
+#ktools button.hl{background:#1E88E5;color:#fff;border-color:#1E88E5}
 #coChips button{font-size:13.5px;padding:7px 11px}
 </style>
 </head>
@@ -453,6 +460,10 @@ dialog.ask{max-width:440px}
     <button class="btn pri" type="button" id="imOk">取り込む</button>
   </div>
 </dialog>
+<dialog id="dlgPick">
+  <h2 id="pkTitle"></h2>
+  <div class="row" id="pkBtns" style="flex-direction:column;align-items:stretch"></div>
+</dialog>
 <dialog id="dlgChoose">
   <h2>どのカルテで診断しますか？</h2>
   <div class="row" id="ctBtns" style="flex-direction:column;align-items:stretch"></div>
@@ -479,6 +490,13 @@ dialog.ask{max-width:440px}
 <dialog id="dlgAsk" class="ask">
   <p id="askMsg" style="white-space:pre-line;margin:4px 0 14px;font-size:16px"></p>
   <div class="row"><span style="flex:1"></span><button class="btn" type="button" id="askNo">やめる</button><button class="btn pri" type="button" id="askOk">OK</button></div>
+</dialog>
+
+<dialog id="dlgRegi" class="wide">
+  <h2>📏 t/R率・腐朽空洞率</h2>
+  <div id="rgBody"></div>
+  <label class="chk"><input type="checkbox" id="rgFig" checked> 想定断面図もつくる（十字に 健全部・腐朽部 を並べた図。前に書き込んだ物は残ります）</label>
+  <div class="row" style="margin-top:10px"><button class="btn" type="button" data-close>やめる</button><span style="flex:1"></span><button class="btn pri" type="button" id="rgApply">カルテに入れる</button></div>
 </dialog>
 
 <dialog id="dlgMore">
@@ -2891,7 +2909,7 @@ const kidsOf = (el, n) => [...el.children].filter(x => !n || x.localName === n);
 const byTag = (d, n, ns = NS_MAIN) => [...d.getElementsByTagNameNS(ns, n)];
 const colNum = s => s.split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0);
 const colName = n => { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
-const splitRef = ref => { const m = /^\$?([A-Z]+)\$?(\d+)$/.exec(ref); return [colNum(m[1]), +m[2]]; };
+const splitRef = ref => { const m = /^\$?([A-Z]+)\$?(\d+)(?:#\d+\/\d+)?$/.exec(ref); return [colNum(m[1]), +m[2]]; }; // 「B38#2/4」＝B38の枠を縦に4つに分けた2つ目
 const refOf = (c, r) => colName(c + 1) + (r + 1); // 0始まり → "A1"
 const cr0 = ref => { const [c, r] = splitRef(ref); return [c - 1, r - 1]; };
 function parseRange(a) {
@@ -3010,7 +3028,7 @@ async function loadTpl(type) {
     for (let r = g.r1; r <= g.r2; r++) for (let c = g.c1; c <= g.c2; c++) cover.set(c + ',' + r, a);
   }
   const anchorAt = (c, r) => cover.get(c + ',' + r) || refOf(c, r);
-  const rangeOf = ref => merges.get(ref) || (() => { const [c, r] = cr0(ref); return { c1: c, r1: r, c2: c, r2: r }; })();
+  const rangeOf = ref => { const m = /^(.+)#(\d+)\/(\d+)$/.exec(ref); if (m) return { ...rangeOf(m[1]), part: +m[2], parts: +m[3] }; return merges.get(ref) || (() => { const [c, r] = cr0(ref); return { c1: c, r1: r, c2: c, r2: r }; })(); };
   // 印刷範囲とページ区切り
   let pa = null;
   const pn = info.names.find(n => n.name === '_xlnm.Print_Area' && n.local === String(sh.index));
@@ -3212,11 +3230,11 @@ function regiPreset(F, nekabu) {
     T('H' + r, `t/R率${a}`, 'num'); T('L' + r, `t/R率${a}の計算式（t）`, 'num'); T('R' + r, `t/R率${a}の計算式（R）`, 'num');
     T('Z' + r, `t/R率${b}`, 'num'); T('AD' + r, `t/R率${b}の計算式（t）`, 'num'); T('AJ' + r, `t/R率${b}の計算式（R）`, 'num'); });
   T('F30', '腐朽空洞率（%）', 'num');
-  T('K31', '空洞率計算式（上・左）'); T('Z31', '空洞率計算式（上・右）'); T('K32', '空洞率計算式（下・左）'); T('Z32', '空洞率計算式（下・右）');
+  T('K31', '空洞率計算式（分子1）'); T('Z31', '空洞率計算式（分子2）'); T('K32', '空洞率計算式（分母1）'); T('Z32', '空洞率計算式（分母2）');
   T('B34', '所見', 'area');
   P[nekabu ? 'B10' : 'B9'] = { k: 'photo', label: '想定断面図' };
   P.X9 = { k: 'photo', label: '測定位置写真①' }; P.AG9 = { k: 'photo', label: '測定位置写真②' }; P.X18 = { k: 'photo', label: '測定位置写真③' }; P.AG18 = { k: 'photo', label: '測定位置写真④' };
-  P.B38 = { k: 'photo', label: '測定結果（波形）' };
+  for (let i = 1; i <= 4; i++) P[`B38#${i}/4`] = { k: 'photo', label: `測定結果 波形${'①②③④'[i - 1]}` }; // 波形は4枚を縦に並べる
   const out = {}; for (const [k, v] of Object.entries(F)) out[k] = { ...v, k: 'off', blanks: false };
   return Object.assign(out, P);
 }
@@ -3312,8 +3330,8 @@ const typeOf = t => types.find(x => x.id === t.typeId) || types[0];
 /* 東京都「街路樹診断マニュアル」（令和3年3月）第Ⅶ章８ カルテ様式に合わせた同梱の様式 */
 const BUILTINS = [
   { id: 'gaikan', name: '東京都 様式3 街路樹診断カルテ', sheet: '街路樹診断カルテ様式', preset: F => gaikanPreset(F) },
-  { id: 'tk_fukyu', name: '東京都 様式10 腐朽診断カルテ（レジ）', sheet: '腐朽診断カルテ(レジ)様式', preset: F => regiPreset(F, false) },
-  { id: 'tk_nekabu', name: '東京都 様式11 根株診断カルテ（レジ）', sheet: '根株診断カルテ(レジ)様式', preset: F => regiPreset(F, true) },
+  { id: 'tk_fukyu', name: '東京都 様式10 腐朽診断カルテ（レジ）', sheet: '腐朽診断カルテ(レジ)様式', preset: F => regiPreset(F, false), calc: () => ({ kind: 'regi', map: REGI_MAP_TOKYO(false) }) },
+  { id: 'tk_nekabu', name: '東京都 様式11 根株診断カルテ（レジ）', sheet: '根株診断カルテ(レジ)様式', preset: F => regiPreset(F, true), calc: () => ({ kind: 'regi', map: REGI_MAP_TOKYO(true) }) },
   { id: 'tk_follow', name: '東京都 様式12 フォローアップ診断カルテ', sheet: 'フォローアップ診断カルテ様式', preset: F => followPreset(F) },
   { id: 'kw_gaikan', name: '川崎市 様式１ 樹木診断カルテ（外観診断）', sheet: '樹木診断カルテ', preset: F => kawasakiPreset(F), kw: true },
 ];
@@ -3325,6 +3343,7 @@ async function ensureBuiltin() {
     const nt = { id: bi.id, name: bi.name, builtin: true, group: bi.kw ? '川崎市' : '東京都', assist: bi.kw ? 'kawasaki' : undefined, ver: BUILTIN_VER, file: bi.kw ? fileKw : file, sheet: bi.sheet, fields: {}, texts: {}, fileVer: Date.now(), created: i };
     const tpl = await loadTpl(nt);
     nt.fields = bi.preset(detectFields(tpl));
+    if (bi.calc) nt.calc = b && b.calc && b.calc.userEdited ? b.calc : bi.calc();
     if (b) { nt.texts = b.texts || {}; for (const [k, v] of Object.entries(b.fields || {})) if (v.userEdited) nt.fields[k] = v; }
     await DB.put('types', nt);
     types = types.filter(t => t.id !== bi.id); types.push(nt);
@@ -3335,7 +3354,7 @@ async function saveType(ty) { ty.updated = Date.now(); await DB.put('types', ty)
 /* =========================================================
    木（1本分の記録）と値
    ========================================================= */
-const BUILTIN_VER = '7';
+const BUILTIN_VER = '8';
 const settingsLists = () => { try { return localStorage.getItem('jk_lists') !== '0'; } catch (e) { return true; } };
 const CHK = 1000; // 3段階の□で「☑（前回必要）」を表す値のずらし幅
 const boxGlyph = (orig, sel, i) => sel.has(i) ? tick(orig, true) : sel.has(i + CHK) ? '☑' : tick(orig, false);
@@ -3482,7 +3501,8 @@ async function renderKarte() {
     for (const [ref, spec] of Object.entries(ty.fields)) {
       if (spec.k !== 'photo') continue; const g = tpl.rangeOf(ref); if (!inPg(g.c1, g.r1)) continue;
       const d = h('div', { class: 'kphoto', role: 'button', 'aria-label': spec.label, 'data-ref': ref });
-      d.style.cssText = `left:${X(g.c1) + 3}px;top:${Y(g.r1) + 3}px;width:${X(Math.min(g.c2, pg.c2) + 1) - X(g.c1) - 6}px;height:${Y(Math.min(g.r2, pg.r2) + 1) - Y(g.r1) - 6}px`;
+      let y1 = Y(g.r1), y2 = Y(Math.min(g.r2, pg.r2) + 1); if (g.parts) { const hh = (y2 - y1) / g.parts; y1 += hh * (g.part - 1); y2 = y1 + hh; } // 縦に分けた枠
+      d.style.cssText = `left:${X(g.c1) + 3}px;top:${y1 + 3}px;width:${X(Math.min(g.c2, pg.c2) + 1) - X(g.c1) - 6}px;height:${y2 - y1 - 6}px`;
       d.onclick = () => kState.design ? openFieldEditor(ref) : photoMenu(ref);
       page.append(d); const cc = { photo: ref, el: d }; kCells.push(cc); paintPhoto(cc);
     }
@@ -3706,6 +3726,7 @@ function renderKTools() {
       b('全消し', false, async () => { if (!await ask('手書きの書き込みを全部消しますか？（入力した文字やチェックは消えません）')) return; cur.ink = {}; touch(); kPages.forEach(paintInk); }));
     else {
       if (curType.assist === 'kawasaki') t.append(b('💡 判定の候補', false, openAssist));
+      if (curType.calc && curType.calc.kind === 'regi') t.append(b('📏 t/R・空洞率', false, openRegi, 'hl'));
       t.append(b('🛠 カルテを調整', false, () => setMode(false, true)));
     }
   }
@@ -3863,8 +3884,19 @@ function openTypeSettings() {
     h('div', { class: 'row', style: 'margin-top:10px' },
       h('button', { type: 'button', class: 'btn', onclick: async () => {
         if (!await ask('この型の入力欄をすべて自動判定からやり直します。調整した内容は消えます。よろしいですか？', 'やり直す', true)) return;
-        ty.fields = ty.builtin ? gaikanPreset(detectFields(curTpl)) : detectFields(curTpl); ty.texts = {}; await saveType(ty); $('#dlgType').close(); await renderKarte(); toast('やり直しました');
+        const bi = BUILTINS.find(x => x.id === ty.id);
+        ty.fields = bi ? bi.preset(detectFields(curTpl)) : detectFields(curTpl); ty.texts = {}; if (bi && bi.calc) ty.calc = bi.calc(); await saveType(ty); $('#dlgType').close(); await renderKarte(); toast('やり直しました');
       } }, ty.builtin ? '最初の設定に戻す' : '自動判定をやり直す')));
+  // レジの計算（t/R率・腐朽空洞率）：結果を入れるセルを変えられる
+  const calcBox = h('div', { class: 'calcmap' });
+  const paintCalc = () => {
+    calcBox.innerHTML = '';
+    if (!ty.calc) { calcBox.append(h('button', { type: 'button', class: 'btn', onclick: () => { ty.calc = { kind: 'regi', map: {}, userEdited: true }; paintCalc(); } }, '📏 この型でレジの計算（t/R率・腐朽空洞率）を使う')); return; }
+    calcBox.append(h('h3', {}, 'レジの計算の結果を入れるセル'), h('p', { class: 'hint' }, 'セル番地（例 H28）。空欄にすると入れません。Excelでは印刷範囲の外に入力欄と計算式を置き、ここのセルはその式を参照します。'));
+    for (const [k, l] of REGI_KEYS) { const inp = h('input', { class: 'inp', value: ty.calc.map[k] || '', placeholder: '—', style: 'width:90px' }); inp.oninput = () => { const v = inp.value.trim().toUpperCase(); if (v) ty.calc.map[k] = v; else delete ty.calc.map[k]; ty.calc.userEdited = true; }; calcBox.append(h('label', { class: 'calcrow' }, h('span', {}, l), inp)); }
+    calcBox.append(h('button', { type: 'button', class: 'btn warn', onclick: () => { delete ty.calc; paintCalc(); } }, 'この型でレジの計算を使わない'));
+  };
+  paintCalc(); body.append(calcBox);
   $('#tsSave').onclick = async () => { ty.name = name.value.trim() || ty.name; await saveType(ty); $('#dlgType').close(); toast('保存しました'); };
   $('#dlgType').showModal();
 }
@@ -4039,7 +4071,7 @@ function photoMenu(slot) {
    座標は写真の幅・高さに対する割合（0〜1）で持つので、どの大きさで描いても同じ位置になる。
    矢印・コメントの引き出し線は「表」＝まっすぐ、「裏」（幹の裏側など見えない所）＝雷形（b:1）。 */
 const COLORS = ['#E53935', '#FB8C00', '#FDD835', '#43A047', '#1E88E5', '#FFFFFF', '#111111'];
-const TOOLS = [['move', '✋ 選ぶ'], ['callout', '💬 コメント'], ['arrow2', '➜ 矢印'], ['ellipse', '○'], ['rect', '□'], ['line', '／ 線'], ['num', '① 番号'], ['text', '文字'], ['pen', 'ペン'], ['marker', 'マーカー'], ['plan', '📐 平面図']];
+const TOOLS = [['move', '✋ 選ぶ'], ['callout', '💬 コメント'], ['arrow2', '➜ 矢印'], ['ellipse', '○'], ['rect', '□'], ['hatch', '▨ 異音'], ['line', '／ 線'], ['num', '① 番号'], ['text', '文字'], ['pen', 'ペン'], ['marker', 'マーカー'], ['plan', '📐 平面図']];
 // 平面図用：タップで置ける記号と、直線・寸法線
 const PLAN_TOOLS = [['line', '／ 直線'], ['dim', '↔ 寸法'], ['crown', '◌ 樹冠線'], ['st_tree', '🌳 樹木'], ['st_pole', '● 電柱'], ['st_north', '⬆ 方位'], ['rect', '▭ 建物'], ['st_reji', 'R レジ位置'], ['text', '文字']];
 const STAMP_NAMES = { tree: '樹木', pole: '電柱', north: '方位', reji: 'レジ位置' };
@@ -4162,6 +4194,18 @@ function drawStrokes(x, strokes, W, H) {
         for (const [px, py, d] of [[x1, y1, a + Math.PI], [x2, y2, a]]) { x.beginPath(); x.moveTo(px, py); x.lineTo(px - L * Math.cos(d - .38), py - L * Math.sin(d - .38)); x.lineTo(px - L * Math.cos(d + .38), py - L * Math.sin(d + .38)); x.closePath(); x.fillStyle = s.c; x.fill(); }
       }
       if (s.text) { const lp = lineLabelPos(s, W, H); drawLabel(x, s.text, lp.x, lp.y, (s.s || .03) * W, s.c, lp.align); }
+    } else if (s.t === 'hatch') { // 木槌打診の異音の範囲：斜線の四角＋上下の高さ
+      const x1 = Math.min(s.x1, s.x2) * W, x2 = Math.max(s.x1, s.x2) * W, y1 = Math.min(s.y1, s.y2) * H, y2 = Math.max(s.y1, s.y2) * H, lw = Math.max(2, (s.w || .004) * W);
+      x.fillStyle = 'rgba(255,255,255,.55)'; x.fillRect(x1, y1, x2 - x1, y2 - y1);
+      x.save(); x.beginPath(); x.rect(x1, y1, x2 - x1, y2 - y1); x.clip();
+      const gap = Math.max(6, lw * 3.2); x.lineWidth = Math.max(1.2, lw * .6); x.strokeStyle = s.c; x.beginPath();
+      for (let k = -(y2 - y1); k < x2 - x1; k += gap) { x.moveTo(x1 + k, y2); x.lineTo(x1 + k + (y2 - y1), y1); }
+      x.stroke(); x.restore();
+      x.lineWidth = lw + 3; x.strokeStyle = halo(s.c); x.strokeRect(x1, y1, x2 - x1, y2 - y1); x.lineWidth = lw; x.strokeStyle = s.c; x.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      const fs = (s.s || .028) * W;
+      if (s.top) drawLabel(x, s.top, x2 + fs * .3, y1 + fs * .45, fs, s.c, 'left');
+      if (s.bot) drawLabel(x, s.bot, x2 + fs * .3, y2 + fs * .45, fs, s.c, 'left');
+      if (s.text) drawLabel(x, s.text, (x1 + x2) / 2, y1 - fs * .35, fs, s.c, 'center');
     } else if (s.t === 'stamp') { // 平面図の記号
       const cx = s.x * W, cy = s.y * H, R = s.s * W, lw = Math.max(2, R * .12);
       if (s.k === 'tree') {
@@ -4266,6 +4310,7 @@ function moveObj(s, part, dx, dy) {
   mv('x', 'y');
 }
 function scaleObj(s, f) {
+  if (s.t === 'hatch') { const cx = (s.x1 + s.x2) / 2, cy = (s.y1 + s.y2) / 2; for (const [k, c] of [['x1', cx], ['x2', cx], ['y1', cy], ['y2', cy]]) s[k] = c + (s[k] - c) * f; if (s.s) s.s = Math.max(.012, Math.min(.08, s.s * f)); return; }
   if (s.t === 'ellipse' || s.t === 'rect') { const cx = (s.x1 + s.x2) / 2, cy = (s.y1 + s.y2) / 2; for (const [k, c] of [['x1', cx], ['x2', cx], ['y1', cy], ['y2', cy]]) s[k] = c + (s[k] - c) * f; return; }
   if ('s' in s) s.s = Math.max(.01, Math.min(.2, s.s * f));
   if ('w' in s) s.w = Math.max(.002, Math.min(.08, s.w * f));
@@ -4338,7 +4383,8 @@ function paintTools() {
   }
   if (dr.sel != null) {
     const s = dr.strokes[dr.sel];
-    sb.append(h('span', { class: 'lbl' }, ({ arrow2: '矢印', callout: 'コメント', num: '番号', text: '文字', ellipse: '○', rect: '□', pen: 'ペン', marker: 'マーカー', line: '線', dim: '寸法線' }[s.t] || STAMP_NAMES[s.k] || '') + 'を選択中：'));
+    sb.append(h('span', { class: 'lbl' }, ({ arrow2: '矢印', callout: 'コメント', num: '番号', text: '文字', ellipse: '○', rect: '□', pen: 'ペン', marker: 'マーカー', line: '線', dim: '寸法線', hatch: '異音の範囲' }[s.t] || STAMP_NAMES[s.k] || '') + 'を選択中：'));
+    if (s.t === 'hatch') sb.append(B('✏️ 異音の程度・高さ', false, async () => { await askHatch(s); redraw(); paintTools(); }));
     if (['callout', 'text', 'line', 'dim', 'stamp'].includes(s.t)) sb.append(B(s.text ? '✏️ 文字を直す' : '✏️ 文字を入れる', false, async () => { const t = await askText('文字', s.text || '', s.t === 'callout'); if (t != null) { s.text = t; if (s.t !== 'callout' && s.t !== 'text' && !s.s) s.s = .03; redraw(); paintTools(); } }));
     if (s.t === 'callout') sb.append(h('span', { class: 'seg2' }, B('枠あり', !s.nb, () => { delete s.nb; redraw(); paintTools(); }), B('枠なし', !!s.nb, () => { s.nb = 1; redraw(); paintTools(); })),
       h('span', { class: 'seg2' }, B('先 ●', !s.ah, () => { delete s.ah; redraw(); paintTools(); }), B('先 ➜', !!s.ah, () => { s.ah = 1; redraw(); paintTools(); })));
@@ -4350,6 +4396,21 @@ function paintTools() {
       B('🗑 消す', false, () => { dr.strokes.splice(dr.sel, 1); dr.sel = null; paintTools(); redraw(); }, 'del'),
       B('選択をやめる', false, () => { dr.sel = null; paintTools(); redraw(); }));
   } else if (dr.strokes.some(o => o.t !== 'pen' && o.t !== 'marker')) sb.append(h('span', { class: 'lbl' }, '置いた物は「✋ 選ぶ」（同じ道具ならそのまま）でタップして直せます'));
+}
+// 異音の範囲：程度（大・小など）と、上端・下端の高さ（G.L. m）
+const HATCH_LEVELS = ['異音（大）', '異音（小）', '異音（極大）', '打診異常'];
+async function askHatch(o) {
+  const lv = await new Promise(res => {
+    const d = $('#dlgPick'), box = $('#pkBtns'); box.innerHTML = '';
+    $('#pkTitle').textContent = '異音の程度';
+    let v = null;
+    for (const l of [...HATCH_LEVELS, '（書かない）']) box.append(h('button', { type: 'button', class: 'btn' + (l === (o.text || HATCH_LEVELS[0]) ? ' pri' : ''), onclick: () => { v = l === '（書かない）' ? '' : l; d.close(); } }, l));
+    d.onclose = () => res(v); d.showModal();
+  });
+  if (lv == null) return;
+  o.text = lv;
+  const q = await fillPlaceholders('上端 G.L.○m　下端 G.L.○m');
+  if (q) { const m = [...q.matchAll(/G\.L\.([^m　]*)m/g)].map(x => x[1]); if (m[0] && m[0] !== '○') o.top = m[0] + 'm'; if (m[1] && m[1] !== '○') o.bot = m[1] + 'm'; }
 }
 // コメント：先に言葉を選び、次に指したい所をタップ
 async function chooseCallout() {
@@ -4429,11 +4490,12 @@ function closeDraw(save) {
       if (k === 'reji') { const t = await askText('測定の高さ（例：1.2m・根株）', '', false); if (!dr) return; if (t) o.text = t; }
       add(o); return;
     }
-    const w = { pen: .006, marker: .035, ellipse: .007, rect: .007, arrow2: .012, line: .006, dim: .004, crown: .005 }[dr.tool] * sz;
+    const w = { pen: .006, marker: .035, ellipse: .007, rect: .007, arrow2: .012, line: .006, dim: .004, crown: .005, hatch: .004 }[dr.tool] * sz;
     dr.active = dr.tool === 'pen' || dr.tool === 'marker' ? { t: dr.tool, c: dr.color, w, pts: [[px, py]] } : { t: dr.tool === 'crown' ? 'ellipse' : dr.tool, c: dr.color, w, x1: px, y1: py, x2: px, y2: py, base: sz };
     if (dr.tool === 'crown') dr.active.dash = 1; // 樹冠線＝点線の楕円
     if (dr.tool === 'arrow2' && dr.back) dr.active.b = 1;
     if (dr.tool === 'dim') dr.active.s = .03 * sz;
+    if (dr.tool === 'hatch') dr.active.s = .028 * sz;
     redraw();
   });
   c.addEventListener('pointermove', e => {
@@ -4513,6 +4575,10 @@ function closeDraw(save) {
       add(a); return;
     }
     if (a.t === 'dim') { const t = await askText('寸法（例：3.5m）', '', false); if (!dr) return; if (t) a.text = t; }
+    if (a.t === 'hatch') { // タップだけなら縦長の四角を置き、異音の程度と高さを聞く
+      if (Math.hypot(a.x2 - a.x1, a.y2 - a.y1) < .01) { a.x1 -= .025; a.x2 += .025; a.y1 -= .2; a.y2 += .1; }
+      await askHatch(a); if (!dr) return;
+    }
     if (['arrow2', 'ellipse', 'rect', 'line', 'dim'].includes(a.t) && Math.hypot(a.x2 - a.x1, a.y2 - a.y1) < .01) { // タップだけのとき
       if (a.t === 'arrow2') { a.x1 = a.x2 - .12; a.y1 = a.y2 + .1; } else if (a.t === 'line' || a.t === 'dim') { a.x1 -= .15; a.x2 += .15; } else { a.x1 -= .06; a.y1 -= .05; a.x2 += .06; a.y2 += .05; }
     }
@@ -4625,6 +4691,14 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
       const lw = Math.max(1.5, (s.w || .006) * W), nm = nmOf(s.t === 'dim' ? '寸法線' : '線'), parts = [];
       parts.push(straight(nm + (s.text ? ' 線' : ''), s.x1 * W, s.y1 * H, s.x2 * W, s.y2 * H, ln(lw, s.c, { dash: !!s.dash, head: s.t === 'dim' ? 'triangle' : null, tail: s.t === 'dim' ? 'triangle' : null, tw: 'med' }), glow(s.c, 1.5)));
       if (s.text) { const lp = lineLabelPos(s, W, H); parts.push(label(nm + ' 文字', s.text, lp.x, lp.y, (s.s || .03) * W, s.c, lp.align)); }
+      kids.push(parts.length > 1 ? group(nm, parts) : parts[0]);
+    } else if (s.t === 'hatch') {
+      const x1 = Math.min(s.x1, s.x2) * W, x2 = Math.max(s.x1, s.x2) * W, y1 = Math.min(s.y1, s.y2) * H, y2 = Math.max(s.y1, s.y2) * H, lw = Math.max(2, (s.w || .004) * W), fs = (s.s || .028) * W, nm = nmOf('異音の範囲'), parts = [];
+      const a = X(x1), b = Y(y1), w = L(x2 - x1), hh = L(y2 - y1), c = hx(s.c);
+      parts.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm + ' 四角')}<xdr:spPr>${xf(a, b, w, hh)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:pattFill prst="wdUpDiag"><a:fgClr><a:srgbClr val="${c}"/></a:fgClr><a:bgClr><a:srgbClr val="FFFFFF"/></a:bgClr></a:pattFill>${ln(lw, s.c)}</xdr:spPr></xdr:sp>`, box: box(a, b, a + w, b + hh) });
+      if (s.text) parts.push(label(nm + ' 程度', s.text, (x1 + x2) / 2, y1 - fs * .35, fs, s.c, 'center'));
+      if (s.top) parts.push(label(nm + ' 上端', s.top, x2 + fs * .3, y1 + fs * .45, fs, s.c, 'left'));
+      if (s.bot) parts.push(label(nm + ' 下端', s.bot, x2 + fs * .3, y2 + fs * .45, fs, s.c, 'left'));
       kids.push(parts.length > 1 ? group(nm, parts) : parts[0]);
     } else if (s.t === 'stamp') {
       const cx = s.x * W, cy = s.y * H, R = s.s * W, lw = Math.max(2, R * .12), nm = nmOf(STAMP_NAMES[s.k] || '記号'), parts = [];
@@ -5113,6 +5187,245 @@ async function camPhone(hostId) {
   });
 }
 
+/* ---------- レジ（貫入抵抗測定）の計算：t/R率・腐朽空洞率 ----------
+   ①③ は 測定直径1（↕）、②④ は 測定直径2（↔）の軸。
+   R ＝ 直径/2 － 樹皮、 t/R ＝ 健全部 t ÷ R（小数3桁）
+   腐朽空洞率 ＝ ((直径1－樹皮①－樹皮③－t①－t③ ＋ 直径2－樹皮②－樹皮④－t②－t④) ÷ (直径1－樹皮①－樹皮③ ＋ 直径2－樹皮②－樹皮④))² ×100（小数1桁）
+   根株で俯角があるときは、直径に定数（1/cos俯角 を小数2桁に丸めた値：40°→1.31、30°→1.15）を掛けた補正直径を使う（東京都マニュアル）。
+   注意：t/R が 0.3 未満、腐朽空洞率が 50% 以上、長径が短径の 1.5 倍以上 のときは所見に詳しく書く。
+   入力は木の記録 v._regi に持ち、結果をカルテの欄（型の calc.map で決める）に書く。
+   Excel では印刷範囲の外に入力欄と計算式を置き、カルテの欄はそこを参照する式にする（あとから数字も式も直せる）。 */
+const REGI_KEYS = [
+  ['D1', '測定直径1（cm）'], ['D2', '測定直径2（cm）'],
+  ['ang', '俯角（°）'], ['CD1', '補正直径1（cm）'], ['CD2', '補正直径2（cm）'],
+  ...[1, 2, 3, 4].flatMap(i => [[`tr${i}`, `t/R率${'①②③④'[i - 1]}`], [`t${i}`, `${'①②③④'[i - 1]} t（健全部）`], [`R${i}`, `${'①②③④'[i - 1]} R の式`]]),
+  ['rate', '腐朽空洞率（%）'], ['nA', '空洞率式 分子1'], ['nB', '空洞率式 分子2'], ['dA', '空洞率式 分母1'], ['dB', '空洞率式 分母2'],
+];
+const REGI_MAP_TOKYO = nekabu => ({
+  D1: 'N7', D2: 'S7', ...(nekabu ? { ang: 'F8', CD1: 'N8', CD2: 'S8' } : {}),
+  tr1: 'H28', t1: 'L28', R1: 'R28', tr2: 'Z28', t2: 'AD28', R2: 'AJ28', tr3: 'H29', t3: 'L29', R3: 'R29', tr4: 'Z29', t4: 'AD29', R4: 'AJ29',
+  rate: 'F30', nA: 'K31', nB: 'Z31', dA: 'K32', dB: 'Z32',
+});
+const BEARINGS = ['北', '東', '南', '西'];
+const regiDefault = () => ({ mode: 'dir', D1: '', D2: '', ang: '', dirs: [{ bear: '南' }, { bear: '西' }, { bear: '北' }, { bear: '東' }].map(d => ({ ...d, b: '', t: '', dl: '' })) });
+const num = v => { const s = String(v ?? '').replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim(); return s === '' || isNaN(+s) ? null : +s; };
+const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
+function regiCalc(inp) {
+  const ang = num(inp.ang), kf = ang ? Math.round(100 / Math.cos(ang * Math.PI / 180)) / 100 : 1;
+  const D = [num(inp.D1), num(inp.D2)].map(d => d == null ? null : ang ? Math.round(d * kf * 10) / 10 : d);
+  const axis = i => (i % 2 === 0 ? 0 : 1); // ①③→直径1、②④→直径2
+  const out = { D, kf, dirs: [] };
+  inp.dirs.forEach((d, i) => {
+    const b = num(d.b) || 0, t = num(d.t), Dx = D[axis(i)];
+    const R = Dx == null ? null : Dx / 2 - b;
+    out.dirs.push({ b, t, R, tr: t != null && R > 0 ? Math.round(t / R * 1000) / 1000 : null, dl: num(d.dl), rExpr: Dx == null ? '' : `${f1(Dx)}/2${b ? '−' + f1(b) : ''}` });
+  });
+  const ds = out.dirs, all = ds.every(x => x.t != null) && D.every(x => x != null);
+  if (all) {
+    const part = (Dx, p, q) => ({ n: Dx - p.b - q.b - p.t - q.t, d: Dx - p.b - q.b, nx: [f1(Dx), ...[p.b, q.b].filter(x => x).map(f1), f1(p.t), f1(q.t)].join('−'), dx: [f1(Dx), ...[p.b, q.b].filter(x => x).map(f1)].join('−') });
+    const A = part(D[0], ds[0], ds[2]), B = part(D[1], ds[1], ds[3]);
+    out.A = A; out.B = B; out.rate = Math.round(((A.n + B.n) / (A.d + B.d)) ** 2 * 1000) / 10;
+  }
+  return out;
+}
+// マニュアルで所見に詳しく書くことになっている場合
+function regiWarnings(r) {
+  const w = [];
+  const low = r.dirs.map((d, i) => d.tr != null && d.tr < .3 ? '①②③④'[i] : '').filter(Boolean); if (low.length) w.push(`t/R 0.3未満（${low.join('')}）＝倒木の可能性が高い`);
+  if (r.rate != null && r.rate >= 50) w.push('腐朽空洞率50%以上');
+  if (r.D[0] && r.D[1] && Math.max(...r.D) / Math.min(...r.D) >= 1.5) w.push('長径が短径の1.5倍以上（楕円の幹）');
+  return w;
+}
+// カルテの欄に入れる値（画面・Excel共通）
+function regiValues(inp, ty) {
+  const r = regiCalc(inp), v = {};
+  const raw = [num(inp.D1), num(inp.D2)];
+  v.D1 = raw[0] == null ? '' : f1(raw[0]); v.D2 = raw[1] == null ? '' : f1(raw[1]);
+  if (num(inp.ang)) { v.ang = String(num(inp.ang)); v.CD1 = r.D[0] == null ? '' : f1(r.D[0]); v.CD2 = r.D[1] == null ? '' : f1(r.D[1]); }
+  r.dirs.forEach((d, i) => { const k = i + 1; v['tr' + k] = d.tr == null ? '' : d.tr.toFixed(3); v['t' + k] = d.t == null ? '' : f1(d.t); v['R' + k] = d.t == null ? '' : d.rExpr; });
+  if (r.rate != null) { v.rate = r.rate.toFixed(1); v.nA = r.A.nx; v.nB = r.B.nx; v.dA = r.A.dx; v.dB = r.B.dx; }
+  else { v.rate = ''; v.nA = v.nB = v.dA = v.dB = ''; }
+  return { v, r };
+}
+function regiApply(t, ty, inp) {
+  const map = ty.calc.map, { v } = regiValues(inp, ty);
+  for (const [k, ref] of Object.entries(map)) if (ref && k in v) setV(t, ty, ref, v[k]);
+  t.v._regi = inp;
+}
+
+/* ---------- 想定断面図：十字に 健全部（白）・腐朽部（黒）を並べ、真ん中の未測定部分を点線で ---------- */
+function regiPos(inp, i) { // 0:上 1:右 2:下 3:左
+  if (inp.mode === 'dir') { const k = BEARINGS.indexOf(inp.dirs[i].bear); if (k >= 0) return k; }
+  return [2, 3, 0, 1][i]; // 十字：①下 ②左 ③上 ④右（東京都の記入例と同じ）
+}
+async function regiDiagram(inp) {
+  const r = regiCalc(inp), S = 1200, c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
+  const cx = S / 2, cy = S / 2 - 20, RP = 400, Dm = Math.max(r.D[0] || 0, r.D[1] || 0) || 50, k = RP / (Dm / 2);
+  const F = `'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif`;
+  x.lineWidth = 3; x.strokeStyle = '#555'; x.beginPath(); x.arc(cx, cy, RP, 0, Math.PI * 2); x.stroke();
+  x.setLineDash([10, 8]); x.lineWidth = 2; x.strokeStyle = '#888';
+  x.beginPath(); x.moveTo(cx, cy - RP - 60); x.lineTo(cx, cy + RP + 60); x.moveTo(cx - RP - 60, cy); x.lineTo(cx + RP + 60, cy); x.stroke(); x.setLineDash([]);
+  const U = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // 上右下左への向き（外向き）
+  const inner = [];
+  r.dirs.forEach((d, i) => {
+    const p = regiPos(inp, i), [ux, uy] = U[p], Rr = (r.D[i % 2] || Dm) / 2 * k; // その向きの半径（画素）
+    const at = dist => [cx + ux * (Rr - dist * k), cy + uy * (Rr - dist * k)];
+    const bar = (from, len, fill) => { const [ax, ay] = at(from), [bx, by] = at(from + len), w = 26; const x0 = Math.min(ax, bx) - (ux ? 0 : w / 2), y0 = Math.min(ay, by) - (uy ? 0 : w / 2), ww = ux ? Math.abs(bx - ax) : w, hh = uy ? Math.abs(by - ay) : w; x.fillStyle = fill; x.fillRect(x0, y0, ww, hh); x.lineWidth = 2; x.strokeStyle = '#111'; x.strokeRect(x0, y0, ww, hh); };
+    if (d.t != null) bar(d.b, d.t, '#fff');
+    if (d.t != null && d.dl) bar(d.b + d.t, d.dl, '#111');
+    const depth = d.t == null ? null : d.b + d.t + (d.dl || 0);
+    inner[p] = depth == null ? null : at(Math.min(depth, (r.D[i % 2] || Dm) / 2));
+    // 番号・方角と、貫入の向きの矢印
+    const [ox, oy] = [cx + ux * (RP + 95), cy + uy * (RP + 95)];
+    x.font = `bold 44px ${F}`; x.fillStyle = '#111'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    const lbl = '①②③④'[i] + (inp.mode === 'dir' && inp.dirs[i].bear ? ' ' + inp.dirs[i].bear : '');
+    x.fillText(lbl, ox + (uy ? 70 : 0), oy + (ux ? -40 : 0));
+    const [a1x, a1y] = [cx + ux * (RP + 55), cy + uy * (RP + 55)], [a2x, a2y] = [cx + ux * (RP + 10), cy + uy * (RP + 10)];
+    x.lineWidth = 3; x.beginPath(); x.moveTo(a1x, a1y); x.lineTo(a2x, a2y); x.stroke();
+    x.beginPath(); x.moveTo(a2x, a2y); x.lineTo(a2x + ux * 14 + uy * 9, a2y + uy * 14 + ux * 9); x.lineTo(a2x + ux * 14 - uy * 9, a2y + uy * 14 - ux * 9); x.closePath(); x.fill();
+  });
+  // 真ん中（未測定、または腐朽空洞の推定）
+  const pts = [0, 1, 2, 3].map(p => inner[p]).filter(Boolean);
+  const anyDl = r.dirs.some(d => d.dl);
+  if (pts.length >= 3) {
+    x.beginPath();
+    const n = pts.length, mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    x.moveTo(...mid(pts[n - 1], pts[0]));
+    for (let i = 0; i < n; i++) x.quadraticCurveTo(...pts[i], ...mid(pts[i], pts[(i + 1) % n]));
+    x.closePath(); x.fillStyle = '#d0d0d0'; x.fill(); x.setLineDash([4, 9]); x.lineCap = 'round'; x.lineWidth = 8; x.strokeStyle = '#e57373'; x.stroke(); x.setLineDash([]);
+  }
+  // 凡例
+  x.fillStyle = '#d0d0d0'; x.fillRect(820, S - 90, 60, 36); x.setLineDash([3, 7]); x.lineWidth = 6; x.strokeStyle = '#e57373'; x.strokeRect(820, S - 90, 60, 36); x.setLineDash([]);
+  x.font = `bold 34px ${F}`; x.fillStyle = '#111'; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText(anyDl ? '未測定部分' : '腐朽（空洞）部', 895, S - 72);
+  x.fillStyle = '#fff'; x.fillRect(40, S - 90, 60, 36); x.lineWidth = 2; x.strokeStyle = '#111'; x.strokeRect(40, S - 90, 60, 36);
+  x.fillStyle = '#111'; x.fillText('健全部', 112, S - 72);
+  if (anyDl) { x.fillRect(290, S - 90, 60, 36); x.fillText('腐朽（空洞）部', 362, S - 72); }
+  return canvasBlob(c, .92);
+}
+
+/* ---------- 入力画面 ---------- */
+function openRegi() {
+  const t = cur, ty = curType; if (!ty.calc) return;
+  const inp = clone(t.v._regi || regiDefault());
+  const nekabu = !!ty.calc.map.ang;
+  const body = $('#rgBody'); body.innerHTML = '';
+  const I = (val, on, ph = '', w = '') => { const e = h('input', { class: 'inp', inputmode: 'decimal', value: val ?? '', placeholder: ph, style: w }); e.oninput = () => { on(e.value); paint(); }; return e; };
+  const modeSeg = h('div', { class: 'seg' });
+  const res = h('div', { class: 'rgres' });
+  const axisName = i => inp.mode === 'dir' ? ['南北', '東西'][i] : ['縦（↕）', '横（↔）'][i];
+  const lblD = [h('span'), h('span')];
+  const paintMode = () => { modeSeg.innerHTML = ''; for (const [m, l] of [['dir', '方角（南北・東西）'], ['cross', '方角なし（十字）']]) modeSeg.append(h('button', { type: 'button', class: inp.mode === m ? 'on' : '', onclick: () => { inp.mode = m; paintMode(); build(); } }, l)); };
+  const tbl = h('div');
+  const build = () => {
+    tbl.innerHTML = '';
+    lblD[0].textContent = `直径 ${axisName(0)}（①③）`; lblD[1].textContent = `直径 ${axisName(1)}（②④）`;
+    tbl.append(h('div', { class: 'rgrow rghead' }, h('span', {}, ''), h('span', {}, inp.mode === 'dir' ? '方角' : ''), h('span', {}, '樹皮 cm'), h('span', {}, '健全部 t cm'), h('span', {}, '腐朽部 cm（図用・任意）')));
+    inp.dirs.forEach((d, i) => {
+      const bear = inp.mode === 'dir' ? h('select', { class: 'inp', onchange: e => { d.bear = e.target.value; paint(); } }, ...BEARINGS.map(b => h('option', { value: b, selected: d.bear === b ? '' : null }, b))) : h('span', { class: 'hint' }, ['↕下', '↔左', '↕上', '↔右'][i]);
+      tbl.append(h('div', { class: 'rgrow' }, h('b', {}, '①②③④'[i]), bear, I(d.b, v => d.b = v, '0.4'), I(d.t, v => d.t = v, '18.6'), I(d.dl, v => d.dl = v, '9.4')));
+    });
+    paint();
+  };
+  const paint = () => {
+    const { v, r } = regiValues(inp, ty);
+    res.innerHTML = '';
+    r.dirs.forEach((d, i) => res.append(h('div', {}, `${'①②③④'[i]}  t/R ＝ ${d.t == null ? '—' : `${f1(d.t)} ÷ (${d.rExpr}) ＝ `}`, h('b', { class: d.tr != null && d.tr < .3 ? 'ng' : '' }, d.tr == null ? '' : d.tr.toFixed(3)))));
+    res.append(h('div', { class: 'rgrate' }, '腐朽空洞率 ＝ ', r.rate == null ? h('span', { class: 'hint' }, '4方向の t と2つの直径を入れると計算します') : h('span', {}, `((${v.nA}＋${v.nB}) ÷ (${v.dA}＋${v.dB}))² ＝ `, h('b', {}, v.rate + ' %'))));
+    if (num(inp.ang)) res.append(h('div', { class: 'hint' }, `俯角 ${num(inp.ang)}°：定数 ${r.kf.toFixed(2)} を掛けた補正直径 ${v.CD1 || '—'} cm ／ ${v.CD2 || '—'} cm で計算`));
+    const warn = regiWarnings(r); if (warn.length) res.append(h('div', { class: 'rgwarn' }, '⚠️ 所見に詳しく書く：' + warn.join('／')));
+  };
+  paintMode();
+  body.append(h('p', { class: 'hint' }, '①③ が1つ目の直径、②④ が2つ目の直径の軸です。t は波形の intact（健全部）、樹皮は bark の厚さ。'),
+    modeSeg,
+    h('div', { class: 'rgd' }, h('label', {}, lblD[0], I(inp.D1, v => inp.D1 = v, '52.0')), h('label', {}, lblD[1], I(inp.D2, v => inp.D2 = v, '53.0')),
+      nekabu ? h('label', {}, h('span', {}, '俯角（°）'), I(inp.ang, v => inp.ang = v, '0')) : ''),
+    tbl, res);
+  build();
+  $('#rgApply').onclick = async () => {
+    regiApply(t, ty, inp); touch(t); refreshView();
+    if ($('#rgFig').checked) await regiSetDiagram(t, ty, inp);
+    $('#dlgRegi').close(); toast('カルテに入れました');
+  };
+  $('#dlgRegi').showModal();
+}
+// 想定断面図の写真枠に図を入れる（前の図に描いた書き込みは残す）
+async function regiSetDiagram(t, ty, inp) {
+  const slot = Object.entries(ty.fields).find(([, s]) => s.k === 'photo' && /想定断面図/.test(s.label || ''));
+  if (!slot) return;
+  const blob = await regiDiagram(inp), id = uid(); await DB.put('photos', { id, blob });
+  const old = t.photos.find(p => p.slot === slot[0]);
+  if (old && old.gen) { await DB.del('photos', old.id); old.id = id; composeCache.clear(); }
+  else { if (old) old.slot = ''; t.photos.push({ id, slot: slot[0], strokes: [], w: 1200, h: 1200, gen: 'regi' }); }
+  touch(t); photosChanged();
+}
+
+/* ---------- Excel：印刷範囲の外に入力と計算式を置く ---------- */
+const regiBlockCol = tpl => Math.max(...tpl.pages.map(p => p.c2)) + 2; // 印刷範囲の右に1列あけた所（0始まり）
+// 計算欄の列幅（すでに列幅の指定がある所には手を出さない）
+function regiBlockCols(doc, tpl) {
+  const c0 = regiBlockCol(tpl) + 1, widths = [30, 10, 11, 13, 12, 9, 8];
+  let cols = byTag(doc, 'cols')[0];
+  const used = cols ? kidsOf(cols, 'col').some(c => +c.getAttribute('max') >= c0) : false; if (used) return;
+  if (!cols) { cols = doc.createElementNS(NS_MAIN, 'cols'); const sd = byTag(doc, 'sheetData')[0]; sd.parentNode.insertBefore(cols, sd); }
+  widths.forEach((w, i) => { const c = doc.createElementNS(NS_MAIN, 'col'); c.setAttribute('min', c0 + i); c.setAttribute('max', c0 + i); c.setAttribute('width', w); c.setAttribute('customWidth', '1'); cols.append(c); });
+}
+function regiExcelCells(t, ty, tpl) {
+  const inp = t.v && t.v._regi; if (!inp || !ty.calc) return null;
+  const map = ty.calc.map, { v } = regiValues(inp, ty);
+  // 置き場所：印刷範囲の右に1列あけた所
+  const c0 = regiBlockCol(tpl), r0 = Math.min(...tpl.pages.map(p => p.r1)) + 1;
+  const A = (dc, dr) => refOf(c0 + dc, r0 + dr), $A = (dc, dr) => A(dc, dr).replace(/^([A-Z]+)(\d+)$/, '$$$1$$$2');
+  const cells = {};
+  const put = (dc, dr, val) => { cells[A(dc, dr)] = val; };
+  const nv = x => { const n = num(x); return n == null ? '' : n; };
+  put(0, 0, 'レジの計算（この欄は印刷されません。数字や式を直すとカルテの欄も変わります）');
+  put(0, 1, '直径の取り方'); put(1, 1, inp.mode === 'dir' ? '方角（南北・東西）' : '十字');
+  put(0, 2, '測定直径1 ①③（cm）'); put(1, 2, nv(inp.D1));
+  put(0, 3, '測定直径2 ②④（cm）'); put(1, 3, nv(inp.D2));
+  put(0, 4, '俯角（°）'); put(1, 4, nv(inp.ang));
+  const D1 = $A(1, 2), D2 = $A(1, 3), AN = $A(1, 4);
+  put(2, 4, '定数'); put(3, 4, { f: `IF(N(${AN})=0,1,ROUND(1/COS(RADIANS(${AN})),2))` });
+  const KF = $A(3, 4);
+  put(0, 5, '計算に使う直径1（補正）'); put(1, 5, { f: `IF(${D1}="","",ROUND(${D1}*${KF},1))` });
+  put(0, 6, '計算に使う直径2（補正）'); put(1, 6, { f: `IF(${D2}="","",ROUND(${D2}*${KF},1))` });
+  const E1 = $A(1, 5), E2 = $A(1, 6);
+  ['方向', '方角', '樹皮（cm）', '健全部 t（cm）', '腐朽部（cm）', 'R（cm）', 't/R率'].forEach((l, i) => put(i, 8, l));
+  inp.dirs.forEach((d, i) => {
+    const rr = 9 + i, E = i % 2 === 0 ? E1 : E2;
+    put(0, rr, '①②③④'[i]); put(1, rr, inp.mode === 'dir' ? d.bear || '' : ['↕', '↔', '↕', '↔'][i]);
+    put(2, rr, nv(d.b)); put(3, rr, nv(d.t)); put(4, rr, nv(d.dl));
+    const B = A(2, rr), T = A(3, rr);
+    put(5, rr, { f: `IF(${E}="","",${E}/2-N(${B}))` });
+    put(6, rr, { f: `IF(OR(${T}="",${A(5, rr)}=""),"",ROUND(${T}/${A(5, rr)},3))` });
+  });
+  const b = i => A(2, 9 + i), tt = i => A(3, 9 + i);
+  const txt = x => `TEXT(${x},"0.0")`, bark = i => `IF(N(${b(i)})=0,"","−"&${txt(b(i))})`;
+  const allIn = `AND(${E1}<>"",${E2}<>"",COUNT(${tt(0)},${tt(1)},${tt(2)},${tt(3)})=4)`;
+  put(0, 14, '腐朽空洞率の分子1'); put(1, 14, { f: `IF(${allIn},${E1}-N(${b(0)})-N(${b(2)})-${tt(0)}-${tt(2)},"")` });
+  put(0, 15, '腐朽空洞率の分子2'); put(1, 15, { f: `IF(${allIn},${E2}-N(${b(1)})-N(${b(3)})-${tt(1)}-${tt(3)},"")` });
+  put(0, 16, '腐朽空洞率の分母1'); put(1, 16, { f: `IF(${allIn},${E1}-N(${b(0)})-N(${b(2)}),"")` });
+  put(0, 17, '腐朽空洞率の分母2'); put(1, 17, { f: `IF(${allIn},${E2}-N(${b(1)})-N(${b(3)}),"")` });
+  put(0, 18, '腐朽空洞率（%）'); put(1, 18, { f: `IF(${allIn},ROUND(((${A(1, 14)}+${A(1, 15)})/(${A(1, 16)}+${A(1, 17)}))^2*100,1),"")` });
+  // カルテの欄は上の計算を参照する式に（表示は記入例と同じ形）
+  const F = {};
+  F.D1 = { f: `IF(${D1}="","",${txt(D1)})` }; F.D2 = { f: `IF(${D2}="","",${txt(D2)})` };
+  if (map.ang) { F.ang = { f: `IF(N(${AN})=0,"",${AN})` }; F.CD1 = { f: `IF(OR(N(${AN})=0,${E1}=""),"",${txt(E1)})` }; F.CD2 = { f: `IF(OR(N(${AN})=0,${E2}=""),"",${txt(E2)})` }; }
+  for (let i = 0; i < 4; i++) {
+    const rr = 9 + i, E = i % 2 === 0 ? E1 : E2;
+    F['tr' + (i + 1)] = { f: `IF(${A(6, rr)}="","",TEXT(${A(6, rr)},"0.000"))` };
+    F['t' + (i + 1)] = { f: `IF(${tt(i)}="","",${txt(tt(i))})` };
+    F['R' + (i + 1)] = { f: `IF(OR(${tt(i)}="",${E}=""),"",${txt(E)}&"/2"&${bark(i)})` };
+  }
+  F.rate = { f: `IF(${A(1, 18)}="","",TEXT(${A(1, 18)},"0.0"))` };
+  F.nA = { f: `IF(${allIn},${txt(E1)}&${bark(0)}&${bark(2)}&"−"&${txt(tt(0))}&"−"&${txt(tt(2))},"")` };
+  F.nB = { f: `IF(${allIn},${txt(E2)}&${bark(1)}&${bark(3)}&"−"&${txt(tt(1))}&"−"&${txt(tt(3))},"")` };
+  F.dA = { f: `IF(${allIn},${txt(E1)}&${bark(0)}&${bark(2)},"")` };
+  F.dB = { f: `IF(${allIn},${txt(E2)}&${bark(1)}&${bark(3)},"")` };
+  for (const [k, ref] of Object.entries(map)) if (ref && F[k]) cells[ref] = { ...F[k], v: v[k] ?? '', str: true }; // 結果は文字（セルの%表示などに左右されない）
+  return cells;
+}
+
 /* ---------- 写真をあとでまとめて入れる ----------
    iPhone で撮って AirDrop した写真や、iPad の写真を何十枚かまとめて選ぶと、
    撮った時刻（写真の EXIF）と「その木のカルテを開いていた時間」を突き合わせて、どの木のどの枠かを自動で割り振る。
@@ -5216,6 +5529,7 @@ async function openTree(id) {
   cur = trees.find(t => t.id === id); if (!cur) return;
   sessStart(cur);
   curType = typeOf(cur); cur.typeId = curType.id; cur.v = cur.v || {}; cur.photos = cur.photos || []; cur.ink = cur.ink || {};
+  for (const p of cur.photos) if (p.slot && !curType.fields[p.slot] && curType.fields[p.slot + '#1/4']) p.slot += '#1/4'; // 1枚だった枠を分けたとき
   curTpl = await loadTpl(curType);
   kState.design = false; kState.ink = false;
   $('#listView').classList.add('hidden'); $('#editView').classList.remove('hidden');
@@ -5523,6 +5837,12 @@ function fillCells(doc, cells) {
     if (kidsOf(cell, 'f').length) continue; // 数式のセルはExcelに任せる
     while (cell.firstChild) cell.removeChild(cell.firstChild);
     cell.removeAttribute('t');
+    if (raw && typeof raw === 'object' && 'f' in raw) { // 計算式（Excelで開いたときに計算し直す）
+      const f = mk('f'); f.textContent = raw.f; cell.append(f);
+      const cv = raw.v == null ? '' : String(raw.v);
+      if (cv !== '') { const e = mk('v'); if (!raw.str && /^-?\d+(\.\d+)?$/.test(cv) && !/^0\d/.test(cv)) e.textContent = cv; else { cell.setAttribute('t', 'str'); e.textContent = cv; } cell.append(e); }
+      continue;
+    }
     if (raw && typeof raw === 'object' && 'bool' in raw) { cell.setAttribute('t', 'b'); const e = mk('v'); e.textContent = raw.bool ? '1' : '0'; cell.append(e); continue; }
     const v = raw == null ? '' : raw; if (v === '') continue;
     const sv = String(v).trim();
@@ -5533,6 +5853,7 @@ function fillCells(doc, cells) {
 function picRect(tpl, g, iw, ih) {
   let x0 = 0, y0 = 0; for (let i = 0; i < g.c1; i++) x0 += tpl.cw(i); for (let i = 0; i < g.r1; i++) y0 += tpl.rh(i);
   let W = 0, H = 0; for (let i = g.c1; i <= g.c2; i++) W += tpl.cw(i); for (let i = g.r1; i <= g.r2; i++) H += tpl.rh(i);
+  if (g.parts) { H /= g.parts; y0 += H * (g.part - 1); } // 縦に分けた枠
   const pad = 6 * 9525; W -= pad * 2; H -= pad * 2;
   const s = Math.min(W / iw, H / ih); const w = Math.round(iw * s), hh = Math.round(ih * s);
   return { x: x0 + pad + Math.round((W - w) / 2), y: y0 + pad + Math.round((H - hh) / 2), w, h: hh };
@@ -5541,9 +5862,14 @@ function cellsOf(tpl, x, y, w, hh) { // EMU の位置 → 左上・右下のセ�
   const at = (abs, size) => { abs = Math.max(0, abs); let i = 0, acc = 0; while (acc + size(i) <= abs && i < 5000) { acc += size(i); i++; } return [i, Math.round(abs - acc)]; };
   return [...at(x, tpl.cw), ...at(y, tpl.rh), ...at(x + w, tpl.cw), ...at(y + hh, tpl.rh)];
 }
+// 写真は「左上のセル＋大きさ」で置く（行の高さの計算が少しずれても、写真の縦横比が崩れない）
+function oneAnchor(tpl, x, y, w, hh, inner) {
+  const [fc, fco, fr, fro] = cellsOf(tpl, x, y, w, hh);
+  return `<xdr:oneCellAnchor><xdr:from><xdr:col>${fc}</xdr:col><xdr:colOff>${fco}</xdr:colOff><xdr:row>${fr}</xdr:row><xdr:rowOff>${fro}</xdr:rowOff></xdr:from><xdr:ext cx="${Math.round(w)}" cy="${Math.round(hh)}"/>${inner}<xdr:clientData/></xdr:oneCellAnchor>`;
+}
 function picXml(tpl, g, iw, ih, rid, id, name) {
-  const R = picRect(tpl, g, iw, ih), [fc, fco, fr, fro, tc, tco, tr, tro] = cellsOf(tpl, R.x, R.y, R.w, R.h);
-  return anchorXml(fc, fco, fr, fro, tc, tco, tr, tro, R.x, R.y, R.w, R.h, rid, id, name, 'oneCell');
+  const R = picRect(tpl, g, iw, ih);
+  return oneAnchor(tpl, R.x, R.y, R.w, R.h, picElem(R, rid, id, name));
 }
 function picElem(R, rid, id, name) {
   return `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="${xmlEsc(name)}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="${R.x}" y="${R.y}"/><a:ext cx="${R.w}" cy="${R.h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>`;
@@ -5552,8 +5878,8 @@ function picElem(R, rid, id, name) {
 function annotatedPicXml(tpl, g, iw, ih, rid, id, name, strokes, idc) {
   const R = picRect(tpl, g, iw, ih);
   const G = shapesGroupXml(R, strokes, { xml: picElem(R, rid, id, name + '（写真）'), box: [R.x, R.y, R.x + R.w, R.y + R.h] }, idc, name);
-  const [a, b, c, d] = G.box, [fc, fco, fr, fro, tc, tco, tr, tro] = cellsOf(tpl, a, b, c - a, d - b);
-  return `<xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>${fc}</xdr:col><xdr:colOff>${fco}</xdr:colOff><xdr:row>${fr}</xdr:row><xdr:rowOff>${fro}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${tc}</xdr:col><xdr:colOff>${tco}</xdr:colOff><xdr:row>${tr}</xdr:row><xdr:rowOff>${tro}</xdr:rowOff></xdr:to>${G.xml}<xdr:clientData/></xdr:twoCellAnchor>`;
+  const [a, b, c, d] = G.box;
+  return oneAnchor(tpl, a, b, c - a, d - b, G.xml);
 }
 function anchorXml(fc, fco, fr, fro, tc, tco, tr, tro, x, y, w, hh, rid, id, name, editAs) {
   return `<xdr:twoCellAnchor${editAs ? ` editAs="${editAs}"` : ''}><xdr:from><xdr:col>${fc}</xdr:col><xdr:colOff>${fco}</xdr:colOff><xdr:row>${fr}</xdr:row><xdr:rowOff>${fro}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${tc}</xdr:col><xdr:colOff>${tco}</xdr:colOff><xdr:row>${tr}</xdr:row><xdr:rowOff>${tro}</xdr:rowOff></xdr:to><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="${xmlEsc(name)}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${hh}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`;
@@ -5597,12 +5923,15 @@ async function buildWorkbook(ty, list, fileName = '') {
       vals[ref] = cellOut(ty, tpl, t, ref);
     }
     for (const ref of Object.keys(ty.texts || {})) if (!(ref in vals)) vals[ref] = cellOut(ty, tpl, t, ref);
+    const rc = ty.calc && ty.calc.kind === 'regi' ? regiExcelCells(t, ty, tpl) : null; // レジの計算は式で出す
+    if (rc) Object.assign(vals, rc);
     for (const c of tpl.ctrls) if (c.link) {
       const parts = c.link.split('!'); const r = parts.pop().replace(/\$/g, '');
       const other = parts.length && parts[0].replace(/^'|'$/g, '').replace(/''/g, "'") !== sh.name;
       if (!other && /^[A-Z]+\d+$/.test(r)) vals[r] = { bool: !!getV(t, ty, c.key) }; // リンク先セルに TRUE/FALSE
     }
     fillCells(doc, vals);
+    if (rc) regiBlockCols(doc, tpl);
     for (const sv of byTag(doc, 'sheetView')) { sv.removeAttribute('topLeftCell'); sv.removeAttribute('tabSelected'); if (i === 0 && !withLists) sv.setAttribute('tabSelected', '1'); }
     // フォームのチェックボックス
     const srels = await readRels(zip, sp);
@@ -5659,8 +5988,19 @@ async function buildWorkbook(ty, list, fileName = '') {
         const ref = kidsOf(ws).find(e => after.includes(e.localName)); ws.insertBefore(de, ref || null);
       }
       let dx = await rd(dpath);
-      if (!/xmlns:r=/.test(dx)) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"');
-      if (!/xmlns:a=/.test(dx)) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"');
+      // 名前空間の宣言は一番外の要素で確かめる（中の図形だけが宣言していることがある）
+      const rootTag = () => (/<xdr:wsDr\b[^>]*>/.exec(dx) || [''])[0];
+      if (!/xmlns:r=/.test(rootTag())) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"');
+      if (!/xmlns:a=/.test(rootTag())) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"');
+      // 自動でつくった図（想定断面図）を入れた枠では、様式にもともとある図形（円・十字など）を外す
+      for (const p of t.photos || []) {
+        if (!p.gen || !ty.fields[p.slot]) continue; const g = tpl.rangeOf(p.slot);
+        dx = dx.replace(/<xdr:(twoCellAnchor|oneCellAnchor|absoluteAnchor)\b[\s\S]*?<\/xdr:\1>/g, a => {
+          if (/r:embed="rIdP/.test(a)) return a; // このアプリが入れた写真は残す
+          const m = /<xdr:from><xdr:col>(\d+)<\/xdr:col><xdr:colOff>-?\d+<\/xdr:colOff><xdr:row>(\d+)<\/xdr:row>/.exec(a); if (!m) return a;
+          const c = +m[1], r = +m[2]; return c >= g.c1 && c <= g.c2 && r >= g.r1 && r <= g.r2 ? '' : a;
+        });
+      }
       dx = dx.replace('</xdr:wsDr>', pics + '</xdr:wsDr>');
       zip.file(dpath, dx);
       const drp = relsPathOf(dpath);
