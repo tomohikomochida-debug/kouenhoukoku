@@ -312,6 +312,9 @@ label.chk{display:flex;gap:10px;align-items:flex-start;padding:8px 0;font-size:1
       <label class="chk"><input type="checkbox" id="optShapes"> 写真の矢印・コメントを<b>Excelの図形</b>で出す（Excelで動かす・文字を直すことができる）</label>
       <p class="hint">外すと、書き込みを写真に焼き込んで出します（どのソフトでも同じ見た目になります）。</p>
       <label class="chk"><input type="checkbox" id="optLists"> 一覧表のシートを先頭につける</label>
+      <h3 style="margin:12px 0 2px;font-size:14.5px">保存のしかた（Excel・バックアップ・写真）</h3>
+      <label class="chk"><input type="radio" name="optSave" value="ask"> 毎回、保存先を選ぶ<br><small class="hint">iPad：出てくるメニューで「“ファイル”に保存」→ フォルダ（iCloud Drive・このiPad内・OneDrive など）を選ぶ。AirDrop・メールでも送れます。パソコン：保存ダイアログでフォルダとファイル名を選ぶ。</small></label>
+      <label class="chk"><input type="radio" name="optSave" value="dl"> すぐ「ダウンロード」フォルダに保存<br><small class="hint">iPadでの保存場所は「設定」→ Safari →「ダウンロード」で変えられます。</small></label>
     </div>
     <div class="card">
       <h2>バックアップ・機種変更</h2>
@@ -5021,9 +5024,23 @@ async function delType(ty) {
 /* =========================================================
    共有・ダウンロード・バックアップ
    ========================================================= */
+// 保存のしかた：'ask' = 毎回保存先を選ぶ（パソコンは保存ダイアログ、iPad は共有メニュー）／'dl' = すぐダウンロードフォルダへ
+const settingsSave = () => { try { return localStorage.getItem('jk_save') || 'ask'; } catch (e) { return 'ask'; } };
 async function shareOrDownload(file) {
-  if (navigator.canShare && navigator.canShare({ files: [file] }) && /iPad|iPhone|Android|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document) {
-    try { await navigator.share({ files: [file], title: file.name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  if (settingsSave() === 'ask') {
+    const touch = /iPad|iPhone|Android|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document;
+    if (window.showSaveFilePicker && !touch) { // パソコンの Chrome・Edge：フォルダとファイル名を選んで保存（前回のフォルダを覚える）
+      try {
+        const ext = (file.name.split('.').pop() || '').toLowerCase();
+        const hd = await window.showSaveFilePicker({ suggestedName: file.name, id: 'jumoku_karte', types: [{ description: file.name, accept: { [file.type || 'application/octet-stream']: ['.' + ext] } }] });
+        const w = await hd.createWritable(); await w.write(file); await w.close(); toast('保存しました：' + hd.name); return;
+      } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    if (touch && navigator.canShare && navigator.canShare({ files: [file] })) {
+      let hinted = false; try { hinted = localStorage.getItem('jk_savehint') === '1'; localStorage.setItem('jk_savehint', '1'); } catch (e) { }
+      if (!hinted) alert('このあと出るメニューで「“ファイル”に保存」を選ぶと、保存するフォルダ（iCloud Drive・このiPad内・OneDrive など）を選べます。AirDrop やメールで送ることもできます。');
+      try { await navigator.share({ files: [file], title: file.name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
   }
   const a = h('a', { href: URL.createObjectURL(file), download: file.name }); document.body.append(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
@@ -5304,7 +5321,7 @@ async function exportTrees(ids) {
     arr.sort((a, b) => siteOf(a).localeCompare(siteOf(b)) || (parseFloat(roleVal(a, ty, 'no')) || 1e9) - (parseFloat(roleVal(b, ty, 'no')) || 1e9) || a.created - b.created);
     try {
       const sites = [...new Set(arr.map(siteOf).filter(Boolean))];
-      const base = (arr.length === 1 ? `${ty.name}_${siteOf(arr[0])}_${roleVal(arr[0], ty, 'species')}${roleVal(arr[0], ty, 'no') ? '_No' + roleVal(arr[0], ty, 'no') : ''}` : `${ty.name}_${sites.join('・') || '樹木'}_${arr.length}本`).replace(/[\\/:*?"<>|]/g, '').replace(/_+/g, '_');
+      const base = (arr.length === 1 ? `${ty.name}_${siteOf(arr[0])}_${roleVal(arr[0], ty, 'species')}${roleVal(arr[0], ty, 'no') ? '_No' + roleVal(arr[0], ty, 'no') : ''}` : `${ty.name}_${sites.join('・') || '樹木'}_${arr.length}本`).replace(/[\\/:*?"<>|]/g, '').replace(/_+/g, '_').replace(/^_|_$/g, '');
       const macro = /\.xlsm$/i.test(ty.fileName || '');
       const { blob, ext } = await buildWorkbook(ty, arr, base + (macro ? '.xlsm' : '.xlsx'));
       await shareOrDownload(new File([blob], base + '.' + ext, { type: blob.type }));
@@ -5453,6 +5470,7 @@ async function migrateOld() {
   $('#btnBackup').onclick = backup;
   for (const id of ['#fileInbox', '#mInboxFile']) $(id).onchange = e => { const fs = [...e.target.files]; e.target.value = ''; $('#dlgMore').close(); openInbox(fs); };
   camInit();
+  for (const r of document.querySelectorAll('input[name="optSave"]')) { r.checked = r.value === settingsSave(); r.onchange = () => { try { localStorage.setItem('jk_save', r.value); } catch (e) { } }; }
   for (const [id, key, get] of [['#optShapes', 'jk_shapes', settingsShapes], ['#optLists', 'jk_lists', settingsLists]]) {
     const el = $(id); el.checked = get(); el.onchange = () => { try { localStorage.setItem(key, el.checked ? '1' : '0'); } catch (e) { } };
   }
