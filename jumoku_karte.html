@@ -298,6 +298,7 @@ dialog.ask{max-width:440px}
 dialog.wide{max-width:720px}
 .rgd{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.rgd label{display:flex;flex-direction:column;gap:4px;font-size:14px;flex:1;min-width:150px}
 .rgrow{display:grid;grid-template-columns:34px 80px 1fr 1fr 1fr;gap:6px;align-items:center;margin:4px 0}.rgrow b{font-size:20px;text-align:center}.rghead{font-size:12.5px;color:#666}
+.rgfig{margin-top:12px;border-top:1px solid #e6e2d6;padding-top:6px}.rgwave{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:5px 0}.rgwave .ok{color:#2e7d55;font-weight:600}.rgwave .ng{color:#c62828}.rgwave .btn{min-height:36px;padding:6px 10px;font-size:13.5px}
 .rgwarn{margin-top:8px;background:#fdecea;color:#8c1d18;border-radius:8px;padding:8px 10px;font-weight:600}
 .rgres{background:#f5f3ec;border-radius:10px;padding:10px 12px;margin-top:10px;line-height:1.9;font-size:15px}.rgres b{font-size:17px}.rgres b.ng{color:#c62828}.rgrate{margin-top:4px}
 .calcmap{margin-top:14px;border-top:1px solid #e6e2d6;padding-top:8px}.calcrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;font-size:14px}
@@ -495,8 +496,15 @@ dialog.wide{max-width:720px}
 <dialog id="dlgRegi" class="wide">
   <h2>📏 t/R率・腐朽空洞率</h2>
   <div id="rgBody"></div>
-  <label class="chk"><input type="checkbox" id="rgFig" checked> 想定断面図もつくる（十字に 健全部・腐朽部 を並べた図。前に書き込んだ物は残ります）</label>
+  <label class="chk"><input type="checkbox" id="rgFig" checked> 想定断面図もつくる（前に図の上へ書き込んだ物は残ります）</label>
   <div class="row" style="margin-top:10px"><button class="btn" type="button" data-close>やめる</button><span style="flex:1"></span><button class="btn pri" type="button" id="rgApply">カルテに入れる</button></div>
+</dialog>
+
+<dialog id="dlgCal" class="wide" style="max-width:940px">
+  <h2 id="calTitle">目盛りを合わせる</h2>
+  <p class="hint">赤い線を波形の <b>0cm</b>（データの開始・幹の表面）に、青い線を目盛りの数字のある線（例：40）に合わせ、その値を入れてください。オレンジの点線で上下の余白を切り取れます。</p>
+  <div style="overflow:auto;touch-action:none"><canvas id="calCv" style="display:block;touch-action:none;border:1px solid #ddd"></canvas></div>
+  <div class="row" style="margin-top:10px;align-items:center"><span>青い線の目盛り</span><input class="inp" id="calV" inputmode="decimal" style="width:90px"><span>cm</span><span style="flex:1"></span><button class="btn" type="button" data-close>やめる</button><button class="btn pri" type="button" id="calOk">これで合わせる</button></div>
 </dialog>
 
 <dialog id="dlgMore">
@@ -5258,7 +5266,8 @@ function regiPos(inp, i) { // 0:上 1:右 2:下 3:左
   if (inp.mode === 'dir') { const k = BEARINGS.indexOf(inp.dirs[i].bear); if (k >= 0) return k; }
   return [2, 3, 0, 1][i]; // 十字：①下 ②左 ③上 ④右（東京都の記入例と同じ）
 }
-async function regiDiagram(inp) {
+// waves[i] = { img, cal }：波形の画像と目盛り（cal: x0＝0cmの位置, x1＝もう1本の目盛りの位置, v＝その値(cm), y0/y1＝上下の切り取り。いずれも画像に対する割合）
+async function regiDiagram(inp, waves = []) {
   const r = regiCalc(inp), S = 1200, c = document.createElement('canvas'); c.width = c.height = S;
   const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
   const cx = S / 2, cy = S / 2 - 20, RP = 400, Dm = Math.max(r.D[0] || 0, r.D[1] || 0) || 50, k = RP / (Dm / 2);
@@ -5272,8 +5281,24 @@ async function regiDiagram(inp) {
     const p = regiPos(inp, i), [ux, uy] = U[p], Rr = (r.D[i % 2] || Dm) / 2 * k; // その向きの半径（画素）
     const at = dist => [cx + ux * (Rr - dist * k), cy + uy * (Rr - dist * k)];
     const bar = (from, len, fill) => { const [ax, ay] = at(from), [bx, by] = at(from + len), w = 26; const x0 = Math.min(ax, bx) - (ux ? 0 : w / 2), y0 = Math.min(ay, by) - (uy ? 0 : w / 2), ww = ux ? Math.abs(bx - ax) : w, hh = uy ? Math.abs(by - ay) : w; x.fillStyle = fill; x.fillRect(x0, y0, ww, hh); x.lineWidth = 2; x.strokeStyle = '#111'; x.strokeRect(x0, y0, ww, hh); };
-    if (d.t != null) bar(d.b, d.t, '#fff');
-    if (d.t != null && d.dl) bar(d.b + d.t, d.dl, '#111');
+    const wv = inp.fig !== 'bar' && waves[i] && waves[i].cal && num(waves[i].cal.v) > 0 ? waves[i] : null;
+    if (wv) { // 波形の画像を、目盛りを合わせて十字に置く（0cm＝幹の表面、中心に向かって深くなる）
+      const { img, cal } = wv, iw = img.naturalWidth, ih = img.naturalHeight;
+      const pxcm = Math.abs(cal.x1 - cal.x0) * iw / num(cal.v), s = k / pxcm, maxcm = (r.D[i % 2] || Dm) / 2;
+      const Lpx = Math.min(maxcm * pxcm, cal.x1 < cal.x0 ? cal.x0 * iw : (1 - cal.x0) * iw);
+      const sy = Math.min(cal.y0, cal.y1) * ih, shh = Math.max(4, Math.abs(cal.y1 - cal.y0) * ih);
+      let hh = shh * s; if (hh > RP * .24) hh = RP * .24; // 振幅の向きは縮めても良い
+      const [ex, ey] = [cx + ux * Rr, cy + uy * Rr];
+      x.save(); x.translate(ex, ey); x.rotate(Math.atan2(-uy, -ux)); // ＋X が中心向き
+      if (cal.x1 < cal.x0) { x.rotate(Math.PI); x.globalAlpha = .95; x.drawImage(img, cal.x0 * iw - Lpx, sy, Lpx, shh, -Lpx * s, -hh / 2, Lpx * s, hh); }
+      else { x.globalAlpha = .95; x.drawImage(img, cal.x0 * iw, sy, Lpx, shh, 0, -hh / 2, Lpx * s, hh); }
+      x.globalAlpha = 1; x.lineWidth = 2; x.strokeStyle = '#555'; x.strokeRect(cal.x1 < cal.x0 ? -Lpx * s : 0, -hh / 2, Lpx * s, hh);
+      x.restore();
+      if (d.t != null) { const [tx, ty] = at(d.b + d.t); x.lineWidth = 5; x.strokeStyle = '#E53935'; x.beginPath(); x.moveTo(tx - uy * hh * .55, ty - ux * hh * .55); x.lineTo(tx + uy * hh * .55, ty + ux * hh * .55); x.stroke(); } // 健全部の終わり
+    } else {
+      if (d.t != null) bar(d.b, d.t, '#fff');
+      if (d.t != null && d.dl) bar(d.b + d.t, d.dl, '#111');
+    }
     const depth = d.t == null ? null : d.b + d.t + (d.dl || 0);
     inner[p] = depth == null ? null : at(Math.min(depth, (r.D[i % 2] || Dm) / 2));
     // 番号・方角と、貫入の向きの矢印
@@ -5293,14 +5318,17 @@ async function regiDiagram(inp) {
     const n = pts.length, mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     x.moveTo(...mid(pts[n - 1], pts[0]));
     for (let i = 0; i < n; i++) x.quadraticCurveTo(...pts[i], ...mid(pts[i], pts[(i + 1) % n]));
-    x.closePath(); x.fillStyle = '#d0d0d0'; x.fill(); x.setLineDash([4, 9]); x.lineCap = 'round'; x.lineWidth = 8; x.strokeStyle = '#e57373'; x.stroke(); x.setLineDash([]);
+    x.closePath(); x.fillStyle = waves.some(w => w && w.cal) && inp.fig !== 'bar' ? 'rgba(160,160,160,.35)' : '#d0d0d0'; x.fill(); x.setLineDash([4, 9]); x.lineCap = 'round'; x.lineWidth = 8; x.strokeStyle = '#e57373'; x.stroke(); x.setLineDash([]);
   }
   // 凡例
   x.fillStyle = '#d0d0d0'; x.fillRect(820, S - 90, 60, 36); x.setLineDash([3, 7]); x.lineWidth = 6; x.strokeStyle = '#e57373'; x.strokeRect(820, S - 90, 60, 36); x.setLineDash([]);
   x.font = `bold 34px ${F}`; x.fillStyle = '#111'; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText(anyDl ? '未測定部分' : '腐朽（空洞）部', 895, S - 72);
-  x.fillStyle = '#fff'; x.fillRect(40, S - 90, 60, 36); x.lineWidth = 2; x.strokeStyle = '#111'; x.strokeRect(40, S - 90, 60, 36);
-  x.fillStyle = '#111'; x.fillText('健全部', 112, S - 72);
-  if (anyDl) { x.fillRect(290, S - 90, 60, 36); x.fillText('腐朽（空洞）部', 362, S - 72); }
+  if (waves.some(w => w && w.cal) && inp.fig !== 'bar') { x.lineWidth = 5; x.strokeStyle = '#E53935'; x.beginPath(); x.moveTo(40, S - 72); x.lineTo(100, S - 72); x.stroke(); x.fillStyle = '#111'; x.fillText('健全部の終わり（t）', 112, S - 72); }
+  else {
+    x.fillStyle = '#fff'; x.fillRect(40, S - 90, 60, 36); x.lineWidth = 2; x.strokeStyle = '#111'; x.strokeRect(40, S - 90, 60, 36);
+    x.fillStyle = '#111'; x.fillText('健全部', 112, S - 72);
+    if (anyDl) { x.fillRect(290, S - 90, 60, 36); x.fillText('腐朽（空洞）部', 362, S - 72); }
+  }
   return canvasBlob(c, .92);
 }
 
@@ -5317,6 +5345,27 @@ function openRegi() {
   const lblD = [h('span'), h('span')];
   const paintMode = () => { modeSeg.innerHTML = ''; for (const [m, l] of [['dir', '方角（南北・東西）'], ['cross', '方角なし（十字）']]) modeSeg.append(h('button', { type: 'button', class: inp.mode === m ? 'on' : '', onclick: () => { inp.mode = m; paintMode(); build(); } }, l)); };
   const tbl = h('div');
+  // 想定断面図の形と、波形の目盛り合わせ
+  const figBox = h('div', { class: 'rgfig' });
+  const paintFig = () => {
+    figBox.innerHTML = '';
+    const seg = h('div', { class: 'seg' });
+    for (const [m, l] of [['wave', '波形を十字に並べる'], ['bar', '太線（記入例の形）']]) seg.append(h('button', { type: 'button', class: (inp.fig || 'wave') === m ? 'on' : '', onclick: () => { inp.fig = m; paintFig(); } }, l));
+    figBox.append(h('h3', {}, '想定断面図'), seg);
+    if ((inp.fig || 'wave') === 'bar') return;
+    const slots = waveSlots(ty);
+    slots.forEach((slot, i) => {
+      if (!slot) return;
+      const p = t.photos.find(q => q.slot === slot);
+      const file = h('input', { type: 'file', accept: 'image/*', hidden: '' });
+      file.onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; if (!fs.length) return; await addPhotos(fs, slot); const np = cur.photos.find(q => q.slot === slot); if (np) await calibrateWave(np, ty.fields[slot].label); paintFig(); };
+      figBox.append(h('div', { class: 'rgwave' }, h('b', {}, '波形' + '①②③④'[i]),
+        p ? h('span', { class: p.cal && num(p.cal.v) > 0 ? 'ok' : 'ng' }, p.cal && num(p.cal.v) > 0 ? `目盛り合わせ済み（${p.cal.v}cm）` : '目盛りがまだです') : h('span', { class: 'hint' }, '写真がまだありません'),
+        p ? h('button', { type: 'button', class: 'btn', onclick: async () => { await calibrateWave(p, ty.fields[slot].label); paintFig(); } }, '📐 目盛りを合わせる') : '',
+        h('label', { class: 'btn' }, p ? '差し替え' : '＋ 波形の画像を入れる', file)));
+    });
+    figBox.append(h('p', { class: 'hint' }, '目盛りを合わせた波形は、直径に大きさを合わせて十字に並べます（0cm＝幹の表面）。合わせていない方向は太線で描きます。'));
+  };
   const build = () => {
     tbl.innerHTML = '';
     lblD[0].textContent = `直径 ${axisName(0)}（①③）`; lblD[1].textContent = `直径 ${axisName(1)}（②④）`;
@@ -5340,8 +5389,8 @@ function openRegi() {
     modeSeg,
     h('div', { class: 'rgd' }, h('label', {}, lblD[0], I(inp.D1, v => inp.D1 = v, '52.0')), h('label', {}, lblD[1], I(inp.D2, v => inp.D2 = v, '53.0')),
       nekabu ? h('label', {}, h('span', {}, '俯角（°）'), I(inp.ang, v => inp.ang = v, '0')) : ''),
-    tbl, res);
-  build();
+    tbl, res, figBox);
+  build(); paintFig();
   $('#rgApply').onclick = async () => {
     regiApply(t, ty, inp); touch(t); refreshView();
     if ($('#rgFig').checked) await regiSetDiagram(t, ty, inp);
@@ -5350,10 +5399,17 @@ function openRegi() {
   $('#dlgRegi').showModal();
 }
 // 想定断面図の写真枠に図を入れる（前の図に描いた書き込みは残す）
+// 波形①〜④の写真枠（ラベルに「波形」と番号がある枠）
+function waveSlots(ty) { return [0, 1, 2, 3].map(i => (Object.entries(ty.fields).find(([, s]) => s.k === 'photo' && /波形/.test(s.label || '') && s.label.includes('①②③④'[i])) || [])[0] || null); }
+async function regiWaves(t, ty) {
+  const out = [];
+  for (const slot of waveSlots(ty)) { const p = slot && t.photos.find(q => q.slot === slot); out.push(p ? { img: await loadImg(await photoURL(p.id)), cal: p.cal, p } : null); }
+  return out;
+}
 async function regiSetDiagram(t, ty, inp) {
   const slot = Object.entries(ty.fields).find(([, s]) => s.k === 'photo' && /想定断面図/.test(s.label || ''));
   if (!slot) return;
-  const blob = await regiDiagram(inp), id = uid(); await DB.put('photos', { id, blob });
+  const blob = await regiDiagram(inp, await regiWaves(t, ty)), id = uid(); await DB.put('photos', { id, blob });
   const old = t.photos.find(p => p.slot === slot[0]);
   if (old && old.gen) { await DB.del('photos', old.id); old.id = id; composeCache.clear(); }
   else { if (old) old.slot = ''; t.photos.push({ id, slot: slot[0], strokes: [], w: 1200, h: 1200, gen: 'regi' }); }
@@ -5424,6 +5480,38 @@ function regiExcelCells(t, ty, tpl) {
   F.dB = { f: `IF(${allIn},${txt(E2)}&${bark(1)}&${bark(3)},"")` };
   for (const [k, ref] of Object.entries(map)) if (ref && F[k]) cells[ref] = { ...F[k], v: v[k] ?? '', str: true }; // 結果は文字（セルの%表示などに左右されない）
   return cells;
+}
+
+/* ---------- 波形の目盛り合わせ：0cm の線と、もう1本の目盛りの線を合わせ、その値を入れる ---------- */
+async function calibrateWave(p, label) {
+  const img = await loadImg(await photoURL(p.id));
+  const cal = clone(p.cal || { x0: .96, x1: .06, y0: 0, y1: 1, v: '' });
+  const d = $('#dlgCal'), cv = $('#calCv'), x = cv.getContext('2d');
+  $('#calTitle').textContent = `${label || '波形'}：目盛りを合わせる`; $('#calV').value = cal.v || '';
+  const fit = () => { const W = Math.max(280, cv.parentElement.clientWidth - 4), s = W / img.naturalWidth; /* ダイアログの幅いっぱい */ cv.style.width = W + 'px'; cv.style.height = Math.round(img.naturalHeight * s) + 'px'; cv.width = W * 2; cv.height = Math.round(img.naturalHeight * s) * 2; };
+  const paint = () => {
+    const W = cv.width, H = cv.height; x.clearRect(0, 0, W, H); x.drawImage(img, 0, 0, W, H);
+    x.fillStyle = 'rgba(0,0,0,.35)'; const ya = Math.min(cal.y0, cal.y1) * H, yb = Math.max(cal.y0, cal.y1) * H; x.fillRect(0, 0, W, ya); x.fillRect(0, yb, W, H - yb);
+    const V = (xx, c, t) => { x.strokeStyle = c; x.lineWidth = 5; x.beginPath(); x.moveTo(xx * W, 0); x.lineTo(xx * W, H); x.stroke(); x.fillStyle = c; x.font = 'bold 28px sans-serif'; x.textAlign = xx > .5 ? 'right' : 'left'; x.textBaseline = 'top'; x.fillText(t, xx * W + (xx > .5 ? -10 : 10), 10); };
+    V(cal.x0, '#E53935', '0cm'); V(cal.x1, '#1E88E5', ($('#calV').value || '？') + 'cm');
+    for (const yy of [cal.y0, cal.y1]) { x.setLineDash([12, 8]); x.strokeStyle = '#FB8C00'; x.lineWidth = 4; x.beginPath(); x.moveTo(0, yy * H); x.lineTo(W, yy * H); x.stroke(); x.setLineDash([]); }
+  };
+  let drag = null;
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height, r]; };
+  cv.onpointerdown = e => {
+    const [px, py, r] = pos(e), tx = 24 / r.width, ty = 24 / r.height;
+    const cands = [['x0', Math.abs(px - cal.x0) / tx], ['x1', Math.abs(px - cal.x1) / tx], ['y0', Math.abs(py - cal.y0) / ty], ['y1', Math.abs(py - cal.y1) / ty]].sort((a, b) => a[1] - b[1]);
+    drag = cands[0][1] < 1.5 ? cands[0][0] : null; if (drag) { try { cv.setPointerCapture(e.pointerId); } catch (_) { } e.preventDefault(); }
+  };
+  cv.onpointermove = e => { if (!drag) return; const [px, py] = pos(e); cal[drag] = Math.max(0, Math.min(1, drag[0] === 'x' ? px : py)); paint(); };
+  cv.onpointerup = cv.onpointercancel = () => { drag = null; };
+  $('#calV').oninput = paint;
+  return new Promise(res => {
+    let saved = false;
+    $('#calOk').onclick = () => { const v = num($('#calV').value); if (!(v > 0)) { $('#calV').focus(); toast('青い線の目盛りの値（cm）を入れてください'); return; } cal.v = String(v); p.cal = cal; touch(); saved = true; d.close(); };
+    d.onclose = () => res(saved);
+    d.showModal(); fit(); paint();
+  });
 }
 
 /* ---------- 写真をあとでまとめて入れる ----------
