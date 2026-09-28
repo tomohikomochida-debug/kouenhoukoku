@@ -229,6 +229,7 @@ img.pick{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px so
 #fdBody .fld{margin-top:10px}
 @media (max-width:520px){.frow{grid-template-columns:1fr}}
 #draw .tools .lbl{color:#cfd3cc;font-size:12.5px;align-self:center}
+#draw .tools button:disabled{opacity:.35}
 #draw .tools button.del{background:#8c3b25;border-color:#a9503a}
 .kc.gl{cursor:help;text-decoration:underline dotted rgba(46,125,85,.8);text-underline-offset:2px}
 .qtyline{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:18px;line-height:2}
@@ -302,6 +303,7 @@ dialog.wide{max-width:720px}
 .rgwarn{margin-top:8px;background:#fdecea;color:#8c1d18;border-radius:8px;padding:8px 10px;font-weight:600}
 .rgres{background:#f5f3ec;border-radius:10px;padding:10px 12px;margin-top:10px;line-height:1.9;font-size:15px}.rgres b{font-size:17px}.rgres b.ng{color:#c62828}.rgrate{margin-top:4px}
 .calcmap{margin-top:14px;border-top:1px solid #e6e2d6;padding-top:8px}.calcrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;font-size:14px}
+#ktools button.dim{opacity:.4}
 #ktools button.hl{background:#1E88E5;color:#fff;border-color:#1E88E5}
 .corefs{margin-bottom:8px;align-items:center}.corefs .lbl{font-size:13px;color:#666;margin-right:4px}.corefs button{font-size:13.5px;padding:6px 11px;border:1px solid #1E88E5;color:#1E88E5;background:#fff;border-radius:16px}.corefs button.on{background:#1E88E5;color:#fff}
 .kphoto .phtag{position:absolute;left:4px;top:4px;background:#fff;border:1.5px solid #111;color:#111;font-size:12px;padding:1px 6px;font-weight:700}
@@ -3445,6 +3447,7 @@ function toggleOpt(ref, i) {
    カルテ画面
    ========================================================= */
 let viewMode = (() => { try { return localStorage.getItem('jk_mode') || 'karte'; } catch (e) { return 'karte'; } })();
+let kRedo = []; // 手書きの「進む」用（戻した線）
 const kState = { zoom: 1, ink: false, design: false, tool: 'pen', color: '#111111', size: 1 };
 let kCells = [], kPages = [], kLastPage = null;
 const BW = { thin: 1, hair: .6, dotted: 1, dashed: 1, mediumDashed: 2, medium: 2, thick: 3, double: 3, dashDot: 1, mediumDashDot: 2, slantDashDot: 2, dashDotDot: 1, mediumDashDotDot: 2 };
@@ -3674,7 +3677,7 @@ function inkEvents(cv, pi) {
   const end = e => {
     if (e.pointerId !== pid) return; pid = null; clearTimeout(holdT); holdAt = null;
     const p = pg(); if (!p.active) return; delete p.active.snapped;
-    cur.ink = cur.ink || {}; (cur.ink[pi] = cur.ink[pi] || []).push(p.active); p.active = null; kLastPage = pi; touch(); paintInk(p);
+    cur.ink = cur.ink || {}; (cur.ink[pi] = cur.ink[pi] || []).push(p.active); p.active = null; kLastPage = pi; kRedo = []; touch(); paintInk(p); renderKTools();
   };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
 }
@@ -3758,8 +3761,11 @@ function renderKTools() {
       b('↶ 戻す', false, () => {
         const st = cur.ink || {}; let pi = kLastPage;
         if (pi == null || !(st[pi] || []).length) pi = Object.keys(st).map(Number).reverse().find(i => (st[i] || []).length);
-        if (pi == null) return; st[pi].pop(); touch(); paintInk(kPages.find(p => p.pi === pi));
+        if (pi == null) return; kRedo.push({ pi, s: st[pi].pop() }); touch(); paintInk(kPages.find(p => p.pi === pi)); renderKTools();
       }),
+      b('↷ 進む', false, () => { // 戻した線をもう一度
+        const r = kRedo.pop(); if (!r) return; cur.ink = cur.ink || {}; (cur.ink[r.pi] = cur.ink[r.pi] || []).push(r.s); kLastPage = r.pi; touch(); paintInk(kPages.find(p => p.pi === r.pi)); renderKTools();
+      }, kRedo.length ? '' : 'dim'),
       b('全消し', false, async () => { if (!await ask('手書きの書き込みを全部消しますか？（入力した文字やチェックは消えません）')) return; cur.ink = {}; touch(); kPages.forEach(paintInk); }));
     else {
       if (curType.assist === 'kawasaki') t.append(b('💡 判定の候補', false, openAssist));
@@ -4421,13 +4427,14 @@ async function openDraw(p, box) {
   let tool = 'callout', back = false, plan = false; try { tool = localStorage.getItem('jk_drawTool') || tool; back = localStorage.getItem('jk_back') === '1'; plan = localStorage.getItem('jk_plan') === '1'; } catch (e) { }
   if (tool === 'plan' || tool === 'callout') tool = 'callout';
   dr = { p, box, img, strokes: clone(p.strokes), tool, back, plan, color: COLORS[0], size: 1, active: null, penSeen: false, sel: null, pending: null, view: { z: 1, x: 0, y: 0 } };
+  dr.hist = [JSON.stringify(dr.strokes)]; dr.hi = 0;
   $('#drawCanvas').style.transform = '';
   $('#draw').classList.remove('hidden'); document.body.style.overflow = 'hidden'; resetZoom();
   paintTools(); fitCanvas(); redraw();
 }
 function paintTools() {
   const tb = $('#drawTools'), sb = $('#drawSel'); tb.innerHTML = ''; sb.innerHTML = ''; // 上＝道具（高さが変わらない）、下＝いま選んでいる物の操作（写真に重ねて出す）
-  const B = (label, on, fn, cls = '') => h('button', { type: 'button', class: (on ? 'on ' : '') + cls, onclick: fn }, label);
+  const B = (label, on, fn, cls = '') => h('button', { type: 'button', class: (on ? 'on ' : '') + cls, onclick: async () => { await fn(); drawSnap(); } }, label); // 操作のたびに履歴へ
   const pick = k => { dr.tool = k; dr.sel = null; dr.pending = null; try { localStorage.setItem('jk_drawTool', k); } catch (e) { } paintTools(); redraw(); if (k === 'callout') chooseCallout(); };
   tb.append(...TOOLS.map(([k, l]) => k === 'plan'
     ? B(l + (dr.plan ? ' ▴' : ' ▾'), dr.plan, () => { dr.plan = !dr.plan; try { localStorage.setItem('jk_plan', dr.plan ? '1' : '0'); } catch (e) { } paintTools(); })
@@ -4435,10 +4442,11 @@ function paintTools() {
   if (dr.plan) tb.append(h('span', { class: 'planrow' }, h('span', { class: 'lbl' }, '平面図：'), ...PLAN_TOOLS.map(([k, l]) => B(l, dr.tool === k, () => pick(k)))));
   if (dr.pending) sb.append(h('span', { class: 'hint2' }, `📍 指したい所をタップ（「${dr.pending.text.split('\n')[0]}」）`), B('言葉を選び直す', false, chooseCallout));
   else if (dr.tool === 'callout' && dr.sel == null) sb.append(B('💬 言葉を選ぶ', false, chooseCallout, 'hl'));
-  tb.append(...COLORS.map(c => h('button', { type: 'button', class: 'sw' + (dr.color === c ? ' on' : ''), style: `background:${c}`, 'aria-label': '色', onclick: () => { dr.color = c; if (dr.sel != null) { dr.strokes[dr.sel].c = c; redraw(); } paintTools(); } })));
+  tb.append(...COLORS.map(c => h('button', { type: 'button', class: 'sw' + (dr.color === c ? ' on' : ''), style: `background:${c}`, 'aria-label': '色', onclick: () => { dr.color = c; if (dr.sel != null) { dr.strokes[dr.sel].c = c; redraw(); drawSnap(); } paintTools(); } })));
   tb.append(...[[0.6, '細'], [1, '中'], [1.8, '太']].map(([v, l]) => B(l, dr.size === v, () => { dr.size = v; if (dr.sel != null) { const s = dr.strokes[dr.sel], base = s.base || 1; scaleObj(s, v / base); s.base = v; redraw(); } paintTools(); })));
   tb.append(h('span', { class: 'gap' }), ...(dr.view && dr.view.z > 1.01 ? [B('🔍 全体を表示', false, () => window.resetDrawView(), 'hl')] : []),
-    B('↶ 戻す', false, () => { dr.strokes.pop(); dr.sel = null; paintTools(); redraw(); }),
+    h('button', { type: 'button', disabled: dr.hi > 0 ? null : '', onclick: () => drawUndo(-1) }, '↶ 戻す'),
+    h('button', { type: 'button', disabled: dr.hi < dr.hist.length - 1 ? null : '', onclick: () => drawUndo(1) }, '↷ 進む'),
     B('全消し', false, async () => { if (await ask('書き込みを全部消しますか？', '全部消す', true)) { dr.strokes = []; dr.sel = null; paintTools(); redraw(); } }),
     B('やめる', false, closeDraw.bind(null, false)),
     B('完了', true, closeDraw.bind(null, true)));
@@ -4486,6 +4494,17 @@ async function askHatch(o) {
   const q = await fillPlaceholders('上端 G.L.○m　下端 G.L.○m');
   if (q) { const m = [...q.matchAll(/G\.L\.([^m　]*)m/g)].map(x => x[1]); if (m[0] && m[0] !== '○') o.top = m[0] + 'm'; if (m[1] && m[1] !== '○') o.bot = m[1] + 'm'; }
 }
+// 戻す・進む：書き込みの変化（置く・動かす・消す・文字や色を変える）ごとに記録する
+function drawSnap() {
+  if (!dr || !dr.hist) return;
+  const j = JSON.stringify(dr.strokes); if (j === dr.hist[dr.hi]) return;
+  dr.hist = dr.hist.slice(0, dr.hi + 1); dr.hist.push(j); if (dr.hist.length > 150) dr.hist.shift(); dr.hi = dr.hist.length - 1;
+  paintTools();
+}
+function drawUndo(step) {
+  if (!dr) return; const i = dr.hi + step; if (i < 0 || i >= dr.hist.length) return;
+  dr.hi = i; dr.strokes = JSON.parse(dr.hist[i]); dr.sel = null; dr.active = null; paintTools(); redraw();
+}
 // コメント：先に言葉を選び、次に指したい所をタップ
 async function chooseCallout() {
   if (!dr) return;
@@ -4532,7 +4551,7 @@ function closeDraw(save) {
   const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
   const tol = () => 14 * c.width / c.getBoundingClientRect().width;
   // 置いた物は選択しない（続けて色や表／裏を変えても、いま置いた物は変わらない）。直すときはタップで選ぶ
-  const add = o => { dr.strokes.push(o); dr.sel = null; paintTools(); redraw(); };
+  const add = o => { dr.strokes.push(o); dr.sel = null; drawSnap(); paintTools(); redraw(); };
   c.addEventListener('pointerdown', async e => {
     if (!dr || dr.pinch) return;
     if (e.pointerType === 'pen') dr.penSeen = true;
@@ -4617,7 +4636,8 @@ function closeDraw(save) {
     dr.active = o; dr.snapped = true; redraw();
     if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { }
   };
-  const end = async e => {
+  const end = async e => { await end0(e); drawSnap(); };
+  const end0 = async e => {
     if (!dr || e.pointerId !== dr.pid) return; dr.pid = null; clearTimeout(dr.holdT); dr.holdAt = null; const snapped = dr.snapped; dr.snapped = false;
     if (snapped && dr.active) { const a = dr.active; dr.active = null; add(a); return; }
     if (dr.drag) { // 選んである物をもう一度タップ → 文字・番号を直す
@@ -5696,7 +5716,7 @@ async function openTree(id) {
   curType = typeOf(cur); cur.typeId = curType.id; cur.v = cur.v || {}; cur.photos = cur.photos || []; cur.ink = cur.ink || {};
   for (const p of cur.photos) if (p.slot && !curType.fields[p.slot] && curType.fields[p.slot + '#1/4']) p.slot += '#1/4'; // 1枚だった枠を分けたとき
   curTpl = await loadTpl(curType);
-  kState.design = false; kState.ink = false;
+  kState.design = false; kState.ink = false; kRedo = [];
   $('#listView').classList.add('hidden'); $('#editView').classList.remove('hidden');
   window.scrollTo(0, 0); await showMode(viewMode, true);
   $('#sub').style.top = $('#editView .bar').offsetHeight + 'px';
