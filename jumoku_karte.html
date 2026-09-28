@@ -274,6 +274,7 @@ label.chk{display:flex;gap:10px;align-items:flex-start;padding:8px 0;font-size:1
 #cph .clens{display:flex;gap:8px;justify-content:center;margin-bottom:12px}
 #cph .clens button{background:#0009;color:#fff;border:1px solid #fff6;border-radius:20px;min-width:52px;height:38px;font-size:14px;font-weight:700}#cph .clens button.on{background:#FDD835;color:#111;border-color:#FDD835}
 #cph .crow{display:flex;align-items:center;justify-content:space-between}
+#cph .cposrow{display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:10px;font-size:13px}#cph .cpos{background:#0009;color:#fff;border:1px solid #fff6;border-radius:20px;height:38px;padding:0 14px;font-size:14px;font-weight:700}#cph .cpos:active{background:#1E88E5}
 #cph .cthumb{display:flex;gap:4px;width:96px;height:64px}
 #cph .cth{width:40px;height:54px;object-fit:cover;border-radius:6px;border:3px solid #FB8C00}#cph .cth.ok{border-color:#43A047}#cph .cth.ng{border-color:#E53935}
 #cph .cshut{width:78px;height:78px;border-radius:50%;background:#fff;border:6px solid #fff8;box-shadow:0 0 0 3px #000 inset}#cph .cshut:active{transform:scale(.92)}
@@ -550,6 +551,8 @@ dialog.wide{max-width:720px}
   <div class="row" style="flex-direction:column;align-items:stretch">
     <button class="btn pri" type="button" id="mExcel">この木のカルテをExcelに出力</button>
     <label class="btn">📥 写真をまとめて入れる<input type="file" id="mInboxFile" accept="image/*" multiple hidden></label>
+    <button class="btn" type="button" id="mPos">📍 木の位置を測る（幹の横で）</button>
+    <p class="hint" id="mPosInfo" style="margin:-4px 0 4px"></p>
     <button class="btn" type="button" id="mDup">この木を複製</button>
     <button class="btn warn" type="button" id="mDel">この木を削除</button>
     <button class="btn" type="button" data-close>閉じる</button>
@@ -5052,7 +5055,7 @@ function listSpecs(ty, tpl, arr, names, fileName) {
   for (const sp of specs) { sp.b3 = b3; if (park) sp.heads = sp.heads.map(([hd, w]) => [hd.replace(/^路線名$/, '路線名・\n公園名').replace('路線名・現場名', '路線名・公園名'), w]); }
   return specs;
 }
-const LATLON = t => { const g = treeGeo(t); return g ? [+g.lat.toFixed(6), +g.lon.toFixed(6)] : ['', '']; };
+const LATLON = t => { const g = treeGeo(t); return g ? [+g.lat.toFixed(7), +g.lon.toFixed(7)] : ['', '']; };
 function listSpecs0(ty, tpl, arr, names, fileName) {
   const J = (t, ref) => judgeKey(selNames(t, ty, tpl, ref)[0] || '');
   if (ty.id === 'kw_gaikan') {
@@ -5197,6 +5200,12 @@ async function camData(c, d) {
   if (!d || typeof d !== 'object') return;
   if (d.type === 'setTarget') { if (cur) camSetTarget(d.slot || null); return; }
   if (d.type === 'hello') { camSync(); return; }
+  if (d.type === 'pos') { // iPhoneで測った木の位置（幹の横で）
+    const t = trees.find(x => x.id === d.tree) || cur, g = validGeo(d.geo, 'iphone');
+    if (!t || !g) { c.send({ type: 'posack', ok: false, msg: t ? '位置が取れていません' : 'iPadでカルテを開いてください' }); return; }
+    t.pos = g; touch(t); if (t === cur) toast(`📱 木の位置を記録しました（${accText(g.acc)}）`);
+    c.send({ type: 'posack', ok: true, label: `${treeTitle(t, typeOf(t))} の位置（${accText(g.acc)}）` }); return;
+  }
   if (d.type !== 'photo') return;
   if (CAM.got.has(d.id)) { c.send({ type: 'ack', id: d.id, ok: true, label: '（受け取り済み）' }); return; }
   const t = trees.find(x => x.id === d.tree) || cur;
@@ -5285,9 +5294,10 @@ async function camPhone(hostId) {
   const stdBtn = h('button', { type: 'button', class: 'cstd' }, '標準\nカメラ');
   const flash = h('div', { class: 'cflash' });
   const list = h('div', { class: 'clist hidden' });
+  const posBtn = h('button', { type: 'button', class: 'cpos' }, '📍 木の位置'), posInfo = h('span', {}, 'GPS …');
   const root = h('div', { id: 'cph' }, video, flash,
     h('div', { class: 'ctop' }, dot, stat), tgt, list,
-    h('div', { class: 'cbot' }, lens, h('div', { class: 'crow' }, thumb, shutter, stdBtn, std)));
+    h('div', { class: 'cbot' }, h('div', { class: 'cposrow' }, posBtn, posInfo), lens, h('div', { class: 'crow' }, thumb, shutter, stdBtn, std)));
   document.body.append(root);
   let peer = null, conn = null, connecting = false, last = null, stream = null, devs = [];
   const pending = new Map();
@@ -5314,6 +5324,7 @@ async function camPhone(hostId) {
       last = d; showTarget();
       if (d.ok && conn && conn.open) for (const [, it] of pending) if (it.el.classList.contains('ng')) { it.el.className = 'cth wait'; if (!it.msg.tree) { it.msg.tree = d.tree; it.msg.slot = d.slot; } conn.send(it.msg); } // カルテが開かれたら送り直す
     }
+    if (d.type === 'posack') { setStat(d.ok ? `📍 ${d.label}を記録しました` : `⚠️ ${d.msg}`, d.ok ? 'ok' : 'ng'); return; }
     if (d.type === 'ack') {
       const it = pending.get(d.id);
       if (it) it.el.className = 'cth ' + (d.ok ? 'ok' : 'ng');
@@ -5377,7 +5388,14 @@ async function camPhone(hostId) {
   // --- 撮る・送る ---
   // 撮影位置：iPhoneのGPSを見ておき、撮ったときの位置を写真と一緒に送る
   let geoLast = null;
-  try { if (navigator.geolocation) navigator.geolocation.watchPosition(p => { geoLast = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now(), src: 'iphone' }; }, () => { }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 60000 }); } catch (e) { }
+  try { if (navigator.geolocation) navigator.geolocation.watchPosition(p => { geoLast = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now(), src: 'iphone' }; posInfo.textContent = 'GPS ' + accText(p.coords.accuracy); }, () => { posInfo.textContent = 'GPSなし'; }, { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 }); } catch (e) { }
+  // 幹の横で「📍 木の位置」：いま開いている木の位置として送る（cm級の受信機をつないでいれば、その位置）
+  posBtn.onclick = () => {
+    if (!geoLast || Date.now() - geoLast.ts > 15000) return setStat('GPSの位置がまだ取れていません。少し待ってください', 'wait');
+    if (!conn || !conn.open) return setStat('iPadにつながっていません', 'ng');
+    if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) { }
+    conn.send({ type: 'pos', tree: last && last.ok ? last.tree : null, geo: geoLast });
+  };
   const send = async (blob, w, hh, geo) => {
     const id = uid(), buf = await blob.arrayBuffer();
     if (!geo && geoLast && Date.now() - geoLast.ts < 120000) geo = { ...geoLast, ts: Date.now() };
@@ -5944,15 +5962,17 @@ async function newProjOrRoute() {
    p.geo = { lat, lon, acc（m）, ts, src: 'iphone'|'exif'|'gps' }
    ========================================================= */
 const GEO_SRC = { iphone: 'iPhoneのGPS', exif: '写真の位置情報', gps: 'iPadの位置', field: '緯度・経度の欄' };
+// 位置の数字：精度が1m より良い（RTK などcm級の受信機をつないだ）ときは cm まで
+const accText = a => a == null ? '' : a < 1 ? `±${Math.round(a * 100)}cm` : `±${Math.round(a)}m`;
 function validGeo(g, src) {
   if (!g) return null; const lat = +g.lat, lon = +g.lon;
   if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180 || (!lat && !lon)) return null;
-  return { lat: +lat.toFixed(7), lon: +lon.toFixed(7), acc: g.acc != null && isFinite(+g.acc) ? Math.round(+g.acc) : null, ts: +g.ts || Date.now(), src: g.src || src || 'gps' };
+  return { lat: +lat.toFixed(7), lon: +lon.toFixed(7), acc: g.acc != null && isFinite(+g.acc) ? Math.round(+g.acc * 100) / 100 : null, ts: +g.ts || Date.now(), src: g.src || src || 'gps' };
 }
-function geoNow(timeout = 12000) {
+function geoNow(timeout = 12000, maxAge = 5000) {
   return new Promise(res => {
     if (!navigator.geolocation) return res(null);
-    try { navigator.geolocation.getCurrentPosition(p => res(validGeo({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now(), src: 'gps' })), () => res(null), { enableHighAccuracy: true, timeout, maximumAge: 5000 }); } catch (e) { res(null); }
+    try { navigator.geolocation.getCurrentPosition(p => res(validGeo({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now(), src: 'gps' })), () => res(null), { enableHighAccuracy: true, timeout, maximumAge: maxAge }); } catch (e) { res(null); }
   });
 }
 // JPEG の EXIF：撮影日時と位置。読めなければ null
@@ -5994,8 +6014,10 @@ async function geoForFile(file) {
   if (ex && ex.time && Math.abs(Date.now() - ex.time) > 15 * 60000) return null; // 前に撮った写真：いまの位置は使わない
   return geoNow();
 }
-// 全景写真の枠：「全景」→「樹形略図・診断概要図」→「写真①」→ ほかの写真 → 平面図 → 枠なし
+// 全景写真の枠：川崎市は樹形略図、東京都は診断概要図。ほかの様式は「全景」→「写真①」→ ほかの写真 → 平面図 → 枠なし
+const OVERVIEW_SLOT = { kw_gaikan: 'I33', gaikan: 'BM13' };
 function overviewRank(ty, slot) {
+  if (OVERVIEW_SLOT[ty.id]) return slot === OVERVIEW_SLOT[ty.id] ? 0 : slot && ty.fields[slot] ? 3 : 9;
   const l = (slot && ty.fields[slot] && ty.fields[slot].label) || ''; if (!l) return 9;
   return /全景/.test(l) ? 0 : /樹形略図|診断概要図|概要図/.test(l) ? 1 : /写真\s*[①1](?!\d)/.test(l) ? 2 : /平面図/.test(l) ? 8 : 3;
 }
@@ -6006,10 +6028,18 @@ function photoGeo(t, ty) {
   return { ...ps[0].geo, slot: ps[0].slot };
 }
 function fieldGeo(t, ty) { const { la, lo } = gpsRefs(ty); if (!la || !lo) return null; return validGeo({ lat: parseFloat(getV(t, ty, la)), lon: parseFloat(getV(t, ty, lo)), src: 'field' }); }
-function treeGeo(t) { const ty = typeOf(t); if (!ty) return null; return fieldGeo(t, ty) || photoGeo(t, ty); }
-const geoText = g => g ? `${g.lat.toFixed(6)}, ${g.lon.toFixed(6)}` : '';
+// 木の位置：緯度・経度の欄 → 幹の横で測った位置（t.pos）→ 全景写真の撮影位置
+const posGeo = t => { const g = validGeo(t.pos); return g ? { ...g, pos: true } : null; };
+function treeGeo(t) { const ty = typeOf(t); if (!ty) return null; return fieldGeo(t, ty) || posGeo(t) || photoGeo(t, ty); }
+const geoText = g => g ? `${g.lat.toFixed(7)}, ${g.lon.toFixed(7)}` : '';
 const fmtTs = ms => { if (!ms) return ''; const d = new Date(ms), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
-function geoLine(g) { return g ? `📍 ${geoText(g)}${g.acc != null ? `（±${g.acc}m）` : ''}${GEO_SRC[g.src] ? '・' + GEO_SRC[g.src] : ''}` : ''; }
+function geoLine(g) { return g ? `📍 ${geoText(g)}${g.acc != null ? `（${accText(g.acc)}）` : ''}${GEO_SRC[g.src] ? '・' + GEO_SRC[g.src] : ''}` : ''; }
+// 木の位置を幹の横で測る（iPad）。cm級の受信機をつないでいれば、その位置が入る
+async function measureTreePos(t = cur) {
+  if (!t) return; toast('位置を測っています…（幹の横で動かずに）', 3000);
+  const g = await geoNow(20000, 0); if (!g) return say('位置を取れませんでした。位置情報の許可と電波を確かめてください。');
+  t.pos = g; touch(t); toast(`木の位置を記録しました（${accText(g.acc)}）`); if (t === cur) refreshView(true);
+}
 // 写真のメニューに出す：撮影位置と、いまの位置で記録し直す
 function photoGeoRow(p) {
   const line = h('p', { class: 'hint', style: 'margin:2px 0' }, p.geo ? '撮影位置 ' + geoLine(p.geo) : '撮影位置：記録なし');
@@ -6082,14 +6112,14 @@ function paintJudgeCells(doc, t, ty, tpl, kit) {
 
 /* ---------- Excel：印刷範囲の外に撮影位置を残す（緯度・経度の欄がある様式は、その欄に入れる） ---------- */
 function geoExcelCells(t, ty, tpl, vals, c0) {
-  const g = photoGeo(t, ty), { la, lo } = gpsRefs(ty);
-  if (la && lo) { if (g && !fieldGeo(t, ty)) { vals[la] = g.lat.toFixed(6); vals[lo] = g.lon.toFixed(6); } return false; }
+  const g = posGeo(t) || photoGeo(t, ty), { la, lo } = gpsRefs(ty);
+  if (la && lo) { if (g && !fieldGeo(t, ty)) { vals[la] = g.lat.toFixed(7); vals[lo] = g.lon.toFixed(7); } return false; }
   if (!g) return false;
   const r0 = Math.min(...tpl.pages.map(p => p.r1)) + 1, A = (dc, dr) => refOf(c0 + dc, r0 + dr);
-  const rows = [['全景写真の撮影位置（この欄は印刷されません）', ''], ['緯度', g.lat.toFixed(6)], ['経度', g.lon.toFixed(6)], ['精度（m）', g.acc != null ? g.acc : ''], ['撮影日時', fmtTs(g.ts)], ['位置の取り方', GEO_SRC[g.src] || ''], ['写真の枠', (ty.fields[g.slot] || {}).label || '（枠なし）']];
+  const rows = [[g.pos ? '樹木の位置（幹の横で測定。この欄は印刷されません）' : '全景写真の撮影位置（この欄は印刷されません）', ''], ['緯度', g.lat.toFixed(7)], ['経度', g.lon.toFixed(7)], ['精度（m）', g.acc != null ? g.acc : ''], [g.pos ? '測った日時' : '撮影日時', fmtTs(g.ts)], ['位置の取り方', GEO_SRC[g.src] || ''], g.pos ? null : ['写真の枠', (ty.fields[g.slot] || {}).label || '（枠なし）']].filter(Boolean);
   rows.forEach(([a, b], i) => { vals[A(0, i)] = a; if (b !== '') vals[A(1, i)] = b; });
   vals[A(0, rows.length)] = '地図で見る';
-  vals[A(1, rows.length)] = { f: `HYPERLINK("https://maps.gsi.go.jp/#18/${g.lat.toFixed(6)}/${g.lon.toFixed(6)}/","地理院地図で開く")`, v: '地理院地図で開く', str: true };
+  vals[A(1, rows.length)] = { f: `HYPERLINK("https://maps.gsi.go.jp/#18/${g.lat.toFixed(7)}/${g.lon.toFixed(7)}/","地理院地図で開く")`, v: '地理院地図で開く', str: true };
   return true;
 }
 function blockCols(doc, c1, widths) { // 列幅（すでに指定がある所には手を出さない）。c1 は1始まり
@@ -6297,7 +6327,7 @@ function gisRows(list) {
   return list.map(t => {
     const ty = typeOf(t), g = treeGeo(t); if (!ty || !g) return null;
     const j = judgeKey(roleVal(t, ty, 'judge')), col = JUDGE_SET.has(j) ? judgeColor(j, typeHasB3(ty)) : JPAL.n;
-    return { g, col, props: { 案件: projOf(t), 種別: kindWord(isPark(t)), 路線名_公園名: siteOf(t), No: roleVal(t, ty, 'no'), 樹木番号: roleVal(t, ty, 'treeNo'), 樹種: roleVal(t, ty, 'species'), 判定: j, 診断日: roleVal(t, ty, 'date'), 様式: ty.name, 位置の取り方: GEO_SRC[g.src] || '', 精度m: g.acc ?? '', 撮影日時: fmtTs(g.ts), 色: '#' + col.fill } };
+    return { g, col, props: { 案件: projOf(t), 種別: kindWord(isPark(t)), 路線名_公園名: siteOf(t), No: roleVal(t, ty, 'no'), 樹木番号: roleVal(t, ty, 'treeNo'), 樹種: roleVal(t, ty, 'species'), 判定: j, 診断日: roleVal(t, ty, 'date'), 様式: ty.name, 位置の取り方: (g.pos ? '幹の横で測定・' : g.src === 'field' ? '' : '全景写真・') + (GEO_SRC[g.src] || ''), 精度m: g.acc ?? '', 撮影日時: fmtTs(g.ts), 色: '#' + col.fill } };
   }).filter(Boolean);
 }
 async function exportGis(list, proj) {
@@ -7097,7 +7127,8 @@ async function migrateOld() {
   $('#fileImport').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importExcel(f); };
   $('#btnBack').onclick = () => history.state && history.state.v === 'edit' ? history.back() : backToList();
   $('#btnNext').onclick = nextTree;
-  $('#btnMore').onclick = () => $('#dlgMore').showModal();
+  $('#btnMore').onclick = () => { const g = cur && treeGeo(cur); $('#mPosInfo').textContent = g ? `いまの木の位置：${geoLine(g).replace('📍 ', '')}${g.pos ? '（幹の横で測定）' : g.src === 'field' ? '' : '（全景写真の撮影位置）'}` : 'まだ位置がありません（iPhoneで全景写真を撮ると入ります）'; $('#dlgMore').showModal(); };
+  $('#mPos').onclick = () => { $('#dlgMore').close(); measureTreePos(); };
   $('#mDup').onclick = () => { $('#dlgMore').close(); dupTree(); };
   $('#mDel').onclick = () => { $('#dlgMore').close(); delTree(); };
   $('#mExcel').onclick = () => { $('#dlgMore').close(); exportTrees([cur.id]); };
