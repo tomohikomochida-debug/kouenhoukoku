@@ -4157,9 +4157,9 @@ function photoMenu(slot) {
    座標は写真の幅・高さに対する割合（0〜1）で持つので、どの大きさで描いても同じ位置になる。
    矢印・コメントの引き出し線は「表」＝まっすぐ、「裏」（幹の裏側など見えない所）＝雷形（b:1）。 */
 const COLORS = ['#E53935', '#FB8C00', '#FDD835', '#43A047', '#1E88E5', '#FFFFFF', '#111111'];
-const TOOLS = [['move', '✋ 選ぶ'], ['callout', '💬 コメント'], ['arrow2', '➜ 矢印'], ['ellipse', '○'], ['rect', '□'], ['hatch', '▨ 異音'], ['line', '／ 線'], ['num', '① 番号'], ['text', '文字'], ['pen', '✏️ ペン（手書き）'], ['marker', '🖍 マーカー'], ['plan', '📐 平面図']];
+const TOOLS = [['move', '✋ 選ぶ'], ['callout', '💬 コメント'], ['arrow2', '➜ 矢印'], ['ellipse', '○'], ['rect', '□'], ['hatch', '▨ 異音'], ['st_reji', 'R レジ位置'], ['line', '／ 線'], ['num', '① 番号'], ['text', '文字'], ['pen', '✏️ ペン（手書き）'], ['marker', '🖍 マーカー'], ['plan', '📐 平面図']];
 // 平面図用：タップで置ける記号と、直線・寸法線
-const PLAN_TOOLS = [['line', '／ 直線'], ['dim', '↔ 寸法'], ['crown', '◌ 樹冠線'], ['st_tree', '🌳 樹木'], ['st_pole', '● 電柱'], ['st_north', '⬆ 方位'], ['rect', '▭ 建物'], ['st_reji', 'R レジ位置'], ['text', '文字']];
+const PLAN_TOOLS = [['line', '／ 直線'], ['dim', '↔ 寸法'], ['crown', '◌ 樹冠線'], ['st_tree', '🌳 樹木'], ['st_pole', '● 電柱'], ['st_north', '⬆ 方位'], ['rect', '▭ 建物'], ['text', '文字']];
 const STAMP_NAMES = { tree: '樹木', pole: '電柱', north: '方位', reji: 'レジ位置' };
 // コメントの見た目（東京都マニュアルの例：枠なしの文字＋先が矢印の引き出し線）。最後に選んだものを覚える
 function cstyle() { try { const v = JSON.parse(localStorage.getItem('jk_cst') || 'null'); if (v) return v; } catch (e) { } return { nb: 1, ah: 1 }; }
@@ -4172,6 +4172,9 @@ const DEFAULT_CALLOUTS = ['枯枝○cm L○m', '樹皮枯死 ○×○（○）cm
 const OLD_DEFAULT_CALLOUTS = ['枯枝○cm L○m', '枯枝 ○本', '樹皮枯死・欠損 ○×○cm（周囲長○cm）', '開口空洞 幅○×高さ○cm', '空洞 深さ○cm／幹径○cm', '腐朽 ○×○cm', '亀裂 長さ○cm', '◯ キノコ（子実体）', '木槌打診異常 範囲○cm', '◯ 異物の食い込み（金物）', '建築限界越え 高さ○m', '━ 目標樹高 H=○m', '━ 剪定位置 H=○m', '支障枝 ○本', '不自然な傾斜 ○°', '◯ 巻き根', '露出根の損傷 ○cm', '◯ 葉の密度の低下・葉色の黄化', '萌芽', '支柱・ワイヤー設置位置'];
 const tboxOn = () => { try { return localStorage.getItem('jk_tbox') === '1'; } catch (e) { return false; } };
 const setTbox = v => { try { localStorage.setItem('jk_tbox', v ? '1' : '0'); } catch (e) { } };
+// レジ位置の「R」を四角で囲むか（最後に選んだものを覚える）
+const rejiBoxOn = () => { try { return localStorage.getItem('jk_rejibox') !== '0'; } catch (e) { return true; } };
+const setRejiBox = v => { try { localStorage.setItem('jk_rejibox', v ? '1' : '0'); } catch (e) { } };
 // 写真の番号（「写真①」→1）と、コメントで「（写真-1）」と書かれた写真に付ける札
 const CIRC = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
 function photoNo(ty, slot) { const l = (ty.fields[slot] || {}).label || ''; if (!/写真/.test(l)) return null; const m = [...l].find(ch => CIRC.includes(ch)); if (m) return CIRC.indexOf(m) + 1; const d = /(\d+)/.exec(l); return d ? +d[1] : null; }
@@ -4346,7 +4349,7 @@ function drawStrokes(x, strokes, W, H) {
       } else if (s.k === 'reji') { // レジストグラフの測定位置：□R と矢印
         x.translate(cx, cy); x.rotate(s.r || 0);
         const bw = R * 1.1, bh = R * .85, al = R * 1.7;
-        x.lineWidth = lw; x.strokeStyle = s.c; x.strokeRect(-bw / 2, -bh / 2, bw, bh); x.beginPath(); x.moveTo(bw / 2, 0); x.lineTo(bw / 2 + al - R * .3, 0); x.stroke();
+        x.lineWidth = lw; x.strokeStyle = s.c; if (!s.nb) x.strokeRect(-bw / 2, -bh / 2, bw, bh); x.beginPath(); x.moveTo(bw / 2, 0); x.lineTo(bw / 2 + al - R * .3, 0); x.stroke();
         x.beginPath(); x.moveTo(bw / 2 + al, 0); x.lineTo(bw / 2 + al - R * .5, -R * .3); x.lineTo(bw / 2 + al - R * .5, R * .3); x.closePath(); x.fillStyle = s.c; x.fill();
         x.font = `bold ${R * .7}px ${DFONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = s.c; x.fillText('R', 0, R * .04);
         x.setTransform(1, 0, 0, 1, 0, 0);
@@ -4562,6 +4565,7 @@ function paintTools() {
     const setB = v => { if (ss) { if (v) ss.b = 1; else delete ss.b; redraw(); } dr.back = v; try { localStorage.setItem('jk_back', v ? '1' : '0'); } catch (e) { } paintTools(); };
     sb.append(h('span', { class: 'seg2' }, B('表 ➜', !back, () => setB(false)), B('裏 ⚡', back, () => setB(true))));
   }
+  if (!ss && dr.tool === 'st_reji') { const v = rejiBoxOn(); sb.append(h('span', { class: 'lbl' }, 'レジ位置の「R」：'), h('span', { class: 'seg2' }, B('枠あり', v, () => { setRejiBox(true); paintTools(); }), B('枠なし', !v, () => { setRejiBox(false); paintTools(); }))); }
   if (!ss && dr.tool === 'text') { const v = tboxOn(); sb.append(h('span', { class: 'seg2' }, B('枠なし', !v, () => { setTbox(false); paintTools(); }), B('枠あり', v, () => { setTbox(true); paintTools(); }))); }
   if (!ss && dr.tool === 'callout') { // これから置くコメントの見た目
     const cs = cstyle(), setC = (k, v) => { cs[k] = v ? 1 : 0; try { localStorage.setItem('jk_cst', JSON.stringify(cs)); } catch (e) { } paintTools(); };
@@ -4573,6 +4577,7 @@ function paintTools() {
     sb.append(h('span', { class: 'lbl' }, ({ arrow2: '矢印', callout: 'コメント', num: '番号', text: '文字', ellipse: '○', rect: '□', pen: 'ペン', marker: 'マーカー', line: '線', dim: '寸法線', hatch: '異音の範囲' }[s.t] || STAMP_NAMES[s.k] || '') + 'を選択中：'));
     if (s.t === 'hatch') sb.append(B('✏️ 異音の程度・高さ', false, async () => { await askHatch(s); redraw(); paintTools(); }));
     if (['callout', 'text', 'line', 'dim', 'stamp'].includes(s.t)) sb.append(B(s.text ? '✏️ 文字を直す' : '✏️ 文字を入れる', false, async () => { const t = await askText('文字', s.text || '', s.t === 'callout'); if (t != null) { s.text = t; if (s.t !== 'callout' && s.t !== 'text' && !s.s) s.s = .03; redraw(); paintTools(); } }));
+    if (s.t === 'stamp' && s.k === 'reji') sb.append(h('span', { class: 'seg2' }, B('枠あり', !s.nb, () => { delete s.nb; setRejiBox(true); redraw(); paintTools(); }), B('枠なし', !!s.nb, () => { s.nb = 1; setRejiBox(false); redraw(); paintTools(); })));
     if (s.t === 'text') sb.append(h('span', { class: 'seg2' }, B('枠なし', !s.box, () => { delete s.box; redraw(); paintTools(); }), B('枠あり', !!s.box, () => { s.box = 1; redraw(); paintTools(); })));
     if (s.t === 'callout') sb.append(h('span', { class: 'seg2' }, B('枠あり', !s.nb, () => { delete s.nb; redraw(); paintTools(); }), B('枠なし', !!s.nb, () => { s.nb = 1; redraw(); paintTools(); })),
       h('span', { class: 'seg2' }, B('先 ●', !s.ah, () => { delete s.ah; redraw(); paintTools(); }), B('先 ➜', !!s.ah, () => { s.ah = 1; redraw(); paintTools(); })));
@@ -4694,7 +4699,7 @@ function closeDraw(save) {
     if (dr.tool.startsWith('st_')) { // 平面図の記号はタップで置く
       const k = dr.tool.slice(3); dr.pid = null;
       const o = { t: 'stamp', k, c: dr.color, x: px, y: py, s: (k === 'north' ? .045 : k === 'pole' ? .035 : k === 'reji' ? .035 : .05) * sz, text: k === 'pole' ? '電柱' : '', r: 0, base: sz };
-      if (k === 'reji') { const t = await askText('測定の高さ（例：1.2m・根株）', '', false); if (!dr) return; if (t) o.text = t; }
+      if (k === 'reji') { if (!rejiBoxOn()) o.nb = 1; const t = await askText('測定の高さ（例：1.2m・根株）', '', false); if (!dr) return; if (t) o.text = t; }
       add(o); return;
     }
     const w = { pen: .006, marker: .035, ellipse: .007, rect: .007, arrow2: .012, line: .006, dim: .004, crown: .005, hatch: .004 }[dr.tool] * sz;
@@ -4931,7 +4936,7 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
       else if (s.k === 'reji') {
         const r = s.r || 0, rot = (lx, ly) => [cx + lx * Math.cos(r) - ly * Math.sin(r), cy + lx * Math.sin(r) + ly * Math.cos(r)], bw = R * 1.1, bh = R * .85;
         const deg = ((r * 180 / Math.PI) % 360 + 360) % 360, a = X(cx - bw / 2), b = Y(cy - bh / 2);
-        parts.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm + ' R', ' txBox="1"')}<xdr:spPr>${xf(a, b, L(bw), L(bh), { rot: Math.round(deg * 60000) % 21600000 })}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${fill('#FFFFFF', .9)}${ln(lw, s.c)}</xdr:spPr>${body(['R'], R * .7 * .75, s.c, { anchor: 'ctr', algn: 'ctr' }).replace('<a:spAutoFit/>', '<a:noAutofit/>')}</xdr:sp>`, box: box(a, b, a + L(bw), b + L(bh)) });
+        parts.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm + ' R', ' txBox="1"')}<xdr:spPr>${xf(a, b, L(bw), L(bh), { rot: Math.round(deg * 60000) % 21600000 })}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${s.nb ? '<a:noFill/><a:ln><a:noFill/></a:ln>' : fill('#FFFFFF', .9) + ln(lw, s.c)}</xdr:spPr>${body(['R'], R * .7 * .75, s.c, { anchor: 'ctr', algn: 'ctr' }).replace('<a:spAutoFit/>', '<a:noAutofit/>')}</xdr:sp>`, box: box(a, b, a + L(bw), b + L(bh)) });
         parts.push(straight(nm + ' 矢印', ...rot(bw / 2, 0), ...rot(bw / 2 + R * 1.7, 0), ln(lw, s.c, { tail: 'triangle', tw: 'med' }), null));
       }
       else if (s.k === 'north') {
