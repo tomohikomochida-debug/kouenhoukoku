@@ -341,14 +341,14 @@ dialog.wide{max-width:720px}
     </div>
     <div class="card">
       <h2>Excel出力の設定</h2>
-      <label class="chk"><input type="checkbox" id="optShapes"> 写真の矢印・コメントを<b>Excelの図形</b>で出す（Excelで動かす・文字を直すことができる）</label>
+      <label class="chk"><input type="checkbox" id="optShapes"> <span>写真の矢印・コメントを<strong>Excelの図形</strong>で出す（Excelで動かす・文字を直すことができる）</span></label>
       <p class="hint">外すと、書き込みを写真に焼き込んで出します（どのソフトでも同じ見た目になります）。</p>
-      <label class="chk" style="align-items:center">写真の書き込みの文字（Excel）：最小 <select class="inp" id="optMinPt" style="width:auto;min-height:36px;padding:4px 8px"><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="14">14</option></select> ポイント</label>
+      <label class="chk" style="align-items:center">写真の書き込みの文字（Excel）：最小 <select class="inp" id="optMinPt" style="width:auto;min-height:36px;padding:4px 8px"><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="14">14</option></select> <span style="white-space:nowrap">ポイント</span></label>
       <label class="chk"><input type="checkbox" id="optLists"> 一覧表のシートを先頭につける</label>
       <label class="chk"><input type="checkbox" id="optMap"> 位置図のシートをつける（路線・公園ごと。判定の色の丸に番号。背景は各路線の「🗺 位置図の設定」で選ぶ）</label>
       <h3 style="margin:12px 0 2px;font-size:14.5px">保存のしかた（Excel・バックアップ・写真）</h3>
-      <label class="chk"><input type="radio" name="optSave" value="ask"> 毎回、保存先を選ぶ<br><small class="hint">iPad：出てくるメニューで「“ファイル”に保存」→ フォルダ（iCloud Drive・このiPad内・OneDrive など）を選ぶ。AirDrop・メールでも送れます。パソコン：保存ダイアログでフォルダとファイル名を選ぶ。</small></label>
-      <label class="chk"><input type="radio" name="optSave" value="dl"> すぐ「ダウンロード」フォルダに保存<br><small class="hint">iPadでの保存場所は「設定」→ Safari →「ダウンロード」で変えられます。</small></label>
+      <label class="chk"><input type="radio" name="optSave" value="ask"> <span>毎回、保存先を選ぶ<small class="hint" style="display:block;margin-top:2px">iPad：出てくるメニューで「“ファイル”に保存」→ フォルダ（iCloud Drive・このiPad内・OneDrive など）を選ぶ。AirDrop・メールでも送れます。パソコン：保存ダイアログでフォルダとファイル名を選ぶ。</small></span></label>
+      <label class="chk"><input type="radio" name="optSave" value="dl"> <span>すぐ「ダウンロード」フォルダに保存<small class="hint" style="display:block;margin-top:2px">iPadでの保存場所は「設定」→ Safari →「ダウンロード」で変えられます。</small></span></label>
     </div>
     <div class="card">
       <h2>バックアップ・機種変更</h2>
@@ -4719,6 +4719,11 @@ function closeDraw(save) {
       } else moveObj(s, dr.drag.part, px - dr.last[0], py - dr.last[1]);
       dr.last = [px, py]; redraw(); return;
     }
+    if (dr.snapped && dr.raw) { // 整えたあとも描き続けたら、整えるのをやめてフリーハンドに戻す
+      const W = c.width, H = c.height, u = c.width / c.getBoundingClientRect().width;
+      if (Math.hypot((px - dr.holdAt[0]) * W, (py - dr.holdAt[1]) * H) > 12 * u) { dr.active = dr.raw; dr.raw = null; dr.snapped = false; }
+      else return;
+    }
     if (!dr.active || dr.snapped) return;
     if (dr.active.pts) { // 描いている途中で止めると、形を整える
       dr.active.pts.push([+px.toFixed(4), +py.toFixed(4)]);
@@ -4739,20 +4744,19 @@ function closeDraw(save) {
   const snapActive = () => {
     if (!dr || dr.pid == null || !dr.active || !dr.active.pts || dr.active.pts.length < 5) return;
     const a = dr.active, W = c.width, H = c.height;
-    const sh = recognizeShape(a.pts.map(([x, y]) => [x * W, y * H])); if (!sh) return;
+    const sh = recognizeShape(a.pts.map(([x, y]) => [x * W, y * H])); if (!sh || !['line', 'ellipse', 'rect'].includes(sh.k)) return; // 線・円・四角に見えるときだけ整える（ほかはフリーハンドのまま）
     const N = p => [+(p[0] / W).toFixed(4), +(p[1] / H).toFixed(4)];
     let o;
     if (a.t === 'marker') o = { t: 'marker', c: a.c, w: a.w, pts: shapePoints(sh.k === 'line' ? snapLine(sh) : sh).map(N) };
     else if (sh.k === 'line') { snapLine(sh); const [x1, y1] = N(sh.a), [x2, y2] = N(sh.z); o = { t: 'line', c: a.c, w: a.w, x1, y1, x2, y2, base: dr.size }; }
     else if (sh.k === 'ellipse') o = { t: 'ellipse', c: a.c, w: a.w, x1: (sh.cx - sh.a) / W, y1: (sh.cy - sh.b) / H, x2: (sh.cx + sh.a) / W, y2: (sh.cy + sh.b) / H, r: sh.r, base: dr.size };
     else if (sh.k === 'rect') o = { t: 'rect', c: a.c, w: a.w, x1: (sh.cx - sh.w / 2) / W, y1: (sh.cy - sh.h / 2) / H, x2: (sh.cx + sh.w / 2) / W, y2: (sh.cy + sh.h / 2) / H, r: sh.r, base: dr.size };
-    else o = { t: 'pen', c: a.c, w: a.w, pts: sh.pts.map(N) };
-    dr.active = o; dr.snapped = true; redraw();
+    dr.raw = a; dr.active = o; dr.snapped = true; redraw();
     if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { }
   };
   const end = async e => { await end0(e); drawSnap(); };
   const end0 = async e => {
-    if (!dr || e.pointerId !== dr.pid) return; dr.pid = null; clearTimeout(dr.holdT); dr.holdAt = null; const snapped = dr.snapped; dr.snapped = false;
+    if (!dr || e.pointerId !== dr.pid) return; dr.pid = null; clearTimeout(dr.holdT); dr.holdAt = null; const snapped = dr.snapped; dr.snapped = false; dr.raw = null;
     if (snapped && dr.active) { const a = dr.active; dr.active = null; add(a); return; }
     if (dr.drag) { // 選んである物をもう一度タップ → 文字・番号を直す
       const d = dr.drag, s = dr.strokes[d.i], still = Math.hypot(dr.last[0] - dr.start[0], dr.last[1] - dr.start[1]) < .01; dr.drag = null;
