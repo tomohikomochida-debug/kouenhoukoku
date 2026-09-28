@@ -431,7 +431,8 @@ dialog.wide{max-width:720px}
   <label class="fld" style="margin-top:10px"><span>文字（2行にするときは改行。キーボードのマイクで話しても入ります）</span><textarea id="coText" rows="3"></textarea></label>
   <div id="coEditBox" class="hidden">
     <label class="fld" style="margin-top:10px"><span>よく使う言葉（1行に1つ）</span><textarea id="coPresets" rows="8"></textarea></label>
-    <div class="row" style="margin-top:6px"><button class="btn" type="button" id="coPresetSave">よく使う言葉を保存</button></div>
+    <div class="hint" style="margin-top:4px">数字の所は「○」。頭に「◯ 」を付けると丸囲い、「━ 」を付けると横線（目標樹高など）。</div>
+    <div class="row" style="margin-top:6px"><button class="btn" type="button" id="coPresetSave">よく使う言葉を保存</button><button class="btn" type="button" id="coPresetReset">最初の一覧に戻す</button></div>
   </div>
   <div class="row" style="margin-top:12px">
     <button class="btn" type="button" id="coEdit">よく使う言葉を編集</button>
@@ -4128,7 +4129,10 @@ function cstyle() { try { const v = JSON.parse(localStorage.getItem('jk_cst') ||
 const DFONT = "'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',sans-serif";
 // ○ の所は、選んだときに数字を入れる（例：「枯枝 φ○cm」→ 数字だけ入力）
 // 先頭が「◯」なら丸囲い＋コメント、「━」なら横線＋文字（目標樹高など）、それ以外は枠つきコメント
-const DEFAULT_CALLOUTS = ['枯枝○cm L○m', '枯枝 ○本', '樹皮枯死・欠損 ○×○cm（周囲長○cm）', '開口空洞 幅○×高さ○cm', '空洞 深さ○cm／幹径○cm', '腐朽 ○×○cm', '亀裂 長さ○cm', '◯ キノコ（子実体）', '木槌打診異常 範囲○cm', '◯ 異物の食い込み（金物）', '建築限界越え 高さ○m', '━ 目標樹高 H=○m', '━ 剪定位置 H=○m', '支障枝 ○本', '不自然な傾斜 ○°', '◯ 巻き根', '露出根の損傷 ○cm', '◯ 葉の密度の低下・葉色の黄化', '萌芽', '支柱・ワイヤー設置位置'];
+// 持田園でまとめた一覧（2026-09 版）。一覧を変えたら CALLOUTS_VER を上げる → 端末に保存された一覧も新しい一覧に入れ替わる（端末で書き足した言葉は後ろに残す）
+const CALLOUTS_VER = '2';
+const DEFAULT_CALLOUTS = ['枯枝○cm L○m', '樹皮枯死 ○×○（○）cm', '樹皮欠損 ○×○（○）cm', '開口空洞 ○×○cm', '鋼棒貫入異常 ○cm／○cm', '腐朽 ○×○cm', '亀裂 長さ○cm', '◯ キノコ（子実体）', '打診異常 高さ○cm～○cm', '◯ 異物の食い込み（金物）', '建築限界越え 高さ○m L○m', '◯ 巻き根', '露出根の損傷 ○cm', '◯ 入皮 長さ○cm', '◯ 根の押出', 'スタブカット', '虫害', '不自然な傾斜 ○°', '不自然な揺れ', '◯ 葉の密度の低下・葉色の黄化', '萌芽', '支障枝 ○本', '支柱・ワイヤー設置位置', '枯枝 ○本', '━ 目標樹高 H=○m', '━ 剪定位置 H=○m'];
+const OLD_DEFAULT_CALLOUTS = ['枯枝○cm L○m', '枯枝 ○本', '樹皮枯死・欠損 ○×○cm（周囲長○cm）', '開口空洞 幅○×高さ○cm', '空洞 深さ○cm／幹径○cm', '腐朽 ○×○cm', '亀裂 長さ○cm', '◯ キノコ（子実体）', '木槌打診異常 範囲○cm', '◯ 異物の食い込み（金物）', '建築限界越え 高さ○m', '━ 目標樹高 H=○m', '━ 剪定位置 H=○m', '支障枝 ○本', '不自然な傾斜 ○°', '◯ 巻き根', '露出根の損傷 ○cm', '◯ 葉の密度の低下・葉色の黄化', '萌芽', '支柱・ワイヤー設置位置'];
 const tboxOn = () => { try { return localStorage.getItem('jk_tbox') === '1'; } catch (e) { return false; } };
 const setTbox = v => { try { localStorage.setItem('jk_tbox', v ? '1' : '0'); } catch (e) { } };
 // 写真の番号（「写真①」→1）と、コメントで「（写真-1）」と書かれた写真に付ける札
@@ -4406,7 +4410,21 @@ function scaleObj(s, f) {
 }
 
 /* コメントの文字を選ぶ・書く */
-function calloutPresets() { try { const v = JSON.parse(localStorage.getItem('jk_callouts') || 'null'); if (Array.isArray(v) && v.length) return v; } catch (e) { } return DEFAULT_CALLOUTS; }
+function calloutPresets() {
+  try {
+    let v = JSON.parse(localStorage.getItem('jk_callouts') || 'null');
+    if (Array.isArray(v) && v.length && localStorage.getItem('jk_callouts_ver') !== CALLOUTS_VER) { // 前の版で保存した一覧 → 新しい一覧＋端末で書き足した言葉
+      const known = new Set([...OLD_DEFAULT_CALLOUTS, ...DEFAULT_CALLOUTS]);
+      const extra = v.filter(x => !known.has(x));
+      v = extra.length ? [...DEFAULT_CALLOUTS, ...extra] : null;
+      if (v) localStorage.setItem('jk_callouts', JSON.stringify(v)); else localStorage.removeItem('jk_callouts');
+      localStorage.setItem('jk_callouts_ver', CALLOUTS_VER);
+    }
+    if (Array.isArray(v) && v.length) return v;
+  } catch (e) { }
+  return DEFAULT_CALLOUTS;
+}
+function saveCallouts(v) { try { if (v) { localStorage.setItem('jk_callouts', JSON.stringify(v)); localStorage.setItem('jk_callouts_ver', CALLOUTS_VER); } else localStorage.removeItem('jk_callouts'); } catch (e) { } }
 // よく使う言葉を1タップで選ぶ（数量は聞く）→ { text, kind }。自由に書いて OK でも可
 function askPreset(title) { return askText(title, '', true, true); }
 function askText(title, init = '', presets = true, quick = false) {
@@ -4432,7 +4450,8 @@ function askText(title, init = '', presets = true, quick = false) {
     paintChips();
     $('#coEditBox').classList.add('hidden'); $('#coEdit').classList.toggle('hidden', !presets);
     $('#coEdit').onclick = () => { const box = $('#coEditBox'); box.classList.toggle('hidden'); $('#coPresets').value = calloutPresets().join('\n'); };
-    $('#coPresetSave').onclick = () => { const v = $('#coPresets').value.split('\n').map(s => s.trim()).filter(Boolean); try { localStorage.setItem('jk_callouts', JSON.stringify(v)); } catch (e) { } $('#coEditBox').classList.add('hidden'); paintChips(); };
+    $('#coPresetSave').onclick = () => { const v = $('#coPresets').value.split('\n').map(s => s.trim()).filter(Boolean); saveCallouts(v.length ? v : null); $('#coEditBox').classList.add('hidden'); paintChips(); };
+    $('#coPresetReset').onclick = async () => { if (!await ask('よく使う言葉を、最初の一覧（持田園でまとめた一覧）に戻しますか？ この端末で書き足した言葉は消えます。', '戻す')) return; saveCallouts(null); $('#coPresets').value = DEFAULT_CALLOUTS.join('\n'); paintChips(); };
     let done = false; const finish = v => { if (done) return; done = true; res(v || null); };
     $('#coOk').onclick = () => { const v = withRef(ta.value.trim()); finish(quick ? (v ? { text: v, kind: 'box' } : null) : v); d.close(); };
     d.onclose = () => finish(null);
@@ -4530,7 +4549,7 @@ function paintTools() {
   } else if (dr.strokes.some(o => o.t !== 'pen' && o.t !== 'marker')) sb.append(h('span', { class: 'lbl' }, '置いた物は「✋ 選ぶ」（同じ道具ならそのまま）でタップして直せます'));
 }
 // 異音の範囲：程度（大・小など）と、上端・下端の高さ（G.L. cm）
-const HATCH_LEVELS = ['異音（大）', '異音（小）', '異音（極大）', '打診異常'];
+const HATCH_LEVELS = ['異音（大）', '異音（中）', '異音（小）', '異音（極大）', '打診異常'];
 async function askHatch(o) {
   const lv = await new Promise(res => {
     const d = $('#dlgPick'), box = $('#pkBtns'); box.innerHTML = '';
@@ -6001,7 +6020,7 @@ async function shareOrDownload(file) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
 }
 function blobToDataURL(b) { return new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); }
-const SHARED_SETTINGS = ['jk_callouts', 'jk_cst', 'jk_minpt', 'jk_shapes', 'jk_lists'];
+const SHARED_SETTINGS = ['jk_callouts', 'jk_callouts_ver', 'jk_cst', 'jk_minpt', 'jk_shapes', 'jk_lists'];
 async function backup() {
   await flush();
   const photos = {};
