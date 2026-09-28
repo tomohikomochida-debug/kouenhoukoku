@@ -4148,6 +4148,23 @@ function captionRefs(ty, tpl) {
   }
   capCache.set(ty.fields, m); return m;
 }
+// コメントで「（写真－1）」と指した写真の説明の欄に、そのコメントの文章を自動で入れる。
+// 自分で書き直した説明は上書きしない（前回自動で入れた文章と同じか、空のときだけ入れかえる）
+function syncCaptions(t, ty, tpl) {
+  const caps = captionRefs(ty, tpl), bySlot = new Map();
+  for (const p of t.photos || []) for (const s of p.strokes || []) {
+    const m = /（写真[-－](\d+)）/.exec(String(s.text || '')); if (!m) continue;
+    const slot = [...caps.values()].find(sl => photoNo(ty, sl) === +m[1]); if (!slot) continue;
+    const txt = String(s.text).replace(/\s*（写真[-－]\d+）/g, '').replace(/\s*\n\s*/g, ' ').trim(); if (!txt) continue;
+    if (!bySlot.has(slot)) bySlot.set(slot, []); if (!bySlot.get(slot).includes(txt)) bySlot.get(slot).push(txt);
+  }
+  t.v = t.v || {}; const auto = t.v._autoCap = t.v._autoCap || {};
+  for (const [cref, slot] of caps) {
+    const next = (bySlot.get(slot) || []).join('、'), now = String(getV(t, ty, cref) ?? ''), prev = auto[cref] ?? '';
+    if (next === prev && now === prev) continue;
+    if (now === '' || now === prev) { setV(t, ty, cref, next); if (next) auto[cref] = next; else delete auto[cref]; }
+  }
+}
 // 説明の欄の頭に付ける「写真－1　」（コメントで指された写真だけ）
 function captionPrefix(ty, tpl, t, ref) {
   const slot = captionRefs(ty, tpl).get(ref); if (!slot) return '';
@@ -4584,7 +4601,7 @@ function redraw() {
   }
 }
 function closeDraw(save) {
-  if (save) { dr.p.strokes = dr.strokes; if (dr.frame) dr.p.frame = dr.frame; touch(); photosChanged(); }
+  if (save) { dr.p.strokes = dr.strokes; if (dr.frame) dr.p.frame = dr.frame; if (typeof curTpl !== 'undefined' && curTpl) syncCaptions(cur, curType, curTpl); touch(); photosChanged(); }
   $('#draw').classList.add('hidden'); document.body.style.overflow = ''; dr = null; resetZoom();
 }
 (function drawEvents() {
