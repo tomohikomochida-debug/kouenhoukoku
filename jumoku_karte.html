@@ -4172,12 +4172,15 @@ const DEFAULT_CALLOUTS = ['枯枝○cm L○m', '樹皮枯死 ○×○（○）cm
 const OLD_DEFAULT_CALLOUTS = ['枯枝○cm L○m', '枯枝 ○本', '樹皮枯死・欠損 ○×○cm（周囲長○cm）', '開口空洞 幅○×高さ○cm', '空洞 深さ○cm／幹径○cm', '腐朽 ○×○cm', '亀裂 長さ○cm', '◯ キノコ（子実体）', '木槌打診異常 範囲○cm', '◯ 異物の食い込み（金物）', '建築限界越え 高さ○m', '━ 目標樹高 H=○m', '━ 剪定位置 H=○m', '支障枝 ○本', '不自然な傾斜 ○°', '◯ 巻き根', '露出根の損傷 ○cm', '◯ 葉の密度の低下・葉色の黄化', '萌芽', '支柱・ワイヤー設置位置'];
 const tboxOn = () => { try { return localStorage.getItem('jk_tbox') === '1'; } catch (e) { return false; } };
 const setTbox = v => { try { localStorage.setItem('jk_tbox', v ? '1' : '0'); } catch (e) { } };
-// レジ位置の「R」を四角で囲むか（最後に選んだものを覚える）
+// レジ位置の枠：高さの文字と「R」をまとめて囲むか（最後に選んだものを覚える）
 const rejiBoxOn = () => { try { return localStorage.getItem('jk_rejibox') !== '0'; } catch (e) { return true; } };
 const setRejiBox = v => { try { localStorage.setItem('jk_rejibox', v ? '1' : '0'); } catch (e) { } };
-// レジ位置の高さの文字を枠で囲むか（最後に選んだものを覚える）
-const rejiLabelBoxOn = () => { try { return localStorage.getItem('jk_rejilb') === '1'; } catch (e) { return false; } };
-const setRejiLabelBox = v => { try { localStorage.setItem('jk_rejilb', v ? '1' : '0'); } catch (e) { } };
+// 枠の範囲（キャンバスの画素）：左の高さの文字から「R」の右まで
+function rejiFrame(mx, s, R, fs, cx, cy, k = 1) {
+  const bw = R * 1.1, bh = R * .85, p = fs * .3; let left = cx - bw / 2, top = cy - bh / 2, bottom = cy + bh / 2;
+  if (s.text) { mx.font = `bold ${fs}px ${DFONT}`; const ls = String(s.text).split('\n'), tw = Math.max(...ls.map(l => mx.measureText(l).width)) * k, th = ls.length * fs * 1.2; left = Math.min(left, cx - R * .7 - tw); top = Math.min(top, cy - th / 2); bottom = Math.max(bottom, cy + th / 2); }
+  return { a: left - p, b: top - p, c: cx + bw / 2 + p * .6, d: bottom + p };
+}
 // 写真の番号（「写真①」→1）と、コメントで「（写真-1）」と書かれた写真に付ける札
 const CIRC = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
 function photoNo(ty, slot) { const l = (ty.fields[slot] || {}).label || ''; if (!/写真/.test(l)) return null; const m = [...l].find(ch => CIRC.includes(ch)); if (m) return CIRC.indexOf(m) + 1; const d = /(\d+)/.exec(l); return d ? +d[1] : null; }
@@ -4349,12 +4352,13 @@ function drawStrokes(x, strokes, W, H) {
         x.beginPath(); x.arc(cx, cy, Math.max(2, R * .14), 0, Math.PI * 2); x.fillStyle = s.c; x.fill();
       } else if (s.k === 'pole') {
         x.beginPath(); x.arc(cx, cy, R * .35, 0, Math.PI * 2); x.fillStyle = s.c; x.fill();
-      } else if (s.k === 'reji') { // レジストグラフの測定位置：□R と矢印
+      } else if (s.k === 'reji') { // レジストグラフの測定位置：R と矢印（枠ありは高さの文字ごと囲む）
+        if (s.fr) { const fs = Math.max(10, R * .75), f = rejiFrame(x, s, R, fs, cx, cy); x.fillStyle = '#fff'; x.fillRect(f.a, f.b, f.c - f.a, f.d - f.b); x.lineWidth = Math.max(2, fs * .08); x.strokeStyle = s.c === '#FFFFFF' ? '#111' : s.c; x.strokeRect(f.a, f.b, f.c - f.a, f.d - f.b); }
         x.translate(cx, cy); x.rotate(s.r || 0);
         const bw = R * 1.1, bh = R * .85, al = R * 1.7;
         x.lineWidth = lw; x.strokeStyle = s.c; if (!s.nb) x.strokeRect(-bw / 2, -bh / 2, bw, bh); x.beginPath(); x.moveTo(bw / 2, 0); x.lineTo(bw / 2 + al - R * .3, 0); x.stroke();
         x.beginPath(); x.moveTo(bw / 2 + al, 0); x.lineTo(bw / 2 + al - R * .5, -R * .3); x.lineTo(bw / 2 + al - R * .5, R * .3); x.closePath(); x.fillStyle = s.c; x.fill();
-        x.font = `bold ${R * .7}px ${DFONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = s.c; x.fillText('R', 0, R * .04);
+        x.font = `bold ${R * .7}px ${DFONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = s.fr ? inkOn(s.c) : s.c; x.fillText('R', 0, R * .04);
         x.setTransform(1, 0, 0, 1, 0, 0);
       } else if (s.k === 'north') {
         x.translate(cx, cy); x.rotate(s.r || 0);
@@ -4363,7 +4367,7 @@ function drawStrokes(x, strokes, W, H) {
         x.font = `bold ${R * .8}px ${DFONT}`; x.textAlign = 'center'; x.textBaseline = 'bottom'; x.fillText('N', 0, -R * 1.05);
         x.setTransform(1, 0, 0, 1, 0, 0);
       }
-      if (s.text) { const lp = stampLabelPos(s, W, H); drawLabel(x, s.text, lp.x, lp.y, lp.fs, s.c, lp.align, !!s.lb); }
+      if (s.text) { const lp = stampLabelPos(s, W, H); drawLabel(x, s.text, lp.x, lp.y, lp.fs, s.fr ? inkOn(s.c) : s.c, lp.align); }
     } else if (s.t === 'num') { // 丸数字
       const r = s.s * W * .75, cx = s.x * W, cy = s.y * H;
       x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fillStyle = s.c; x.fill();
@@ -4397,7 +4401,7 @@ function lineLabelPos(s, W, H) {
   const r = s.x2 >= s.x1 ? [s.x2, s.y2] : [s.x1, s.y1]; // 右の端の上
   return { x: r[0] * W, y: r[1] * H - fs * .3, align: 'right' };
 }
-function stampLabelPos(s, W, H) { const R = s.s * W, fs = Math.max(10, R * .75); if (s.k === 'reji') return { x: s.x * W - R * .7 - (s.lb ? fs * .35 : 0), y: s.y * H + fs * (s.lb ? .55 : .4), align: 'right', fs }; return s.k === 'pole' ? { x: s.x * W + R * .55, y: s.y * H + fs * .45, align: 'left', fs } : { x: s.x * W, y: s.y * H + R + fs * 1.15, align: 'center', fs }; }
+function stampLabelPos(s, W, H) { const R = s.s * W, fs = Math.max(10, R * .75); if (s.k === 'reji') return { x: s.x * W - R * .7, y: s.y * H + (s.fr ? String(s.text || '').split('\n').length * fs * .6 - fs * .1 : fs * .4), align: 'right', fs }; return s.k === 'pole' ? { x: s.x * W + R * .55, y: s.y * H + fs * .45, align: 'left', fs } : { x: s.x * W, y: s.y * H + R + fs * 1.15, align: 'center', fs }; }
 /* 当たり判定・外枠（キャンバスの画素で） */
 function objBox(x, s, W, H) {
   if (s.pts) { const xs = s.pts.map(p => p[0] * W), ys = s.pts.map(p => p[1] * H); return { a: Math.min(...xs), b: Math.min(...ys), c: Math.max(...xs), d: Math.max(...ys) }; }
@@ -4574,8 +4578,7 @@ function paintTools() {
     const setB = v => { if (ss) { if (v) ss.b = 1; else delete ss.b; redraw(); } dr.back = v; try { localStorage.setItem('jk_back', v ? '1' : '0'); } catch (e) { } paintTools(); };
     sb.append(h('span', { class: 'seg2' }, B('表 ➜', !back, () => setB(false)), B('裏 ⚡', back, () => setB(true))));
   }
-  if (!ss && dr.tool === 'st_reji') { const v = rejiBoxOn(); sb.append(h('span', { class: 'lbl' }, 'レジ位置の「R」：'), h('span', { class: 'seg2' }, B('枠あり', v, () => { setRejiBox(true); paintTools(); }), B('枠なし', !v, () => { setRejiBox(false); paintTools(); })));
-    const lv = rejiLabelBoxOn(); sb.append(h('span', { class: 'lbl' }, '高さの文字：'), h('span', { class: 'seg2' }, B('枠あり', lv, () => { setRejiLabelBox(true); paintTools(); }), B('枠なし', !lv, () => { setRejiLabelBox(false); paintTools(); }))); }
+  if (!ss && dr.tool === 'st_reji') { const v = rejiBoxOn(); sb.append(h('span', { class: 'lbl' }, 'レジ位置（高さの文字と R）：'), h('span', { class: 'seg2' }, B('枠あり', v, () => { setRejiBox(true); paintTools(); }), B('枠なし', !v, () => { setRejiBox(false); paintTools(); }))); }
   if (!ss && dr.tool === 'text') { const v = tboxOn(); sb.append(h('span', { class: 'seg2' }, B('枠なし', !v, () => { setTbox(false); paintTools(); }), B('枠あり', v, () => { setTbox(true); paintTools(); }))); }
   if (!ss && dr.tool === 'callout') { // これから置くコメントの見た目
     const cs = cstyle(), setC = (k, v) => { cs[k] = v ? 1 : 0; try { localStorage.setItem('jk_cst', JSON.stringify(cs)); } catch (e) { } paintTools(); };
@@ -4587,8 +4590,7 @@ function paintTools() {
     sb.append(h('span', { class: 'lbl' }, ({ arrow2: '矢印', callout: 'コメント', num: '番号', text: '文字', ellipse: '○', rect: '□', pen: 'ペン', marker: 'マーカー', line: '線', dim: '寸法線', hatch: '異音の範囲' }[s.t] || STAMP_NAMES[s.k] || '') + 'を選択中：'));
     if (s.t === 'hatch') sb.append(B('✏️ 異音の程度・高さ', false, async () => { await askHatch(s); redraw(); paintTools(); }));
     if (['callout', 'text', 'line', 'dim', 'stamp'].includes(s.t)) sb.append(B(s.text ? '✏️ 文字を直す' : '✏️ 文字を入れる', false, async () => { const t = await askText('文字', s.text || '', s.t === 'callout'); if (t != null) { s.text = t; if (s.t !== 'callout' && s.t !== 'text' && !s.s) s.s = .03; redraw(); paintTools(); } }));
-    if (s.t === 'stamp' && s.k === 'reji') sb.append(h('span', { class: 'lbl' }, '「R」：'), h('span', { class: 'seg2' }, B('枠あり', !s.nb, () => { delete s.nb; setRejiBox(true); redraw(); paintTools(); }), B('枠なし', !!s.nb, () => { s.nb = 1; setRejiBox(false); redraw(); paintTools(); })),
-      h('span', { class: 'lbl' }, '高さの文字：'), h('span', { class: 'seg2' }, B('枠あり', !!s.lb, () => { s.lb = 1; setRejiLabelBox(true); redraw(); paintTools(); }), B('枠なし', !s.lb, () => { delete s.lb; setRejiLabelBox(false); redraw(); paintTools(); })));
+    if (s.t === 'stamp' && s.k === 'reji') sb.append(h('span', { class: 'seg2' }, B('枠あり', !!s.fr, () => { s.fr = 1; s.nb = 1; delete s.lb; setRejiBox(true); redraw(); paintTools(); }), B('枠なし', !s.fr, () => { delete s.fr; s.nb = 1; delete s.lb; setRejiBox(false); redraw(); paintTools(); })));
     if (s.t === 'text') sb.append(h('span', { class: 'seg2' }, B('枠なし', !s.box, () => { delete s.box; redraw(); paintTools(); }), B('枠あり', !!s.box, () => { s.box = 1; redraw(); paintTools(); })));
     if (s.t === 'callout') sb.append(h('span', { class: 'seg2' }, B('枠あり', !s.nb, () => { delete s.nb; redraw(); paintTools(); }), B('枠なし', !!s.nb, () => { s.nb = 1; redraw(); paintTools(); })),
       h('span', { class: 'seg2' }, B('先 ●', !s.ah, () => { delete s.ah; redraw(); paintTools(); }), B('先 ➜', !!s.ah, () => { s.ah = 1; redraw(); paintTools(); })));
@@ -4710,7 +4712,7 @@ function closeDraw(save) {
     if (dr.tool.startsWith('st_')) { // 平面図の記号はタップで置く
       const k = dr.tool.slice(3); dr.pid = null;
       const o = { t: 'stamp', k, c: dr.color, x: px, y: py, s: (k === 'north' ? .045 : k === 'pole' ? .035 : k === 'reji' ? .035 : .05) * sz, text: k === 'pole' ? '電柱' : '', r: 0, base: sz };
-      if (k === 'reji') { if (!rejiBoxOn()) o.nb = 1; if (rejiLabelBoxOn()) o.lb = 1; const t = await askText('測定の高さ（例：1.2m・根株）', '', false); if (!dr) return; if (t) o.text = t; }
+      if (k === 'reji') { o.nb = 1; if (rejiBoxOn()) o.fr = 1; const t = await askText('測定の高さ（例：1.2m・根株）', '', false); if (!dr) return; if (t) o.text = t; }
       add(o); return;
     }
     const w = { pen: .006, marker: .035, ellipse: .007, rect: .007, arrow2: .012, line: .006, dim: .004, crown: .005, hatch: .004 }[dr.tool] * sz;
@@ -4760,13 +4762,18 @@ function closeDraw(save) {
   const snapActive = () => {
     if (!dr || dr.pid == null || !dr.active || !dr.active.pts || dr.active.pts.length < 5) return;
     const a = dr.active, W = c.width, H = c.height;
-    const sh = recognizeShape(a.pts.map(([x, y]) => [x * W, y * H])); if (!sh || !['line', 'ellipse', 'rect'].includes(sh.k)) return; // 線・円・四角に見えるときだけ整える（ほかはフリーハンドのまま）
+    const P = a.pts.map(([x, y]) => [x * W, y * H]);
+    let sh = recognizeShape(P); if (!sh) return;
+    // 線・円・四角・閉じた多角形はその形に、それ以外（曲線・折れ線）は、なめらかな曲線に整える
+    const closed = sh.k === 'poly' && sh.pts.length > 3 && sh.pts[0] === sh.pts[sh.pts.length - 1];
+    if (!['line', 'ellipse', 'rect'].includes(sh.k) && !closed) { if (a.pts.length < 8) return; sh = { k: 'poly', pts: smoothCurve(P) }; }
     const N = p => [+(p[0] / W).toFixed(4), +(p[1] / H).toFixed(4)];
     let o;
     if (a.t === 'marker') o = { t: 'marker', c: a.c, w: a.w, pts: shapePoints(sh.k === 'line' ? snapLine(sh) : sh).map(N) };
     else if (sh.k === 'line') { snapLine(sh); const [x1, y1] = N(sh.a), [x2, y2] = N(sh.z); o = { t: 'line', c: a.c, w: a.w, x1, y1, x2, y2, base: dr.size }; }
     else if (sh.k === 'ellipse') o = { t: 'ellipse', c: a.c, w: a.w, x1: (sh.cx - sh.a) / W, y1: (sh.cy - sh.b) / H, x2: (sh.cx + sh.a) / W, y2: (sh.cy + sh.b) / H, r: sh.r, base: dr.size };
     else if (sh.k === 'rect') o = { t: 'rect', c: a.c, w: a.w, x1: (sh.cx - sh.w / 2) / W, y1: (sh.cy - sh.h / 2) / H, x2: (sh.cx + sh.w / 2) / W, y2: (sh.cy + sh.h / 2) / H, r: sh.r, base: dr.size };
+    else o = { t: 'pen', c: a.c, w: a.w, pts: sh.pts.map(N) }; // なめらかな曲線・閉じた多角形
     dr.raw = a; dr.active = o; dr.snapped = true; redraw();
     if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { }
   };
@@ -4951,9 +4958,10 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
       else if (s.k === 'pole') parts.push(ellipse(nm + ' 印', cx, cy, R * .35, '<a:ln><a:noFill/></a:ln>', fill(s.c)));
       else if (s.k === 'reji') {
         const R = Math.max(s.s * W, minPx / .7); // 小さい写真枠でも「R」が最小の文字の大きさより小さくならないように
+        if (s.fr) { const F = Math.max(Math.max(10, s.s * W * .75), minPx), f = rejiFrame(mc, s, R, F, cx, cy, 1.2), a = X(f.a), b = Y(f.b); parts.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm + ' 枠')}<xdr:spPr>${xf(a, b, L(f.c - f.a), L(f.d - f.b))}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${fill('#FFFFFF')}${ln(Math.max(2, F * .08), s.c === '#FFFFFF' ? '#111111' : s.c)}</xdr:spPr></xdr:sp>`, box: box(a, b, a + L(f.c - f.a), b + L(f.d - f.b)) }); }
         const r = s.r || 0, rot = (lx, ly) => [cx + lx * Math.cos(r) - ly * Math.sin(r), cy + lx * Math.sin(r) + ly * Math.cos(r)], bw = R * 1.1, bh = R * .85;
         const deg = ((r * 180 / Math.PI) % 360 + 360) % 360, a = X(cx - bw / 2), b = Y(cy - bh / 2);
-        parts.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm + ' R', ' txBox="1"')}<xdr:spPr>${xf(a, b, L(bw), L(bh), { rot: Math.round(deg * 60000) % 21600000 })}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${s.nb ? '<a:noFill/><a:ln><a:noFill/></a:ln>' : fill('#FFFFFF', .9) + ln(lw, s.c)}</xdr:spPr>${body(['R'], R * .7 * .75, s.c, { anchor: 'ctr', algn: 'ctr' }).replace('<a:spAutoFit/>', '<a:noAutofit/>')}</xdr:sp>`, box: box(a, b, a + L(bw), b + L(bh)) });
+        parts.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm + ' R', ' txBox="1"')}<xdr:spPr>${xf(a, b, L(bw), L(bh), { rot: Math.round(deg * 60000) % 21600000 })}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${s.nb ? '<a:noFill/><a:ln><a:noFill/></a:ln>' : fill('#FFFFFF', .9) + ln(lw, s.c)}</xdr:spPr>${body(['R'], R * .7 * .75, s.fr ? inkOn(s.c) : s.c, { anchor: 'ctr', algn: 'ctr' }).replace('<a:spAutoFit/>', '<a:noAutofit/>')}</xdr:sp>`, box: box(a, b, a + L(bw), b + L(bh)) });
         parts.push(straight(nm + ' 矢印', ...rot(bw / 2, 0), ...rot(bw / 2 + R * 1.7, 0), ln(lw, s.c, { tail: 'triangle', tw: 'med' }), null));
       }
       else if (s.k === 'north') {
@@ -4963,8 +4971,8 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
       }
       if (s.text) {
         const lp = stampLabelPos(s, W, H), F = Math.max(lp.fs, minPx);
-        if (s.k === 'reji') { lp.x = cx - Math.max(R, minPx / .7) * .62 - F * (s.lb ? .45 : .15); lp.y = cy + F * (s.lb ? .55 : .4); } // 最小の文字の大きさで大きくなっても「R」に重ならないように
-        parts.push(label(nm + ' 文字', s.text, lp.x, lp.y, F, s.c, lp.align, !!s.lb));
+        if (s.k === 'reji') { const R2 = Math.max(R, minPx / .7); lp.x = s.fr ? cx - R2 * .7 + F * .15 : cx - R2 * .62 - F * .15; lp.y = s.fr ? cy + String(s.text).split('\n').length * F * .6 - F * .05 : cy + F * .4; } // 最小の文字の大きさで大きくなっても「R」に重ならないように
+        parts.push(label(nm + ' 文字', s.text, lp.x, lp.y, F, s.fr ? inkOn(s.c) : s.c, lp.align));
       }
       if (parts.length) kids.push(parts.length > 1 ? group(nm, parts) : parts[0]);
     } else if (s.t === 'num') {
@@ -5058,6 +5066,22 @@ function recognizeShape(P) {
   return null;
 }
 // 形を折れ線の点に（カルテの手書き・マーカー用）
+// 手描きの曲線をなめらかに：間引いてから、点を通るなめらかな曲線（Catmull-Rom）で引き直す
+function smoothCurve(P) {
+  if (!P || P.length < 4) return P;
+  let L = 0; for (let i = 1; i < P.length; i++) L += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
+  const xs = P.map(p => p[0]), ys = P.map(p => p[1]), D = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  const S = rdp(P, Math.max(2, D * .025)); if (S.length < 3) return S;
+  const out = [S[0]], seg = Math.max(4, Math.min(16, Math.round(L / S.length / 6)));
+  for (let i = 0; i < S.length - 1; i++) {
+    const p0 = S[Math.max(0, i - 1)], p1 = S[i], p2 = S[i + 1], p3 = S[Math.min(S.length - 1, i + 2)];
+    for (let k = 1; k <= seg; k++) {
+      const t = k / seg, t2 = t * t, t3 = t2 * t;
+      out.push([0, 1].map(j => .5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3)));
+    }
+  }
+  return out;
+}
 function shapePoints(sh) {
   if (sh.k === 'line') return [sh.a, sh.z];
   if (sh.k === 'poly') return sh.pts;
