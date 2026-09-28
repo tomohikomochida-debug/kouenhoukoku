@@ -4128,7 +4128,7 @@ function cstyle() { try { const v = JSON.parse(localStorage.getItem('jk_cst') ||
 const DFONT = "'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',sans-serif";
 // ○ の所は、選んだときに数字を入れる（例：「枯枝 φ○cm」→ 数字だけ入力）
 // 先頭が「◯」なら丸囲い＋コメント、「━」なら横線＋文字（目標樹高など）、それ以外は枠つきコメント
-const DEFAULT_CALLOUTS = ['枯枝 φ○cm', '枯枝 ○本', '樹皮枯死・欠損 ○×○cm（周囲長○cm）', '開口空洞 幅○×高さ○cm', '空洞 深さ○cm／幹径○cm', '腐朽 ○×○cm', '亀裂 長さ○cm', '◯ キノコ（子実体）', '木槌打診異常 範囲○cm', '◯ 異物の食い込み（金物）', '建築限界越え 高さ○m', '━ 目標樹高 H=○m', '━ 剪定位置 H=○m', '支障枝 ○本', '不自然な傾斜 ○°', '◯ 巻き根', '露出根の損傷 ○cm', '◯ 葉の密度の低下・葉色の黄化', '萌芽', '支柱・ワイヤー設置位置'];
+const DEFAULT_CALLOUTS = ['枯枝○cm L○m', '枯枝 ○本', '樹皮枯死・欠損 ○×○cm（周囲長○cm）', '開口空洞 幅○×高さ○cm', '空洞 深さ○cm／幹径○cm', '腐朽 ○×○cm', '亀裂 長さ○cm', '◯ キノコ（子実体）', '木槌打診異常 範囲○cm', '◯ 異物の食い込み（金物）', '建築限界越え 高さ○m', '━ 目標樹高 H=○m', '━ 剪定位置 H=○m', '支障枝 ○本', '不自然な傾斜 ○°', '◯ 巻き根', '露出根の損傷 ○cm', '◯ 葉の密度の低下・葉色の黄化', '萌芽', '支柱・ワイヤー設置位置'];
 const tboxOn = () => { try { return localStorage.getItem('jk_tbox') === '1'; } catch (e) { return false; } };
 const setTbox = v => { try { localStorage.setItem('jk_tbox', v ? '1' : '0'); } catch (e) { } };
 // 写真の番号（「写真①」→1）と、コメントで「（写真-1）」と書かれた写真に付ける札
@@ -5984,12 +5984,15 @@ async function shareOrDownload(file) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
 }
 function blobToDataURL(b) { return new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); }
+const SHARED_SETTINGS = ['jk_callouts', 'jk_cst', 'jk_minpt', 'jk_shapes', 'jk_lists'];
 async function backup() {
   await flush();
   const photos = {};
   for (const t of trees) for (const p of t.photos || []) { const r = await DB.get('photos', p.id); if (r) photos[p.id] = await blobToDataURL(r.blob); }
   const tys = types.filter(t => !t.builtin || Object.values(t.fields).some(f => f.userEdited) || Object.keys(t.texts || {}).length).map(t => ({ ...t, file: bytesB64(t.file) }));
-  const data = JSON.stringify({ app: 'jumoku_karte', version: 2, saved: new Date().toISOString(), trees, photos, types: tys });
+  // よく使う言葉などの設定（この端末で直したもの）もバックアップに入れる
+  const settings = {}; try { for (const k of SHARED_SETTINGS) { const v = localStorage.getItem(k); if (v != null) settings[k] = v; } } catch (e) { }
+  const data = JSON.stringify({ app: 'jumoku_karte', version: 2, saved: new Date().toISOString(), trees, photos, types: tys, settings });
   const d = new Date(); const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
   await shareOrDownload(new File([data], `樹木カルテ_バックアップ_${stamp}.json`, { type: 'application/json' }));
 }
@@ -5997,6 +6000,7 @@ async function restore(file) {
   try {
     const data = JSON.parse(await file.text());
     if (data.app !== 'jumoku_karte') throw new Error('このアプリのバックアップではありません');
+    if (data.settings) try { for (const k of SHARED_SETTINGS) if (k in data.settings) localStorage.setItem(k, data.settings[k]); } catch (e) { }
     for (const ty of data.types || []) {
       const nt = { ...ty, file: b64bytes(ty.file).buffer };
       const i = types.findIndex(x => x.id === nt.id);
