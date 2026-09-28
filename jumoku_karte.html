@@ -4050,9 +4050,13 @@ async function composeURL(p) {
 }
 async function composeBlob(p, max = 1600, ink = true, strokes = p.strokes) {
   const img = await loadImg(await photoURL(p.id));
-  const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
-  const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
-  const x = c.getContext('2d'); x.drawImage(img, 0, 0, c.width, c.height); if (ink) drawStrokes(x, strokes, c.width, c.height);
+  const fg = p.frame && ink ? frameGeom(img.naturalWidth, img.naturalHeight, p.frame.a) : null; // 枠いっぱいに書いた写真は、白い余白ごと
+  const bw = fg ? fg.fw : img.naturalWidth, bh = fg ? fg.fh : img.naturalHeight, s = Math.min(1, max / Math.max(bw, bh));
+  const c = document.createElement('canvas'); c.width = Math.round(bw * s); c.height = Math.round(bh * s);
+  const x = c.getContext('2d');
+  if (fg) { x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, fg.r.x * c.width, fg.r.y * c.height, fg.r.w * c.width, fg.r.h * c.height); }
+  else x.drawImage(img, 0, 0, c.width, c.height);
+  if (ink) drawStrokes(x, strokes, c.width, c.height);
   return canvasBlob(c, .85);
 }
 function photosChanged() { refreshView(true); }
@@ -4202,7 +4206,7 @@ function drawStrokes(x, strokes, W, H) {
       const g = boxPx(s, W, H);
       x.translate(g.cx, g.cy); x.rotate(g.r);
       x.beginPath(); if (s.t === 'ellipse') x.ellipse(0, 0, g.w / 2, g.h / 2, 0, 0, Math.PI * 2); else x.rect(-g.w / 2, -g.h / 2, g.w, g.h);
-      const lw = x.lineWidth; if (s.dash) { x.setLineDash([lw * 3.5, lw * 2.5]); x.lineCap = 'butt'; } x.strokeStyle = halo(s.c); x.globalAlpha = .55; x.lineWidth = lw + Math.max(2, lw * .6); x.stroke();
+      const lw = x.lineWidth; if (s.dash) { x.setLineDash([lw * 3.5, lw * 2.5]); x.lineCap = 'butt'; } // ○□は色の線だけ（白いふちはつけない）
       x.globalAlpha = 1; x.strokeStyle = s.c; x.lineWidth = lw; x.stroke();
     } else if (s.t === 'arrow') { // 旧版の細い矢印
       const x1 = s.x1 * W, y1 = s.y1 * H, x2 = s.x2 * W, y2 = s.y2 * H, a = Math.atan2(y2 - y1, x2 - x1), L = Math.max(14, s.w * W * 5);
@@ -4216,18 +4220,17 @@ function drawStrokes(x, strokes, W, H) {
         const ca = Math.cos(a), sa = Math.sin(a), bx = x2 - hl * ca, by = y2 - hl * sa, hlw = Math.max(2, t * .4);
         const head = () => { x.beginPath(); x.moveTo(x2, y2); x.lineTo(bx - sa * hw, by + ca * hw); x.lineTo(bx + sa * hw, by - ca * hw); x.closePath(); };
         const line = () => { x.beginPath(); x.moveTo(...q[0]); x.lineTo(...q[1]); x.lineTo(...q[2]); x.lineTo(bx + ca * t, by + sa * t); };
-        x.lineJoin = 'miter'; x.lineCap = 'butt'; x.strokeStyle = halo(s.c);
-        line(); x.lineWidth = t + hlw * 2; x.stroke(); head(); x.lineWidth = hlw; x.stroke();
+        x.lineJoin = 'miter'; x.lineCap = 'butt'; // 線のふち取りはつけない
         x.strokeStyle = x.fillStyle = s.c; line(); x.lineWidth = t; x.stroke(); head(); x.fill();
       }
-    } else if (s.t === 'arrow2') { // 太い矢印（ふち取りつき）
+    } else if (s.t === 'arrow2') { // 太い矢印
       const x1 = s.x1 * W, y1 = s.y1 * H, x2 = s.x2 * W, y2 = s.y2 * H, len = Math.hypot(x2 - x1, y2 - y1);
       if (len > 2) {
         const a = Math.atan2(y2 - y1, x2 - x1), t = Math.max(3, s.w * W), hl = Math.min(len * .6, t * 4.2), hw = t * 2.3;
         const ca = Math.cos(a), sa = Math.sin(a), bx = x2 - hl * ca, by = y2 - hl * sa;
         const p = [[x1 - sa * t / 2, y1 + ca * t / 2], [bx - sa * t / 2, by + ca * t / 2], [bx - sa * hw, by + ca * hw], [x2, y2], [bx + sa * hw, by - ca * hw], [bx + sa * t / 2, by - ca * t / 2], [x1 + sa * t / 2, y1 - ca * t / 2]];
         x.beginPath(); p.forEach(([u, v], i) => i ? x.lineTo(u, v) : x.moveTo(u, v)); x.closePath();
-        x.lineWidth = Math.max(2, t * .4); x.strokeStyle = halo(s.c); x.stroke(); x.fillStyle = s.c; x.fill();
+        x.fillStyle = s.c; x.fill();
       }
     } else if (s.t === 'callout') { // コメント枠＋引き出し線
       const g = calloutGeom(x, s, W, H), tx = s.tx * W, ty = s.ty * H;
@@ -4235,13 +4238,13 @@ function drawStrokes(x, strokes, W, H) {
       if (!inside) {
         const [ex, ey] = calloutEdge(g, tx, ty), lw = Math.max(2, g.fs * .12);
         const q = s.b ? zigPts(ex, ey, tx, ty) : [[ex, ey], [tx, ty]];
-        x.beginPath(); q.forEach(([u, v], i) => i ? x.lineTo(u, v) : x.moveTo(u, v)); if (s.b) x.lineJoin = 'miter'; x.strokeStyle = halo(s.c); x.lineWidth = lw + 3; x.stroke();
+        x.beginPath(); q.forEach(([u, v], i) => i ? x.lineTo(u, v) : x.moveTo(u, v)); if (s.b) x.lineJoin = 'miter';
         x.strokeStyle = s.c; x.lineWidth = lw; x.stroke();
         if (s.ah) { // 先を矢印に
           const [px, py] = q[q.length - 2], a = Math.atan2(ty - py, tx - px), L = Math.max(10, lw * 5.5);
           x.beginPath(); x.moveTo(tx, ty); x.lineTo(tx - L * Math.cos(a - .4), ty - L * Math.sin(a - .4)); x.lineTo(tx - L * Math.cos(a + .4), ty - L * Math.sin(a + .4)); x.closePath();
-          x.fillStyle = s.c; x.lineWidth = 1.5; x.strokeStyle = halo(s.c); x.stroke(); x.fill();
-        } else { x.beginPath(); x.arc(tx, ty, Math.max(3, g.fs * .2), 0, Math.PI * 2); x.fillStyle = s.c; x.fill(); x.lineWidth = 1.5; x.strokeStyle = halo(s.c); x.stroke(); }
+          x.fillStyle = s.c; x.fill();
+        } else { x.beginPath(); x.arc(tx, ty, Math.max(3, g.fs * .2), 0, Math.PI * 2); x.fillStyle = s.c; x.fill(); }
       }
       if (s.nb) { // 枠なし：文字だけ（白ふち）
         x.font = `bold ${g.fs}px ${DFONT}`; x.textBaseline = 'top'; x.lineWidth = g.fs * .2; x.strokeStyle = halo(s.c); x.fillStyle = s.c;
@@ -4256,7 +4259,6 @@ function drawStrokes(x, strokes, W, H) {
       const x1 = s.x1 * W, y1 = s.y1 * H, x2 = s.x2 * W, y2 = s.y2 * H, lw = Math.max(1.5, (s.w || .006) * W);
       const path = () => { x.beginPath(); x.moveTo(x1, y1); x.lineTo(x2, y2); };
       x.lineCap = 'butt'; if (s.dash) x.setLineDash([lw * 3, lw * 2]);
-      x.strokeStyle = halo(s.c); x.lineWidth = lw + Math.max(2, lw * .8); path(); x.stroke();
       x.strokeStyle = s.c; x.lineWidth = lw; path(); x.stroke(); x.setLineDash([]);
       if (s.t === 'dim') {
         const a = Math.atan2(y2 - y1, x2 - x1), L = Math.max(9, lw * 5);
@@ -4270,23 +4272,22 @@ function drawStrokes(x, strokes, W, H) {
       const gap = Math.max(6, lw * 3.2); x.lineWidth = Math.max(1.2, lw * .6); x.strokeStyle = s.c; x.beginPath();
       for (let k = -(y2 - y1); k < x2 - x1; k += gap) { x.moveTo(x1 + k, y2); x.lineTo(x1 + k + (y2 - y1), y1); }
       x.stroke(); x.restore();
-      x.lineWidth = lw + 3; x.strokeStyle = halo(s.c); x.strokeRect(x1, y1, x2 - x1, y2 - y1); x.lineWidth = lw; x.strokeStyle = s.c; x.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      x.lineWidth = lw; x.strokeStyle = s.c; x.strokeRect(x1, y1, x2 - x1, y2 - y1);
       const fs = (s.s || .028) * W;
-      if (s.top) drawLabel(x, s.top, x2 + fs * .3, y1 + fs * .45, fs, s.c, 'left');
-      if (s.bot) drawLabel(x, s.bot, x2 + fs * .3, y2 + fs * .45, fs, s.c, 'left');
+      const lft = x2 > W * .8; // 右端に近いときは高さの数字を左側に
+      if (s.top) drawLabel(x, s.top, lft ? x1 - fs * .3 : x2 + fs * .3, y1 + fs * .45, fs, s.c, lft ? 'right' : 'left');
+      if (s.bot) drawLabel(x, s.bot, lft ? x1 - fs * .3 : x2 + fs * .3, y2 + fs * .45, fs, s.c, lft ? 'right' : 'left');
       if (s.text) drawLabel(x, s.text, (x1 + x2) / 2, y1 - fs * .35, fs, s.c, 'center');
     } else if (s.t === 'stamp') { // 平面図の記号
       const cx = s.x * W, cy = s.y * H, R = s.s * W, lw = Math.max(2, R * .12);
       if (s.k === 'tree') {
-        x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.strokeStyle = halo(s.c); x.lineWidth = lw + 3; x.stroke(); x.strokeStyle = s.c; x.lineWidth = lw; x.stroke();
+        x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.strokeStyle = s.c; x.lineWidth = lw; x.stroke();
         x.beginPath(); x.arc(cx, cy, Math.max(2, R * .14), 0, Math.PI * 2); x.fillStyle = s.c; x.fill();
       } else if (s.k === 'pole') {
-        x.beginPath(); x.arc(cx, cy, R * .35, 0, Math.PI * 2); x.fillStyle = s.c; x.fill(); x.lineWidth = 2; x.strokeStyle = halo(s.c); x.stroke();
+        x.beginPath(); x.arc(cx, cy, R * .35, 0, Math.PI * 2); x.fillStyle = s.c; x.fill();
       } else if (s.k === 'reji') { // レジストグラフの測定位置：□R と矢印
         x.translate(cx, cy); x.rotate(s.r || 0);
         const bw = R * 1.1, bh = R * .85, al = R * 1.7;
-        x.lineWidth = lw + 3; x.strokeStyle = halo(s.c); x.strokeRect(-bw / 2, -bh / 2, bw, bh);
-        x.beginPath(); x.moveTo(bw / 2, 0); x.lineTo(bw / 2 + al, 0); x.stroke();
         x.lineWidth = lw; x.strokeStyle = s.c; x.strokeRect(-bw / 2, -bh / 2, bw, bh); x.beginPath(); x.moveTo(bw / 2, 0); x.lineTo(bw / 2 + al - R * .3, 0); x.stroke();
         x.beginPath(); x.moveTo(bw / 2 + al, 0); x.lineTo(bw / 2 + al - R * .5, -R * .3); x.lineTo(bw / 2 + al - R * .5, R * .3); x.closePath(); x.fillStyle = s.c; x.fill();
         x.font = `bold ${R * .7}px ${DFONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = s.c; x.fillText('R', 0, R * .04);
@@ -4294,14 +4295,14 @@ function drawStrokes(x, strokes, W, H) {
       } else if (s.k === 'north') {
         x.translate(cx, cy); x.rotate(s.r || 0);
         x.beginPath(); x.moveTo(0, -R); x.lineTo(R * .45, R * .7); x.lineTo(0, R * .35); x.lineTo(-R * .45, R * .7); x.closePath();
-        x.lineWidth = 3; x.strokeStyle = halo(s.c); x.stroke(); x.fillStyle = s.c; x.fill();
+        x.fillStyle = s.c; x.fill();
         x.font = `bold ${R * .8}px ${DFONT}`; x.textAlign = 'center'; x.textBaseline = 'bottom'; x.fillText('N', 0, -R * 1.05);
         x.setTransform(1, 0, 0, 1, 0, 0);
       }
       if (s.text) { const lp = stampLabelPos(s, W, H); drawLabel(x, s.text, lp.x, lp.y, lp.fs, s.c, lp.align); }
     } else if (s.t === 'num') { // 丸数字
       const r = s.s * W * .75, cx = s.x * W, cy = s.y * H;
-      x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fillStyle = s.c; x.fill(); x.lineWidth = Math.max(2, r * .15); x.strokeStyle = halo(s.c); x.stroke();
+      x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fillStyle = s.c; x.fill();
       x.fillStyle = halo(s.c); x.font = `bold ${r * 1.15}px ${DFONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(s.n), cx, cy + r * .05);
     } else if (s.t === 'text') {
       const fs = s.s * W; x.font = `bold ${fs}px ${DFONT}`; x.textBaseline = 'top';
@@ -4422,12 +4423,39 @@ function askText(title, init = '', presets = true, quick = false) {
   });
 }
 
+/* ---------- 枠いっぱいに書く ----------
+   p.frame = { a: 枠の横÷縦 }。書き込みの座標は写真ではなくカルテの枠（写真の外の白い余白も含む）に対する割合になる。 */
+function slotAspect(slot) {
+  if (!slot || typeof curTpl === 'undefined' || !curTpl || !curType.fields[slot]) return null;
+  const g = curTpl.rangeOf(slot); let W = 0, H = 0;
+  for (let i = g.c1; i <= g.c2; i++) W += curTpl.cw(i); for (let i = g.r1; i <= g.r2; i++) H += curTpl.rh(i);
+  if (g.parts) H /= g.parts; const pad = 12 * 9525; return W > pad && H > pad ? (W - pad) / (H - pad) : null;
+}
+function frameGeom(iw, ih, a) {
+  let fw, fh; if (a >= iw / ih) { fh = ih; fw = ih * a; } else { fw = iw; fh = iw / a; }
+  return { fw, fh, r: { x: (fw - iw) / 2 / fw, y: (fh - ih) / 2 / fh, w: iw / fw, h: ih / fh } };
+}
+// 写真に対する座標で描いた書き込みを、枠に対する座標に置きかえる
+function strokesToFrame(strokes, r) {
+  const X = v => r.x + v * r.w, Y = v => r.y + v * r.h;
+  return strokes.map(s0 => {
+    const s = clone(s0);
+    if (s.pts) s.pts = s.pts.map(([a, b]) => [+X(a).toFixed(4), +Y(b).toFixed(4)]);
+    for (const k of ['x1', 'x2', 'x', 'tx']) if (typeof s[k] === 'number') s[k] = X(s[k]);
+    for (const k of ['y1', 'y2', 'y', 'ty']) if (typeof s[k] === 'number') s[k] = Y(s[k]);
+    for (const k of ['s', 'w']) if (typeof s[k] === 'number') s[k] *= r.w;
+    return s;
+  });
+}
 async function openDraw(p, box) {
   const img = await loadImg(await photoURL(p.id));
   let tool = 'callout', back = false, plan = false; try { tool = localStorage.getItem('jk_drawTool') || tool; back = localStorage.getItem('jk_back') === '1'; plan = localStorage.getItem('jk_plan') === '1'; } catch (e) { }
   if (tool === 'plan' || tool === 'callout') tool = 'callout';
   dr = { p, box, img, strokes: clone(p.strokes), tool, back, plan, color: COLORS[0], size: 1, active: null, penSeen: false, sel: null, pending: null, view: { z: 1, x: 0, y: 0 } };
   dr.hist = [JSON.stringify(dr.strokes)]; dr.hi = 0;
+  // まだ何も書いていない写真は、はじめから枠いっぱいに書けるようにする
+  dr.frame = p.frame || (!(p.strokes || []).length && slotAspect(p.slot) ? { a: slotAspect(p.slot) } : null);
+  dr.fg = dr.frame ? frameGeom(img.naturalWidth, img.naturalHeight, dr.frame.a) : null;
   $('#drawCanvas').style.transform = '';
   $('#draw').classList.remove('hidden'); document.body.style.overflow = 'hidden'; resetZoom();
   paintTools(); fitCanvas(); redraw();
@@ -4444,6 +4472,11 @@ function paintTools() {
   else if (dr.tool === 'callout' && dr.sel == null) sb.append(B('💬 言葉を選ぶ', false, chooseCallout, 'hl'));
   tb.append(...COLORS.map(c => h('button', { type: 'button', class: 'sw' + (dr.color === c ? ' on' : ''), style: `background:${c}`, 'aria-label': '色', onclick: () => { dr.color = c; if (dr.sel != null) { dr.strokes[dr.sel].c = c; redraw(); drawSnap(); } paintTools(); } })));
   tb.append(...[[0.6, '細'], [1, '中'], [1.8, '太']].map(([v, l]) => B(l, dr.size === v, () => { dr.size = v; if (dr.sel != null) { const s = dr.strokes[dr.sel], base = s.base || 1; scaleObj(s, v / base); s.base = v; redraw(); } paintTools(); })));
+  if (!dr.frame && slotAspect(dr.p.slot)) tb.append(B('🖼 枠いっぱいに書く', false, () => {
+    dr.frame = { a: slotAspect(dr.p.slot) }; dr.fg = frameGeom(dr.img.naturalWidth, dr.img.naturalHeight, dr.frame.a);
+    dr.strokes = strokesToFrame(dr.strokes, dr.fg.r); dr.hist = [JSON.stringify(dr.strokes)]; dr.hi = 0; dr.sel = null;
+    fitCanvas(); paintTools(); redraw(); toast('写真の外の白い所にも書けるようにしました');
+  }, 'hl'));
   tb.append(h('span', { class: 'gap' }), ...(dr.view && dr.view.z > 1.01 ? [B('🔍 全体を表示', false, () => window.resetDrawView(), 'hl')] : []),
     h('button', { type: 'button', disabled: dr.hi > 0 ? null : '', onclick: () => drawUndo(-1) }, '↶ 戻す'),
     h('button', { type: 'button', disabled: dr.hi < dr.hist.length - 1 ? null : '', onclick: () => drawUndo(1) }, '↷ 進む'),
@@ -4479,7 +4512,7 @@ function paintTools() {
       B('選択をやめる', false, () => { dr.sel = null; paintTools(); redraw(); }));
   } else if (dr.strokes.some(o => o.t !== 'pen' && o.t !== 'marker')) sb.append(h('span', { class: 'lbl' }, '置いた物は「✋ 選ぶ」（同じ道具ならそのまま）でタップして直せます'));
 }
-// 異音の範囲：程度（大・小など）と、上端・下端の高さ（G.L. m）
+// 異音の範囲：程度（大・小など）と、上端・下端の高さ（G.L. cm）
 const HATCH_LEVELS = ['異音（大）', '異音（小）', '異音（極大）', '打診異常'];
 async function askHatch(o) {
   const lv = await new Promise(res => {
@@ -4491,8 +4524,14 @@ async function askHatch(o) {
   });
   if (lv == null) return;
   o.text = lv;
-  const q = await fillPlaceholders('上端 G.L.○m　下端 G.L.○m');
-  if (q) { const m = [...q.matchAll(/G\.L\.([^m　]*)m/g)].map(x => x[1]); if (m[0] && m[0] !== '○') o.top = m[0] + 'm'; if (m[1] && m[1] !== '○') o.bot = m[1] + 'm'; }
+  // 異音が聞こえた高さの範囲：下（0か小さい数）→ 上（大きい数）。下を空けたら 0cm、逆に入れたら入れかえる
+  const q = await fillPlaceholders('下端 G.L.○cm 〜 上端 G.L.○cm');
+  if (q) {
+    const m = [...q.matchAll(/G\.L\.([^c　 ]*)cm/g)].map(x => x[1] === '○' ? '' : x[1]);
+    let lo = m[0] === '' ? '0' : m[0], hi = m[1] || '';
+    if (hi !== '' && !isNaN(+lo) && !isNaN(+hi) && +lo > +hi) [lo, hi] = [hi, lo];
+    o.bot = lo + 'cm'; if (hi !== '') o.top = hi + 'cm'; else delete o.top;
+  }
 }
 // 戻す・進む：書き込みの変化（置く・動かす・消す・文字や色を変える）ごとに記録する
 function drawSnap() {
@@ -4515,7 +4554,7 @@ async function chooseCallout() {
 }
 function fitCanvas() {
   const st = $('#drawStage'), c = $('#drawCanvas');
-  const W = st.clientWidth - 8, H = st.clientHeight - 8 - 62, iw = dr.img.naturalWidth, ih = dr.img.naturalHeight; // 下の操作バーの分をあけておく
+  const W = st.clientWidth - 8, H = st.clientHeight - 8 - 62, iw = dr.fg ? dr.fg.fw : dr.img.naturalWidth, ih = dr.fg ? dr.fg.fh : dr.img.naturalHeight; // 下の操作バーの分をあけておく
   const s = Math.min(W / iw, H / ih); const dpr = Math.min(2, window.devicePixelRatio || 1);
   c.style.width = Math.round(iw * s) + 'px'; c.style.height = Math.round(ih * s) + 'px';
   c.width = Math.round(iw * s * dpr); c.height = Math.round(ih * s * dpr); dr.baseW = c.width; dr.baseH = c.height;
@@ -4523,7 +4562,9 @@ function fitCanvas() {
 }
 function redraw() {
   const c = $('#drawCanvas'), x = c.getContext('2d');
-  x.clearRect(0, 0, c.width, c.height); x.drawImage(dr.img, 0, 0, c.width, c.height);
+  x.clearRect(0, 0, c.width, c.height);
+  if (dr.fg) { const r = dr.fg.r; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(dr.img, r.x * c.width, r.y * c.height, r.w * c.width, r.h * c.height); x.strokeStyle = 'rgba(0,0,0,.15)'; x.lineWidth = 1; x.strokeRect(r.x * c.width, r.y * c.height, r.w * c.width, r.h * c.height); }
+  else x.drawImage(dr.img, 0, 0, c.width, c.height);
   drawStrokes(x, dr.active ? [...dr.strokes, dr.active] : dr.strokes, c.width, c.height);
   if (dr.sel != null && dr.strokes[dr.sel]) {
     const b = objBox(x, dr.strokes[dr.sel], c.width, c.height), m = 8;
@@ -4543,7 +4584,7 @@ function redraw() {
   }
 }
 function closeDraw(save) {
-  if (save) { dr.p.strokes = dr.strokes; touch(); photosChanged(); }
+  if (save) { dr.p.strokes = dr.strokes; if (dr.frame) dr.p.frame = dr.frame; touch(); photosChanged(); }
   $('#draw').classList.add('hidden'); document.body.style.overflow = ''; dr = null; resetZoom();
 }
 (function drawEvents() {
@@ -4733,7 +4774,7 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
   const X = v => Math.round(R.x + v * E), Y = v => Math.round(R.y + v * E), L = v => Math.max(1, Math.round(v * E));
   const hx = c => { let v = String(c || '#E53935').replace('#', '').toUpperCase(); if (v.length === 3) v = v.replace(/./g, d => d + d); return v; };
   const fill = (c, al = 1) => `<a:solidFill><a:srgbClr val="${hx(c)}">${al < 1 ? `<a:alpha val="${Math.round(al * 100000)}"/>` : ''}</a:srgbClr></a:solidFill>`;
-  const glow = (c, px) => `<a:effectLst><a:glow rad="${Math.max(9525, Math.round(px * E))}"><a:srgbClr val="${hx(halo(c))}"><a:alpha val="75000"/></a:srgbClr></a:glow></a:effectLst>`;
+  const glow = () => ''; // 線のふち取り（光彩）はつけない
   const ln = (px, c, o = {}) => `<a:ln w="${L(px)}"${o.cap ? ' cap="rnd"' : ''}>${c ? fill(c, o.al) : '<a:noFill/>'}${o.dash ? '<a:prstDash val="dash"/>' : ''}${o.miter ? '<a:miter lim="800000"/>' : '<a:round/>'}${o.head ? `<a:headEnd type="${o.head}" w="${o.tw || 'lg'}" len="${o.tw || 'lg'}"/>` : ''}${o.tail ? `<a:tailEnd type="${o.tail}" w="${o.tw || 'lg'}" len="${o.tw || 'lg'}"/>` : ''}</a:ln>`;
   const xf = (a, b, w, hh, o = {}) => `<a:xfrm${o.rot ? ` rot="${o.rot}"` : ''}${o.fh ? ' flipH="1"' : ''}${o.fv ? ' flipV="1"' : ''}><a:off x="${a}" y="${b}"/><a:ext cx="${w}" cy="${hh}"/></a:xfrm>`;
   const nv = (tag, nm, extra = '') => `<xdr:nv${tag}Pr><xdr:cNvPr id="${idc.n++}" name="${xmlEsc(nm)}"/><xdr:cNv${tag}Pr${extra}/></xdr:nv${tag}Pr>`;
@@ -4802,13 +4843,14 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
       const a = X(x1), b = Y(y1), w = L(x2 - x1), hh = L(y2 - y1), c = hx(s.c);
       parts.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm + ' 四角')}<xdr:spPr>${xf(a, b, w, hh)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:pattFill prst="wdUpDiag"><a:fgClr><a:srgbClr val="${c}"/></a:fgClr><a:bgClr><a:srgbClr val="FFFFFF"/></a:bgClr></a:pattFill>${ln(lw, s.c)}</xdr:spPr></xdr:sp>`, box: box(a, b, a + w, b + hh) });
       if (s.text) parts.push(label(nm + ' 程度', s.text, (x1 + x2) / 2, y1 - fs * .35, fs, s.c, 'center'));
-      if (s.top) parts.push(label(nm + ' 上端', s.top, x2 + fs * .3, y1 + fs * .45, fs, s.c, 'left'));
-      if (s.bot) parts.push(label(nm + ' 下端', s.bot, x2 + fs * .3, y2 + fs * .45, fs, s.c, 'left'));
+      const lft = x2 > W * .8;
+      if (s.top) parts.push(label(nm + ' 上端', s.top, lft ? x1 - fs * .3 : x2 + fs * .3, y1 + fs * .45, fs, s.c, lft ? 'right' : 'left'));
+      if (s.bot) parts.push(label(nm + ' 下端', s.bot, lft ? x1 - fs * .3 : x2 + fs * .3, y2 + fs * .45, fs, s.c, lft ? 'right' : 'left'));
       kids.push(parts.length > 1 ? group(nm, parts) : parts[0]);
     } else if (s.t === 'stamp') {
       const cx = s.x * W, cy = s.y * H, R = s.s * W, lw = Math.max(2, R * .12), nm = nmOf(STAMP_NAMES[s.k] || '記号'), parts = [];
       if (s.k === 'tree') { parts.push(ellipse(nm + ' 円', cx, cy, R, ln(lw, s.c), null)); parts.push(ellipse(nm + ' 中心', cx, cy, Math.max(2, R * .14), '<a:ln><a:noFill/></a:ln>', fill(s.c))); }
-      else if (s.k === 'pole') parts.push(ellipse(nm + ' 印', cx, cy, R * .35, ln(2, halo(s.c)), fill(s.c)));
+      else if (s.k === 'pole') parts.push(ellipse(nm + ' 印', cx, cy, R * .35, '<a:ln><a:noFill/></a:ln>', fill(s.c)));
       else if (s.k === 'reji') {
         const r = s.r || 0, rot = (lx, ly) => [cx + lx * Math.cos(r) - ly * Math.sin(r), cy + lx * Math.sin(r) + ly * Math.cos(r)], bw = R * 1.1, bh = R * .85;
         const deg = ((r * 180 / Math.PI) % 360 + 360) % 360, a = X(cx - bw / 2), b = Y(cy - bh / 2);
@@ -4824,7 +4866,7 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
       if (parts.length) kids.push(parts.length > 1 ? group(nm, parts) : parts[0]);
     } else if (s.t === 'num') {
       const r = s.s * W * .75, a = X(s.x * W - r), b = Y(s.y * H - r), d = L(r * 2);
-      kids.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nmOf('番号'))}<xdr:spPr>${xf(a, b, d, d)}<a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>${fill(s.c)}${ln(Math.max(2, r * .15), halo(s.c))}</xdr:spPr>${body([String(s.n)], r * 1.15 * .75, halo(s.c), { anchor: 'ctr', algn: 'ctr' }).replace('<a:spAutoFit/>', '<a:noAutofit/>')}</xdr:sp>`, box: box(a, b, a + d, b + d) });
+      kids.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nmOf('番号'))}<xdr:spPr>${xf(a, b, d, d)}<a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>${fill(s.c)}${'<a:ln><a:noFill/></a:ln>'}</xdr:spPr>${body([String(s.n)], r * 1.15 * .75, halo(s.c), { anchor: 'ctr', algn: 'ctr' }).replace('<a:spAutoFit/>', '<a:noAutofit/>')}</xdr:sp>`, box: box(a, b, a + d, b + d) });
     } else if (s.t === 'text') {
       const fs = s.s * W; mc.font = `bold ${fs}px ${DFONT}`; const ls = String(s.text).split('\n');
       const pd = s.box ? fs * .3 : 0, a = X(s.x * W - pd), b = Y(s.y * H - pd), w = L(Math.max(...ls.map(l => mc.measureText(l).width)) * 1.06 + fs * .2 + pd * 2), hh = L(ls.length * fs * 1.2 + pd * 2);
@@ -4833,7 +4875,7 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
       const g = boxPx(s, W, H), a = X(g.cx - g.w / 2), b = Y(g.cy - g.h / 2), w = L(g.w), hh = L(g.h), lw = (s.w || .007) * W;
       const deg = ((g.r * 180 / Math.PI) % 360 + 360) % 360, rot = Math.round(deg * 60000) % 21600000;
       const cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => fromLocal(g, u * g.w / 2, v * g.h / 2));
-      kids.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nmOf(s.t === 'ellipse' ? '丸囲い' : '四角囲い'))}<xdr:spPr>${xf(a, b, w, hh, { rot })}<a:prstGeom prst="${s.t}"><a:avLst/></a:prstGeom><a:noFill/>${ln(lw, s.c, { dash: !!s.dash })}${glow(s.c, Math.max(1.5, lw * .4))}</xdr:spPr></xdr:sp>`, box: box(X(Math.min(...cs.map(p => p[0]))), Y(Math.min(...cs.map(p => p[1]))), X(Math.max(...cs.map(p => p[0]))), Y(Math.max(...cs.map(p => p[1])))) });
+      kids.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nmOf(s.t === 'ellipse' ? '丸囲い' : '四角囲い'))}<xdr:spPr>${xf(a, b, w, hh, { rot })}<a:prstGeom prst="${s.t}"><a:avLst/></a:prstGeom><a:noFill/>${ln(lw, s.c, { dash: !!s.dash })}</xdr:spPr></xdr:sp>`, box: box(X(Math.min(...cs.map(p => p[0]))), Y(Math.min(...cs.map(p => p[1]))), X(Math.max(...cs.map(p => p[0]))), Y(Math.max(...cs.map(p => p[1])))) });
     } else if (s.pts && s.pts.length) {
       const pts = s.pts.length === 1 ? [s.pts[0], [s.pts[0][0] + .001, s.pts[0][1]]] : s.pts;
       kids.push(poly(nmOf(s.t === 'marker' ? 'マーカー' : '手書き'), pts.map(([u, v]) => [u * W, v * H]), ln((s.w || .006) * W, s.c, { cap: true, al: s.t === 'marker' ? .42 : 1 })));
@@ -6060,9 +6102,10 @@ function picElem(R, rid, id, name) {
   return `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="${xmlEsc(name)}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="${R.x}" y="${R.y}"/><a:ext cx="${R.w}" cy="${R.h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>`;
 }
 // 写真＋書き込み（図形）を1つのグループにして貼る
-function annotatedPicXml(tpl, g, iw, ih, rid, id, name, strokes, idc) {
-  const R = picRect(tpl, g, iw, ih);
-  const G = shapesGroupXml(R, strokes, { xml: picElem(R, rid, id, name + '（写真）'), box: [R.x, R.y, R.x + R.w, R.y + R.h] }, idc, name);
+function annotatedPicXml(tpl, g, iw, ih, rid, id, name, strokes, idc, fr) {
+  const R = picRect(tpl, g, iw, ih); // fr があるときは、R＝枠いっぱいの範囲、写真はその中の fr の位置
+  const PR = fr ? { x: Math.round(R.x + fr.x * R.w), y: Math.round(R.y + fr.y * R.h), w: Math.round(fr.w * R.w), h: Math.round(fr.h * R.h) } : R;
+  const G = shapesGroupXml(R, strokes, { xml: picElem(PR, rid, id, name + '（写真）'), box: [PR.x, PR.y, PR.x + PR.w, PR.y + PR.h] }, idc, name);
   const [a, b, c, d] = G.box;
   return oneAnchor(tpl, a, b, c - a, d - b, G.xml);
 }
@@ -6142,7 +6185,8 @@ async function buildWorkbook(ty, list, fileName = '') {
       const blob = await composeBlob(p, 1600, !shp, strokes); const img = await loadImg(URL.createObjectURL(blob));
       const media = `karte_${uid()}.jpeg`; zip.file(`xl/media/${media}`, await blob.arrayBuffer());
       const rid = `rIdP${pid}`; drels += `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${media}"/>`;
-      pics += shp ? annotatedPicXml(tpl, tpl.rangeOf(p.slot), img.naturalWidth, img.naturalHeight, rid, pid, spec.label || '写真', strokes, idc)
+      const fg = shp && p.frame ? frameGeom(img.naturalWidth, img.naturalHeight, p.frame.a) : null;
+      pics += shp ? annotatedPicXml(tpl, tpl.rangeOf(p.slot), fg ? fg.fw : img.naturalWidth, fg ? fg.fh : img.naturalHeight, rid, pid, spec.label || '写真', strokes, idc, fg && fg.r)
         : picXml(tpl, tpl.rangeOf(p.slot), img.naturalWidth, img.naturalHeight, rid, pid, spec.label || '写真'); pid++;
     }
     for (const [pi, strokes] of Object.entries(t.ink || {})) {
