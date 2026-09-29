@@ -302,7 +302,7 @@ html{touch-action:manipulation}
 dialog.ask{max-width:440px}
 dialog.wide{max-width:720px}
 .rgd{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.rgd label{display:flex;flex-direction:column;gap:4px;font-size:14px;flex:1;min-width:150px}
-.rgrow{display:grid;grid-template-columns:34px 80px 1fr 1fr 1fr 58px;gap:6px;align-items:center;margin:4px 0}.rgrow b{font-size:20px;text-align:center}.rghead{font-size:12.5px;color:#666}
+.rgrow{display:grid;grid-template-columns:34px 80px 1fr 1fr 1fr 58px 58px;gap:6px;align-items:center;margin:4px 0}.rgrow b{font-size:20px;text-align:center}.rghead{font-size:12.5px;color:#666}
 .rgfig{margin-top:12px;border-top:1px solid #e6e2d6;padding-top:6px}.rgwave{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:5px 0}.rgwave .ok{color:#2e7d55;font-weight:600}.rgwave .ng{color:#c62828}.rgwave .btn{min-height:36px;padding:6px 10px;font-size:13.5px}
 .rgwarn{margin-top:8px;background:#fdecea;color:#8c1d18;border-radius:8px;padding:8px 10px;font-weight:600}
 .rgres{background:#f5f3ec;border-radius:10px;padding:10px 12px;margin-top:10px;line-height:1.9;font-size:15px}.rgres b{font-size:17px}.rgres b.ng{color:#c62828}.rgrate{margin-top:4px}
@@ -5589,7 +5589,7 @@ const REGI_MAP_TOKYO = nekabu => ({
   rate: 'F30', nA: 'K31', nB: 'Z31', dA: 'K32', dB: 'Z32',
 });
 const BEARINGS = ['北', '東', '南', '西'];
-const regiDefault = () => ({ mode: 'dir', D1: '', D2: '', ang: '', dirs: [{ bear: '南' }, { bear: '西' }, { bear: '北' }, { bear: '東' }].map(d => ({ ...d, b: '', t: '', dl: '', snd: '' })) });
+const regiDefault = () => ({ mode: 'dir', D1: '', D2: '', ang: '', dirs: [{ bear: '南' }, { bear: '西' }, { bear: '北' }, { bear: '東' }].map(d => ({ ...d, b: '', t: '', dl: '', snd: '', dc: '' })) });
 const num = v => { const s = String(v ?? '').replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim(); return s === '' || isNaN(+s) ? null : +s; };
 const f1 = v => (Math.round(+(v * 10).toFixed(6)) / 10).toFixed(1); // 51.75 が 51.7 にならないように（小数の誤差）
 function regiCalc(inp) {
@@ -5738,7 +5738,7 @@ async function regiWaveLines(t, ty, inp) {
     if (D) add('center', D / 2, same ? '中心＝t' : '中心');
     if (d.b > 0) add('b', d.b, '');
     if (d.t != null) add('t', d.b + d.t, same ? '' : 't');
-    if (d.t != null && d.dl) add('e', d.b + d.t + d.dl, '');
+    if (d.t != null && d.dl && !(inp.dirs[i] && inp.dirs[i].dc)) add('e', d.b + d.t + d.dl, ''); // 腐朽が続く向きは、腐朽の終わり＝中心なので線はいらない
     // データの開始（◀）と終点（▶）の印：カルテの凡例と同じ黒い三角。波形の内側に置き、三角の辺をその深さに合わせる。ドラッグで直せる
     const sd = dx < 0 ? -1 : 1, Rn = .011, wN = TRI_W * Rn, ym = (tr[0] + tr[1]) / 2;
     const autoEnd = tr.end != null ? Math.max(0, (tr.end - cal.x0) / dx) : num(cal.v); if (tr.end != null) p.dend = +autoEnd.toFixed(2);
@@ -5789,7 +5789,7 @@ function regiFromWaves(inp, waves, onlyEmpty = false) {
     const dataEnd = cal && num(cal.de) != null ? num(cal.de) : tr && tr.end != null && dxc ? Math.max(0, (tr.end - cal.x0) / dxc) : w && w.p && w.p.dend != null ? w.p.dend : Infinity; // dend：波形を切り取ったときに覚えたデータの終わり
     const reach = Math.min(Math.max(...rg.map(x => x.to)), dataEnd);
     const t = bad ? Math.max(0, bad.from - b) : center != null ? Math.min(center, reach) - b : null; if (t == null) return;
-    d.b = f1(b); d.t = f1(t); d.dl = bad ? f1(Math.max(0, Math.min(bad.to, reach, center ?? bad.to) - Math.max(bad.from, b))) : ''; d.snd = bad ? '' : 1; n++; // 腐朽が見つからなければ「芯まで健全」
+    d.b = f1(b); d.t = f1(t); d.dl = bad ? f1(Math.max(0, Math.min(bad.to, d.dc ? Infinity : reach, center ?? bad.to) - Math.max(bad.from, b))) : ''; d.snd = bad ? '' : 1; if (!bad) d.dc = ''; n++; // 腐朽が見つからなければ「芯まで健全」
   });
   return n;
 }
@@ -5803,7 +5803,7 @@ async function regiDiagram(inp, waves = []) {
   x.setLineDash([10, 8]); x.lineWidth = 2; x.strokeStyle = '#888';
   x.beginPath(); x.moveTo(cx, cy - RP - 60); x.lineTo(cx, cy + RP + 60); x.moveTo(cx - RP - 60, cy); x.lineTo(cx + RP + 60, cy); x.stroke(); x.setLineDash([]);
   const U = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // 上右下左への向き（外向き）
-  const inner = [];
+  const inner = []; let dcColor = '';
   r.dirs.forEach((d, i) => {
     const p = regiPos(inp, i), [ux, uy] = U[p], Rr = (r.D[i % 2] || Dm) / 2 * k; // その向きの半径（画素）
     const at = dist => [cx + ux * (Rr - dist * k), cy + uy * (Rr - dist * k)];
@@ -5815,7 +5815,7 @@ async function regiDiagram(inp, waves = []) {
       const pxcm = Math.abs(cal.x1 - cal.x0) * iw / num(cal.v), s = k / pxcm, maxcm = (r.D[i % 2] || Dm) / 2;
       const trim0 = waveTrim(img, cal), Lfull = cal.x1 < cal.x0 ? cal.x0 * iw : (1 - cal.x0) * iw;
       measured = num(cal.de) != null ? num(cal.de) : trim0.end != null ? Math.abs(trim0.end - cal.x0) * iw / pxcm : Lfull / pxcm; // 波形のデータが終わる所＝ドリルが届いた深さ（終点の三角で直せる）
-      const Lpx = Math.max(1, Math.min(maxcm * pxcm, Lfull, measured * pxcm + 2)); // データの終わり（終点の三角）より先の波形・グリッドは描かない（未測定部分）
+      const Lpx = Math.max(1, Math.min(maxcm * pxcm, Lfull)); // グラフは目盛りの端（50cm）まで置く（データの終わりより先も。未測定部分はその上に重ねる）
       const [ty0, ty1] = trim0, sy = ty0 * ih, shh = Math.max(4, (ty1 - ty0) * ih); // 上下の空きを詰める
       let hh = shh * s * vf; if (hh > RP * .28) hh = RP * .28; /* 十字の帯どうしが重なりすぎないように */ // 振幅の向きは強調してよい（標準2倍）
       const [ex, ey] = [cx + ux * Rr, cy + uy * Rr];
@@ -5828,6 +5828,11 @@ async function regiDiagram(inp, waves = []) {
         x.drawImage(img, sxa, b0 * ih, Lpx, Math.max(1, (b1 - b0) * ih), dxa, by0, Lpx * s, barH); x.imageSmoothingEnabled = true; });
       x.globalAlpha = 1; x.lineWidth = 2; x.strokeStyle = '#555'; x.strokeRect(cal.x1 < cal.x0 ? -Lpx * s : 0, -hh / 2, Lpx * s, hh);
       x.restore();
+      const chartCm = Lpx / pxcm; // 断面図に置いたグラフの長さ（cm）
+      if (inp.dirs[i].dc && measured < maxcm - .05) { // 腐朽が続く（データの終わりから中心まで）：グラフの評価の帯で分かる。グラフが中心まで届かないときだけ、その先を腐朽（decay）と同じ色の太線で
+        const dcol = ((waveRanges(wv).find(q => !isBarkName(q.name) && !isSoundName(q.name)) || {}).c) || '#FF0000';
+        if (chartCm < maxcm - .05) { if (!dcColor) dcColor = dcol; const [ax, ay] = at(Math.max(measured, chartCm)), [bx, by] = at(maxcm); objs.push({ t: 'line', c: dcol.toUpperCase(), w: N(14), x1: N(ax), y1: N(ay), x2: N(bx), y2: N(by), base: 1, gen: 1, name: '腐朽（空洞）部' }); } measured = maxcm;
+      }
       if (d.t != null && d.b + d.t < Math.min(maxcm, measured) - .05) { const [tx, ty] = at(d.b + d.t); objs.push({ t: 'line', c: '#E53935', w: N(5), x1: N(tx - uy * hh * .6), y1: N(ty - ux * hh * .6), x2: N(tx + uy * hh * .6), y2: N(ty + ux * hh * .6), base: 1, gen: 1 }); } // 健全部の終わり（芯まで健全なら出さない）
     } else {
       if (d.t != null) bar(d.b, d.t, '#fff');
@@ -5862,6 +5867,8 @@ async function regiDiagram(inp, waves = []) {
     x.font = `bold ${fs}px ${F}`; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = '#111'; x.fillText('凡例', 24, 34);
     lg.forEach((l, i) => { const y = 34 + (i + 1) * (fs + 14); x.fillStyle = l.c; x.fillRect(24, y - 7, 48, 14); x.fillStyle = '#111'; x.fillText(txt(l), 84, y); });
   }
+  // 腐朽が続く線の凡例：左上の凡例に腐朽（decay）があればそれで分かる。なければ下に同じ色で
+  if (dcColor && !(waves.some(w => w && w.cal) && inp.fig !== 'bar' && waveLegend(waves).some(l => !isBarkName(l.en) && !isSoundName(l.en)))) { x.lineWidth = 14; x.strokeStyle = dcColor; x.beginPath(); x.moveTo(480, S - 72); x.lineTo(540, S - 72); x.stroke(); x.font = `bold 38px ${F}`; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = '#111'; x.fillText('腐朽（空洞）部', 552, S - 72); }
   if (waves.some(w => w && w.cal) && inp.fig !== 'bar') { x.lineWidth = 5; x.strokeStyle = '#E53935'; x.beginPath(); x.moveTo(40, S - 72); x.lineTo(100, S - 72); x.stroke(); x.fillStyle = '#111'; x.fillText('健全部の終わり（t）', 112, S - 72); }
   else {
     x.fillStyle = '#fff'; x.fillRect(40, S - 90, 60, 36); x.lineWidth = 2; x.strokeStyle = '#111'; x.strokeRect(40, S - 90, 60, 36);
@@ -5934,11 +5941,21 @@ function openRegi() {
   const build = () => {
     tbl.innerHTML = '';
     lblD[0].textContent = `直径 ${axisName(0)}（①③）`; lblD[1].textContent = `直径 ${axisName(1)}（②④）`;
-    tbl.append(h('div', { class: 'rgrow rghead' }, h('span', {}, ''), h('span', {}, inp.mode === 'dir' ? '方角' : ''), h('span', {}, '樹皮 cm'), h('span', {}, '健全部 t cm'), h('span', {}, '腐朽部 cm（図用・任意）'), h('span', {}, '芯まで健全')));
+    tbl.append(h('div', { class: 'rgrow rghead' }, h('span', {}, ''), h('span', {}, inp.mode === 'dir' ? '方角' : ''), h('span', {}, '樹皮 cm'), h('span', {}, '健全部 t cm'), h('span', {}, '腐朽部 cm（図用・任意）'), h('span', {}, '芯まで健全'), h('span', {}, '腐朽が続く')));
     inp.dirs.forEach((d, i) => {
       const bear = inp.mode === 'dir' ? h('select', { class: 'inp', onchange: e => { d.bear = e.target.value; paint(); } }, ...BEARINGS.map(b => h('option', { value: b, selected: d.bear === b ? '' : null }, b))) : h('span', { class: 'hint' }, ['↕下', '↔左', '↕上', '↔右'][i]);
       const snd = h('input', { type: 'checkbox', title: '腐朽が見つからない向き：測れなかった中心側も健全とみなし、空洞率に入れない' }); snd.checked = !!d.snd; snd.onchange = () => { d.snd = snd.checked ? 1 : ''; paint(); };
-      tbl.append(h('div', { class: 'rgrow' }, h('b', {}, '①②③④'[i]), bear, I(d.b, v => d.b = v, '0.4'), I(d.t, v => d.t = v, '18.6'), I(d.dl, v => d.dl = v, '9.4'), h('label', { style: 'text-align:center' }, snd)));
+      // 腐朽が続く：データが途中で終わった（腐朽・空洞で止めた）向きを、中心まで腐朽とみなす。チェックなしなら、その先は未測定部分
+      const dc = h('input', { type: 'checkbox', title: '腐朽・空洞でドリルを止めた向き：データの終わりから中心まで腐朽とみなす（チェックなしなら未測定部分）' }); dc.checked = !!d.dc;
+      dc.onchange = () => {
+        d.dc = dc.checked ? 1 : ''; const D = regiCalc(inp).D[i % 2], b = num(d.b) || 0, t = num(d.t); // D：補正後の直径
+        if (d.dc) d.snd = '';
+        const p = (() => { const sl = waveSlots(ty)[i]; return sl && cur.photos.find(q => q.slot === sl); })(), end = p && p.cal && num(p.cal.de) != null ? num(p.cal.de) : p && p.dend;
+        if (t != null && D > 0) { const to = d.dc ? D / 2 : end != null ? Math.min(end, D / 2) : null; if (to != null) d.dl = f1(Math.max(0, to - b - t)); }
+        build();
+      };
+      snd.onchange = () => { d.snd = snd.checked ? 1 : ''; if (d.snd) d.dc = ''; build(); };
+      tbl.append(h('div', { class: 'rgrow' }, h('b', {}, '①②③④'[i]), bear, I(d.b, v => d.b = v, '0.4'), I(d.t, v => d.t = v, '18.6'), I(d.dl, v => d.dl = v, '9.4'), h('label', { style: 'text-align:center' }, snd), h('label', { style: 'text-align:center' }, dc)));
     });
     paint();
   };
