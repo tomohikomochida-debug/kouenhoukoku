@@ -200,6 +200,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 dialog h2{margin:0 0 10px;font-size:17px;color:var(--leaf)}
 
 .mpchips button.on{background:var(--leaf);color:#fff;border-style:solid}.mpchips button.done:not(.on){border-style:solid;background:#EEF6F0}
+.syncstat{font-size:13px;color:var(--bark);background:var(--field);border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin:-2px 0 10px;cursor:pointer}
 
 /* ---- 型・調整・フォーム ---- */
 #karte.design .kc[data-k]{outline:1.5px dashed rgba(30,136,229,.75);outline-offset:-1px;background:rgba(30,136,229,.06)}
@@ -327,6 +328,7 @@ dialog.wide{max-width:720px}
       <label class="btn" title="AirDropした写真やiPadの写真を、撮った時刻で各木に割り振る">📥 写真をまとめて入れる<input type="file" id="fileInbox" accept="image/*" multiple hidden></label>
     </div>
     <input class="inp" id="listSearch" type="search" placeholder="🔍 No.・樹木番号・樹種・路線名・案件名でさがす" aria-label="さがす" style="margin-bottom:10px">
+    <div id="syncStat" class="syncstat hidden" role="button"></div>
     <div id="listHead"></div>
     <div id="treeList"></div>
     <div id="listMore" style="margin:6px 0 16px"></div>
@@ -349,6 +351,11 @@ dialog.wide{max-width:720px}
       <h3 style="margin:12px 0 2px;font-size:14.5px">保存のしかた（Excel・バックアップ・写真）</h3>
       <label class="chk"><input type="radio" name="optSave" value="ask"> <span>毎回、保存先を選ぶ<small class="hint" style="display:block;margin-top:2px">iPad：出てくるメニューで「“ファイル”に保存」→ フォルダ（iCloud Drive・このiPad内・OneDrive など）を選ぶ。AirDrop・メールでも送れます。パソコン：保存ダイアログでフォルダとファイル名を選ぶ。</small></span></label>
       <label class="chk"><input type="radio" name="optSave" value="dl"> <span>すぐ「ダウンロード」フォルダに保存<small class="hint" style="display:block;margin-top:2px">iPadでの保存場所は「設定」→ Safari →「ダウンロード」で変えられます。</small></span></label>
+    </div>
+    <div class="card">
+      <h2>☁️ 同期（OneDrive・Googleドライブ）</h2>
+      <p class="hint">パソコン・iPad・iPhone のデータを、OneDrive（とGoogleドライブ）の「樹木診断カルテ」フォルダを通してそろえます。木ごとに新しく直したほうが残ります。電波のない現場では、つながったときにまとめて同期します。</p>
+      <div id="syncBox"></div>
     </div>
     <div class="card">
       <h2>バックアップ・機種変更</h2>
@@ -6718,6 +6725,244 @@ async function emfFileToBlob(file, maxSide = 2400) {
 
 
 /* =========================================================
+   同期（OneDrive・Googleドライブ）
+   クラウドの「樹木診断カルテ」フォルダに、木ごとの記録（trees/木.json）・写真（photos/写真）・
+   目次（index.json：木ごとの更新日時・削除した木）を置き、木ごとに新しいほうを残す。
+   写真は一度入れたら変わらない（書き込みは木の記録の側）ので、ない物だけやりとりする。
+   ========================================================= */
+const SYNC_DIR = '樹木診断カルテ';
+function syncCfg() { try { return JSON.parse(localStorage.getItem('jk_sync') || '{}') || {}; } catch (e) { return {}; } }
+function setSyncCfg(patch) { const c = { ...syncCfg(), ...patch }; try { localStorage.setItem('jk_sync', JSON.stringify(c)); } catch (e) { } return c; }
+function syncDeleted() { try { return JSON.parse(localStorage.getItem('jk_deleted') || '{}') || {}; } catch (e) { return {}; } }
+function markDeleted(id) { const d = syncDeleted(); d[id] = Date.now(); try { localStorage.setItem('jk_deleted', JSON.stringify(d)); } catch (e) { } }
+const b64url = u8 => btoa(String.fromCharCode(...u8)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const randStr = n => b64url(crypto.getRandomValues(new Uint8Array(n)));
+function blobB64(b) { return new Promise(r => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(b); }); }
+
+/* ---------- OneDrive（Microsoft Graph）。個人・会社（Microsoft 365）どちらのアカウントでも ---------- */
+const OD_AUTH = 'https://login.microsoftonline.com/common/oauth2/v2.0', OD_SCOPE = 'offline_access Files.ReadWrite User.Read';
+const odRedirect = () => location.origin + location.pathname;
+function odTok() { try { return JSON.parse(localStorage.getItem('jk_od_tok') || 'null'); } catch (e) { return null; } }
+async function odSignIn() {
+  const cid = (syncCfg().od || {}).clientId; if (!cid) return say('OneDrive のアプリ登録の「アプリケーション (クライアント) ID」を先に入れてください。');
+  await flush();
+  const verifier = randStr(48), challenge = b64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)))), state = 'jkod_' + randStr(12);
+  try { localStorage.setItem('jk_od_pkce', JSON.stringify({ verifier, state })); } catch (e) { }
+  location.href = `${OD_AUTH}/authorize?` + new URLSearchParams({ client_id: cid, response_type: 'code', redirect_uri: odRedirect(), response_mode: 'query', scope: OD_SCOPE, state, code_challenge: challenge, code_challenge_method: 'S256', prompt: 'select_account' });
+}
+// サインインから戻ってきたとき（URL に code と state が付いている）
+async function odHandleRedirect() {
+  const q = new URLSearchParams(location.search), st = q.get('state') || '';
+  if (!st.startsWith('jkod_')) return false;
+  history.replaceState(null, '', odRedirect());
+  let pk = null; try { pk = JSON.parse(localStorage.getItem('jk_od_pkce') || 'null'); localStorage.removeItem('jk_od_pkce'); } catch (e) { }
+  if (q.get('error')) { say('OneDrive にサインインできませんでした：' + (q.get('error_description') || q.get('error'))); return true; }
+  if (!pk || pk.state !== st || !q.get('code')) { say('OneDrive のサインインをやり直してください。'); return true; }
+  try { await odTokenReq({ grant_type: 'authorization_code', code: q.get('code'), redirect_uri: odRedirect(), code_verifier: pk.verifier }); toast('OneDrive にサインインしました'); setSyncCfg({ od: { ...(syncCfg().od || {}), on: true } }); }
+  catch (e) { say('OneDrive にサインインできませんでした：' + e.message); }
+  return true;
+}
+async function odTokenReq(params) {
+  const cid = (syncCfg().od || {}).clientId;
+  const r = await fetch(`${OD_AUTH}/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: cid, scope: OD_SCOPE, ...params }) });
+  const j = await r.json().catch(() => ({})); if (!r.ok || !j.access_token) throw new Error(j.error_description || j.error || ('HTTP ' + r.status));
+  let who = (odTok() || {}).who || '';
+  const t = { access: j.access_token, refresh: j.refresh_token || (odTok() || {}).refresh, exp: Date.now() + (j.expires_in || 3600) * 1000, who };
+  try { localStorage.setItem('jk_od_tok', JSON.stringify(t)); } catch (e) { }
+  if (!who) try { const me = await (await fetch('https://graph.microsoft.com/v1.0/me', { headers: { Authorization: 'Bearer ' + t.access } })).json(); t.who = me.userPrincipalName || me.mail || me.displayName || ''; localStorage.setItem('jk_od_tok', JSON.stringify(t)); } catch (e) { }
+  return t;
+}
+async function odAccess() {
+  const t = odTok(); if (!t) throw Object.assign(new Error('OneDrive にサインインしていません'), { signin: true });
+  if (t.exp > Date.now() + 60000) return t.access;
+  if (!t.refresh) throw Object.assign(new Error('OneDrive のサインインが切れました'), { signin: true });
+  try { return (await odTokenReq({ grant_type: 'refresh_token', refresh_token: t.refresh })).access; }
+  catch (e) { throw Object.assign(new Error('OneDrive のサインインが切れました（もう一度サインインしてください）'), { signin: true }); }
+}
+const odPath = p => [SYNC_DIR, ...p.split('/')].map(encodeURIComponent).join('/');
+const OneDriveBackend = {
+  name: 'OneDrive',
+  async req(method, p, suffix = '', body, type) {
+    const tok = await odAccess();
+    const r = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/${odPath(p)}${suffix}`, { method, headers: { Authorization: 'Bearer ' + tok, ...(type ? { 'Content-Type': type } : {}) }, body });
+    if (r.status === 404) return null;
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(`OneDrive：${(j.error && j.error.message) || r.status}`); }
+    return r;
+  },
+  async get(p, bin) { // 中身は、項目の情報にある「ダウンロード用のURL」から取る（サインイン不要のURL）
+    const r = await this.req('GET', p); if (!r) return null; const meta = await r.json(), u = meta['@microsoft.graph.downloadUrl']; if (!u) return null;
+    const d = await fetch(u); if (!d.ok) throw new Error('OneDrive：' + d.status); return bin ? d.blob() : d.json();
+  },
+  async put(p, data) { await this.req('PUT', p, ':/content', data, data instanceof Blob ? (data.type || 'application/octet-stream') : 'application/json'); },
+};
+
+/* ---------- Googleドライブ（Google Apps Script の Web アプリ経由。合言葉つき） ---------- */
+const GoogleBackend = {
+  name: 'Googleドライブ',
+  async call(body) {
+    const g = syncCfg().gd || {}; if (!g.url) throw new Error('Googleドライブ：Apps Script の URL がありません');
+    const r = await fetch(g.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: g.key || '', ...body }) });
+    const j = await r.json().catch(() => null); if (!j) throw new Error('Googleドライブ：返事を読めません（URL と公開の設定を確かめてください）'); if (!j.ok) throw new Error('Googleドライブ：' + (j.err === 'key' ? '合言葉がちがいます' : j.err || 'エラー')); return j;
+  },
+  async get(p, bin) { const j = await this.call({ op: 'get', path: p, bin: !!bin }); if (j.data == null) return null; return bin ? await (await fetch('data:application/octet-stream;base64,' + j.data)).blob() : JSON.parse(j.data); },
+  async put(p, data) { const bin = data instanceof Blob; await this.call({ op: 'put', path: p, bin, type: bin ? data.type : 'application/json', data: bin ? await blobB64(data) : data }); },
+};
+// テスト用（ローカルのファイル置き場）
+const MockBackend = {
+  name: 'テスト',
+  async get(p, bin) { const r = await fetch(syncCfg().mock + encodeURIComponent(p)); if (r.status === 404) return null; if (!r.ok) throw new Error('mock ' + r.status); return bin ? r.blob() : r.json(); },
+  async put(p, data) { const r = await fetch(syncCfg().mock + encodeURIComponent(p), { method: 'PUT', body: data }); if (!r.ok) throw new Error('mock ' + r.status); },
+};
+function syncBackends() {
+  const c = syncCfg(), out = [];
+  if (c.mock) out.push(MockBackend);
+  if (c.od && c.od.on && c.od.clientId && odTok()) out.push(OneDriveBackend);
+  if (c.gd && c.gd.on && c.gd.url) out.push(GoogleBackend);
+  return out;
+}
+
+/* ---------- 同期の本体 ---------- */
+const syncTypesLocal = () => types.filter(t => !t.builtin || Object.values(t.fields).some(f => f.userEdited) || Object.keys(t.texts || {}).length);
+const settingsSnapshot = () => { const s = {}; try { for (const k of SHARED_SETTINGS) { const v = localStorage.getItem(k); if (v != null) s[k] = v; } } catch (e) { } return JSON.stringify(s); };
+async function syncWith(B, log) {
+  const idx = (await B.get('index.json')) || { v: 1, trees: {}, del: {}, photos: {}, types: {}, settings: null };
+  idx.trees = idx.trees || {}; idx.del = idx.del || {}; idx.photos = idx.photos || {}; idx.types = idx.types || {};
+  let up = 0, down = 0, gone = 0;
+  const upPhoto = async id => { if (!id || idx.photos[id]) return; const rec = await DB.get('photos', id); if (!rec) return; await B.put('photos/' + id, rec.blob); idx.photos[id] = 1; };
+  const downPhoto = async id => { if (!id || await DB.get('photos', id)) return; const b = await B.get('photos/' + id, true); if (b) await DB.put('photos', { id, blob: b }); };
+  // 削除：この端末で消した木を目次へ。ほかの端末で消された木は、その後に直していなければ消す
+  for (const [id, tm] of Object.entries(syncDeleted())) if (!(idx.del[id] >= tm)) idx.del[id] = tm;
+  for (const [id, tm] of Object.entries(idx.del)) {
+    const t = trees.find(x => x.id === id);
+    if (t && (t.updated || 0) > tm) { delete idx.del[id]; continue; } // 消されたあとに直した木は残す
+    if (t) { if (cur && cur.id === id) continue; for (const p of t.photos || []) await DB.del('photos', p.id); await DB.del('trees', id); trees = trees.filter(x => x.id !== id); gone++; }
+    delete idx.trees[id];
+  }
+  // 取り込んだ様式・調整した様式
+  for (const ty of syncTypesLocal()) { const lu = ty.updated || ty.fileVer || 1; if (lu > (idx.types[ty.id] || 0)) { await B.put(`types/${ty.id}.json`, JSON.stringify({ ...ty, file: bytesB64(ty.file) })); idx.types[ty.id] = lu; } }
+  for (const [id, ru] of Object.entries(idx.types)) {
+    const ty = types.find(x => x.id === id); if (ty && (ty.updated || ty.fileVer || 1) >= ru) continue;
+    const nt = await B.get(`types/${id}.json`); if (!nt) continue; nt.file = b64bytes(nt.file).buffer;
+    const i = types.findIndex(x => x.id === id); if (i >= 0) types[i] = nt; else types.push(nt); await DB.put('types', nt); await loadTpl(nt);
+  }
+  // 木：新しいほうを残す
+  const ids = new Set([...Object.keys(idx.trees), ...trees.map(t => t.id)]);
+  for (const id of ids) {
+    if (idx.del[id]) continue;
+    const t = trees.find(x => x.id === id), ru = idx.trees[id] || 0, lu = t ? (t.updated || t.created || 1) : 0;
+    if (t && lu > ru) {
+      for (const p of t.photos || []) await upPhoto(p.id);
+      await B.put(`trees/${id}.json`, JSON.stringify(t)); idx.trees[id] = lu; up++;
+      log && log(`↑ ${up}本`);
+    } else if (ru > lu) {
+      const nt = await B.get(`trees/${id}.json`); if (!nt) continue;
+      for (const p of nt.photos || []) await downPhoto(p.id);
+      if (cur && cur.id === id) { await flush(); if ((cur.updated || 0) >= ru) continue; } // 開いている木は、こちらが新しければそのまま
+      const i = trees.findIndex(x => x.id === id); if (i >= 0) trees[i] = nt; else trees.push(nt);
+      if (cur && cur.id === id) cur = nt;
+      await DB.put('trees', nt); down++; log && log(`↓ ${down}本`);
+    }
+  }
+  // よく使う言葉・案件・路線などの設定：この端末で変えていれば送る、変えていなければ受け取る
+  const snap = settingsSnapshot(), lastSnap = localStorage.getItem('jk_sync_snap'), lastT = +(localStorage.getItem('jk_sync_t') || 0);
+  const rs = idx.settings;
+  const applyRemote = rs && rs.data !== snap && (lastSnap == null || (snap === lastSnap && rs.t > lastT)); // はじめての同期はクラウドのほうを使う
+  if (!rs || (!applyRemote && snap !== lastSnap && snap !== rs.data)) idx.settings = { t: Date.now(), data: snap };
+  else if (applyRemote) { try { for (const [k, v] of Object.entries(JSON.parse(rs.data))) if (SHARED_SETTINGS.includes(k)) localStorage.setItem(k, v); } catch (e) { } ROUTES = null; }
+  // 路線図の画像
+  for (const m of Object.values(routesAll())) if (m.mapId) { if (await DB.get('photos', m.mapId)) await upPhoto(m.mapId); else await downPhoto(m.mapId); }
+  idx.saved = new Date().toISOString();
+  await B.put('index.json', JSON.stringify(idx));
+  return { up, down, gone };
+}
+let syncBusy = false, syncTimer = null;
+async function syncNow(quiet = false) {
+  const bs = syncBackends(); if (!bs.length) { if (!quiet) say('同期の設定がありません。「カルテの型（様式）・Excel出力・バックアップ」の「☁️ 同期」で設定してください。'); return; }
+  if (syncBusy) return; if (!navigator.onLine) { syncStatus('☁️ オフライン（電波が戻ったら同期します）'); return; }
+  syncBusy = true; await flush();
+  const res = [];
+  try {
+    for (const B of bs) {
+      syncStatus(`☁️ ${B.name}と同期中…`);
+      try { const r = await syncWith(B, m => syncStatus(`☁️ ${B.name}と同期中… ${m}`)); res.push(`${B.name}：送った${r.up}本・受け取った${r.down}本${r.gone ? `・消した${r.gone}本` : ''}`); }
+      catch (e) { console.error(e); res.push(`${B.name}：できませんでした（${e.message}）`); if (e.signin && !quiet) toast(e.message, 4000); }
+    }
+    try { localStorage.setItem('jk_sync_snap', settingsSnapshot()); localStorage.setItem('jk_sync_t', String(Date.now())); localStorage.setItem('jk_sync_last', JSON.stringify({ at: Date.now(), res })); } catch (e) { }
+  } finally { syncBusy = false; }
+  syncStatus(); if (!quiet) toast(res.join('\n'), 4000);
+  if (!cur) renderList();
+}
+// 直したら少し待って同期（一覧に戻ったとき・画面を閉じたとき）
+function syncSoon(ms = 4000) { if (!syncBackends().length || (syncCfg().auto === false)) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(true), ms); }
+function syncStatus(msg) {
+  const el = $('#syncStat'); if (!el) return;
+  if (msg) { el.textContent = msg; el.classList.remove('hidden'); return; }
+  const bs = syncBackends(); if (!bs.length) { el.classList.add('hidden'); return; }
+  let last = null; try { last = JSON.parse(localStorage.getItem('jk_sync_last') || 'null'); } catch (e) { }
+  const ng = last && last.res.some(r => /できません/.test(r));
+  el.textContent = last ? `☁️ ${ng ? '⚠️ ' : ''}${bs.map(b => b.name).join('・')}　${fmtTs(last.at)} ${ng ? '同期できなかった所があります（タップで詳しく）' : '同期済み'}` : `☁️ ${bs.map(b => b.name).join('・')}：まだ同期していません（タップで同期）`;
+  el.classList.remove('hidden'); el.onclick = () => last && ng ? say(last.res.join('\n')) : syncNow();
+}
+
+/* ---------- 設定画面 ---------- */
+const GAS_CODE = `// 樹木診断カルテ：Googleドライブ同期（Google Apps Script）
+// 1. KEY を好きな合言葉に変える  2. デプロイ → 新しいデプロイ → 種類「ウェブアプリ」
+//    実行するユーザー：自分　アクセスできるユーザー：全員 → デプロイして URL をアプリに入れる
+const KEY = 'ここを合言葉に変える';
+const DIR = '樹木診断カルテ_同期';
+function folder_() { const it = DriveApp.getFoldersByName(DIR); return it.hasNext() ? it.next() : DriveApp.createFolder(DIR); }
+function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+function doPost(e) {
+  try {
+    const q = JSON.parse(e.postData.contents);
+    if (q.key !== KEY) return out_({ ok: false, err: 'key' });
+    const f = folder_(), name = String(q.path).replace(/\\//g, '__');
+    const it = f.getFilesByName(name), old = it.hasNext() ? it.next() : null;
+    if (q.op === 'get') {
+      if (!old) return out_({ ok: true, data: null });
+      const b = old.getBlob();
+      return out_({ ok: true, data: q.bin ? Utilities.base64Encode(b.getBytes()) : b.getDataAsString('UTF-8') });
+    }
+    if (q.op === 'put') {
+      const blob = q.bin ? Utilities.newBlob(Utilities.base64Decode(q.data), q.type || 'application/octet-stream', name) : Utilities.newBlob(q.data, 'application/json', name);
+      if (old && !q.bin) { old.setContent(q.data); } else { if (old) old.setTrashed(true); f.createFile(blob); }
+      return out_({ ok: true });
+    }
+    return out_({ ok: false, err: 'op' });
+  } catch (err) { return out_({ ok: false, err: String(err) }); }
+}
+function doGet() { return out_({ ok: true, app: 'jumoku_karte_sync' }); }`;
+function renderSyncCard() {
+  const box = $('#syncBox'); if (!box) return; box.innerHTML = '';
+  const c = syncCfg(), od = c.od || {}, gd = c.gd || {}, tok = odTok();
+  const I = (v, ph, on, type = 'text') => { const e = h('input', { class: 'inp', type, value: v || '', placeholder: ph, autocomplete: 'off' }); e.onchange = () => on(e.value.trim()); return e; };
+  box.append(
+    h('h3', { style: 'margin:6px 0 4px;font-size:14.5px' }, 'OneDrive（主）'),
+    h('label', { class: 'fld' }, h('span', {}, 'アプリケーション (クライアント) ID（Azure のアプリ登録）'), I(od.clientId, '例：12345678-abcd-…', v => { setSyncCfg({ od: { ...(syncCfg().od || {}), clientId: v } }); renderSyncCard(); })),
+    h('div', { class: 'row', style: 'align-items:center;margin-top:6px' },
+      tok ? h('span', { class: 'hint' }, `サインイン中：${tok.who || 'OneDrive'}`) : h('span', { class: 'hint' }, 'まだサインインしていません'),
+      h('button', { type: 'button', class: 'btn' + (tok ? '' : ' pri'), onclick: odSignIn }, tok ? 'サインインし直す' : 'Microsoft でサインイン'),
+      tok ? h('button', { type: 'button', class: 'btn warn', onclick: () => { localStorage.removeItem('jk_od_tok'); renderSyncCard(); syncStatus(); } }, 'サインアウト') : ''),
+    h('details', { style: 'margin-top:6px' }, h('summary', { class: 'hint' }, 'OneDrive の準備（最初に1回・パソコンで）'), h('ol', { class: 'hint', style: 'padding-left:1.4em;margin:6px 0' },
+      h('li', {}, 'https://portal.azure.com を開き、ふだんの Microsoft アカウントでサインイン →「アプリの登録」→「新規登録」'),
+      h('li', {}, '名前：樹木診断カルテ　／　サポートされているアカウントの種類：「任意の組織ディレクトリ内のアカウントと個人の Microsoft アカウント」'),
+      h('li', {}, `リダイレクト URI：種類「シングルページ アプリケーション (SPA)」、URI「${odRedirect()}」→ 登録`),
+      h('li', {}, '「API のアクセス許可」に Microsoft Graph の Files.ReadWrite・User.Read（委任）があることを確かめる（なければ追加）'),
+      h('li', {}, '「概要」の「アプリケーション (クライアント) ID」をコピーして、上の欄に貼る → 各端末で「Microsoft でサインイン」'),
+      h('li', {}, '会社の Microsoft 365 のアカウントでは、会社の管理者の許可が必要と出ることがあります'))),
+    h('h3', { style: 'margin:12px 0 4px;font-size:14.5px' }, 'Googleドライブ（予備）'),
+    h('label', { class: 'fld' }, h('span', {}, 'Apps Script のウェブアプリの URL'), I(gd.url, 'https://script.google.com/macros/s/…/exec', v => { setSyncCfg({ gd: { ...(syncCfg().gd || {}), url: v, on: !!v } }); syncStatus(); })),
+    h('label', { class: 'fld', style: 'margin-top:6px' }, h('span', {}, '合言葉（Apps Script の KEY と同じ）'), I(gd.key, '合言葉', v => setSyncCfg({ gd: { ...(syncCfg().gd || {}), key: v } }), 'password')),
+    h('details', { style: 'margin-top:6px' }, h('summary', { class: 'hint' }, 'Googleドライブの準備（Apps Script のコード）'),
+      h('p', { class: 'hint' }, 'https://script.google.com で「新しいプロジェクト」→ 下のコードを貼り付け → KEY を合言葉に変える →「デプロイ」→「新しいデプロイ」→ 種類「ウェブアプリ」、実行するユーザー「自分」、アクセスできるユーザー「全員」→ 出てきた URL を上の欄に。'),
+      h('button', { type: 'button', class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(GAS_CODE); toast('コードをコピーしました'); } catch (e) { say('コピーできませんでした。下のコードを選んでコピーしてください。'); } } }, '📋 コードをコピー'),
+      h('textarea', { rows: 8, readonly: '', style: 'width:100%;font-family:monospace;font-size:11px;margin-top:6px' }, GAS_CODE)),
+    h('label', { class: 'chk', style: 'margin-top:10px' }, (() => { const e = h('input', { type: 'checkbox' }); e.checked = c.auto !== false; e.onchange = () => setSyncCfg({ auto: e.checked }); return e; })(), ' 自動で同期する（開いたとき・一覧に戻ったとき）'),
+    h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { type: 'button', class: 'btn pri', onclick: () => syncNow() }, '☁️ 今すぐ同期')));
+}
+
+
+/* =========================================================
    木の操作
    ========================================================= */
 async function openTree(id) {
@@ -6744,7 +6989,7 @@ async function backToList() {
   if (cur) sessEnd(cur);
   await flush(); stopVoice(); cur = null; kCells = []; kPages = []; formRows = []; $('#karte').innerHTML = ''; $('#form').innerHTML = '';
   $('#editView').classList.add('hidden'); $('#listView').classList.remove('hidden');
-  renderList(); window.scrollTo(0, 0); camSync();
+  renderList(); window.scrollTo(0, 0); camSync(); syncSoon();
 }
 async function nextTree() {
   const ty = curType; const base = {};
@@ -6758,6 +7003,7 @@ async function dupTree() {
 }
 async function delTree() {
   if (!await ask('この木の記録を削除します。元に戻せません。よろしいですか？', '削除する', true)) return;
+  markDeleted(cur.id); // ほかの端末でも消えるように
   for (const p of cur.photos) await DB.del('photos', p.id);
   await DB.del('trees', cur.id); trees = trees.filter(t => t.id !== cur.id); selected.delete(cur.id);
   saveTimer = null; cur = null; await backToList(); toast('削除しました');
@@ -7395,6 +7641,7 @@ async function migrateOld() {
   try { await DB.open(); [trees, types] = await Promise.all([DB.all('trees'), DB.all('types')]); }
   catch (e) { say('この端末では保存が使えません（プライベートブラウズ中かもしれません）'); }
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { }
+  const fromSignIn = await odHandleRedirect().catch(() => false); // OneDrive のサインインから戻ったとき
   try { await ensureBuiltin(); types.sort((a, b) => (b.builtin ? 1 : 0) - (a.builtin ? 1 : 0) || a.created - b.created); await migrateOld(); for (const ty of types) await loadTpl(ty); }
   catch (e) { console.error(e); say('カルテの様式を準備できませんでした：' + e.message); }
   $('#btnNew').onclick = async () => {
@@ -7440,9 +7687,11 @@ async function migrateOld() {
   for (const d of document.querySelectorAll('dialog [data-close]')) d.onclick = () => d.closest('dialog').close();
   window.addEventListener('resize', () => { if (viewMode === 'karte' && kPages.length) fitKarte(); });
   window.addEventListener('popstate', () => { if (dr) closeDraw(false); if (cur) backToList(); });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { flush(); if (syncBackends().length && syncCfg().auto !== false) syncNow(true); } });
+  window.addEventListener('online', () => syncSoon(1500));
   window.addEventListener('pagehide', () => { flush(); });
-  renderList();
+  renderList(); renderSyncCard(); syncStatus();
+  if (syncBackends().length && (fromSignIn || syncCfg().auto !== false)) setTimeout(() => syncNow(!fromSignIn), fromSignIn ? 300 : 1500);
 })();
 
 /* =========================================================
