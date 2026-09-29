@@ -5110,8 +5110,9 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
       kids.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nmOf('番号'))}<xdr:spPr>${xf(a, b, d, d)}<a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>${fill(s.c)}${'<a:ln><a:noFill/></a:ln>'}</xdr:spPr>${body([String(s.n)], r * 1.15 * .75, halo(s.c), { anchor: 'ctr', algn: 'ctr' }).replace('<a:spAutoFit/>', '<a:noAutofit/>')}</xdr:sp>`, box: box(a, b, a + d, b + d) });
     } else if (s.t === 'text') {
       const fs = s.s * W; mc.font = `bold ${fs}px ${DFONT}`; const ls = String(s.text).split('\n');
-      const pd = s.box ? fs * .3 : 0, a = X(s.x * W - pd), b = Y(s.y * H - pd), w = L(Math.max(...ls.map(l => mc.measureText(l).width)) * 1.06 + fs * .2 + pd * 2), hh = L(ls.length * fs * 1.2 + pd * 2);
-      kids.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nmOf('文字'), ' txBox="1"')}<xdr:spPr>${xf(a, b, w, hh)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${s.box ? fill('#FFFFFF') + ln(Math.max(2, fs * .08), s.c === '#FFFFFF' ? '#111111' : s.c) : '<a:noFill/><a:ln><a:noFill/></a:ln>'}</xdr:spPr>${body(ls, fs * .75, s.box ? inkOn(s.c) : s.c, { sp: 110000, pad: s.box ? fs * .3 : 0 })}</xdr:sp>`, box: box(a, b, a + w, b + hh) });
+      const pd = s.box ? fs * .3 : 0, mw = Math.max(...ls.map(l => mc.measureText(l).width)), wp = mw * 1.06 + fs * .2 + pd * 2; /* al：Excel で字が広くなっても右端（r）・真ん中（c）がずれないように */
+      const a = X(s.x * W - pd - (s.al === 'r' ? wp - pd * 2 - mw : s.al === 'c' ? (wp - pd * 2 - mw) / 2 : 0)), b = Y(s.y * H - pd), w = L(wp), hh = L(ls.length * fs * 1.2 + pd * 2);
+      kids.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nmOf('文字'), ' txBox="1"')}<xdr:spPr>${xf(a, b, w, hh)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${s.box ? fill('#FFFFFF') + ln(Math.max(2, fs * .08), s.c === '#FFFFFF' ? '#111111' : s.c) : '<a:noFill/><a:ln><a:noFill/></a:ln>'}</xdr:spPr>${body(ls, fs * .75, s.box ? inkOn(s.c) : s.c, { sp: 110000, pad: s.box ? fs * .3 : 0, algn: s.al === 'r' ? 'r' : s.al === 'c' ? 'ctr' : 'l' })}</xdr:sp>`, box: box(a, b, a + w, b + hh) });
     } else if (s.t === 'ellipse' || s.t === 'rect') {
       const g = boxPx(s, W, H), a = X(g.cx - g.w / 2), b = Y(g.cy - g.h / 2), w = L(g.w), hh = L(g.h), lw = (s.w || .007) * W;
       const deg = ((g.r * 180 / Math.PI) % 360 + 360) % 360, rot = Math.round(deg * 60000) % 21600000;
@@ -5992,15 +5993,15 @@ async function regiDiagram(inp, waves = []) {
     const [a1x, a1y] = [cx + ux * tail, cy + uy * tail], [a2x, a2y] = [cx + ux * head, cy + uy * head];
     objs.push({ t: 'arrow2', c: '#111111', w: N(5), x1: N(a1x), y1: N(a1y), x2: N(a2x), y2: N(a2y), base: 1, gen: 1 });
     // 上下の向き：矢印の外側（上・下）に。左右の向き：矢印の上で、幹の外側（波形の帯にかからない所）に
-    const gap = 10, lx = ux > 0 ? cx + EX + 6 : ux < 0 ? cx - EX - 6 - lw : a1x - lw / 2, ly = uy > 0 ? a1y + gap : uy < 0 ? a1y - gap - fsL * 1.15 : cy - 16 - fsL * 1.15;
-    objs.push({ t: 'text', c: '#111111', x: N(Math.max(4, Math.min(S - lw - 4, lx))), y: N(ly), s: N(fsL), text: lbl, base: 1, gen: 1 });
+    const gap = 10, lx = ux > 0 ? cx + EX + 12 : ux < 0 ? cx - EX - 12 - lw : a1x - lw / 2, ly = uy > 0 ? a1y + gap : uy < 0 ? a1y - gap - fsL * 1.15 : cy - 30 - fsL * 1.2; /* 左右の向き：矢印の上に、Excel で字の高さが増えても矢印にかからない間をあける */
+    objs.push({ t: 'text', c: '#111111', x: N(Math.max(4, Math.min(S - lw - 4, lx))), y: N(ly), s: N(fsL), text: lbl, al: ux < 0 ? 'r' : ux > 0 ? '' : 'c', base: 1, gen: 1 }); // 西側は右寄せ（Excel で字が広くなっても帯にかからない）
   });
   // 方向指標（道路の方向）：マニュアル「あわせて、道路などの方向指標を記載する」。右上に「車道側」の矢印（あとで動かせる）
   if (inp.road) {
     const V = { 上: [0, -1], 右: [1, 0], 下: [0, 1], 左: [-1, 0] }[inp.road]; if (V) {
       const Cx = S - 120, Cy = 120, L = 48, fsR = 44; x.font = `bold ${fsR}px ${DFONT}`; const lwR = x.measureText('車道側').width;
       objs.push({ t: 'arrow2', c: '#111111', w: N(5), x1: N(Cx - V[0] * L), y1: N(Cy - V[1] * L), x2: N(Cx + V[0] * L), y2: N(Cy + V[1] * L), base: 1, gen: 1, name: '方向指標' });
-      objs.push({ t: 'text', c: '#111111', x: N(Math.min(S - lwR - 8, Cx - lwR / 2)), y: N(Cy + L + 12), s: N(fsR), text: '車道側', base: 1, gen: 1 });
+      objs.push({ t: 'text', c: '#111111', x: N(Math.min(S - lwR - 8, Cx - lwR / 2)), y: N(Cy + L + 12), s: N(fsR), text: '車道側', al: 'c', base: 1, gen: 1 });
     }
   }
   // 真ん中（未測定、または腐朽空洞の推定）
@@ -6664,10 +6665,36 @@ async function styleKit(zip) {
       let al = kidsOf(x, 'alignment')[0]; if (!al) { al = doc.createElementNS(NS_MAIN, 'alignment'); x.insertBefore(al, x.firstChild); } al.setAttribute('shrinkToFit', '1'); al.removeAttribute('wrapText');
       xs.appendChild(x); xs.setAttribute('count', String(kidsOf(xs).length)); const i = kidsOf(xs).length - 1; cache.set(k, i); return i;
     },
+    // 小数の桁を残す（「1.000」「60.0」が 1・60 にならないように）
+    dec(s, n) {
+      const k = 'd' + s + ':' + n; if (cache.has(k)) return cache.get(k);
+      let nf = byTag(doc, 'numFmts')[0]; if (!nf) { nf = doc.createElementNS(NS_MAIN, 'numFmts'); doc.documentElement.insertBefore(nf, doc.documentElement.firstElementChild); }
+      const code = '0.' + '0'.repeat(n); let el = kidsOf(nf, 'numFmt').find(e => e.getAttribute('formatCode') === code);
+      if (!el) { const id = Math.max(163, ...kidsOf(nf, 'numFmt').map(e => +e.getAttribute('numFmtId') || 0)) + 1; el = doc.createElementNS(NS_MAIN, 'numFmt'); el.setAttribute('numFmtId', String(id)); el.setAttribute('formatCode', code); nf.appendChild(el); nf.setAttribute('count', String(kidsOf(nf).length)); }
+      const xs = byTag(doc, 'cellXfs')[0], x = xfOf(s).cloneNode(true); x.setAttribute('numFmtId', el.getAttribute('numFmtId')); x.setAttribute('applyNumberFormat', '1');
+      xs.appendChild(x); xs.setAttribute('count', String(kidsOf(xs).length)); const i = kidsOf(xs).length - 1; cache.set(k, i); return i;
+    },
+    // 縮小して全体を表示（折り返し・縦書きの欄はそのまま）
+    fit(s) {
+      const k = 'z' + s; if (cache.has(k)) return cache.get(k);
+      const x0 = xfOf(s), a0 = x0 && kidsOf(x0, 'alignment')[0], on = v => v === '1' || v === 'true';
+      if (!x0 || (a0 && (on(a0.getAttribute('wrapText')) || on(a0.getAttribute('shrinkToFit')) || +a0.getAttribute('textRotation')))) { cache.set(k, +s || 0); return +s || 0; }
+      const xs = byTag(doc, 'cellXfs')[0], x = x0.cloneNode(true); x.setAttribute('applyAlignment', '1');
+      let al = kidsOf(x, 'alignment')[0]; if (!al) { al = doc.createElementNS(NS_MAIN, 'alignment'); x.insertBefore(al, x.firstChild); } al.setAttribute('shrinkToFit', '1');
+      xs.appendChild(x); xs.setAttribute('count', String(kidsOf(xs).length)); const i = kidsOf(xs).length - 1; cache.set(k, i); return i;
+    },
     save() { zip.file(path, serXml(doc)); },
   };
 }
 function cellEl(doc, ref) { const [, rn] = splitRef(ref); const row = kidsOf(byTag(doc, 'sheetData')[0], 'row').find(r => +r.getAttribute('r') === rn); return row ? kidsOf(row, 'c').find(c => c.getAttribute('r') === ref) : null; }
+// 結合セル（1行）の文字は、はみ出すと切れて見えるので縮小して全体を表示に（Excel は入りきらないときだけ縮める）
+function fitMergedText(doc, tpl, kit) {
+  for (const [ref, g] of tpl.merges) {
+    if (g.r2 !== g.r1) continue;
+    const c = cellEl(doc, ref), t = c && c.getAttribute('t'); if (!c || !['s', 'str', 'inlineStr'].includes(t)) continue;
+    const s = c.getAttribute('s') || 0, n = kit.fit(s); if (n !== (+s || 0)) c.setAttribute('s', String(n));
+  }
+}
 function paintJudgeCells(doc, t, ty, tpl, kit) {
   for (const { ref, j, b3 } of judgeCells(t, ty, tpl)) {
     const c = cellEl(doc, ref); const col = judgeColor(j, b3); if (!c || !col.cell) continue;
@@ -7398,6 +7425,7 @@ async function openTree(id) {
   sessStart(cur);
   curType = typeOf(cur); cur.typeId = curType.id; cur.v = cur.v || {}; cur.photos = cur.photos || []; cur.ink = cur.ink || {};
   for (const p of cur.photos) if (p.slot && !curType.fields[p.slot] && curType.fields[p.slot + '#1/4']) p.slot += '#1/4'; // 1枚だった枠を分けたとき
+  if (tkAutoDevice(cur, curType)) touch(cur); // 様式3：同じ木の様式10・11 の結果を機器診断欄に
   curTpl = await loadTpl(curType);
   kState.design = false; kState.ink = false; kRedo = [];
   $('#listView').classList.add('hidden'); $('#editView').classList.remove('hidden');
@@ -7809,6 +7837,8 @@ async function buildWorkbook(ty, list, fileName = '') {
     if (rc) for (const ref of regiSmallRefs(ty, tpl)) { const c = cellEl(doc, ref); if (c) c.setAttribute('s', String(kit.grow(c.getAttribute('s') || 0, REGI_MIN_PT))); } // t/R 率のかっこの中・空洞率の式を読める大きさに
     if (geoBlock) blockCols(doc, gc + 1, [24, 18]);
     paintJudgeCells(doc, t, ty, tpl, kit);
+    for (const [ref, v] of Object.entries(vals)) { const m = typeof v === 'string' && /^-?\d+\.(\d*0)$/.exec(v.trim()), c = m && cellEl(doc, ref); if (c && !kidsOf(c, 'f').length && !c.getAttribute('t')) c.setAttribute('s', String(kit.dec(c.getAttribute('s') || 0, m[1].length))); } // 「1.000」の桁を残す
+    fitMergedText(doc, tpl, kit); // 結合セルに入りきらない文字（「部位（G.L.」など）は縮めて全体を表示
     for (const sv of byTag(doc, 'sheetView')) { sv.removeAttribute('topLeftCell'); sv.removeAttribute('tabSelected'); if (i === 0 && !withLists) sv.setAttribute('tabSelected', '1'); }
     // フォームのチェックボックス
     const srels = await readRels(zip, sp);
@@ -7871,15 +7901,21 @@ async function buildWorkbook(ty, list, fileName = '') {
       if (!/xmlns:r=/.test(rootTag())) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"');
       if (!/xmlns:a=/.test(rootTag())) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"');
       // 自動でつくった図（想定断面図）を入れた枠では、様式にもともとある図形（円・十字など）を外す
+      // 枠の外から枠にかかる図形（様式の「車道側」など）は、図の後ろに隠れないよう前面へ。図に方向指標があれば、様式の車道側・歩道側は外す（重なるので）
+      let front = '';
       for (const p of t.photos || []) {
-        if (!p.gen || !ty.fields[p.slot]) continue; const g = tpl.rangeOf(p.slot);
+        if (!p.gen || !ty.fields[p.slot]) continue; const g = tpl.rangeOf(p.slot), road = (p.strokes || []).some(s => s.name === '方向指標');
         dx = dx.replace(/<xdr:(twoCellAnchor|oneCellAnchor|absoluteAnchor)\b[\s\S]*?<\/xdr:\1>/g, a => {
           if (/r:embed="rIdP/.test(a)) return a; // このアプリが入れた写真は残す
           const m = /<xdr:from><xdr:col>(\d+)<\/xdr:col><xdr:colOff>-?\d+<\/xdr:colOff><xdr:row>(\d+)<\/xdr:row>/.exec(a); if (!m) return a;
-          const c = +m[1], r = +m[2]; return c >= g.c1 && c <= g.c2 && r >= g.r1 && r <= g.r2 ? '' : a;
+          const c = +m[1], r = +m[2]; if (c >= g.c1 && c <= g.c2 && r >= g.r1 && r <= g.r2) return '';
+          const e = /<xdr:to><xdr:col>(\d+)<\/xdr:col><xdr:colOff>-?\d+<\/xdr:colOff><xdr:row>(\d+)<\/xdr:row>/.exec(a); if (!e) return a;
+          if (+e[1] < g.c1 || c > g.c2 || +e[2] < g.r1 || r > g.r2) return a; // 枠にかからない
+          if (road && /[車歩]道側|道路/.test(a.replace(/<[^>]+>/g, ''))) return '';
+          front += a; return '';
         });
       }
-      dx = dx.replace('</xdr:wsDr>', pics + '</xdr:wsDr>');
+      dx = dx.replace('</xdr:wsDr>', pics + front + '</xdr:wsDr>');
       zip.file(dpath, dx);
       const drp = relsPathOf(dpath);
       const dr = zip.file(drp) ? await rd(drp) : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
@@ -7934,6 +7970,7 @@ async function exportTrees(ids) {
   if (!list.length) return toast('出力する木にチェックを入れてください');
   const byType = new Map(); for (const t of list) { const ty = typeOf(t); if (!byType.has(ty)) byType.set(ty, []); byType.get(ty).push(t); }
   toast('Excelを作っています…', 1500);
+  { const ch = list.filter(t => tkAutoDevice(t, typeOf(t))); if (ch.length) await saveTrees(ch); } // 様式3 の機器診断欄を最新の様式10・11 に
   for (const [ty, arr] of byType) {
     arr.sort((a, b) => projOf(a).localeCompare(projOf(b), 'ja') || siteOf(a).localeCompare(siteOf(b), 'ja') || (parseFloat(roleVal(a, ty, 'no')) || 1e9) - (parseFloat(roleVal(b, ty, 'no')) || 1e9) || a.created - b.created);
     try {
@@ -8360,10 +8397,29 @@ function tkDamages(t, ty, raw = false) {
 // 同じ木（路線・樹木番号）の様式10・11 から、機器診断欄に入れる値
 function tkDeviceFrom(t, ty) {
   const site = siteOf(t), no = String(roleVal(t, ty, 'treeNo') || '').trim(); if (!no) return [];
-  return trees.filter(x => x !== t && x.v && x.v._regi && siteOf(x) === site && String(roleVal(x, typeOf(x), 'treeNo') || '').trim() === no).map(x => {
+  return trees.filter(x => x !== t && x.v && x.v._regi && projOf(x) === projOf(t) && (siteOf(x) === site || !site || !siteOf(x)) /* 路線名が片方だけ空でも同じ案件なら */ && String(roleVal(x, typeOf(x), 'treeNo') || '').trim() === no).map(x => {
     const xt = typeOf(x), r = regiCalc(x.v._regi), nek = !!(xt.calc && xt.calc.map && xt.calc.map.ang);
     return { t: x, part: nek ? '根株' : String(num(tkTxt(x, xt, 'F7')) ?? ''), rate: r.rate, tr: r.dirs.map(d => d.tr), nek };
   }).sort((a, b) => a.nek - b.nek);
+}
+
+// 様式3 の機器診断欄（測定データ1・2）に、同じ木の様式10・11 の結果を自動で入れる（カルテを開いたとき・Excel 出力のとき）。
+// 手で直した欄はそのまま（前に自動で入れた値のままの欄と、空の欄だけ入れ替える）
+function tkAutoDevice(t, ty) {
+  if (!ty || ty.id !== 'gaikan') return false;
+  const src = tkDeviceFrom(t, ty), prev = t.v._tkDev || {}, next = {}; let ch = false;
+  [52, 53].forEach((r, k) => {
+    const s = src[k], vals = s ? [s.part, s.rate == null ? '' : s.rate.toFixed(1), ...[0, 1, 2, 3].map(i => s.tr[i] == null ? '' : s.tr[i].toFixed(3))] : [];
+    ['L', 'T', 'AC', 'AG', 'AK', 'AO'].forEach((c, j) => {
+      const ref = c + r; if (!tkHas(ty, ref)) return;
+      const cv = String(getV(t, ty, ref) ?? ''), nv = vals[j] ?? '';
+      if (cv !== '' && cv !== prev[ref]) return;
+      if (cv !== nv) { setV(t, ty, ref, nv); ch = true; }
+      if (nv !== '') next[ref] = nv;
+    });
+  });
+  if (JSON.stringify(prev) !== JSON.stringify(next)) { t.v._tkDev = next; ch = true; }
+  return ch;
 }
 
 // 記入の確認：{ lv: 'ng'（直す）| 'warn'（確かめる）| 'info'（参考）, msg, src（マニュアルの所）}
@@ -8497,10 +8553,10 @@ function openTkCheck() {
     { const x = B('周囲長比率を入れる'); x.onclick = () => { tkFillRatios(t, ty); done('周囲長比率を入れました'); };
       row('周囲長比率（被害部幅÷被害部周囲長）', `根元 ${rs.root == null ? '—' : rs.root + '%'}・幹 ${rs.trunk == null ? '—' : rs.trunk + '%'}（被害部幅・周囲長を入れると自動で入ります）。1/3＝33.3%、1/2＝50%。`, x); }
     const src = tkDeviceFrom(t, ty);
-    { const x = B(src.length ? `様式10・11 の${src.length}件から入れる` : '—'); x.disabled = !src.length; x.onclick = () => {
-        src.slice(0, 2).forEach((s, k) => { const r = 52 + k; setV(t, ty, 'L' + r, s.part); setV(t, ty, 'T' + r, s.rate == null ? '' : s.rate.toFixed(1)); ['AC', 'AG', 'AK', 'AO'].forEach((c, i) => setV(t, ty, c + r, s.tr[i] == null ? '' : s.tr[i].toFixed(3))); });
+    { const x = B(src.length ? `様式10・11 から入れ直す` : '—'); x.disabled = !src.length; x.onclick = () => {
+        t.v._tkDev = {}; ['L', 'T', 'AC', 'AG', 'AK', 'AO'].forEach(c => [52, 53].forEach(r => { if (tkHas(ty, c + r)) setV(t, ty, c + r, ''); })); tkAutoDevice(t, ty); // 手で直した値も入れ直す
         done('機器診断欄に入れました'); };
-      row('機器診断欄（測定データ1・2）', src.length ? `同じ路線・樹木番号の様式10・11：${src.map(s => `${s.nek ? '根株' : 'G.L.' + s.part + 'm'} 空洞率${s.rate == null ? '—' : s.rate.toFixed(1) + '%'}`).join('／')}` : '同じ路線・樹木番号の様式10・11 のカルテがありません（樹木番号をそろえると入れられます）。', x); }
+      row('機器診断欄（測定データ1・2）', src.length ? `同じ路線・樹木番号の様式10・11：${src.map(s => `${s.nek ? '根株' : 'G.L.' + s.part + 'm'} 空洞率${s.rate == null ? '—' : s.rate.toFixed(1) + '%'}`).join('／')}（カルテを開いたときと Excel 出力のときに自動で入ります。手で直した欄はそのまま。ボタンで入れ直せます）` : '同じ路線・樹木番号の様式10・11 のカルテがありません（樹木番号をそろえると入れられます）。', x); }
   }
   b.append(h('h3', {}, '確認（マニュアルの基準）'));
   const is = tkIssues(t, ty);
