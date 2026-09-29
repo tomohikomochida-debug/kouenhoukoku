@@ -3585,10 +3585,12 @@ async function renderKarte() {
         if (b.du) add(b.du, X(q.c1), Y(q.r2 + 1), X(q.c2 + 1), Y(q.r1));
       }
     }
+    const decayC = regiDecayColor(cur, curType), lgRows = ty.calc && ty.calc.kind === 'regi' ? regiLegendRows(tpl) : new Set();
     for (const ln of tpl.lines) if (inPg(ln.c1, ln.r1)) {
       let x1 = X(ln.c1) + ln.x1 / 9525, y1 = Y(ln.r1) + ln.y1 / 9525, x2 = X(ln.c2) + ln.x2 / 9525, y2 = Y(ln.r2) + ln.y2 / 9525;
       if (ln.tri) { tplTris.push({ ...ln, x1, y1, x2, y2 }); continue; }
       if (ln.flipV) [y1, y2] = [y2, y1]; if (ln.flipH) [x1, x2] = [x2, x1];
+      if (lgRows.has(ln.r1) && !ln.head && !ln.tail) { tplLns.push({ ...ln, x1, y1, x2, y2, color: decayC || ln.color, lgd: ln.color || '#000000' }); continue; } // 凡例の腐朽の線は波形の腐朽の色（t/R を入れ直したら refreshView で塗り直す）
       if (ln.head || ln.tail || ln.color) { tplLns.push({ ...ln, x1, y1, x2, y2 }); continue; } // 矢印つきの線（測定直径の ↕ ↔ など）はテンプレートの形のまま
       add('connector', x1, y1, x2, y2);
     }
@@ -3597,7 +3599,7 @@ async function renderKarte() {
     for (const l of tplLns) {
       const c = l.color || '#000', w = Math.max(.8, l.w || .75), dx = l.x2 - l.x1, dy = l.y2 - l.y1, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, al = Math.min(5, L * .35), aw = al * .45;
       const tip = (x, y, s) => { const bx = x - s * ux * al, by = y - s * uy * al; return `<path d="M${x.toFixed(2)},${y.toFixed(2)}L${(bx - uy * aw).toFixed(2)},${(by + ux * aw).toFixed(2)}L${(bx + uy * aw).toFixed(2)},${(by - ux * aw).toFixed(2)}Z" fill="${c}"/>`; };
-      path += `<path d="M${l.x1.toFixed(2)},${l.y1.toFixed(2)}L${l.x2.toFixed(2)},${l.y2.toFixed(2)}" stroke="${c}" stroke-width="${w}" fill="none"/>` + (l.head ? tip(l.x1, l.y1, -1) : '') + (l.tail ? tip(l.x2, l.y2, 1) : '');
+      path += `<path d="M${l.x1.toFixed(2)},${l.y1.toFixed(2)}L${l.x2.toFixed(2)},${l.y2.toFixed(2)}"${l.lgd ? ` data-lgd="${l.lgd}"` : ''} stroke="${c}" stroke-width="${w}" fill="none"/>` + (l.head ? tip(l.x1, l.y1, -1) : '') + (l.tail ? tip(l.x2, l.y2, 1) : '');
     }
     // テンプレートの三角（凡例の ▶◀ など）：頂点が上の三角を、左右・上下の反転と回転をつけて
     for (const q of tplTris) {
@@ -3736,6 +3738,7 @@ function paintCtl(cc) {
 function refreshView(photos) {
   if (viewMode === 'form') { if (photos) renderFormPhotos(); refreshForm(); return; }
   for (const c of kCells) { if (c.photo) { if (photos) paintPhoto(c); } else if (c.ctl) paintCtl(c); else paintCell(c); }
+  if (photos) { const dc = regiDecayColor(cur, curType); for (const p of document.querySelectorAll('#karte path[data-lgd]')) p.setAttribute('stroke', dc || p.dataset.lgd); } // 凡例の腐朽の線
 }
 function fitKarte() {
   const root = $('#karte'); if (!kPages.length) return;
@@ -5876,19 +5879,24 @@ async function regiWaveLines(t, ty, inp) {
         barBottom = bar[0] + hPx / Hi;
       }
       const fsN = .021, /* Excel で 10pt 以上（大きくされて重ならないように） */ mc = document.createElement('canvas').getContext('2d'), Wi = img.naturalWidth, gap = .02; mc.font = `bold ${fsN * Wi}px ${DFONT}`;
-      // 文字は帯の上に置く（帯の真ん中→帯の端にそろえる）。広い帯から順に置き、ほかの文字と重なる所しかない短い帯（端の樹皮など）は下の凡例に任せて出さない
-      const placed = [], hit = (a, b) => placed.some(([p, q]) => a < q + .008 && b > p - .008);
+      // 文字は帯の下に置き、引き出し線で帯とつなぐ。広い帯から順に、まず自分の帯の下（1段目）。置けない短い帯（端の樹皮など）は2段目にずらす
+      const Hn = fsN * Wi / img.naturalHeight, rows = [barBottom + .06, barBottom + .06 + Hn * 1.8] /* Excel は字が大きめなので段の間を広く */, placed = [[], []], hit = (r, a, b) => placed[r].some(([p, q]) => a < q + .01 && b > p - .01);
+      let used = 0;
       for (const l of [...rg].sort((p, q) => Math.abs(q.to - q.from) - Math.abs(p.to - p.from))) {
-        const ja = waveJa(l.name), en = /^[A-Za-z][A-Za-z ]*$/.test(l.name) ? l.name.toLowerCase() : l.name, xa = X(l.from), xb = X(Math.min(l.to, num(cal.v))), lo = Math.min(xa, xb), hi = Math.max(xa, xb);
+        const ja = waveJa(l.name), en = /^[A-Za-z][A-Za-z ]*$/.test(l.name) ? l.name.toLowerCase() : l.name, xa = X(l.from), xb = X(Math.min(l.to, num(cal.v))), lo = Math.min(xa, xb), hi = Math.max(xa, xb), mid = (lo + hi) / 2;
         const wOf = s => mc.measureText(s).width / Wi * 1.15; /* Excel の字（Meiryo UI）は少し広い */
-        let txt = `${en}${ja ? '：' + ja : ''}`; if (ja && wOf(txt) > hi - lo) txt = en; // 帯に入りきらなければ短く（意味は下の凡例にある）
-        const wN = wOf(txt), fit = v => Math.max(.004, Math.min(1 - wN - .004, v));
-        const left = [(lo + hi) / 2 - wN / 2, lo, hi - wN].map(fit).find(v => !hit(v, v + wN) && v + wN / 2 >= lo && v + wN / 2 <= hi); if (left == null) continue; // 文字の真ん中が自分の帯の上にある所だけ
-        placed.push([left, left + wN]);
-        L.push({ t: 'text', c: '#111111', x: +left.toFixed(4), y: +Math.min(.9, barBottom + .012).toFixed(4), s: fsN, text: txt, base: 1, gen: 1, role: 'lg' });
+        const full = `${en}${ja ? '：' + ja : ''}`, short = ja && wOf(full) > hi - lo ? en : full; // 1段目は帯に入りきらなければ短く
+        let pos = null;
+        { const wN = wOf(short), fit = v => Math.max(.004, Math.min(1 - wN - .004, v)), v = [mid - wN / 2, lo, hi - wN].map(fit).find(v => !hit(0, v, v + wN) && v + wN / 2 >= lo && v + wN / 2 <= hi); if (v != null) pos = { r: 0, x: v, w: wN, txt: short }; }
+        if (!pos) { const wN = wOf(full), fit = v => Math.max(.004, Math.min(1 - wN - .004, v)); for (let k = 0; k <= 30 && !pos; k++) for (const sg of k ? [-1, 1] : [1]) { const v = fit(mid - wN / 2 + sg * k * .015); if (!hit(1, v, v + wN)) { pos = { r: 1, x: v, w: wN, txt: full }; break; } } }
+        if (!pos) continue;
+        placed[pos.r].push([pos.x, pos.x + pos.w]); used = Math.max(used, pos.r);
+        const ty = rows[pos.r], tx = Math.max(pos.x + .01, Math.min(pos.x + pos.w - .01, mid)); // 引き出し線：帯の真ん中から文字の上へ
+        L.push({ t: 'line', c: '#333333', w: .0022, x1: +mid.toFixed(4), y1: +(barBottom + .002).toFixed(4), x2: +tx.toFixed(4), y2: +(ty - .006).toFixed(4), base: 1, gen: 1, role: 'lead', name: '引き出し線' });
+        L.push({ t: 'text', c: '#111111', x: +pos.x.toFixed(4), y: +Math.min(.9, ty).toFixed(4), s: fsN, text: pos.txt, base: 1, gen: 1, role: 'lg' });
       }
-      const ly = Math.min(.8, barBottom + .012 + fsN * Wi / img.naturalHeight * 2.1); // 赤い線の文字（中心・t）は、帯の意味の文字の下に
-      for (const q of L) if (q.t === 'line' && q.role && q.role !== 'lgbar') q.ly = +ly.toFixed(4);
+      const ly = Math.min(.8, rows[used] + Hn * 1.6); // 赤い線の文字（中心・t）は、帯の意味の文字の下に
+      for (const q of L) if (q.t === 'line' && q.role && !['lgbar', 'lead'].includes(q.role)) q.ly = +ly.toFixed(4);
     }
     p.strokes = [...(p.strokes || []).filter(s => !s.gen), ...L];
   }
@@ -5921,6 +5929,13 @@ function waveRanges(w) {
   for (const l of (w && w.p && w.p.emf && w.p.emf.legend) || []) { if (l.from != null && l.to != null) { out.push({ from: l.from, to: l.to, name: l.en, c: l.c }); continue; } const m = /From\s*([\d.,]+)\s*cm\s*to\s*([\d.,]+)\s*cm/i.exec(l.text || ''); if (m) out.push({ from: +m[1].replace(',', '.'), to: +m[2].replace(',', '.'), name: l.en, c: l.c }); }
   return out.sort((a, b) => a.from - b.from);
 }
+// カルテの凡例の「腐朽（空洞）部」の線の色：波形の評価の腐朽（decay）と同じ色に（様式では黒）
+function regiDecayColor(t, ty) {
+  if (!t || !ty || !ty.calc || ty.calc.kind !== 'regi') return null;
+  for (const slot of waveSlots(ty)) { const p = slot && (t.photos || []).find(q => q.slot === slot); for (const l of (p && p.emf && p.emf.legend) || []) if (l.c && !isBarkName(l.en) && !isSoundName(l.en)) return String(l.c).toUpperCase(); }
+  return null;
+}
+const regiLegendRows = tpl => new Set([...tpl.cells.values()].filter(c => /腐朽（空洞）部/.test(String(c.val || ''))).map(c => c.r)); // 凡例の行（0始まり）
 const isBarkName = n => /bark|樹皮/i.test(n || ''), isSoundName = n => /intact|sound|healthy|健全/i.test(n || '');
 // 波形の評価から、樹皮・健全部 t・腐朽部を入れる（芯＝直径の半分より中心側は、反対の向きの測定に任せる）
 function regiFromWaves(inp, waves, onlyEmpty = false) {
@@ -7920,6 +7935,8 @@ async function buildWorkbook(ty, list, fileName = '') {
       const rootTag = () => (/<xdr:wsDr\b[^>]*>/.exec(dx) || [''])[0];
       if (!/xmlns:r=/.test(rootTag())) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"');
       if (!/xmlns:a=/.test(rootTag())) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"');
+      { const dcC = regiDecayColor(t, ty); if (dcC) { const rows = regiLegendRows(tpl); // 凡例の「腐朽（空洞）部」の線を波形の腐朽の色に
+        dx = dx.replace(/<xdr:twoCellAnchor\b[\s\S]*?<\/xdr:twoCellAnchor>/g, a => { const m = /<xdr:from><xdr:col>\d+<\/xdr:col><xdr:colOff>-?\d+<\/xdr:colOff><xdr:row>(\d+)<\/xdr:row>/.exec(a); if (!m || !rows.has(+m[1]) || !/prst="line"/.test(a) || /<a:(?:head|tail)End[^>]*type="(?!none)/.test(a)) return a; return a.replace(/(<a:ln\b[^>]*>\s*<a:solidFill>)[\s\S]*?(<\/a:solidFill>)/, `$1<a:srgbClr val="${dcC.slice(1)}"/>$2`); }); } }
       // 自動でつくった図（想定断面図）を入れた枠では、様式にもともとある図形（円・十字など）を外す
       // 枠の外から枠にかかる図形（様式の「車道側」など）は、図の後ろに隠れないよう前面へ。図に方向指標があれば、様式の車道側・歩道側は外す（重なるので）
       let front = '';
