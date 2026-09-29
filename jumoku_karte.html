@@ -3103,6 +3103,9 @@ async function loadTpl(type) {
   // 図形の線（斜線など）と、フォームのチェックボックス
   const sheetRels = await readRels(zip, sh.path);
   const lines = [];
+  // 線の端の矢印（測定直径の ↕ ↔ など）と色・太さ
+  const lineEnds = an => { const A = 'http://schemas.openxmlformats.org/drawingml/2006/main', ln = an.getElementsByTagNameNS(A, 'ln')[0], ty = n => { const e = ln && ln.getElementsByTagNameNS(A, n)[0], v = e && e.getAttribute('type'); return v && v !== 'none' ? v : ''; }, clr = ln && ln.getElementsByTagNameNS(A, 'srgbClr')[0];
+    return { head: ty('headEnd'), tail: ty('tailEnd'), color: clr ? '#' + clr.getAttribute('val') : '', w: ln && +ln.getAttribute('w') ? +ln.getAttribute('w') / 12700 : 0 }; };
   const drwRel = sheetRels.find(r => r.type.endsWith('/drawing'));
   if (drwRel && zip.file(drwRel.path)) {
     const drw = parseXml(await zip.file(drwRel.path).async('string'));
@@ -3112,7 +3115,7 @@ async function loadTpl(type) {
       const g = (el, n) => +el.getElementsByTagNameNS(NS_XDR, n)[0].textContent;
       const f = an.getElementsByTagNameNS(NS_XDR, 'from')[0], t = an.getElementsByTagNameNS(NS_XDR, 'to')[0];
       const flip = [...an.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'xfrm')][0];
-      lines.push({ c1: g(f, 'col'), x1: g(f, 'colOff'), r1: g(f, 'row'), y1: g(f, 'rowOff'), c2: g(t, 'col'), x2: g(t, 'colOff'), r2: g(t, 'row'), y2: g(t, 'rowOff'), flipV: flip?.getAttribute('flipV') === '1', flipH: flip?.getAttribute('flipH') === '1' });
+      lines.push({ c1: g(f, 'col'), x1: g(f, 'colOff'), r1: g(f, 'row'), y1: g(f, 'rowOff'), c2: g(t, 'col'), x2: g(t, 'colOff'), r2: g(t, 'row'), y2: g(t, 'rowOff'), flipV: flip?.getAttribute('flipV') === '1', flipH: flip?.getAttribute('flipH') === '1', ...lineEnds(an) });
     }
   }
   const ctrls = [];
@@ -3520,7 +3523,7 @@ async function renderKarte() {
     const wrap = h('div', { class: 'kpw' }); const page = h('div', { class: 'kpage', style: `width:${W}px;height:${H}px` });
     wrap.append(page); root.append(wrap);
     // 罫線
-    const segs = {};
+    const segs = {}, tplLns = [];
     const add = (st, x1, y1, x2, y2) => { (segs[st] = segs[st] || []).push(`M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}`); };
     const inPg = (c, r) => c >= pg.c1 && c <= pg.c2 && r >= pg.r1 && r <= pg.r2;
     for (const c of tpl.cells.values()) {
@@ -3537,9 +3540,16 @@ async function renderKarte() {
     for (const ln of tpl.lines) if (inPg(ln.c1, ln.r1)) {
       let x1 = X(ln.c1) + ln.x1 / 9525, y1 = Y(ln.r1) + ln.y1 / 9525, x2 = X(ln.c2) + ln.x2 / 9525, y2 = Y(ln.r2) + ln.y2 / 9525;
       if (ln.flipV) [y1, y2] = [y2, y1]; if (ln.flipH) [x1, x2] = [x2, x1];
+      if (ln.head || ln.tail || ln.color) { tplLns.push({ ...ln, x1, y1, x2, y2 }); continue; } // 矢印つきの線（測定直径の ↕ ↔ など）はテンプレートの形のまま
       add('connector', x1, y1, x2, y2);
     }
     let path = '';
+    // テンプレートの線：色・太さ・両端の矢印をそのまま（矢印は線の向きに合わせた小さな三角）
+    for (const l of tplLns) {
+      const c = l.color || '#000', w = Math.max(.8, l.w || .75), dx = l.x2 - l.x1, dy = l.y2 - l.y1, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, al = Math.min(5, L * .35), aw = al * .45;
+      const tip = (x, y, s) => { const bx = x - s * ux * al, by = y - s * uy * al; return `<path d="M${x.toFixed(2)},${y.toFixed(2)}L${(bx - uy * aw).toFixed(2)},${(by + ux * aw).toFixed(2)}L${(bx + uy * aw).toFixed(2)},${(by - ux * aw).toFixed(2)}Z" fill="${c}"/>`; };
+      path += `<path d="M${l.x1.toFixed(2)},${l.y1.toFixed(2)}L${l.x2.toFixed(2)},${l.y2.toFixed(2)}" stroke="${c}" stroke-width="${w}" fill="none"/>` + (l.head ? tip(l.x1, l.y1, -1) : '') + (l.tail ? tip(l.x2, l.y2, 1) : '');
+    }
     for (const [st, arr] of Object.entries(segs)) path += `<path d="${arr.join('')}" stroke="${st === 'connector' ? '#4472C4' : '#000'}" stroke-width="${st === 'connector' ? .8 : BW[st] || 1}" fill="none" ${BD[st] ? `stroke-dasharray="${BD[st]}"` : ''} shape-rendering="crispEdges"/>`;
     page.insertAdjacentHTML('beforeend', `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${path}</svg>`);
     // 文字・入力欄
@@ -3555,6 +3565,7 @@ async function renderKarte() {
       const w = X(Math.min(g.c2, pg.c2) + 1) - X(g.c1), hh = Y(Math.min(g.r2, pg.r2) + 1) - Y(g.r1);
       el.style.cssText = `left:${X(g.c1)}px;top:${Y(g.r1)}px;width:${w}px;height:${hh}px;font-size:${fs}px;${x.font.b ? 'font-weight:700;' : ''}`
         + `justify-content:${vert ? 'center' : { center: 'center', right: 'flex-end', centerContinuous: 'center', distributed: 'space-between' }[x.h] || 'flex-start'};`
+        + (!vert && w > fs * 3 ? (x.h === 'right' ? `padding-right:${(fs * .35).toFixed(1)}px;` : !x.h || x.h === 'left' || x.h === 'general' ? `padding-left:${(fs * .35).toFixed(1)}px;` : '') : '') // 左詰め・右詰めの文字は枠線から少しあける（狭い欄はそのまま）
         + `align-items:${vert ? 'center' : { top: 'flex-start', center: 'center', bottom: 'flex-end', distributed: 'center', justify: 'flex-start' }[x.v] || 'flex-end'};`;
       if (spec || tpl.merges.has(ref)) el.dataset.fit = '1';
       if (spec) el.dataset.k = spec.k;
@@ -5839,10 +5850,11 @@ async function regiDiagram(inp, waves = []) {
   if (hasArea) { x.fillStyle = '#d0d0d0'; x.fillRect(820, S - 90, 60, 36); x.setLineDash([3, 7]); x.lineWidth = 6; x.strokeStyle = '#e57373'; x.strokeRect(820, S - 90, 60, 36); x.setLineDash([]); x.fillStyle = '#111'; x.fillText(anyDl ? '未測定部分' : '腐朽（空洞）部', 895, S - 72); }
   const lg = waves.some(w => w && w.cal) && inp.fig !== 'bar' ? waveLegend(waves) : [];
   if (lg.length) { // 評価（Assessment）の色の意味（英語＋日本語）を左上に
-    let fs = 34; x.font = `bold ${fs}px ${F}`; const txt = l => `${l.en}${l.ja ? '（' + l.ja + '）' : ''}`, wmax = Math.max(...lg.map(l => x.measureText(txt(l)).width));
-    if (wmax > 330) { fs = Math.max(16, Math.floor(fs * 330 / wmax)); }
-    x.font = `bold ${fs}px ${F}`; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = '#111'; x.fillText('Assessment（評価）', 24, 34);
-    lg.forEach((l, i) => { const y = 34 + (i + 1) * (fs + 14); x.fillStyle = l.c; x.fillRect(24, y - 6, 44, 12); x.fillStyle = '#111'; x.fillText(txt(l), 80, y); });
+    // カルテの凡例と同じ書き方（bark：樹皮　intact：健全）。色は波形のデータの色
+    let fs = 34; x.font = `bold ${fs}px ${F}`; const txt = l => `${/^[A-Za-z][A-Za-z ]*$/.test(l.en) ? l.en.toLowerCase() : l.en}${l.ja ? '：' + l.ja : ''}`, wmax = Math.max(...lg.map(l => x.measureText(txt(l)).width));
+    if (wmax > 300) { fs = Math.max(16, Math.floor(fs * 300 / wmax)); }
+    x.font = `bold ${fs}px ${F}`; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = '#111'; x.fillText('凡例', 24, 34);
+    lg.forEach((l, i) => { const y = 34 + (i + 1) * (fs + 14); x.fillStyle = l.c; x.fillRect(24, y - 7, 48, 14); x.fillStyle = '#111'; x.fillText(txt(l), 84, y); });
   }
   if (waves.some(w => w && w.cal) && inp.fig !== 'bar') { x.lineWidth = 5; x.strokeStyle = '#E53935'; x.beginPath(); x.moveTo(40, S - 72); x.lineTo(100, S - 72); x.stroke(); x.fillStyle = '#111'; x.fillText('健全部の終わり（t）', 112, S - 72); }
   else {
@@ -6873,9 +6885,11 @@ function emfToCanvas(buf, maxSide = 2400) {
   const legend = [];
   for (const b of info.boxes) {
     if (!sat(b.c) || b.w > c.width * .06 || b.h > c.height * .06 || b.w < 2 || b.h < 1) continue;
-    const cy0 = b.y + b.h / 2, row = info.texts.filter(t => t.x > b.x + b.w * .5 && t.x < b.x + c.width * .35 && Math.abs(t.y - cy0) < Math.max(b.h, t.fs) * .6).sort((p, q) => p.x - q.x);
-    if (!row.length) continue;
-    const line = row.map(t => t.s).join(' ').replace(/\s+/g, ' ').trim(), m = /:\s*([^:]+)$/.exec(line), name = (m ? m[1] : row[row.length - 1].s).trim();
+    // 数字だけの文字（目盛りの「100」など）は凡例の名前にしない
+    const isNum = t => /^[\s\d.,%+\-−]*$/.test(t.s || ''), cy0 = b.y + b.h / 2, row = info.texts.filter(t => t.x > b.x + b.w * .5 && t.x < b.x + c.width * .35 && Math.abs(t.y - cy0) < Math.max(b.h, t.fs) * .6).sort((p, q) => p.x - q.x);
+    if (!row.length || row.every(isNum)) continue;
+    const line = row.map(t => t.s).join(' ').replace(/\s+/g, ' ').trim(), m = /:\s*([^:]+)$/.exec(line), words = row.filter(t => !isNum(t)), name = (m ? m[1] : words[words.length - 1].s).replace(/\s+[\d.,%]+$/, '').trim();
+    if (!name || /^[\d.,%\s]+$/.test(name)) continue;
     const hex = rgbHex(b.c); if (name && !legend.some(l => l.c === hex && l.en === name)) legend.push({ c: hex, en: name, text: line });
   }
   c.emf = { colors: Object.entries(info.col).filter(([k]) => sat(k)).sort((a, b) => b[1] - a[1]).map(([k]) => rgbHex(k)).slice(0, 12), legend };
