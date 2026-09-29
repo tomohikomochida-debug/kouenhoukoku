@@ -3850,7 +3850,7 @@ function openEditor(key) {
   else if (spec.k === 'date') inp = h('input', { type: 'date', class: 'inp' });
   else inp = h('input', { class: 'inp', inputmode: spec.k === 'num' ? 'decimal' : null, list: 'edList', enterkeyhint: 'done', autocomplete: 'off' });
   inp.value = v ?? ''; inp.id = 'edInput';
-  const set = () => { if (key.includes('#b')) { cur.v[key] = inp.value; } else setV(cur, curType, key, inp.value); touch(); refreshView(); };
+  const set = () => { if (key.includes('#b')) { cur.v[key] = inp.value; } else { setV(cur, curType, key, inp.value); regiCellChanged(cur, curType, key); } touch(); refreshView(); };
   inp.addEventListener('input', set);
   if (inp.tagName === 'INPUT') inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); closeEditor(); } });
   body.append(inp);
@@ -3861,6 +3861,10 @@ function openEditor(key) {
   }
   const phr = spec.phrases || [];
   if (phr.length) body.append(h('div', { class: 'chips' }, phr.map(p => h('button', { type: 'button', class: p.includes('○') ? 'qtychip' : '', onclick: async () => { const v = await fillPlaceholders(p); if (v) { inp.value += v; set(); } inp.focus(); } }, '＋' + p))));
+  const rm = curType.calc && curType.calc.kind === 'regi' && curType.calc.map;
+  if (rm && rm.ang === key) body.append(h('div', { class: 'chips' }, [30, 40].map(d => h('button', { type: 'button', onclick: () => { inp.value = String(d); set(); } }, `${d}°（×${regiKf(d).toFixed(2)}）`))),
+    h('p', { class: 'hint' }, '補正直径＝測定直径×定数（30°→1.15、40°→1.31。ほかの角度は 1/cos 俯角）。測定直径と俯角を入れると、補正直径は自動で入ります。'));
+  if (rm && rm.ang && (rm.D1 === key || rm.D2 === key)) body.append(h('p', { class: 'hint' }, '俯角が入っていれば、補正直径（×定数）も自動で入ります。'));
   const gl = glossaryFor(spec.label);
   if (gl.length) body.append(h('div', { class: 'row', style: 'margin-top:8px' }, ...gl.map(g => h('button', { type: 'button', class: 'btn', onclick: () => showGlossary([g]) }, '📖 ' + g[0]))));
   $('#edGps').classList.toggle('hidden', !spec.gps);
@@ -5511,10 +5515,10 @@ const REGI_MAP_TOKYO = nekabu => ({
 const BEARINGS = ['北', '東', '南', '西'];
 const regiDefault = () => ({ mode: 'dir', D1: '', D2: '', ang: '', dirs: [{ bear: '南' }, { bear: '西' }, { bear: '北' }, { bear: '東' }].map(d => ({ ...d, b: '', t: '', dl: '' })) });
 const num = v => { const s = String(v ?? '').replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim(); return s === '' || isNaN(+s) ? null : +s; };
-const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
+const f1 = v => (Math.round(+(v * 10).toFixed(6)) / 10).toFixed(1); // 51.75 が 51.7 にならないように（小数の誤差）
 function regiCalc(inp) {
   const ang = num(inp.ang), kf = ang ? Math.round(100 / Math.cos(ang * Math.PI / 180)) / 100 : 1;
-  const D = [num(inp.D1), num(inp.D2)].map(d => d == null ? null : ang ? Math.round(d * kf * 10) / 10 : d);
+  const D = [num(inp.D1), num(inp.D2)].map(d => d == null ? null : ang ? Math.round(+(d * kf * 10).toFixed(6)) / 10 : d);
   const axis = i => (i % 2 === 0 ? 0 : 1); // ①③→直径1、②④→直径2
   const out = { D, kf, dirs: [] };
   inp.dirs.forEach((d, i) => {
@@ -5553,6 +5557,19 @@ function regiApply(t, ty, inp) {
   const map = ty.calc.map, { v } = regiValues(inp, ty);
   for (const [k, ref] of Object.entries(map)) if (ref && k in v) setV(t, ty, ref, v[k]);
   t.v._regi = inp;
+}
+
+// 根株：カルテの「俯角」「測定直径」を直接入れたときも、補正直径（測定直径×定数。30°→1.15、40°→1.31）を自動で入れる
+const regiKf = ang => ang ? Math.round(100 / Math.cos(ang * Math.PI / 180)) / 100 : null;
+function regiCellChanged(t, ty, ref) {
+  const m = ty.calc && ty.calc.kind === 'regi' && ty.calc.map; if (!m || !m.ang || ![m.D1, m.D2, m.ang].includes(ref)) return false;
+  if (t.v._regi) { // t/R の計算の入力もそろえて計算し直す
+    const inp = t.v._regi; inp.D1 = getV(t, ty, m.D1) ?? ''; inp.D2 = getV(t, ty, m.D2) ?? ''; inp.ang = getV(t, ty, m.ang) ?? '';
+    regiApply(t, ty, inp); return true;
+  }
+  const kf = regiKf(num(getV(t, ty, m.ang)));
+  for (const [dk, ck] of [['D1', 'CD1'], ['D2', 'CD2']]) { const d = num(getV(t, ty, m[dk])); setV(t, ty, m[ck], kf && d != null ? f1(d * kf) : ''); }
+  return true;
 }
 
 /* ---------- 想定断面図：十字に 健全部（白）・腐朽部（黒）を並べ、真ん中の未測定部分を点線で ---------- */
