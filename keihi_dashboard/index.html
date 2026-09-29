@@ -3,106 +3,159 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>経費ダッシュボード — 庭乃持田園</title>
+<title>経費の集計 — 庭乃持田園</title>
 <style>
 :root{
   --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7;
   --ok:#2E7D55; --tape:#C77C30; --bark:#5B5750; --ink:#22231F;
-  --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F; --radius:10px;
+  --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F; --radius:12px;
   --shadow:0 1px 0 rgba(34,35,31,.04), 0 8px 24px -16px rgba(34,35,31,.25);
 }
 *{box-sizing:border-box}
 body{margin:0; background:var(--paper); color:var(--ink);
-  font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif; line-height:1.6}
+  font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif; line-height:1.6; -webkit-text-size-adjust:100%}
 .tnum{font-variant-numeric:tabular-nums}
-header{background:var(--leaf); color:#fff; padding:14px 18px; display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:5; flex-wrap:wrap}
-header h1{margin:0; font-size:18px}
-.msel{margin-left:auto; font-size:15px; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.3); border-radius:999px; padding:7px 16px; color:#fff; font-family:inherit; cursor:pointer}
-.msel option{color:#000}
-main{max-width:920px; margin:0 auto; padding:16px 14px 60px}
-.loading{text-align:center; color:var(--bark); padding:30px; font-size:14px}
-.cards{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px}
-.kpi{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow)}
-.kpi .n{font-size:24px; font-weight:800; color:var(--leaf); line-height:1.15}
-.kpi .n.warn{color:var(--danger)}
-.kpi .l{font-size:12px; color:var(--bark); font-weight:600; margin-top:2px}
-.box{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; box-shadow:var(--shadow); margin-bottom:14px}
-.box h2{margin:0 0 14px; font-size:15px}
-.catrow{margin-bottom:12px}
-.catrow .top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px}
-.catrow .nm{font-size:14px; font-weight:600}
-.catrow .am{font-size:14px; font-weight:700}
-.bar{height:12px; background:var(--field); border-radius:6px; overflow:hidden}
-.bar > span{display:block; height:100%; border-radius:6px}
-.empty{color:var(--bark); font-size:13px}
-.flow{display:flex; flex-direction:column; gap:0}
-.flow .r{display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px dashed var(--line); font-size:14px}
-.flow .r.total{border-bottom:none; border-top:2px solid var(--leaf-soft); margin-top:4px; padding-top:12px; font-weight:700}
-.flow .r .v{font-weight:600}
-.flow .r.total .v{font-size:20px; font-weight:800; color:var(--leaf)}
-.flow .minus{color:var(--bark)}
-.diff{margin-top:12px; padding:10px; border-radius:8px; font-weight:700; font-size:14px; text-align:center}
-.diff.ok{background:var(--leaf-soft); color:var(--ok)}
-.diff.ng{background:#fbece8; color:var(--danger)}
-.owed-row{display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px dashed var(--line); font-size:14px}
-.owed-row b{color:var(--tape)}
-.tbl{width:100%; border-collapse:collapse; font-size:13px}
-.tbl th,.tbl td{border:1px solid var(--line); padding:8px 10px; text-align:right}
-.tbl th{background:var(--leaf-soft); color:var(--leaf); font-weight:700; text-align:center}
-.tbl td.ym{text-align:left; font-weight:600; cursor:pointer; color:var(--leaf)}
-.tbl tr.sel td{background:var(--field)}
-.tag{font-size:11px; background:var(--tape); color:#fff; padding:1px 6px; border-radius:5px; margin-left:6px}
-.foot{font-size:12px; color:var(--bark); text-align:center; margin-top:8px}
-.linkbar{display:flex; gap:10px; margin-top:6px; flex-wrap:wrap}
-.linkbar a{font-size:13px; color:var(--leaf); text-decoration:none; border:1px solid var(--line); border-radius:8px; padding:7px 12px; background:#fff}
-@media (max-width:560px){ .cards{grid-template-columns:repeat(2,1fr)} }
-.home-btn{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;color:#fff;text-decoration:none;font-family:inherit;font-size:13px;font-weight:700;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.32);border-radius:999px;padding:5px 11px 5px 9px;white-space:nowrap;line-height:1.2;vertical-align:middle}
+header{background:var(--leaf); color:#fff; padding:12px 16px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:5}
+header h1{margin:0; font-size:17px; white-space:nowrap}
+.home-btn{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;color:#fff;text-decoration:none;font-family:inherit;font-size:13px;font-weight:700;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.32);border-radius:999px;padding:5px 11px 5px 9px;white-space:nowrap;line-height:1.2}
 .home-btn:active{background:rgba(255,255,255,.28)}
 .home-btn .hb-ic{font-size:15px;line-height:1}
+.hd-link{margin-left:auto;color:#fff;font-size:13px;text-decoration:none;opacity:.9;border-bottom:1px solid rgba(255,255,255,.4);white-space:nowrap}
 @media (max-width:400px){ .home-btn{padding:5px 8px} .home-btn .hb-t{display:none} }
+
+main{max-width:760px; margin:0 auto; padding:14px 14px 70px}
+.loading{text-align:center; color:var(--bark); padding:36px 10px; font-size:14px}
+.stale{font-size:12px;color:var(--bark);background:var(--field);border:1px solid var(--line);border-left:3px solid var(--tape);border-radius:0 8px 8px 0;padding:7px 11px;margin-bottom:12px}
+
+.card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow); margin-bottom:14px}
+.card h2{margin:0 0 12px; font-size:15px; display:flex; align-items:center; gap:8px}
+.card h2 .sub{font-size:12px; color:var(--bark); font-weight:600; margin-left:auto}
+.note{font-size:12px; color:var(--bark); margin:8px 0 0}
+.empty{color:var(--bark); font-size:13px}
+
+/* ① いまの財布 */
+.wallet{background:var(--leaf); color:#fff; border:none}
+.wallet .lbl{font-size:13px; font-weight:700; opacity:.85; letter-spacing:.04em}
+.wallet .big{font-size:40px; font-weight:800; line-height:1.15; margin:4px 0 10px; letter-spacing:.01em}
+.eq{display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:13px; background:rgba(255,255,255,.08); border-radius:10px; padding:10px 12px}
+.eq .k{opacity:.85}
+.eq .v{text-align:right; font-weight:700}
+.eq .tot{border-top:1px solid rgba(255,255,255,.25); padding-top:5px; margin-top:2px; font-weight:800}
+.count{margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+.count input{flex:1; min-width:140px; font:inherit; font-size:16px; padding:10px 12px; border-radius:9px; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.12); color:#fff}
+.count input::placeholder{color:rgba(255,255,255,.65)}
+.count button{font:inherit; font-size:14px; font-weight:700; padding:10px 14px; border-radius:9px; border:none; background:#fff; color:var(--leaf); cursor:pointer}
+.count button:disabled{opacity:.6}
+.cdiff{font-size:13px; font-weight:700; margin-top:8px; min-height:1em}
+
+/* ② 立替 */
+.owe{display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px dashed var(--line); font-size:14px}
+.owe:last-child{border-bottom:none}
+.owe b{color:var(--tape); font-size:16px}
+
+/* ③ 財布の出入り */
+.mv{display:grid; grid-template-columns:44px 1fr auto; gap:2px 10px; padding:9px 0; border-bottom:1px dashed var(--line); align-items:center}
+.mv:last-child{border-bottom:none}
+.mv .d{font-size:12px; color:var(--bark)}
+.mv .t{font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.mv .t small{display:block; font-size:11px; color:var(--bark)}
+.mv .a{text-align:right; font-weight:800; font-size:15px}
+.mv .a.in{color:var(--ok)} .mv .a.out{color:var(--ink)} .mv .a.adj{color:var(--tape)}
+.mv .after{grid-column:3; text-align:right; font-size:11px; color:var(--bark)}
+.more[hidden]{display:none}
+.more{display:block; width:100%; margin-top:8px; font:inherit; font-size:13px; color:var(--leaf); background:var(--field); border:1px solid var(--line); border-radius:8px; padding:8px; cursor:pointer}
+
+/* ④ 月の経費 */
+.mtabs{display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; margin-bottom:12px; -webkit-overflow-scrolling:touch}
+.mtabs button{flex:0 0 auto; font:inherit; font-size:13px; padding:6px 12px; border-radius:999px; border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer; white-space:nowrap}
+.mtabs button.on{background:var(--leaf); border-color:var(--leaf); color:#fff; font-weight:700}
+.kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px}
+.kpi{background:var(--field); border:1px solid var(--line); border-radius:10px; padding:10px 10px 8px}
+.kpi .n{font-size:18px; font-weight:800; color:var(--leaf); line-height:1.2}
+.kpi .l{font-size:11px; color:var(--bark); font-weight:700}
+.kpi.main .n{font-size:20px}
+@media (max-width:520px){ .kpis{grid-template-columns:repeat(2,1fr)} }
+.catrow{margin-bottom:10px}
+.catrow .top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:3px; font-size:14px}
+.catrow .top b{font-weight:700}
+.bar{height:10px; background:var(--field); border-radius:5px; overflow:hidden}
+.bar > span{display:block; height:100%; border-radius:5px}
+.mflow{font-size:13px; color:var(--bark); background:var(--field); border-radius:8px; padding:9px 11px; margin-top:6px}
+.mflow b{color:var(--ink)}
+
+/* ⑤ 推移 */
+.tblwrap{overflow-x:auto}
+.tbl{width:100%; border-collapse:collapse; font-size:13px; min-width:400px}
+.tbl th,.tbl td{border-bottom:1px solid var(--line); padding:8px 8px; text-align:right; white-space:nowrap}
+.tbl th{color:var(--bark); font-weight:700; font-size:12px; border-bottom:2px solid var(--line)}
+.tbl td.ym{text-align:left; font-weight:700; color:var(--leaf); cursor:pointer}
+.tbl tr.sel td{background:var(--leaf-soft)}
+.tbl td.bal{font-weight:800}
+.tag{font-size:10px; background:var(--bark); color:#fff; padding:1px 5px; border-radius:4px; margin-left:4px; vertical-align:middle}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:14px;padding:10px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:calc(100% - 32px)}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
 <header>
   <a class="home-btn" href="../index.html" title="アプリ一覧にもどる" aria-label="アプリ一覧（ホーム）にもどる"><span class="hb-ic">🏠</span><span class="hb-t">ホーム</span></a>
-  <h1>経費ダッシュボード</h1>
-  <select class="msel" id="monthSel"></select>
+  <h1>経費の集計</h1>
+  <a class="hd-link" href="../keihi/">入力へ ›</a>
 </header>
 
 <main>
   <div id="loading" class="loading">読み込み中…</div>
   <div id="content" hidden>
-    <div class="cards" id="kpis"></div>
+    <div class="stale" id="staleNote" hidden></div>
 
-    <div class="box">
-      <h2>費目別の内訳</h2>
-      <div id="cats"></div>
-    </div>
-
-    <div class="box">
-      <h2>財布の動き</h2>
-      <div class="flow" id="flow"></div>
-      <div id="diffBox"></div>
-    </div>
-
-    <div class="box" id="owedBox" hidden>
-      <h2>立て替え 未清算</h2>
-      <div id="owed"></div>
-    </div>
-
-    <div class="box">
-      <h2>月ごとの推移</h2>
-      <table class="tbl">
-        <thead><tr><th style="text-align:left">月</th><th>経費合計</th><th>入金</th><th>現金残高</th></tr></thead>
-        <tbody id="trend"></tbody>
-      </table>
-      <div class="linkbar">
-        <a id="toInput" href="../keihi/">← 入力アプリへ</a>
+    <!-- ① いまの財布 -->
+    <section class="card wallet">
+      <div class="lbl">いま財布にあるはずの現金</div>
+      <div class="big tnum" id="walletNow">¥0</div>
+      <div class="eq tnum" id="walletEq"></div>
+      <div class="count">
+        <input id="counted" inputmode="numeric" placeholder="財布を数えた額を入れる">
+        <button id="countBtn">この額で合わせる</button>
       </div>
-    </div>
+      <div class="cdiff" id="cdiff"></div>
+    </section>
+
+    <!-- ② 立替の未清算 -->
+    <section class="card" id="oweCard" hidden>
+      <h2>立て替え 未清算<span class="sub">財布から返す分</span></h2>
+      <div id="oweList"></div>
+      <p class="note">入力アプリの「清算する」を押すと、財布から返した分として残高から引かれます。</p>
+    </section>
+
+    <!-- ③ 財布の出入り -->
+    <section class="card">
+      <h2>財布の出入り<span class="sub">新しい順・右下は出入り後の残り</span></h2>
+      <div id="moves"></div>
+      <button class="more" id="moreBtn" hidden>もっと見る</button>
+    </section>
+
+    <!-- ④ 月の経費 -->
+    <section class="card">
+      <h2>月の経費</h2>
+      <div class="mtabs" id="mtabs"></div>
+      <div class="kpis" id="kpis"></div>
+      <div id="cats"></div>
+      <div class="mflow tnum" id="mflow"></div>
+    </section>
+
+    <!-- ⑤ 月ごとの推移 -->
+    <section class="card">
+      <h2>月ごとの推移</h2>
+      <div class="tblwrap"><table class="tbl tnum">
+        <thead><tr><th style="text-align:left">月</th><th>月末の財布</th><th>入金</th><th>財布から払った</th><th>経費合計</th></tr></thead>
+        <tbody id="trend"></tbody>
+      </table></div>
+      <p class="note">「財布から払った」＝現金払い＋立替の清算。カード払いは財布の現金に関係しません。</p>
+    </section>
   </div>
-  <p class="foot">庭乃持田園 経費ダッシュボード</p>
 </main>
+<div class="toast" id="toast"></div>
 
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbyxxtzrbYhoU0JxQ3BUk3SlQWbmo0ytKt3v--i069kC0kho-u2t3amxoZZLr2ucslAGkg/exec";
@@ -111,91 +164,129 @@ const CATS=[
   {key:"設備費",c:"#5B5750"},{key:"処分費",c:"#7a5b3a"},{key:"交通費",c:"#3a6ea5"},
   {key:"福利厚生費",c:"#8a6d3b"},{key:"雑費",c:"#9a9a9a"}
 ];
-const CAT_C=Object.fromEntries(CATS.map(x=>[x.key,x.c]));
 const yen=n=>"¥"+(Number(n)||0).toLocaleString("ja-JP");
+const sgn=n=>(n>0?"＋":n<0?"−":"")+yen(Math.abs(n));
 const $=id=>document.getElementById(id);
-const ymLabel=ym=>ym.split("-")[0]+"年"+(+ym.split("-")[1])+"月";
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ymLabel=ym=>{ const p=String(ym).split("-"); return (+p[1])+"月"; };
+const ymLong=ym=>{ const p=String(ym).split("-"); return p[0]+"年"+(+p[1])+"月"; };
+function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),2600); }
 
-let months=[], cur=null;
+let S=null, selYm=null, showAll=false;
 
-/* 前回の集計を端末に覚えておき、開いたらすぐ表示 → 最新は裏で読み込む */
-const SUM_KEY="keihi_summary_cache";
-function showMonths(){
-  if(months.length===0){ $("loading").style.display="block"; $("content").hidden=true;
-    $("loading").textContent="まだ経費が入力されていません。入力アプリで登録すると、ここに集計が出ます。"; return; }
-  const keep=cur&&months.some(m=>m.ym===cur.ym)?cur.ym:months[0].ym;
-  $("monthSel").innerHTML=months.map(m=>`<option value="${m.ym}">${ymLabel(m.ym)}${m.closed?"（締め済）":""}</option>`).join("");
-  $("monthSel").onchange=()=>select($("monthSel").value);
+/* ===== 表示 ===== */
+function render(){
   $("loading").style.display="none"; $("content").hidden=false;
-  select(keep);
+  renderWallet(); renderOwe(); renderMoves();
+  if(!selYm || !S.months.some(m=>m.ym===selYm)) selYm = (S.months.find(m=>m.expenseAll>0||m.inj>0)||S.months[0]||{}).ym;
+  renderMonth(); renderTrend();
 }
+function renderWallet(){
+  const w=S.wallet, t=w.total;
+  $("walletNow").textContent=yen(w.balance);
+  const rows=[];
+  if(w.start) rows.push(["最初の残り（"+ymLong(w.startYm)+"）", yen(w.start)]);
+  rows.push(["＋ 入金 の合計", yen(t.inj)]);
+  rows.push(["− 現金で払った合計", yen(t.cash)]);
+  if(t.settledAdv) rows.push(["− 立替を返した合計", yen(t.settledAdv)]);
+  if(t.adj) rows.push([(t.adj>0?"＋":"−")+" 過不足の調整", yen(Math.abs(t.adj))]);
+  $("walletEq").innerHTML=rows.map(r=>`<span class="k">${r[0]}</span><span class="v">${r[1]}</span>`).join("")
+    +`<span class="k tot">＝ いまの財布</span><span class="v tot">${yen(w.balance)}</span>`;
+  updateDiff();
+}
+function updateDiff(){
+  const v=$("counted").value.replace(/[^\d]/g,"");
+  if(v===""||!S){ $("cdiff").textContent=""; return; }
+  const d=Number(v)-S.wallet.balance;
+  $("cdiff").textContent = d===0 ? "✓ 帳簿とぴったりです" : `帳簿より ${yen(Math.abs(d))} ${d>0?"多い":"足りない"} → 合わせると「過不足 ${sgn(d)}」を記録します`;
+}
+function renderOwe(){
+  const list=Object.entries(S.owedAll||{}).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  $("oweCard").hidden=list.length===0;
+  $("oweList").innerHTML=list.map(([n,v])=>`<div class="owe"><span>${esc(n)}</span><b class="tnum">${yen(v)}</b></div>`).join("");
+}
+function renderMoves(){
+  const all=S.recent||[];
+  const list=showAll?all:all.slice(0,8);
+  if(!all.length){ $("moves").innerHTML=`<div class="empty">まだ財布の出入りがありません。</div>`; $("moreBtn").hidden=true; return; }
+  $("moves").innerHTML=list.map(m=>{
+    const cls=m.kind==="inj"?"in":m.kind==="adj"?"adj":"out";
+    const sub=m.kind==="cash"?"現金払い（"+ymLabel(m.ym)+"分"+(m.date?"・レシート "+esc(m.date):"")+"）":
+              m.kind==="settle"?"立替を財布から返した（"+ymLabel(m.ym)+"分）":
+              m.kind==="inj"?ymLabel(m.ym)+"分":"財布を数えて合わせた";
+    return `<div class="mv"><span class="d">${esc(m.when||"")}</span>
+      <span class="t">${esc(m.label)}<small>${sub}</small></span>
+      <span class="a ${cls} tnum">${sgn(m.amount)}</span>
+      <span class="after tnum">残り ${yen(m.after)}</span></div>`; }).join("");
+  $("moreBtn").hidden = showAll || all.length<=8;
+}
+function renderMonth(){
+  const ms=S.months.filter(m=>m.expenseAll>0||m.inj>0||m.adj||m.ym===selYm);
+  $("mtabs").innerHTML=ms.map(m=>`<button data-ym="${m.ym}" class="${m.ym===selYm?"on":""}">${ymLong(m.ym)}${m.closed?" ✓":""}</button>`).join("");
+  $("mtabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{ selYm=b.dataset.ym; renderMonth(); renderTrend(); });
+  const m=S.months.find(x=>x.ym===selYm); if(!m){ $("kpis").innerHTML=""; $("cats").innerHTML=""; $("mflow").innerHTML=""; return; }
+  const unset=Object.values(m.unsettled||{}).reduce((a,b)=>a+b,0);
+  const k=[{l:"経費合計",n:m.expenseAll,main:1},{l:"財布（現金）",n:m.cash},{l:"カード",n:m.card||0},{l:"立て替え",n:m.advance||0}];
+  $("kpis").innerHTML=k.map(x=>`<div class="kpi ${x.main?"main":""}"><div class="n tnum">${yen(x.n)}</div><div class="l">${x.l}</div></div>`).join("");
+  const entries=CATS.filter(c=>(m.cats[c.key]||0)>0).map(c=>({key:c.key,c:c.c,v:m.cats[c.key]}));
+  Object.keys(m.cats).filter(k=>!CATS.some(c=>c.key===k)&&m.cats[k]>0).forEach(k=>entries.push({key:k,c:"#9a9a9a",v:m.cats[k]}));
+  const max=Math.max(1,...entries.map(e=>e.v));
+  $("cats").innerHTML=entries.length? entries.sort((a,b)=>b.v-a.v).map(e=>`
+    <div class="catrow"><div class="top"><span>${esc(e.key)}</span><b class="tnum">${yen(e.v)}</b></div>
+    <div class="bar"><span style="width:${Math.max(3,e.v/max*100)}%;background:${e.c}"></span></div></div>`).join("")
+    : `<div class="empty">この月の経費はまだありません。</div>`;
+  $("mflow").innerHTML=`この月の財布：月初 <b>${yen(m.opening)}</b> ＋入金 ${yen(m.inj)} −現金 ${yen(m.cash)}`
+    +(m.settledAdv?` −立替清算 ${yen(m.settledAdv)}`:"")+(m.adj?` ${m.adj>0?"＋":"−"}過不足 ${yen(Math.abs(m.adj))}`:"")
+    +` ＝ 月末 <b>${yen(m.balance)}</b>`+(unset?`<br>未清算の立て替え ${yen(unset)}（まだ財布から出ていません）`:"");
+}
+function renderTrend(){
+  const ms=S.months.filter(m=>m.expenseAll>0||m.inj>0||m.adj||m.cash);
+  $("trend").innerHTML=ms.map(m=>`<tr class="${m.ym===selYm?"sel":""}">
+    <td class="ym" data-ym="${m.ym}">${ymLong(m.ym)}${m.closed?'<span class="tag">締</span>':''}</td>
+    <td class="bal">${yen(m.balance)}</td><td>${m.inj?yen(m.inj):"—"}</td><td>${(m.cash+m.settledAdv)?yen(m.cash+m.settledAdv):"—"}</td>
+    <td>${yen(m.expenseAll)}</td></tr>`).join("");
+  $("trend").querySelectorAll("td.ym").forEach(td=>td.onclick=()=>{ selYm=td.dataset.ym; renderMonth(); renderTrend(); });
+}
+
+/* ===== 読み込み：前回の集計ですぐ表示 → 最新は裏で ===== */
+const SUM_KEY="keihi_summary_v2";
+function stamp(t){ const d=new Date(t); return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
 async function load(){
   let cached=null; try{ cached=JSON.parse(localStorage.getItem(SUM_KEY)||"null"); }catch(e){}
-  if(cached&&Array.isArray(cached.months)){ months=cached.months; showMonths(); }
+  if(cached&&cached.d&&cached.d.wallet){ S=cached.d; render(); $("staleNote").hidden=false; $("staleNote").textContent="前回（"+stamp(cached.t)+"）の集計を表示中です。最新を読み込んでいます…"; }
   const ac=new AbortController(); const tm=setTimeout(()=>ac.abort(),25000);
   try{
-    const res=await fetch(GAS_URL+"?action=summary",{signal:ac.signal});
-    const d=await res.json();
-    if(!d.ok) throw 0;
-    months=d.months||[];
-    try{ localStorage.setItem(SUM_KEY, JSON.stringify({months, t:Date.now()})); }catch(e){}
-  }catch(e){ if(!cached){ $("loading").textContent="電波を確認して、もう一度お試しください"; } return; }
-  finally{ clearTimeout(tm); }
-  showMonths();
+    const d=await (await fetch(GAS_URL+"?action=summary",{signal:ac.signal})).json();
+    if(!d.ok||!d.wallet) throw new Error("bad");
+    S=d; try{ localStorage.setItem(SUM_KEY, JSON.stringify({d, t:Date.now()})); }catch(e){}
+    $("staleNote").hidden=true; render();
+  }catch(e){
+    if(cached&&cached.d&&cached.d.wallet){ $("staleNote").textContent="電波が弱いため、前回（"+stamp(cached.t)+"）の集計を表示しています。"; }
+    else { $("loading").textContent="電波を確認して、もう一度お試しください。"; }
+  }finally{ clearTimeout(tm); }
 }
 
-function select(ym){
-  cur=months.find(m=>m.ym===ym); if(!cur) return;
-  $("monthSel").value=ym;
-  renderKpis(); renderCats(); renderFlow(); renderOwed(); renderTrend();
-}
+/* ===== 財布を数えて合わせる ===== */
+$("counted").addEventListener("input", updateDiff);
+$("countBtn").onclick=async ()=>{
+  const v=$("counted").value.replace(/[^\d]/g,"");
+  if(v===""){ toast("数えた額を入れてください"); return; }
+  const counted=Number(v);
+  if(!confirm("いまの財布の現金を "+yen(counted)+" として帳簿を合わせます。よろしいですか？")) return;
+  const b=$("countBtn"); b.disabled=true; b.textContent="記録中…";
+  try{
+    const ym=(()=>{ const d=new Date(); return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2); })();
+    const r=await (await fetch(GAS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({mode:"countCash",ym,counted,who:localStorage.getItem("nippou_author")||""})})).json();
+    if(!r.ok) throw new Error(r.error||"err");
+    toast(r.diff===0?"帳簿とぴったりでした":"過不足 "+sgn(r.diff)+" を記録して合わせました");
+    $("counted").value=""; await load();
+  }catch(e){ toast("電波を確認して、もう一度お試しください"); }
+  finally{ b.disabled=false; b.textContent="この額で合わせる"; }
+};
+$("moreBtn").onclick=()=>{ showAll=true; renderMoves(); };
 
-function renderKpis(){
-  const unsettled=Object.values(cur.unsettled).reduce((s,v)=>s+v,0);
-  const cards=[
-    {l:"経費合計", n:yen(cur.expenseAll)},
-    {l:"財布の現金残高", n:yen(cur.balance)},
-    {l:"入金（社長）", n:yen(cur.inj)},
-    {l:"立て替え未清算", n:yen(unsettled), warn:unsettled>0}
-  ];
-  $("kpis").innerHTML=cards.map(c=>`<div class="kpi"><div class="n ${c.warn?"warn":""}">${c.n}</div><div class="l">${c.l}</div></div>`).join("");
-}
-
-function renderCats(){
-  const entries=CATS.filter(c=>(cur.cats[c.key]||0)>0).map(c=>({key:c.key,c:c.c,v:cur.cats[c.key]}));
-  if(entries.length===0){ $("cats").innerHTML=`<div class="empty">この月の費目別データはありません。</div>`; return; }
-  const max=Math.max(...entries.map(e=>e.v));
-  $("cats").innerHTML=entries.sort((a,b)=>b.v-a.v).map(e=>`
-    <div class="catrow"><div class="top"><span class="nm">${e.key}</span><span class="am tnum">${yen(e.v)}</span></div>
-    <div class="bar"><span style="width:${Math.max(4,e.v/max*100)}%;background:${e.c}"></span></div></div>`).join("");
-}
-
-function renderFlow(){
-  $("flow").innerHTML=`
-    <div class="r"><span>月初の残り（繰越）</span><span class="v tnum">${yen(cur.opening)}</span></div>
-    <div class="r"><span>＋ 入金（社長）</span><span class="v tnum">${yen(cur.inj)}</span></div>
-    <div class="r"><span class="minus">− 現金で払った分</span><span class="v tnum minus">${yen(cur.cash)}</span></div>
-    <div class="r"><span class="minus">− 立て替えの清算</span><span class="v tnum minus">${yen(cur.settledAdv)}</span></div>
-    <div class="r total"><span>財布の現金残高</span><span class="v tnum">${yen(cur.balance)}</span></div>`;
-  if(cur.counted===""||cur.counted==null){ $("diffBox").innerHTML=""; return; }
-  const diff=cur.counted-cur.balance;
-  $("diffBox").innerHTML=`<div class="diff ${diff===0?"ok":"ng"}">月末に数えた現金 ${yen(cur.counted)} ／ ${diff===0?"✓ 帳簿とぴったり":`差額 ${yen(Math.abs(diff))}（${diff>0?"現金が多い":"現金が足りない"}）`}</div>`;
-}
-
-function renderOwed(){
-  const list=Object.entries(cur.unsettled).filter(([,v])=>v>0);
-  $("owedBox").hidden=list.length===0;
-  $("owed").innerHTML=list.map(([n,v])=>`<div class="owed-row"><span>${n}</span><b class="tnum">${yen(v)}</b></div>`).join("");
-}
-
-function renderTrend(){
-  $("trend").innerHTML=months.map(m=>`<tr class="${m.ym===cur.ym?"sel":""}">
-    <td class="ym" onclick="select('${m.ym}')">${ymLabel(m.ym)}${m.closed?'<span class="tag">締</span>':''}</td>
-    <td class="tnum">${yen(m.expenseAll)}</td><td class="tnum">${yen(m.inj)}</td><td class="tnum">${yen(m.balance)}</td></tr>`).join("");
-}
-
-if(GAS_URL.startsWith("http")) load();
-else $("loading").textContent="GAS_URL が未設定です。";
+load();
 </script>
 </body>
 </html>
