@@ -4469,7 +4469,7 @@ function lineLabelPos(s, W, H) {
   if (s.t === 'dim') return { x: (s.x1 + s.x2) / 2 * W, y: (s.y1 + s.y2) / 2 * H - fs * .35, align: 'center' };
   const r = s.x2 >= s.x1 ? [s.x2, s.y2] : [s.x1, s.y1]; // 右の端の上
   const vert = s.x1 === s.x2, lft = vert && r[0] * W < fs * (String(s.text || '').length + 1); // 縦の線が左の端に近いときは、文字を線の右に
-  return { x: r[0] * W + (vert ? (lft ? 1 : -1) * fs * .25 : 0), y: Math.max(r[1] * H - fs * .3, fs * (vert ? 3.4 : 1.05)), align: lft ? 'left' : 'right' }; // 上の端が絵の外に出るときは内側に
+  return { x: r[0] * W + (vert ? (lft ? 1 : -1) * fs * .25 : 0), y: vert && s.ly != null ? s.ly * H + fs * 1.05 : Math.max(r[1] * H - fs * .3, fs * (vert ? 3.4 : 1.05)), align: lft ? 'left' : 'right' }; // ly：文字を置く高さ（波形の評価の文字の下） // 上の端が絵の外に出るときは内側に
 }
 function stampLabelPos(s, W, H) { const R = s.s * W, fs = Math.max(10, R * .75); if (s.k === 'reji') return { x: s.x * W - R * .7, y: s.y * H + (s.fr ? String(s.text || '').split('\n').length * fs * .6 - fs * .1 : fs * .4), align: 'right', fs }; return s.k === 'pole' ? { x: s.x * W + R * .55, y: s.y * H + fs * .45, align: 'left', fs } : { x: s.x * W, y: s.y * H + R + fs * 1.15, align: 'center', fs }; }
 /* 当たり判定・外枠（キャンバスの画素で） */
@@ -5799,6 +5799,13 @@ async function regiWaveLines(t, ty, inp) {
     // 評価の色の帯のすぐ下に、その意味（bark：樹皮　intact：健全　decay：腐朽（空洞））。短い帯の文字は重ならないようにずらす
     const rg = waveRanges({ p }), bar = (tr.bars || [])[0];
     if (rg.length && bar) {
+      // 評価の色の帯を太く（選べる）：EMF の帯は画像の一部なので、同じ色・同じ範囲の帯を上に重ねる。図形なので Excel でも動かせる
+      const lgW = +(inp.lgW || 1); let barBottom = bar[1];
+      if (lgW > 1) {
+        const Hi = img.naturalHeight, Wi = img.naturalWidth, hPx = Math.max(3, (bar[1] - bar[0]) * Hi) * (lgW === 2 ? 2.5 : 4), yc = bar[0] + hPx / Hi / 2;
+        for (const l of rg) { const a = X(l.from), b = X(Math.min(l.to, num(cal.v))); L.push({ t: 'line', c: String(l.c || '#888888').toUpperCase(), w: +(hPx / Wi).toFixed(5), x1: +a.toFixed(4), y1: +yc.toFixed(4), x2: +b.toFixed(4), y2: +yc.toFixed(4), base: 1, gen: 1, role: 'lgbar', name: '評価の帯' }); }
+        barBottom = bar[0] + hPx / Hi;
+      }
       const fsN = .017, mc = document.createElement('canvas').getContext('2d'), Wi = img.naturalWidth, gap = .008; mc.font = `bold ${fsN * Wi}px ${DFONT}`;
       let cur0 = X(0); // 0cm の所から深い方へ並べる
       for (const l of rg) {
@@ -5806,8 +5813,10 @@ async function regiWaveLines(t, ty, inp) {
         const mid = (X(l.from) + X(Math.min(l.to, num(cal.v)))) / 2;
         let left = sd < 0 ? Math.min(mid + wN / 2, cur0 - (l === rg[0] ? 0 : gap)) - wN : Math.max(mid - wN / 2, cur0 + (l === rg[0] ? 0 : gap));
         left = Math.max(.004, Math.min(1 - wN - .004, left)); cur0 = sd < 0 ? left : left + wN;
-        L.push({ t: 'text', c: '#111111', x: +left.toFixed(4), y: +Math.min(.9, bar[1] + .012).toFixed(4), s: fsN, text: txt, base: 1, gen: 1, role: 'lg' });
+        L.push({ t: 'text', c: '#111111', x: +left.toFixed(4), y: +Math.min(.9, barBottom + .012).toFixed(4), s: fsN, text: txt, base: 1, gen: 1, role: 'lg' });
       }
+      const ly = Math.min(.8, barBottom + .012 + fsN * Wi / img.naturalHeight * 1.6); // 赤い線の文字（中心・t）は、帯の意味の文字の下に
+      for (const q of L) if (q.t === 'line' && q.role && q.role !== 'lgbar') q.ly = +ly.toFixed(4);
     }
     p.strokes = [...(p.strokes || []).filter(s => !s.gen), ...L];
   }
@@ -5976,7 +5985,10 @@ async function openRegi() {
     figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '波形の高さ：'), hseg));
     const bseg = h('div', { class: 'seg sm' }); // 評価の色の帯の太さ
     for (const [v, l] of [[1, '細い'], [2, '標準'], [3, '太い']]) bseg.append(h('button', { type: 'button', class: +(inp.barW || 2) === v ? 'on' : '', onclick: () => { inp.barW = v; paintFig(); } }, l));
-    figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '色の帯の太さ：'), bseg));
+    figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '断面図の色の帯：'), bseg));
+    const lseg = h('div', { class: 'seg sm' }); // 測定結果の波形の、評価（凡例）の色の帯の太さ
+    for (const [v, l] of [[1, '元のまま'], [2, '太く'], [3, 'もっと太く']]) lseg.append(h('button', { type: 'button', class: +(inp.lgW || 1) === v ? 'on' : '', onclick: () => { inp.lgW = v; paintFig(); } }, l));
+    figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '測定結果の色の帯：'), lseg, h('span', { class: 'hint' }, '（「カルテに入れる」で波形に反映）')));
     const sseg = h('div', { class: 'seg sm' }); // 幹の外形（扁平な木は楕円）
     for (const [v, l] of [['', '自動'], ['circle', '円'], ['oval', '楕円（直径に合わせる）']]) sseg.append(h('button', { type: 'button', class: (inp.shape || '') === v ? 'on' : '', onclick: () => { inp.shape = v; paintFig(); } }, l));
     figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '幹の外形：'), sseg, h('span', { class: 'hint' }, '自動＝2つの直径が1割以上違えば楕円')));
