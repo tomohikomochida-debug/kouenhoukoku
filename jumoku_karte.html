@@ -3111,6 +3111,12 @@ async function loadTpl(type) {
     const drw = parseXml(await zip.file(drwRel.path).async('string'));
     for (const an of byTag(drw, 'twoCellAnchor', NS_XDR)) {
       const isLine = an.getElementsByTagNameNS(NS_XDR, 'cxnSp').length || [...an.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'prstGeom')].some(g => /line|Connector/.test(g.getAttribute('prst')));
+      const A = 'http://schemas.openxmlformats.org/drawingml/2006/main', isTri = !isLine && [...an.getElementsByTagNameNS(A, 'prstGeom')].some(g => g.getAttribute('prst') === 'triangle') && !an.getElementsByTagNameNS(NS_XDR, 'grpSp').length;
+      if (isTri) { // 凡例の ▶◀（データの終点・開始）などの三角
+        const g = (el, n) => +el.getElementsByTagNameNS(NS_XDR, n)[0].textContent, f = an.getElementsByTagNameNS(NS_XDR, 'from')[0], t = an.getElementsByTagNameNS(NS_XDR, 'to')[0], xf = an.getElementsByTagNameNS(A, 'xfrm')[0], sp = an.getElementsByTagNameNS(A, 'solidFill')[0], clr = sp && sp.getElementsByTagNameNS(A, 'srgbClr')[0];
+        lines.push({ tri: 1, c1: g(f, 'col'), x1: g(f, 'colOff'), r1: g(f, 'row'), y1: g(f, 'rowOff'), c2: g(t, 'col'), x2: g(t, 'colOff'), r2: g(t, 'row'), y2: g(t, 'rowOff'), rot: +(xf && xf.getAttribute('rot') || 0) / 60000, flipH: xf?.getAttribute('flipH') === '1', flipV: xf?.getAttribute('flipV') === '1', color: clr ? '#' + clr.getAttribute('val') : '#000' });
+        continue;
+      }
       if (!isLine) continue;
       const g = (el, n) => +el.getElementsByTagNameNS(NS_XDR, n)[0].textContent;
       const f = an.getElementsByTagNameNS(NS_XDR, 'from')[0], t = an.getElementsByTagNameNS(NS_XDR, 'to')[0];
@@ -3523,7 +3529,7 @@ async function renderKarte() {
     const wrap = h('div', { class: 'kpw' }); const page = h('div', { class: 'kpage', style: `width:${W}px;height:${H}px` });
     wrap.append(page); root.append(wrap);
     // 罫線
-    const segs = {}, tplLns = [];
+    const segs = {}, tplLns = [], tplTris = [];
     const add = (st, x1, y1, x2, y2) => { (segs[st] = segs[st] || []).push(`M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}`); };
     const inPg = (c, r) => c >= pg.c1 && c <= pg.c2 && r >= pg.r1 && r <= pg.r2;
     for (const c of tpl.cells.values()) {
@@ -3539,6 +3545,7 @@ async function renderKarte() {
     }
     for (const ln of tpl.lines) if (inPg(ln.c1, ln.r1)) {
       let x1 = X(ln.c1) + ln.x1 / 9525, y1 = Y(ln.r1) + ln.y1 / 9525, x2 = X(ln.c2) + ln.x2 / 9525, y2 = Y(ln.r2) + ln.y2 / 9525;
+      if (ln.tri) { tplTris.push({ ...ln, x1, y1, x2, y2 }); continue; }
       if (ln.flipV) [y1, y2] = [y2, y1]; if (ln.flipH) [x1, x2] = [x2, x1];
       if (ln.head || ln.tail || ln.color) { tplLns.push({ ...ln, x1, y1, x2, y2 }); continue; } // 矢印つきの線（測定直径の ↕ ↔ など）はテンプレートの形のまま
       add('connector', x1, y1, x2, y2);
@@ -3549,6 +3556,11 @@ async function renderKarte() {
       const c = l.color || '#000', w = Math.max(.8, l.w || .75), dx = l.x2 - l.x1, dy = l.y2 - l.y1, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, al = Math.min(5, L * .35), aw = al * .45;
       const tip = (x, y, s) => { const bx = x - s * ux * al, by = y - s * uy * al; return `<path d="M${x.toFixed(2)},${y.toFixed(2)}L${(bx - uy * aw).toFixed(2)},${(by + ux * aw).toFixed(2)}L${(bx + uy * aw).toFixed(2)},${(by - ux * aw).toFixed(2)}Z" fill="${c}"/>`; };
       path += `<path d="M${l.x1.toFixed(2)},${l.y1.toFixed(2)}L${l.x2.toFixed(2)},${l.y2.toFixed(2)}" stroke="${c}" stroke-width="${w}" fill="none"/>` + (l.head ? tip(l.x1, l.y1, -1) : '') + (l.tail ? tip(l.x2, l.y2, 1) : '');
+    }
+    // テンプレートの三角（凡例の ▶◀ など）：頂点が上の三角を、左右・上下の反転と回転をつけて
+    for (const q of tplTris) {
+      const cx = (q.x1 + q.x2) / 2, cy = (q.y1 + q.y2) / 2, pts = [[cx, q.y1], [q.x2, q.y2], [q.x1, q.y2]].map(([x, y]) => [q.flipH ? 2 * cx - x : x, q.flipV ? 2 * cy - y : y]);
+      path += `<polygon points="${pts.map(p => p.map(v => v.toFixed(2)).join(',')).join(' ')}" fill="${q.color}" transform="rotate(${q.rot} ${cx.toFixed(2)} ${cy.toFixed(2)})"/>`;
     }
     for (const [st, arr] of Object.entries(segs)) path += `<path d="${arr.join('')}" stroke="${st === 'connector' ? '#4472C4' : '#000'}" stroke-width="${st === 'connector' ? .8 : BW[st] || 1}" fill="none" ${BD[st] ? `stroke-dasharray="${BD[st]}"` : ''} shape-rendering="crispEdges"/>`;
     page.insertAdjacentHTML('beforeend', `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${path}</svg>`);
@@ -3565,7 +3577,7 @@ async function renderKarte() {
       const w = X(Math.min(g.c2, pg.c2) + 1) - X(g.c1), hh = Y(Math.min(g.r2, pg.r2) + 1) - Y(g.r1);
       el.style.cssText = `left:${X(g.c1)}px;top:${Y(g.r1)}px;width:${w}px;height:${hh}px;font-size:${fs}px;${x.font.b ? 'font-weight:700;' : ''}`
         + `justify-content:${vert ? 'center' : { center: 'center', right: 'flex-end', centerContinuous: 'center', distributed: 'space-between' }[x.h] || 'flex-start'};`
-        + (!vert && w > fs * 3 ? (x.h === 'right' ? `padding-right:${(fs * .35).toFixed(1)}px;` : !x.h || x.h === 'left' || x.h === 'general' ? `padding-left:${(fs * .35).toFixed(1)}px;` : '') : '') // 左詰め・右詰めの文字は枠線から少しあける（狭い欄はそのまま）
+        + (spec && !vert && w > fs * 3 ? (x.h === 'right' ? `padding-right:${(fs * .35).toFixed(1)}px;` : !x.h || x.h === 'left' || x.h === 'general' ? `padding-left:${(fs * .35).toFixed(1)}px;` : '') : '') // 入力欄の左詰め・右詰めの文字は枠線から少しあける（狭い欄・テンプレートの見出しはそのまま）
         + `align-items:${vert ? 'center' : { top: 'flex-start', center: 'center', bottom: 'flex-end', distributed: 'center', justify: 'flex-start' }[x.v] || 'flex-end'};`;
       if (spec || tpl.merges.has(ref)) el.dataset.fit = '1';
       if (spec) el.dataset.k = spec.k;
@@ -4457,7 +4469,7 @@ function lineLabelPos(s, W, H) {
   if (s.t === 'dim') return { x: (s.x1 + s.x2) / 2 * W, y: (s.y1 + s.y2) / 2 * H - fs * .35, align: 'center' };
   const r = s.x2 >= s.x1 ? [s.x2, s.y2] : [s.x1, s.y1]; // 右の端の上
   const vert = s.x1 === s.x2, lft = vert && r[0] * W < fs * (String(s.text || '').length + 1); // 縦の線が左の端に近いときは、文字を線の右に
-  return { x: r[0] * W + (vert ? (lft ? 1 : -1) * fs * .25 : 0), y: Math.max(r[1] * H - fs * .3, fs * (vert ? 2 : 1.05)), align: lft ? 'left' : 'right' }; // 上の端が絵の外に出るときは内側に
+  return { x: r[0] * W + (vert ? (lft ? 1 : -1) * fs * .25 : 0), y: vert && s.ly != null ? s.ly * H + fs * 1.05 : Math.max(r[1] * H - fs * .3, fs * (vert ? 3.4 : 1.05)), align: lft ? 'left' : 'right' }; // ly：文字を置く高さ（波形の評価の文字の下） // 上の端が絵の外に出るときは内側に
 }
 function stampLabelPos(s, W, H) { const R = s.s * W, fs = Math.max(10, R * .75); if (s.k === 'reji') return { x: s.x * W - R * .7, y: s.y * H + (s.fr ? String(s.text || '').split('\n').length * fs * .6 - fs * .1 : fs * .4), align: 'right', fs }; return s.k === 'pole' ? { x: s.x * W + R * .55, y: s.y * H + fs * .45, align: 'left', fs } : { x: s.x * W, y: s.y * H + R + fs * 1.15, align: 'center', fs }; }
 /* 当たり判定・外枠（キャンバスの画素で） */
@@ -5713,7 +5725,7 @@ function waveView(img, cal, yb) { // yb：深さの数字の下の端（EMF の�
 // 波形の画像を、グラフの所だけの画像に入れ替える（書き込みの線がずれないように、1回だけ）。目盛りも合わせ直す
 const WAVE_VER = 2; // 2：左右に白い余白（◀▶の三角を波形の外に置く）、EMF は目盛りの数字で合わせる
 // 画像の評価の帯（グラフの上の色の線）から、範囲（cm）と色を読む：EMF の凡例がなくても、短い帯（薄い樹皮など）も拾う
-function waveBarsFromImage(img, cal) {
+function waveBarsFromImage(img, cal, raw = false) { // raw：0cm より手前もそのまま（目盛りのずれを調べるとき）
   const tr = waveTrim(img, cal), bar = (tr.bars || [])[0]; if (!bar || !(num(cal.v) > 0)) return [];
   const W = img.naturalWidth, H = img.naturalHeight, cv = document.createElement('canvas'); cv.width = W; cv.height = 1;
   const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, Math.round((bar[0] + bar[1]) / 2 * H), W, 1, 0, 0, W, 1); const px = g.getImageData(0, 0, W, 1).data;
@@ -5721,7 +5733,7 @@ function waveBarsFromImage(img, cal) {
   for (let X = 0; X < W; X++) { const R = px[X * 4], G = px[X * 4 + 1], B = px[X * 4 + 2], mx = Math.max(R, G, B), mn = Math.min(R, G, B); if (mx - mn < 50) continue;
     const L = segs[segs.length - 1]; if (L && X - L.b <= 2 && Math.abs(L.R - R) + Math.abs(L.G - G) + Math.abs(L.B - B) < 90) L.b = X; else segs.push({ a: X, b: X, R, G, B }); }
   const q1 = v => Math.round(v * 10) / 10, hex = v => v.toString(16).padStart(2, '0');
-  return segs.filter(sg => sg.b - sg.a >= 2).map(sg => { const { R, G, B } = sg, en = G > R + 60 && G > B + 60 ? 'intact' : R > G + 30 && R > B + 30 && R < 200 && G < 130 ? 'bark' : 'decay', f = Math.max(0, q1(Math.min(cm(sg.a), cm(sg.b + 1)))), t = q1(Math.max(cm(sg.a), cm(sg.b + 1)));
+  return segs.filter(sg => sg.b - sg.a >= 2).map(sg => { const { R, G, B } = sg, en = G > R + 60 && G > B + 60 ? 'intact' : R > G + 30 && R > B + 30 && R < 200 && G < 130 ? 'bark' : 'decay', f = (raw ? v => v : v => Math.max(0, v))(q1(Math.min(cm(sg.a), cm(sg.b + 1)))), t = q1(Math.max(cm(sg.a), cm(sg.b + 1)));
     return { c: '#' + hex(R) + hex(G) + hex(B), en, from: f, to: t, text: `From ${f.toFixed(2).replace('.', ',')} cm to ${t.toFixed(2).replace('.', ',')} cm : ${en}` }; }).filter(l => l.to > l.from).sort((a, b) => a.from - b.from);
 }
 async function waveCropPhoto(p, img) {
@@ -5733,6 +5745,13 @@ async function waveCropPhoto(p, img) {
       try { img = await loadImg(await photoURL(p.orig)); } catch (e) { img = null; }
       if (img) { const a = p.emf.axis; p.cal = { ...p.cal, x0: a.x0, x1: a.x1, y0: 0, y1: 1, v: String(a.v) }; p.view = null; p.id = p.orig; }
     }
+    if (p.view && p.view.cropped && !(p.emf && p.emf.axis)) { // EMF の目盛りの数字がないとき：評価の色の帯の端（0cm＝帯の始まり）で 0cm の位置を直す
+      const segs = waveBarsFromImage(img, p.cal, true); if (segs.length) {
+        const c0 = p.cal, dx = (c0.x1 - c0.x0) / num(c0.v), near = Math.min(...segs.map(q => q.from)), far = Math.max(...segs.map(q => q.to)); // cm（今の目盛りで）
+        if (Math.abs(near) > .3 && Math.abs(near) < 5) { const nx0 = c0.x0 + dx * near; let nx1 = c0.x1; const farX = c0.x0 + dx * far; if (Math.abs(far - num(c0.v)) < 3) nx1 = farX; p.cal = { ...c0, x0: +nx0.toFixed(5), x1: +nx1.toFixed(5) }; }
+      }
+    }
+    if (p.view && p.view.cropped) { const ib = waveBarsFromImage(img, p.cal), lg = (p.emf && p.emf.legend) || []; if (ib.length && (!lg.length || (ib[0].from < .5 && !(lg[0] && lg[0].from < .5)) || ib.length > lg.length)) p.emf = { ...(p.emf || {}), legend: ib }; }
     if (p.view && p.view.cropped) { // 元がないとき：今の画像の左右に余白だけ足す
       const iw = img.naturalWidth, ih = img.naturalHeight, pad = Math.round(iw * .025), c = document.createElement('canvas'); c.width = iw + pad * 2; c.height = ih;
       const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, ih); g.drawImage(img, pad, 0);
@@ -5769,14 +5788,36 @@ async function regiWaveLines(t, ty, inp) {
     const same = D && d.t != null && Math.abs(d.b + d.t - D / 2) < .3; // 芯まで健全：中心と t が同じ位置なら文字は1つに
     if (D) add('center', D / 2, same ? '中心＝t' : '中心');
     if (d.b > 0) add('b', d.b, '');
-    if (d.t != null) add('t', d.b + d.t, same ? '' : 't');
+    if (d.t != null && !(d.snd && !same)) add('t', d.b + d.t, same ? '' : 't'); // 芯まで健全で、測れた所で終わっている t は線を出さない（健全部の終わりではないので）
     if (d.t != null && d.dl && !(inp.dirs[i] && inp.dirs[i].dc)) add('e', d.b + d.t + d.dl, ''); // 腐朽が続く向きは、腐朽の終わり＝中心なので線はいらない
     // データの開始（◀）と終点（▶）の印：カルテの凡例と同じ黒い三角。波形の内側に置き、三角の辺をその深さに合わせる。ドラッグで直せる
     const sd = dx < 0 ? -1 : 1, Rn = .011, wN = TRI_W * Rn, ym = (tr[0] + tr[1]) / 2;
     const autoEnd = tr.end != null ? Math.max(0, (tr.end - cal.x0) / dx) : num(cal.v); if (tr.end != null) p.dend = +autoEnd.toFixed(2);
-    const ds = num(cal.ds) ?? 0, de = num(cal.de) ?? autoEnd;
+    const ds = d.b > 0 ? d.b : num(cal.ds) ?? 0, de = num(cal.de) ?? autoEnd; // データの開始＝樹皮を除いた所（樹皮と材の境目）
     const tri = (role, dep, dir, name) => { if (dep == null || !isFinite(dep)) return; const xx = X(dep) + (role === 'ds' ? -1 : 1) * sd * wN / 2; /* 三角は波形の外側、先がデータの端 */ L.push({ t: 'stamp', k: 'tri', c: '#000000', x: +Math.min(1 - wN / 2, Math.max(wN / 2, xx)).toFixed(4), y: +ym.toFixed(4), s: Rn, dir, r: 0, base: 1, gen: 1, role, dep: +(+dep).toFixed(2), name }); };
     tri('ds', ds, sd, 'データの開始'); tri('de', de, -sd, 'データの終点'); // 0cm が右の図では ◀開始・▶終点（凡例のとおり）
+    // 評価の色の帯のすぐ下に、その意味（bark：樹皮　intact：健全　decay：腐朽（空洞））。短い帯の文字は重ならないようにずらす
+    const rg = waveRanges({ p }), bar = (tr.bars || [])[0];
+    if (rg.length && bar) {
+      // 評価の色の帯を太く（選べる）：EMF の帯は画像の一部なので、同じ色・同じ範囲の帯を上に重ねる。図形なので Excel でも動かせる
+      const lgW = +(inp.lgW || 1); let barBottom = bar[1];
+      if (lgW > 1) {
+        const Hi = img.naturalHeight, Wi = img.naturalWidth, hPx = Math.max(3, (bar[1] - bar[0]) * Hi) * (lgW === 2 ? 2.5 : 4), yc = bar[0] + hPx / Hi / 2;
+        for (const l of rg) { const a = X(l.from), b = X(Math.min(l.to, num(cal.v))); L.push({ t: 'line', c: String(l.c || '#888888').toUpperCase(), w: +(hPx / Wi).toFixed(5), x1: +a.toFixed(4), y1: +yc.toFixed(4), x2: +b.toFixed(4), y2: +yc.toFixed(4), base: 1, gen: 1, role: 'lgbar', name: '評価の帯' }); }
+        barBottom = bar[0] + hPx / Hi;
+      }
+      const fsN = .017, mc = document.createElement('canvas').getContext('2d'), Wi = img.naturalWidth, gap = .008; mc.font = `bold ${fsN * Wi}px ${DFONT}`;
+      let cur0 = X(0); // 0cm の所から深い方へ並べる
+      for (const l of rg) {
+        const ja = waveJa(l.name), txt = `${/^[A-Za-z][A-Za-z ]*$/.test(l.name) ? l.name.toLowerCase() : l.name}${ja ? '：' + ja : ''}`, wN = mc.measureText(txt).width / Wi;
+        const mid = (X(l.from) + X(Math.min(l.to, num(cal.v)))) / 2;
+        let left = sd < 0 ? Math.min(mid + wN / 2, cur0 - (l === rg[0] ? 0 : gap)) - wN : Math.max(mid - wN / 2, cur0 + (l === rg[0] ? 0 : gap));
+        left = Math.max(.004, Math.min(1 - wN - .004, left)); cur0 = sd < 0 ? left : left + wN;
+        L.push({ t: 'text', c: '#111111', x: +left.toFixed(4), y: +Math.min(.9, barBottom + .012).toFixed(4), s: fsN, text: txt, base: 1, gen: 1, role: 'lg' });
+      }
+      const ly = Math.min(.8, barBottom + .012 + fsN * Wi / img.naturalHeight * 1.6); // 赤い線の文字（中心・t）は、帯の意味の文字の下に
+      for (const q of L) if (q.t === 'line' && q.role && q.role !== 'lgbar') q.ly = +ly.toFixed(4);
+    }
     p.strokes = [...(p.strokes || []).filter(s => !s.gen), ...L];
   }
   touch(t); photosChanged();
@@ -5785,12 +5826,14 @@ async function regiWaveLines(t, ty, inp) {
 async function regiLinesChanged(t, ty, p) {
   const i = waveSlots(ty).indexOf(p.slot), inp = t.v && t.v._regi; if (i < 0 || !inp || !p.cal || !(num(p.cal.v) > 0)) return;
   const dx = (p.cal.x1 - p.cal.x0) / num(p.cal.v), dep = s => ((s.x1 + s.x2) / 2 - p.cal.x0) / dx, get = role => p.strokes.find(s => s.gen && s.role === role), d = inp.dirs[i];
-  let ch = false; const b0 = num(d.b) || 0, lb = get('b'), lt = get('t');
-  const nb = lb ? Math.max(0, dep(lb)) : b0; if (lb && Math.abs(nb - b0) > .05) { d.b = f1(nb); ch = true; }
+  let ch = false; const b0 = num(d.b) || 0, lb = get('b'), lt = get('t'), sd = dx < 0 ? -1 : 1, mch = [];
+  let nb = lb ? Math.max(0, dep(lb)) : b0;
+  const sds = p.strokes.find(q => q.gen && q.role === 'ds' && q.t === 'stamp'), dsv = sds && sds.dep != null ? Math.max(0, (sds.x + sd * TRI_W * sds.s / 2 - p.cal.x0) / dx) : null;
+  if (dsv != null && Math.abs(dsv - sds.dep) > .05) nb = dsv; // ◀データの開始＝樹皮と材の境目：動かしたら樹皮の厚さも直す
+  if (Math.abs(nb - b0) > .05) { d.b = f1(nb); ch = true; }
   if (lt) { const nt = Math.max(0, dep(lt) - nb); if (Math.abs(nt - (num(d.t) ?? -1)) > .05) { d.t = f1(nt); d.snd = ''; ch = true; } }
-  // データの開始・終点の三角：三角の辺（波形の側）の位置を深さにする
-  const sd = dx < 0 ? -1 : 1, mch = [];
-  for (const [role, sg] of [['ds', 1], ['de', -1]]) { // 三角の先の位置＝深さ
+  // データの終点の三角：三角の先の位置を深さにする
+  for (const [role, sg] of [['de', -1]]) {
     const s = p.strokes.find(q => q.gen && q.role === role && q.t === 'stamp'); if (!s || s.dep == null) continue;
     const v = Math.max(0, (s.x + sg * sd * TRI_W * s.s / 2 - p.cal.x0) / dx); if (Math.abs(v - s.dep) > .05) { p.cal[role] = f1(v); mch.push(role); }
   }
@@ -5839,7 +5882,7 @@ async function regiDiagram(inp, waves = []) {
   x.setLineDash([10, 8]); x.lineWidth = 2; x.strokeStyle = '#888';
   x.beginPath(); x.moveTo(cx, cy - EY - 60); x.lineTo(cx, cy + EY + 60); x.moveTo(cx - EX - 60, cy); x.lineTo(cx + EX + 60, cy); x.stroke(); x.setLineDash([]);
   const U = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // 上右下左への向き（外向き）
-  const inner = []; let dcColor = '';
+  const inner = []; let dcColor = '', tAny = false;
   r.dirs.forEach((d, i) => {
     const p = regiPos(inp, i), [ux, uy] = U[p], Rr = (r.D[i % 2] || Dm) / 2 * k; // その向きの半径（画素）
     const at = dist => [cx + ux * (Rr - dist * k), cy + uy * (Rr - dist * k)];
@@ -5856,7 +5899,7 @@ async function regiDiagram(inp, waves = []) {
       let hh = shh * s * vf; if (hh > RP * .28) hh = RP * .28; /* 十字の帯どうしが重なりすぎないように */ // 振幅の向きは強調してよい（標準2倍）
       const [ex, ey] = [cx + ux * Rr, cy + uy * Rr];
       x.save(); x.translate(ex, ey); x.rotate(Math.atan2(-uy, -ux)); // ＋X が中心向き
-      const trim = waveTrim(img, cal), barH = 9, sxa = cal.x1 < cal.x0 ? cal.x0 * iw - Lpx : cal.x0 * iw, dxa = cal.x1 < cal.x0 ? -Lpx * s : 0;
+      const trim = waveTrim(img, cal), barH = ({ 1: 9, 2: 16, 3: 26 })[inp.barW || 2] || 16, /* 評価の色の帯の太さ（細い・標準・太い） */ sxa = cal.x1 < cal.x0 ? cal.x0 * iw - Lpx : cal.x0 * iw, dxa = cal.x1 < cal.x0 ? -Lpx * s : 0;
       if (cal.x1 < cal.x0) x.rotate(Math.PI);
       x.globalAlpha = .95; x.drawImage(img, sxa, sy, Lpx, shh, dxa, -hh / 2, Lpx * s, hh); x.globalAlpha = 1;
       (trim.bars || []).forEach(([b0, b1], k) => { // 評価（Assessment）の色の線は、波形のすぐ上に詰めて置く
@@ -5869,7 +5912,7 @@ async function regiDiagram(inp, waves = []) {
         const dcol = ((waveRanges(wv).find(q => !isBarkName(q.name) && !isSoundName(q.name)) || {}).c) || '#FF0000';
         if (chartCm < maxcm - .05) { if (!dcColor) dcColor = dcol; const [ax, ay] = at(Math.max(measured, chartCm)), [bx, by] = at(maxcm); objs.push({ t: 'line', c: dcol.toUpperCase(), w: N(14), x1: N(ax), y1: N(ay), x2: N(bx), y2: N(by), base: 1, gen: 1, name: '腐朽（空洞）部' }); } measured = maxcm;
       }
-      if (d.t != null && d.b + d.t < Math.min(maxcm, measured) - .05) { const [tx, ty] = at(d.b + d.t); objs.push({ t: 'line', c: '#E53935', w: N(5), x1: N(tx - uy * hh * .6), y1: N(ty - ux * hh * .6), x2: N(tx + uy * hh * .6), y2: N(ty + ux * hh * .6), base: 1, gen: 1 }); } // 健全部の終わり（芯まで健全なら出さない）
+      if (d.t != null && !inp.dirs[i].snd && d.b + d.t < Math.min(maxcm, measured) - .05) { tAny = true; /* 芯まで健全の向きは健全部の終わりの線はいらない */ const [tx, ty] = at(d.b + d.t); objs.push({ t: 'line', c: '#E53935', w: N(5), x1: N(tx - uy * hh * .6), y1: N(ty - ux * hh * .6), x2: N(tx + uy * hh * .6), y2: N(ty + ux * hh * .6), base: 1, gen: 1 }); } // 健全部の終わり（芯まで健全なら出さない）
     } else {
       if (d.t != null) bar(d.b, d.t, '#fff');
       if (d.t != null && d.dl) bar(d.b + d.t, d.dl, '#111');
@@ -5905,7 +5948,7 @@ async function regiDiagram(inp, waves = []) {
   }
   // 腐朽が続く線の凡例：左上の凡例に腐朽（decay）があればそれで分かる。なければ下に同じ色で
   if (dcColor && !(waves.some(w => w && w.cal) && inp.fig !== 'bar' && waveLegend(waves).some(l => !isBarkName(l.en) && !isSoundName(l.en)))) { x.lineWidth = 14; x.strokeStyle = dcColor; x.beginPath(); x.moveTo(480, S - 72); x.lineTo(540, S - 72); x.stroke(); x.font = `bold 38px ${F}`; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = '#111'; x.fillText('腐朽（空洞）部', 552, S - 72); }
-  if (waves.some(w => w && w.cal) && inp.fig !== 'bar') { x.lineWidth = 5; x.strokeStyle = '#E53935'; x.beginPath(); x.moveTo(40, S - 72); x.lineTo(100, S - 72); x.stroke(); x.fillStyle = '#111'; x.fillText('健全部の終わり（t）', 112, S - 72); }
+  if (waves.some(w => w && w.cal) && inp.fig !== 'bar') { if (tAny) { x.lineWidth = 5; x.strokeStyle = '#E53935'; x.beginPath(); x.moveTo(40, S - 72); x.lineTo(100, S - 72); x.stroke(); x.fillStyle = '#111'; x.fillText('健全部の終わり（t）', 112, S - 72); } }
   else {
     x.fillStyle = '#fff'; x.fillRect(40, S - 90, 60, 36); x.lineWidth = 2; x.strokeStyle = '#111'; x.strokeRect(40, S - 90, 60, 36);
     x.fillStyle = '#111'; x.fillText('健全部', 112, S - 72);
@@ -5918,7 +5961,7 @@ async function regiDiagram(inp, waves = []) {
 async function openRegi() {
   const t = cur, ty = curType; if (!ty.calc) return;
   // 前の版で入れた波形は、先に切り取り直す（EMF の目盛りの数字で合わせ直し、評価の帯を読み直す）
-  if (t.photos.some(p => p.cal && p.view && p.view.cropped && (p.view.v || 1) < WAVE_VER)) { try { await regiWaves(t, ty); touch(t); } catch (e) { } }
+  if (t.photos.some(p => (p.cal && p.view && p.view.cropped && (p.view.v || 1) < WAVE_VER) || (!p.cal && p.emf && p.emf.axis && waveSlots(ty).includes(p.slot)))) { try { await regiWaves(t, ty); touch(t); } catch (e) { } }
   const inp = clone(t.v._regi || regiDefault());
   const nekabu = !!ty.calc.map.ang;
   const body = $('#rgBody'); body.innerHTML = '';
@@ -5940,6 +5983,12 @@ async function openRegi() {
     const hseg = h('div', { class: 'seg sm' }); // 波形の縦の強調
     for (const [v, l] of [[1, '1倍'], [2, '2倍（標準）'], [3, '3倍']]) hseg.append(h('button', { type: 'button', class: +(inp.wvH || 2) === v ? 'on' : '', onclick: () => { inp.wvH = v; paintFig(); } }, l));
     figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '波形の高さ：'), hseg));
+    const bseg = h('div', { class: 'seg sm' }); // 評価の色の帯の太さ
+    for (const [v, l] of [[1, '細い'], [2, '標準'], [3, '太い']]) bseg.append(h('button', { type: 'button', class: +(inp.barW || 2) === v ? 'on' : '', onclick: () => { inp.barW = v; paintFig(); } }, l));
+    figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '断面図の色の帯：'), bseg));
+    const lseg = h('div', { class: 'seg sm' }); // 測定結果の波形の、評価（凡例）の色の帯の太さ
+    for (const [v, l] of [[1, '元のまま'], [2, '太く'], [3, 'もっと太く']]) lseg.append(h('button', { type: 'button', class: +(inp.lgW || 1) === v ? 'on' : '', onclick: () => { inp.lgW = v; paintFig(); } }, l));
+    figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '測定結果の色の帯：'), lseg, h('span', { class: 'hint' }, '（「カルテに入れる」で波形に反映）')));
     const sseg = h('div', { class: 'seg sm' }); // 幹の外形（扁平な木は楕円）
     for (const [v, l] of [['', '自動'], ['circle', '円'], ['oval', '楕円（直径に合わせる）']]) sseg.append(h('button', { type: 'button', class: (inp.shape || '') === v ? 'on' : '', onclick: () => { inp.shape = v; paintFig(); } }, l));
     figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '幹の外形：'), sseg, h('span', { class: 'hint' }, '自動＝2つの直径が1割以上違えば楕円')));
@@ -6028,7 +6077,7 @@ async function openRegi() {
 function waveSlots(ty) { return [0, 1, 2, 3].map(i => (Object.entries(ty.fields).find(([, s]) => s.k === 'photo' && /波形/.test(s.label || '') && s.label.includes('①②③④'[i])) || [])[0] || null); }
 async function regiWaves(t, ty) {
   const out = [];
-  for (const slot of waveSlots(ty)) { const p = slot && t.photos.find(q => q.slot === slot); let img = p && await loadImg(await photoURL(p.id)); if (p && await waveCropPhoto(p, img)) img = await loadImg(await photoURL(p.id)); out.push(p ? { img, cal: p.cal, p } : null); }
+  for (const slot of waveSlots(ty)) { const p = slot && t.photos.find(q => q.slot === slot); if (p && !p.cal && p.emf && p.emf.axis) { const a = p.emf.axis; p.cal = { x0: a.x0, x1: a.x1, y0: 0, y1: 1, v: String(a.v) }; } /* カルテの枠から入れた EMF も目盛りは自動 */ let img = p && await loadImg(await photoURL(p.id)); if (p && await waveCropPhoto(p, img)) img = await loadImg(await photoURL(p.id)); out.push(p ? { img, cal: p.cal, p } : null); }
   return out;
 }
 async function regiSetDiagram(t, ty, inp) {
@@ -6139,7 +6188,7 @@ async function waveAutoCal(p) {
 /* ---------- 波形の目盛り合わせ：0cm の線と、もう1本の目盛りの線を合わせ、その値を入れる ---------- */
 async function calibrateWave(p, label) {
   const img = await loadImg(await photoURL(p.id));
-  const cal = clone(p.cal || { x0: .96, x1: .06, y0: 0, y1: 1, v: '' });
+  const a = p.emf && p.emf.axis, cal = clone(p.cal || (a ? { x0: a.x0, x1: a.x1, y0: 0, y1: 1, v: String(a.v) } : { x0: .96, x1: .06, y0: 0, y1: 1, v: '' })); // EMF は目盛りの数字の位置から
   const d = $('#dlgCal'), cv = $('#calCv'), x = cv.getContext('2d');
   $('#calTitle').textContent = `${label || '波形'}：目盛りを合わせる`; $('#calV').value = cal.v || '';
   const fit = () => { const W = Math.max(280, cv.parentElement.clientWidth - 4), s = W / img.naturalWidth; /* ダイアログの幅いっぱい */ cv.style.width = W + 'px'; cv.style.height = Math.round(img.naturalHeight * s) + 'px'; cv.width = W * 2; cv.height = Math.round(img.naturalHeight * s) * 2; };
