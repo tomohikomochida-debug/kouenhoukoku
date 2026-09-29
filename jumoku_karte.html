@@ -5793,7 +5793,7 @@ async function regiWaveLines(t, ty, inp) {
     // データの開始（◀）と終点（▶）の印：カルテの凡例と同じ黒い三角。波形の内側に置き、三角の辺をその深さに合わせる。ドラッグで直せる
     const sd = dx < 0 ? -1 : 1, Rn = .011, wN = TRI_W * Rn, ym = (tr[0] + tr[1]) / 2;
     const autoEnd = tr.end != null ? Math.max(0, (tr.end - cal.x0) / dx) : num(cal.v); if (tr.end != null) p.dend = +autoEnd.toFixed(2);
-    const ds = num(cal.ds) ?? 0, de = num(cal.de) ?? autoEnd;
+    const ds = d.b > 0 ? d.b : num(cal.ds) ?? 0, de = num(cal.de) ?? autoEnd; // データの開始＝樹皮を除いた所（樹皮と材の境目）
     const tri = (role, dep, dir, name) => { if (dep == null || !isFinite(dep)) return; const xx = X(dep) + (role === 'ds' ? -1 : 1) * sd * wN / 2; /* 三角は波形の外側、先がデータの端 */ L.push({ t: 'stamp', k: 'tri', c: '#000000', x: +Math.min(1 - wN / 2, Math.max(wN / 2, xx)).toFixed(4), y: +ym.toFixed(4), s: Rn, dir, r: 0, base: 1, gen: 1, role, dep: +(+dep).toFixed(2), name }); };
     tri('ds', ds, sd, 'データの開始'); tri('de', de, -sd, 'データの終点'); // 0cm が右の図では ◀開始・▶終点（凡例のとおり）
     // 評価の色の帯のすぐ下に、その意味（bark：樹皮　intact：健全　decay：腐朽（空洞））。短い帯の文字は重ならないようにずらす
@@ -5817,12 +5817,14 @@ async function regiWaveLines(t, ty, inp) {
 async function regiLinesChanged(t, ty, p) {
   const i = waveSlots(ty).indexOf(p.slot), inp = t.v && t.v._regi; if (i < 0 || !inp || !p.cal || !(num(p.cal.v) > 0)) return;
   const dx = (p.cal.x1 - p.cal.x0) / num(p.cal.v), dep = s => ((s.x1 + s.x2) / 2 - p.cal.x0) / dx, get = role => p.strokes.find(s => s.gen && s.role === role), d = inp.dirs[i];
-  let ch = false; const b0 = num(d.b) || 0, lb = get('b'), lt = get('t');
-  const nb = lb ? Math.max(0, dep(lb)) : b0; if (lb && Math.abs(nb - b0) > .05) { d.b = f1(nb); ch = true; }
+  let ch = false; const b0 = num(d.b) || 0, lb = get('b'), lt = get('t'), sd = dx < 0 ? -1 : 1, mch = [];
+  let nb = lb ? Math.max(0, dep(lb)) : b0;
+  const sds = p.strokes.find(q => q.gen && q.role === 'ds' && q.t === 'stamp'), dsv = sds && sds.dep != null ? Math.max(0, (sds.x + sd * TRI_W * sds.s / 2 - p.cal.x0) / dx) : null;
+  if (dsv != null && Math.abs(dsv - sds.dep) > .05) nb = dsv; // ◀データの開始＝樹皮と材の境目：動かしたら樹皮の厚さも直す
+  if (Math.abs(nb - b0) > .05) { d.b = f1(nb); ch = true; }
   if (lt) { const nt = Math.max(0, dep(lt) - nb); if (Math.abs(nt - (num(d.t) ?? -1)) > .05) { d.t = f1(nt); d.snd = ''; ch = true; } }
-  // データの開始・終点の三角：三角の辺（波形の側）の位置を深さにする
-  const sd = dx < 0 ? -1 : 1, mch = [];
-  for (const [role, sg] of [['ds', 1], ['de', -1]]) { // 三角の先の位置＝深さ
+  // データの終点の三角：三角の先の位置を深さにする
+  for (const [role, sg] of [['de', -1]]) {
     const s = p.strokes.find(q => q.gen && q.role === role && q.t === 'stamp'); if (!s || s.dep == null) continue;
     const v = Math.max(0, (s.x + sg * sd * TRI_W * s.s / 2 - p.cal.x0) / dx); if (Math.abs(v - s.dep) > .05) { p.cal[role] = f1(v); mch.push(role); }
   }
@@ -5888,7 +5890,7 @@ async function regiDiagram(inp, waves = []) {
       let hh = shh * s * vf; if (hh > RP * .28) hh = RP * .28; /* 十字の帯どうしが重なりすぎないように */ // 振幅の向きは強調してよい（標準2倍）
       const [ex, ey] = [cx + ux * Rr, cy + uy * Rr];
       x.save(); x.translate(ex, ey); x.rotate(Math.atan2(-uy, -ux)); // ＋X が中心向き
-      const trim = waveTrim(img, cal), barH = 16, /* 評価の色の帯は太めに（見やすく） */ sxa = cal.x1 < cal.x0 ? cal.x0 * iw - Lpx : cal.x0 * iw, dxa = cal.x1 < cal.x0 ? -Lpx * s : 0;
+      const trim = waveTrim(img, cal), barH = ({ 1: 9, 2: 16, 3: 26 })[inp.barW || 2] || 16, /* 評価の色の帯の太さ（細い・標準・太い） */ sxa = cal.x1 < cal.x0 ? cal.x0 * iw - Lpx : cal.x0 * iw, dxa = cal.x1 < cal.x0 ? -Lpx * s : 0;
       if (cal.x1 < cal.x0) x.rotate(Math.PI);
       x.globalAlpha = .95; x.drawImage(img, sxa, sy, Lpx, shh, dxa, -hh / 2, Lpx * s, hh); x.globalAlpha = 1;
       (trim.bars || []).forEach(([b0, b1], k) => { // 評価（Assessment）の色の線は、波形のすぐ上に詰めて置く
@@ -5972,6 +5974,9 @@ async function openRegi() {
     const hseg = h('div', { class: 'seg sm' }); // 波形の縦の強調
     for (const [v, l] of [[1, '1倍'], [2, '2倍（標準）'], [3, '3倍']]) hseg.append(h('button', { type: 'button', class: +(inp.wvH || 2) === v ? 'on' : '', onclick: () => { inp.wvH = v; paintFig(); } }, l));
     figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '波形の高さ：'), hseg));
+    const bseg = h('div', { class: 'seg sm' }); // 評価の色の帯の太さ
+    for (const [v, l] of [[1, '細い'], [2, '標準'], [3, '太い']]) bseg.append(h('button', { type: 'button', class: +(inp.barW || 2) === v ? 'on' : '', onclick: () => { inp.barW = v; paintFig(); } }, l));
+    figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '色の帯の太さ：'), bseg));
     const sseg = h('div', { class: 'seg sm' }); // 幹の外形（扁平な木は楕円）
     for (const [v, l] of [['', '自動'], ['circle', '円'], ['oval', '楕円（直径に合わせる）']]) sseg.append(h('button', { type: 'button', class: (inp.shape || '') === v ? 'on' : '', onclick: () => { inp.shape = v; paintFig(); } }, l));
     figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '幹の外形：'), sseg, h('span', { class: 'hint' }, '自動＝2つの直径が1割以上違えば楕円')));
