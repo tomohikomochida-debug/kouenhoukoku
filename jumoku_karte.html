@@ -5795,7 +5795,7 @@ async function regiWaveLines(t, ty, inp) {
     const cal = p.cal, dx = (cal.x1 - cal.x0) / num(cal.v), X = dep => cal.x0 + dx * dep, tr = waveTrim(img, cal);
     const y0 = Math.max(.01, Math.min(tr[0], ...(tr.bars || []).map(b => b[0])) - .02), y1 = Math.min(.99, tr[1] + .02), d = r.dirs[i], D = r.D[i % 2];
     const L = [];
-    const add = (role, dep, text) => { if (dep == null || !isFinite(dep)) return; const xx = X(dep); if (xx < 0 || xx > 1) return; L.push({ t: 'line', c: '#E53935', w: role === 'center' ? .004 : .003, x1: +xx.toFixed(4), y1: +y1.toFixed(4), x2: +xx.toFixed(4), y2: +y0.toFixed(4), ...(role === 'center' ? {} : { dash: 1 }), ...(text ? { text, s: .018 } : {}), role, base: 1, gen: 1 }); }; /* 文字は線の上の端に */
+    const add = (role, dep, text) => { if (dep == null || !isFinite(dep)) return; const xx = X(dep); if (xx < 0 || xx > 1) return; L.push({ t: 'line', c: '#E53935', w: role === 'center' ? .004 : .003, x1: +xx.toFixed(4), y1: +y1.toFixed(4), x2: +xx.toFixed(4), y2: +y0.toFixed(4), ...(role === 'center' ? {} : { dash: 1 }), ...(text ? { text, s: .021 } : {}), role, base: 1, gen: 1 }); }; /* 文字は線の上の端に */
     const same = D && d.t != null && Math.abs(d.b + d.t - D / 2) < .3; // 芯まで健全：中心と t が同じ位置なら文字は1つに
     if (D) add('center', D / 2, same ? '中心＝t' : '中心');
     if (d.b > 0) add('b', d.b, '');
@@ -5817,16 +5817,16 @@ async function regiWaveLines(t, ty, inp) {
         for (const l of rg) { const a = X(l.from), b = X(Math.min(l.to, num(cal.v))); L.push({ t: 'line', c: String(l.c || '#888888').toUpperCase(), w: +(hPx / Wi).toFixed(5), x1: +a.toFixed(4), y1: +yc.toFixed(4), x2: +b.toFixed(4), y2: +yc.toFixed(4), base: 1, gen: 1, role: 'lgbar', name: '評価の帯' }); }
         barBottom = bar[0] + hPx / Hi;
       }
-      const fsN = .017, mc = document.createElement('canvas').getContext('2d'), Wi = img.naturalWidth, gap = .008; mc.font = `bold ${fsN * Wi}px ${DFONT}`;
+      const fsN = .021, /* Excel で 10pt 以上（大きくされて重ならないように） */ mc = document.createElement('canvas').getContext('2d'), Wi = img.naturalWidth, gap = .02; mc.font = `bold ${fsN * Wi}px ${DFONT}`;
       let cur0 = X(0); // 0cm の所から深い方へ並べる
       for (const l of rg) {
-        const ja = waveJa(l.name), txt = `${/^[A-Za-z][A-Za-z ]*$/.test(l.name) ? l.name.toLowerCase() : l.name}${ja ? '：' + ja : ''}`, wN = mc.measureText(txt).width / Wi;
+        const ja = waveJa(l.name), txt = `${/^[A-Za-z][A-Za-z ]*$/.test(l.name) ? l.name.toLowerCase() : l.name}${ja ? '：' + ja : ''}`, wN = mc.measureText(txt).width / Wi * 1.15; /* Excel の字（Meiryo UI）は少し広い */
         const mid = (X(l.from) + X(Math.min(l.to, num(cal.v)))) / 2;
         let left = sd < 0 ? Math.min(mid + wN / 2, cur0 - (l === rg[0] ? 0 : gap)) - wN : Math.max(mid - wN / 2, cur0 + (l === rg[0] ? 0 : gap));
         left = Math.max(.004, Math.min(1 - wN - .004, left)); cur0 = sd < 0 ? left : left + wN;
         L.push({ t: 'text', c: '#111111', x: +left.toFixed(4), y: +Math.min(.9, barBottom + .012).toFixed(4), s: fsN, text: txt, base: 1, gen: 1, role: 'lg' });
       }
-      const ly = Math.min(.8, barBottom + .012 + fsN * Wi / img.naturalHeight * 1.6); // 赤い線の文字（中心・t）は、帯の意味の文字の下に
+      const ly = Math.min(.8, barBottom + .012 + fsN * Wi / img.naturalHeight * 2.1); // 赤い線の文字（中心・t）は、帯の意味の文字の下に
       for (const q of L) if (q.t === 'line' && q.role && q.role !== 'lgbar') q.ly = +ly.toFixed(4);
     }
     p.strokes = [...(p.strokes || []).filter(s => !s.gen), ...L];
@@ -7656,6 +7656,7 @@ function picRect(tpl, g, iw, ih, fill = false) {
   let x0 = 0, y0 = 0; for (let i = 0; i < g.c1; i++) x0 += tpl.cw(i); for (let i = 0; i < g.r1; i++) y0 += tpl.rh(i);
   let W = 0, H = 0; for (let i = g.c1; i <= g.c2; i++) W += tpl.cw(i); for (let i = g.r1; i <= g.r2; i++) H += tpl.rh(i);
   if (g.parts) { H /= g.parts; y0 += H * (g.part - 1); } // 縦に分けた枠
+  x0 = Math.round(x0); y0 = Math.round(y0); // Excel の図形の位置は整数（EMU）でないと「問題が見つかりました」になる
   const pad = (fill ? 3 : 6) * 9525; W -= pad * 2; H -= pad * 2;
   if (fill) return { x: x0 + pad, y: y0 + pad, w: Math.round(W), h: Math.round(H) }; // 枠いっぱい（縦横の比率は変わる）
   const s = Math.min(W / iw, H / ih); const w = Math.round(iw * s), hh = Math.round(ih * s);
