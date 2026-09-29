@@ -5876,19 +5876,24 @@ async function regiWaveLines(t, ty, inp) {
         barBottom = bar[0] + hPx / Hi;
       }
       const fsN = .021, /* Excel で 10pt 以上（大きくされて重ならないように） */ mc = document.createElement('canvas').getContext('2d'), Wi = img.naturalWidth, gap = .02; mc.font = `bold ${fsN * Wi}px ${DFONT}`;
-      // 文字は帯の上に置く（帯の真ん中→帯の端にそろえる）。広い帯から順に置き、ほかの文字と重なる所しかない短い帯（端の樹皮など）は下の凡例に任せて出さない
-      const placed = [], hit = (a, b) => placed.some(([p, q]) => a < q + .008 && b > p - .008);
+      // 文字は帯の下に置き、引き出し線で帯とつなぐ。広い帯から順に、まず自分の帯の下（1段目）。置けない短い帯（端の樹皮など）は2段目にずらす
+      const Hn = fsN * Wi / img.naturalHeight, rows = [barBottom + .06, barBottom + .06 + Hn * 1.8] /* Excel は字が大きめなので段の間を広く */, placed = [[], []], hit = (r, a, b) => placed[r].some(([p, q]) => a < q + .01 && b > p - .01);
+      let used = 0;
       for (const l of [...rg].sort((p, q) => Math.abs(q.to - q.from) - Math.abs(p.to - p.from))) {
-        const ja = waveJa(l.name), en = /^[A-Za-z][A-Za-z ]*$/.test(l.name) ? l.name.toLowerCase() : l.name, xa = X(l.from), xb = X(Math.min(l.to, num(cal.v))), lo = Math.min(xa, xb), hi = Math.max(xa, xb);
+        const ja = waveJa(l.name), en = /^[A-Za-z][A-Za-z ]*$/.test(l.name) ? l.name.toLowerCase() : l.name, xa = X(l.from), xb = X(Math.min(l.to, num(cal.v))), lo = Math.min(xa, xb), hi = Math.max(xa, xb), mid = (lo + hi) / 2;
         const wOf = s => mc.measureText(s).width / Wi * 1.15; /* Excel の字（Meiryo UI）は少し広い */
-        let txt = `${en}${ja ? '：' + ja : ''}`; if (ja && wOf(txt) > hi - lo) txt = en; // 帯に入りきらなければ短く（意味は下の凡例にある）
-        const wN = wOf(txt), fit = v => Math.max(.004, Math.min(1 - wN - .004, v));
-        const left = [(lo + hi) / 2 - wN / 2, lo, hi - wN].map(fit).find(v => !hit(v, v + wN) && v + wN / 2 >= lo && v + wN / 2 <= hi); if (left == null) continue; // 文字の真ん中が自分の帯の上にある所だけ
-        placed.push([left, left + wN]);
-        L.push({ t: 'text', c: '#111111', x: +left.toFixed(4), y: +Math.min(.9, barBottom + .012).toFixed(4), s: fsN, text: txt, base: 1, gen: 1, role: 'lg' });
+        const full = `${en}${ja ? '：' + ja : ''}`, short = ja && wOf(full) > hi - lo ? en : full; // 1段目は帯に入りきらなければ短く
+        let pos = null;
+        { const wN = wOf(short), fit = v => Math.max(.004, Math.min(1 - wN - .004, v)), v = [mid - wN / 2, lo, hi - wN].map(fit).find(v => !hit(0, v, v + wN) && v + wN / 2 >= lo && v + wN / 2 <= hi); if (v != null) pos = { r: 0, x: v, w: wN, txt: short }; }
+        if (!pos) { const wN = wOf(full), fit = v => Math.max(.004, Math.min(1 - wN - .004, v)); for (let k = 0; k <= 30 && !pos; k++) for (const sg of k ? [-1, 1] : [1]) { const v = fit(mid - wN / 2 + sg * k * .015); if (!hit(1, v, v + wN)) { pos = { r: 1, x: v, w: wN, txt: full }; break; } } }
+        if (!pos) continue;
+        placed[pos.r].push([pos.x, pos.x + pos.w]); used = Math.max(used, pos.r);
+        const ty = rows[pos.r], tx = Math.max(pos.x + .01, Math.min(pos.x + pos.w - .01, mid)); // 引き出し線：帯の真ん中から文字の上へ
+        L.push({ t: 'line', c: '#333333', w: .0022, x1: +mid.toFixed(4), y1: +(barBottom + .002).toFixed(4), x2: +tx.toFixed(4), y2: +(ty - .006).toFixed(4), base: 1, gen: 1, role: 'lead', name: '引き出し線' });
+        L.push({ t: 'text', c: '#111111', x: +pos.x.toFixed(4), y: +Math.min(.9, ty).toFixed(4), s: fsN, text: pos.txt, base: 1, gen: 1, role: 'lg' });
       }
-      const ly = Math.min(.8, barBottom + .012 + fsN * Wi / img.naturalHeight * 2.1); // 赤い線の文字（中心・t）は、帯の意味の文字の下に
-      for (const q of L) if (q.t === 'line' && q.role && q.role !== 'lgbar') q.ly = +ly.toFixed(4);
+      const ly = Math.min(.8, rows[used] + Hn * 1.6); // 赤い線の文字（中心・t）は、帯の意味の文字の下に
+      for (const q of L) if (q.t === 'line' && q.role && !['lgbar', 'lead'].includes(q.role)) q.ly = +ly.toFixed(4);
     }
     p.strokes = [...(p.strokes || []).filter(s => !s.gen), ...L];
   }
