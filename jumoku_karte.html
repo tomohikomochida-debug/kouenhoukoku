@@ -4073,7 +4073,7 @@ function canvasBlob(c, q = .85, type = 'image/jpeg') { return new Promise(r => c
 async function shrink(file, max = 1800) {
   if (await isEmfFile(file)) { // レジストグラフのソフトが出す波形の図（EMF）は、画像にしてから入れる
     const c = emfToCanvas(await file.arrayBuffer(), Math.max(max, 2400));
-    return { blob: await canvasBlob(c, 1, 'image/png'), w: c.width, h: c.height };
+    return { blob: await canvasBlob(c, 1, 'image/png'), w: c.width, h: c.height, emf: c.emf };
   }
   const src = URL.createObjectURL(file);
   try {
@@ -4109,8 +4109,8 @@ async function addPhotos(files, slot) {
   let first = null;
   for (const file of files) {
     try {
-      const { blob, w, h: hh } = await shrink(file); const id = uid(); await DB.put('photos', { id, blob });
-      const p = { id, slot: slot && !first ? takeSlot(slot) : '', strokes: [], w, h: hh };
+      const { blob, w, h: hh, emf } = await shrink(file); const id = uid(); await DB.put('photos', { id, blob });
+      const p = { id, slot: slot && !first ? takeSlot(slot) : '', strokes: [], w, h: hh }; if (emf) p.emf = emf; // EMF の色・文字（波形の凡例の候補）
       cur.photos.push(p); first = first || p;
       const t = cur; geoForFile(file).then(g => { if (g) { p.geo = g; touch(t); } }); // 撮影位置（写真の位置情報、なければいまの位置）
     } catch (e) { toast('写真を読み込めませんでした'); }
@@ -5583,6 +5583,19 @@ function regiPos(inp, i) { // 0:上 1:右 2:下 3:左
   return [2, 3, 0, 1][i]; // 十字：①下 ②左 ③上 ④右（東京都の記入例と同じ）
 }
 // waves[i] = { img, cal }：波形の画像と目盛り（cal: x0＝0cmの位置, x1＝もう1本の目盛りの位置, v＝その値(cm), y0/y1＝上下の切り取り。いずれも画像に対する割合）
+// 評価（Assessment）の色の意味：英語 → 日本語（レジのソフトの言葉）。直した訳は jk_wavelegend に覚える
+const WAVE_JA = [[/^bark$/i, '樹皮'], [/^intact$/i, '健全'], [/^sound( wood)?$/i, '健全材'], [/^healthy$/i, '健全'], [/incipient|beginning|early/i, '初期腐朽'], [/advanced/i, '進行した腐朽'], [/soft ?rot/i, '軟腐朽'], [/white ?rot/i, '白色腐朽'], [/brown ?rot/i, '褐色腐朽'], [/decay|rot|decomposed/i, '腐朽'],
+  [/cavity|hollow/i, '空洞'], [/void|gap/i, '空隙'], [/ring ?shake|shake/i, '目回り'], [/crack/i, '亀裂'], [/reaction/i, '反応帯'], [/included bark/i, '入皮'], [/heart ?wood/i, '心材'], [/sap ?wood/i, '辺材'], [/pith/i, '髄'], [/cambium/i, '形成層'], [/wet ?wood|wet/i, '水食い材'], [/knot/i, '節'], [/resin/i, '樹脂'], [/damage/i, '損傷'], [/unknown|unclear/i, '不明']];
+function waveLegendStore() { try { const v = JSON.parse(localStorage.getItem('jk_wavelegend') || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? { ja: v.ja || {}, manual: v.manual || [] } : { ja: {}, manual: [] }; } catch (e) { return { ja: {}, manual: [] }; } }
+function saveWaveLegend(v) { try { localStorage.setItem('jk_wavelegend', JSON.stringify(v)); } catch (e) { } }
+function waveJa(en) { const k = String(en || '').trim(), m = waveLegendStore().ja; if (m[k.toLowerCase()] != null) return m[k.toLowerCase()]; for (const [re, ja] of WAVE_JA) if (re.test(k)) return ja; return ''; }
+// 断面図に出す凡例：波形の EMF から読んだもの＋手で足したもの（同じ言葉は1つに）
+function waveLegend(waves) {
+  const out = [], seen = new Set(), add = (c, en) => { const k = String(en || '').trim(); if (!k || seen.has(k.toLowerCase())) return; seen.add(k.toLowerCase()); out.push({ c, en: k, ja: waveJa(k) }); };
+  for (const w of waves || []) for (const l of (w && w.p && w.p.emf && w.p.emf.legend) || []) add(l.c, l.en);
+  for (const l of waveLegendStore().manual) add(l.c, l.en);
+  return out;
+}
 // 波形の上下の余白（Amplitude の空き）を取り除く：切り取りの範囲の中で、波形の線がある行だけにする
 // 波形の線＝色のついた画素（グラフの線は色、目盛り・文字は黒や灰色が多い）。色の線がなければ濃い画素（横いっぱいの目盛り線は除く）
 const waveTrimCache = new WeakMap();
@@ -5595,9 +5608,16 @@ function waveTrim(img, cal) {
   if (xb - xa > 10 && yb - ya > 6) {
     const data = g.getImageData(xa, ya, xb - xa, yb - ya).data, w = xb - xa, rows = yb - ya, col = new Array(rows).fill(0), dark = new Array(rows).fill(0);
     for (let y = 0; y < rows; y++) for (let x = 0; x < w; x++) { const k = (y * w + x) * 4, R = data[k], G = data[k + 1], B = data[k + 2], mx = Math.max(R, G, B), mn = Math.min(R, G, B); if (mx - mn >= 60 && mn < 200) col[y]++; else if ((R + G + B) / 3 < 110) dark[y]++; }
-    const colTot = col.reduce((a, b) => a + b, 0), use = colTot >= w * .3 ? col : dark.map(n => n > w * .6 ? 0 : n); // 色の線が十分あればそれで
-    const hit = use.map((n, y) => n > 0 ? y : -1).filter(y => y >= 0);
-    if (hit.length) { const pad = Math.max(2, (hit[hit.length - 1] - hit[0]) * .04); v = [Math.max(ya, ya + hit[0] - pad) / H, Math.min(yb, ya + hit[hit.length - 1] + pad + 1) / H]; }
+    // 評価（Assessment）の色の線：横いっぱいに近い、細い（数画素の）色の帯。波形とは分けて、あとで波形のすぐ上に置く
+    const bars = [], thin = Math.max(3, Math.round(H * .012)), inBar = new Array(rows).fill(false);
+    for (let y = 0; y < rows;) { if (col[y] > w * .6) { let e = y; while (e + 1 < rows && col[e + 1] > w * .6) e++; if (e - y + 1 <= thin && (y === 0 || col[y - 1] < w * .3) && (e === rows - 1 || col[e + 1] < w * .3)) { bars.push([(ya + y) / H, (ya + e + 1) / H]); for (let k = y; k <= e; k++) inBar[k] = true; } y = e + 1; } else y++; }
+    const colC = col.map((n, y) => inBar[y] ? 0 : n), colTot = colC.reduce((a, b) => a + b, 0), use = colTot >= w * .3 ? colC : dark.map((n, y) => n > w * .6 || inBar[y] ? 0 : n); // 色の線が十分あればそれで
+    // 行のかたまりに分けて（すき間が少しならつなぐ）、いちばん多いかたまり＝波形。見出し・目盛りの数字・凡例の文字は別のかたまりになる
+    const gap = Math.max(2, Math.round(H * .006)), blocks = []; let cb = null;
+    use.forEach((n, y) => { if (n > 0) { if (cb && y - cb.e <= gap) { cb.e = y; cb.sum += n; } else { cb = { s: y, e: y, sum: n }; blocks.push(cb); } } });
+    const best = blocks.sort((p, q) => q.sum - p.sum)[0];
+    if (best) { const pad = Math.max(2, (best.e - best.s) * .04); v = [Math.max(ya, ya + best.s - pad) / H, Math.min(yb, ya + best.e + pad + 1) / H]; }
+    v.bars = bars;
   }
   waveTrimCache.set(img, { key, v }); return v;
 }
@@ -5624,8 +5644,12 @@ async function regiDiagram(inp, waves = []) {
       let hh = shh * s; if (hh > RP * .24) hh = RP * .24; // 振幅の向きは縮めても良い
       const [ex, ey] = [cx + ux * Rr, cy + uy * Rr];
       x.save(); x.translate(ex, ey); x.rotate(Math.atan2(-uy, -ux)); // ＋X が中心向き
-      if (cal.x1 < cal.x0) { x.rotate(Math.PI); x.globalAlpha = .95; x.drawImage(img, cal.x0 * iw - Lpx, sy, Lpx, shh, -Lpx * s, -hh / 2, Lpx * s, hh); }
-      else { x.globalAlpha = .95; x.drawImage(img, cal.x0 * iw, sy, Lpx, shh, 0, -hh / 2, Lpx * s, hh); }
+      const trim = waveTrim(img, cal), barH = 9, sxa = cal.x1 < cal.x0 ? cal.x0 * iw - Lpx : cal.x0 * iw, dxa = cal.x1 < cal.x0 ? -Lpx * s : 0;
+      if (cal.x1 < cal.x0) x.rotate(Math.PI);
+      x.globalAlpha = .95; x.drawImage(img, sxa, sy, Lpx, shh, dxa, -hh / 2, Lpx * s, hh); x.globalAlpha = 1;
+      (trim.bars || []).forEach(([b0, b1], k) => { // 評価（Assessment）の色の線は、波形のすぐ上に詰めて置く
+        const by0 = -hh / 2 - (barH + 2) * (k + 1); x.fillStyle = '#fff'; x.fillRect(dxa, by0 - 1, Lpx * s, barH + 2); x.imageSmoothingEnabled = false;
+        x.drawImage(img, sxa, b0 * ih, Lpx, Math.max(1, (b1 - b0) * ih), dxa, by0, Lpx * s, barH); x.imageSmoothingEnabled = true; });
       x.globalAlpha = 1; x.lineWidth = 2; x.strokeStyle = '#555'; x.strokeRect(cal.x1 < cal.x0 ? -Lpx * s : 0, -hh / 2, Lpx * s, hh);
       x.restore();
       if (d.t != null) { const [tx, ty] = at(d.b + d.t); x.lineWidth = 5; x.strokeStyle = '#E53935'; x.beginPath(); x.moveTo(tx - uy * hh * .55, ty - ux * hh * .55); x.lineTo(tx + uy * hh * .55, ty + ux * hh * .55); x.stroke(); } // 健全部の終わり
@@ -5657,6 +5681,13 @@ async function regiDiagram(inp, waves = []) {
   // 凡例
   x.fillStyle = '#d0d0d0'; x.fillRect(820, S - 90, 60, 36); x.setLineDash([3, 7]); x.lineWidth = 6; x.strokeStyle = '#e57373'; x.strokeRect(820, S - 90, 60, 36); x.setLineDash([]);
   x.font = `bold 34px ${F}`; x.fillStyle = '#111'; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText(anyDl ? '未測定部分' : '腐朽（空洞）部', 895, S - 72);
+  const lg = waves.some(w => w && w.cal) && inp.fig !== 'bar' ? waveLegend(waves) : [];
+  if (lg.length) { // 評価（Assessment）の色の意味（英語＋日本語）を左上に
+    let fs = 28; x.font = `bold ${fs}px ${F}`; const txt = l => `${l.en}${l.ja ? '（' + l.ja + '）' : ''}`, wmax = Math.max(...lg.map(l => x.measureText(txt(l)).width));
+    if (wmax > 330) { fs = Math.max(16, Math.floor(fs * 330 / wmax)); }
+    x.font = `bold ${fs}px ${F}`; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = '#111'; x.fillText('Assessment（評価）', 24, 34);
+    lg.forEach((l, i) => { const y = 34 + (i + 1) * (fs + 14); x.fillStyle = l.c; x.fillRect(24, y - 6, 44, 12); x.fillStyle = '#111'; x.fillText(txt(l), 80, y); });
+  }
   if (waves.some(w => w && w.cal) && inp.fig !== 'bar') { x.lineWidth = 5; x.strokeStyle = '#E53935'; x.beginPath(); x.moveTo(40, S - 72); x.lineTo(100, S - 72); x.stroke(); x.fillStyle = '#111'; x.fillText('健全部の終わり（t）', 112, S - 72); }
   else {
     x.fillStyle = '#fff'; x.fillRect(40, S - 90, 60, 36); x.lineWidth = 2; x.strokeStyle = '#111'; x.strokeRect(40, S - 90, 60, 36);
@@ -5698,7 +5729,23 @@ function openRegi() {
         p ? h('button', { type: 'button', class: 'btn', onclick: async () => { await calibrateWave(p, ty.fields[slot].label); paintFig(); } }, '📐 目盛りを合わせる') : '',
         h('label', { class: 'btn' }, p ? '差し替え' : '＋ 波形（EMF・画像）を入れる', file)));
     });
-    figBox.append(h('p', { class: 'hint' }, '目盛りを合わせた波形は、直径に大きさを合わせて十字に並べます（0cm＝幹の表面）。合わせていない方向は太線で描きます。'));
+    figBox.append(h('p', { class: 'hint' }, '目盛りを合わせた波形は、直径に大きさを合わせて十字に並べます（0cm＝幹の表面）。合わせていない方向は太線で描きます。上下の空きは詰め、評価（Assessment）の色の線は波形のすぐ上に置きます。'));
+    // 評価（Assessment）の色の意味：EMF から読んだものと、手で足したもの。日本語訳は直せる（覚えておく）
+    const lgBox = h('div', { class: 'rglg' }); figBox.append(h('h3', {}, '評価（Assessment）の色の意味'), lgBox);
+    const paintLg = async () => {
+      lgBox.innerHTML = ''; const st = waveLegendStore(), lg = waveLegend((slots.map(sl => sl && t.photos.find(q => q.slot === sl)) || []).map(p => p && { p }));
+      if (!lg.length) lgBox.append(h('p', { class: 'hint' }, 'EMFの波形を入れると、Assessment の色と言葉（bark・Intact など）を読み取ります。画像の波形のときは、下で色と言葉を足してください。'));
+      for (const l of lg) {
+        const ja = h('input', { class: 'inp', value: l.ja, placeholder: '日本語訳', style: 'width:9em' }); ja.onchange = () => { const s2 = waveLegendStore(); s2.ja[l.en.toLowerCase()] = ja.value.trim(); saveWaveLegend(s2); };
+        const man = st.manual.findIndex(m => m.en.toLowerCase() === l.en.toLowerCase());
+        lgBox.append(h('div', { class: 'row', style: 'align-items:center;margin:4px 0' }, h('span', { style: `display:inline-block;width:36px;height:12px;background:${l.c};border:1px solid #0003` }), h('b', { style: 'min-width:7em' }, l.en), ja,
+          man >= 0 ? h('button', { type: 'button', class: 'btn', onclick: () => { const s2 = waveLegendStore(); s2.manual.splice(man, 1); saveWaveLegend(s2); paintLg(); } }, '✕') : ''));
+      }
+      const cIn = h('input', { type: 'color', value: '#00e600', style: 'width:44px;height:36px' }), eIn = h('input', { class: 'inp', placeholder: '英語（例：Intact）', style: 'width:9em' });
+      lgBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '手で足す：'), cIn, eIn,
+        h('button', { type: 'button', class: 'btn', onclick: () => { const en = eIn.value.trim(); if (!en) return eIn.focus(); const s2 = waveLegendStore(); s2.manual.push({ c: cIn.value, en }); saveWaveLegend(s2); paintLg(); } }, '＋ 足す')));
+    };
+    paintLg();
   };
   const build = () => {
     tbl.innerHTML = '';
@@ -6529,7 +6576,8 @@ function emfToCanvas(buf, maxSide = 2400) {
   const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
   const col = v => `rgb(${v & 255},${(v >> 8) & 255},${(v >> 16) & 255})`;
   const STOCK = { 0: { t: 'b', style: 0, c: '#fff' }, 1: { t: 'b', style: 0, c: '#c0c0c0' }, 2: { t: 'b', style: 0, c: '#808080' }, 3: { t: 'b', style: 0, c: '#404040' }, 4: { t: 'b', style: 0, c: '#000' }, 5: { t: 'b', style: 1 }, 6: { t: 'p', style: 0, w: 0, c: '#fff' }, 7: { t: 'p', style: 0, w: 0, c: '#000' }, 8: { t: 'p', style: 5 }, 13: { t: 'f', h: 16, weight: 400, face: 'Arial', esc: 0 }, 14: { t: 'f', h: 16, weight: 400, face: 'Arial', esc: 0 } };
-  const objs = {};
+  const objs = {}, info = { col: {}, texts: [], boxes: [] }; // 使われた色と文字（凡例の候補にする）
+  const note = c0 => { if (c0) info.col[c0] = (info.col[c0] || 0) + 1; };
   const init = () => ({ mapMode: 1, wo: [0, 0], we: [1, 1], vo: [0, 0], ve: [1, 1], xf: [1, 0, 0, 1, 0, 0], pen: STOCK[7], brush: STOCK[0], font: STOCK[13], textColor: '#000', align: 0, cur: [0, 0], polyFill: 'evenodd' });
   let st = init(); const stack = [];
   // 論理座標 → 装置の画素 → キャンバス
@@ -6543,10 +6591,10 @@ function emfToCanvas(buf, maxSide = 2400) {
   const unit = () => { const [sx, sy] = scaleXY(), [a, b, cc, dd] = st.xf; return Math.sqrt(Math.abs((a * dd - b * cc) * sx * sy)) * s; };
   const applyPen = () => {
     const p = st.pen || STOCK[7], style = (p.style || 0) & 15; if (style === 5) return false;
-    x.strokeStyle = p.c || '#000'; x.lineWidth = Math.max(s * .8, (p.w || 0) * unit()); x.lineJoin = 'round'; x.lineCap = 'round';
+    x.strokeStyle = p.c || '#000'; note(p.c); x.lineWidth = Math.max(s * .8, (p.w || 0) * unit()); x.lineJoin = 'round'; x.lineCap = 'round';
     const dash = { 1: [6, 3], 2: [1.5, 3], 3: [6, 3, 1.5, 3], 4: [6, 3, 1.5, 3, 1.5, 3] }[style]; x.setLineDash(dash ? dash.map(v => v * x.lineWidth) : []); return true;
   };
-  const applyBrush = () => { const b = st.brush || STOCK[0]; if (b.style === 1) return false; x.fillStyle = b.c || '#fff'; return true; };
+  const applyBrush = () => { const b = st.brush || STOCK[0]; if (b.style === 1) return false; x.fillStyle = b.c || '#fff'; note(b.c); return true; };
   let path = null; // BeginPath〜EndPath の間はパスにためる
   const draw = (build, fill, stroke = true) => {
     if (path) { build(path); return; }
@@ -6607,8 +6655,10 @@ function emfToCanvas(buf, maxSide = 2400) {
         case 27: st.cur = [i32(R(8)), i32(R(12))]; break;
         case 54: { const a = P(...st.cur), b = P(i32(R(8)), i32(R(12))); st.cur = [i32(R(8)), i32(R(12))]; draw(p => { if (!path) p.moveTo(...a); else p.lineTo(...a); p.lineTo(...b); }, false); break; }
         case 42: case 43: case 44: { const l = i32(R(8)), t = i32(R(12)), r = i32(R(16)), b = i32(R(20)); const [x1, y1] = P(l, t), [x2, y2] = P(r, b);
-          draw(p => { if (type === 42) p.ellipse((x1 + x2) / 2, (y1 + y2) / 2, Math.abs(x2 - x1) / 2, Math.abs(y2 - y1) / 2, 0, 0, Math.PI * 2); else p.rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)); }, true); break; }
-        case 3: case 4: case 86: case 87: case 2: case 85: { const cnt = u32(R(24)), a = type >= 85 ? pts16(R(28), cnt) : pts32(R(28), cnt); draw(p => (type === 2 || type === 85) ? bez(p, a) : poly(p, a, type === 3 || type === 86), type === 3 || type === 86); break; }
+          draw(p => { if (type === 42) p.ellipse((x1 + x2) / 2, (y1 + y2) / 2, Math.abs(x2 - x1) / 2, Math.abs(y2 - y1) / 2, 0, 0, Math.PI * 2); else p.rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)); }, true);
+          if (type !== 42 && st.brush && st.brush.style !== 1) info.boxes.push({ c: st.brush.c, x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) }); break; }
+        case 3: case 4: case 86: case 87: case 2: case 85: { const cnt = u32(R(24)), a = type >= 85 ? pts16(R(28), cnt) : pts32(R(28), cnt);
+          if ((type === 3 || type === 86) && cnt >= 4 && cnt <= 5 && st.brush && st.brush.style !== 1) { const xs = a.map(q => q[0]), ys = a.map(q => q[1]); info.boxes.push({ c: st.brush.c, x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }); } draw(p => (type === 2 || type === 85) ? bez(p, a) : poly(p, a, type === 3 || type === 86), type === 3 || type === 86); break; }
         case 6: case 89: case 5: case 88: { const cnt = u32(R(24)), a = [P(...st.cur), ...(type >= 88 ? pts16(R(28), cnt) : pts32(R(28), cnt))];
           const raw = type >= 88 ? [i16(R(28 + (cnt - 1) * 4)), i16(R(30 + (cnt - 1) * 4))] : [i32(R(28 + (cnt - 1) * 8)), i32(R(32 + (cnt - 1) * 8))]; st.cur = raw;
           draw(p => (type === 5 || type === 88) ? bez(p, a) : poly(p, a, false, !path), false); break; }
@@ -6628,18 +6678,31 @@ function emfToCanvas(buf, maxSide = 2400) {
           x.save(); x.translate(px, py); if (f.esc) x.rotate(-f.esc / 10 * Math.PI / 180);
           x.font = `${f.italic ? 'italic ' : ''}${f.weight >= 600 ? 'bold ' : ''}${fs}px ${JSON.stringify(f.face || 'Arial')}, Arial, sans-serif`;
           const al = st.align; x.textAlign = (al & 6) === 6 ? 'center' : (al & 2) ? 'right' : 'left'; x.textBaseline = (al & 24) === 24 ? 'alphabetic' : (al & 8) ? 'bottom' : 'top';
-          x.fillStyle = st.textColor; x.fillText(str, 0, 0); x.restore(); break; }
+          x.fillStyle = st.textColor; x.fillText(str, 0, 0); x.restore(); if (info.texts.length < 200) info.texts.push({ s: str.trim().slice(0, 60), c: st.textColor, x: px, y: (al & 24) === 24 ? py - fs * .35 : (al & 8) ? py - fs * .5 : py + fs * .5, fs }); /* y＝文字の高さの真ん中 */ break; }
         case 81: { const xd = i32(R(24)), yd = i32(R(28)), xs = i32(R(32)), ys = i32(R(36)), cxs = i32(R(40)), cys = i32(R(44)), offB = u32(R(48)), offBits = u32(R(56)), cxd = i32(R(72)), cyd = i32(R(76));
           const cv = dib(o, R(offB), R(offBits)); if (cv) blit(cv, xd, yd, cxd, cyd, xs, cv.height - ys - cys < 0 ? 0 : ys, cxs, cys); break; }
         case 76: case 77: { const xd = i32(R(24)), yd = i32(R(28)), cxd = i32(R(32)), cyd = i32(R(36)), cbBmi = u32(R(88));
-          if (!cbBmi) { if (applyBrush()) { const [x1, y1] = P(xd, yd), [x2, y2] = P(xd + cxd, yd + cyd); x.fillRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)); } break; }
+          if (!cbBmi) { if (applyBrush()) { const [x1, y1] = P(xd, yd), [x2, y2] = P(xd + cxd, yd + cyd); x.fillRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)); info.boxes.push({ c: st.brush.c, x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) }); } break; }
           const cv = dib(o, R(u32(R(84))), R(u32(R(92)))); if (cv) blit(cv, xd, yd, cxd, cyd); break; }
       }
     } catch (e) { /* 読めない命令は飛ばす */ }
     o += size;
   }
+  // 色のついたもの（灰色・黒・白以外）だけ、多く使われた順に
+  const sat = c0 => { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(c0); if (!m) return false; const v = [+m[1], +m[2], +m[3]]; return Math.max(...v) - Math.min(...v) >= 60; };
+  // 評価（Assessment）の凡例：小さな色の四角と、同じ行の右にある文字（「From 0,00 cm to 2,00 cm : bark」の bark）
+  const legend = [];
+  for (const b of info.boxes) {
+    if (!sat(b.c) || b.w > c.width * .06 || b.h > c.height * .06 || b.w < 2 || b.h < 1) continue;
+    const cy0 = b.y + b.h / 2, row = info.texts.filter(t => t.x > b.x + b.w * .5 && t.x < b.x + c.width * .35 && Math.abs(t.y - cy0) < Math.max(b.h, t.fs) * .6).sort((p, q) => p.x - q.x);
+    if (!row.length) continue;
+    const line = row.map(t => t.s).join(' ').replace(/\s+/g, ' ').trim(), m = /:\s*([^:]+)$/.exec(line), name = (m ? m[1] : row[row.length - 1].s).trim();
+    const hex = rgbHex(b.c); if (name && !legend.some(l => l.c === hex && l.en === name)) legend.push({ c: hex, en: name, text: line });
+  }
+  c.emf = { colors: Object.entries(info.col).filter(([k]) => sat(k)).sort((a, b) => b[1] - a[1]).map(([k]) => rgbHex(k)).slice(0, 12), legend };
   return c;
 }
+const rgbHex = c0 => { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(c0 || ''); return m ? '#' + [m[1], m[2], m[3]].map(v => (+v).toString(16).padStart(2, '0')).join('') : c0; };
 // EMF の File → 画像の Blob（PNG。線がにじまないように）
 async function emfFileToBlob(file, maxSide = 2400) {
   const c = emfToCanvas(await file.arrayBuffer(), maxSide);
@@ -6877,7 +6940,7 @@ async function shareOrDownload(file) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
 }
 function blobToDataURL(b) { return new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); }
-const SHARED_SETTINGS = ['jk_callouts', 'jk_callouts_ver', 'jk_cst', 'jk_minpt', 'jk_shapes', 'jk_lists', 'jk_map', 'jk_projects', 'jk_routes'];
+const SHARED_SETTINGS = ['jk_callouts', 'jk_callouts_ver', 'jk_cst', 'jk_minpt', 'jk_shapes', 'jk_lists', 'jk_map', 'jk_projects', 'jk_routes', 'jk_wavelegend'];
 async function backup() {
   await flush();
   const photos = {};
