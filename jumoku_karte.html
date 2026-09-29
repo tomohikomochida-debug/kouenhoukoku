@@ -5954,7 +5954,7 @@ async function regiDiagram(inp, waves = []) {
   x.setLineDash([10, 8]); x.lineWidth = 2; x.strokeStyle = '#888';
   x.beginPath(); x.moveTo(cx, cy - EY - 60); x.lineTo(cx, cy + EY + 60); x.moveTo(cx - EX - 60, cy); x.lineTo(cx + EX + 60, cy); x.stroke(); x.setLineDash([]);
   const U = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // 上右下左への向き（外向き）
-  const inner = []; let dcColor = '', tAny = false;
+  const inner = [], half = []; let dcColor = '', tAny = false; // half：その向きの帯（波形）の太さの半分（画素）
   r.dirs.forEach((d, i) => {
     const p = regiPos(inp, i), [ux, uy] = U[p], Rr = (r.D[i % 2] || Dm) / 2 * k; // その向きの半径（画素）
     const at = dist => [cx + ux * (Rr - dist * k), cy + uy * (Rr - dist * k)];
@@ -5968,7 +5968,7 @@ async function regiDiagram(inp, waves = []) {
       measured = num(cal.de) != null ? num(cal.de) : waveEmfEnd(wv.p) != null ? waveEmfEnd(wv.p) : trim0.end != null ? Math.abs(trim0.end - cal.x0) * iw / pxcm : Lfull / pxcm; // 波形のデータが終わる所＝ドリルが届いた深さ（終点の三角で直せる）
       const Lpx = Math.max(1, Math.min(maxcm * pxcm, Lfull)); // グラフは目盛りの端（50cm）まで置く（データの終わりより先も。未測定部分はその上に重ねる）
       const [ty0, ty1] = trim0, sy = ty0 * ih, shh = Math.max(4, (ty1 - ty0) * ih); // 上下の空きを詰める
-      let hh = shh * s * vf; if (hh > RP * .28) hh = RP * .28; /* 十字の帯どうしが重なりすぎないように */ // 振幅の向きは強調してよい（標準2倍）
+      let hh = shh * s * vf; if (hh > RP * .28) hh = RP * .28; half[p] = hh / 2; /* 十字の帯どうしが重なりすぎないように */ // 振幅の向きは強調してよい（標準2倍）
       const [ex, ey] = [cx + ux * Rr, cy + uy * Rr];
       x.save(); x.translate(ex, ey); x.rotate(Math.atan2(-uy, -ux)); // ＋X が中心向き
       const trim = waveTrim(img, cal), barH = ({ 1: 9, 2: 16, 3: 26 })[inp.barW || 2] || 16, /* 評価の色の帯の太さ（細い・標準・太い） */ sxa = cal.x1 < cal.x0 ? cal.x0 * iw - Lpx : cal.x0 * iw, dxa = cal.x1 < cal.x0 ? -Lpx * s : 0;
@@ -5990,7 +5990,7 @@ async function regiDiagram(inp, waves = []) {
       if (d.t != null && d.dl) bar(d.b + d.t, d.dl, '#111');
     }
     const depth = measured != null ? measured : d.t == null ? null : d.b + d.t + (d.dl || 0);
-    inner[p] = depth == null ? null : at(Math.min(depth, (r.D[i % 2] || Dm) / 2));
+    inner[p] = depth == null ? null : at(Math.min(depth, (r.D[i % 2] || Dm) / 2)); if (half[p] == null) half[p] = 13;
     // 番号・方角と、貫入の向きの矢印
     // 貫入の向きの矢印（幹の外から）と、その外側に番号・方角。Excel で 10pt 以上になる大きさ（図の幅 約225pt）で、重ならない位置に
     const edge = ux ? EX : EY, fsL = 54, tail = edge + 58, head = edge + 8; /* 矢印は外形の線まで */ x.font = `bold ${fsL}px ${DFONT}`;
@@ -6013,8 +6013,17 @@ async function regiDiagram(inp, waves = []) {
   const pts = [0, 1, 2, 3].map(p => inner[p]).filter(Boolean);
   const waveMode = waves.some(w => w && w.cal) && inp.fig !== 'bar', anyDl = waveMode || r.dirs.some(d => d.dl); // 波形のときは、赤い点線＝未測定部分
   const hasArea = pts.length >= 3 && Math.max(...pts.map(q => Math.hypot(q[0] - cx, q[1] - cy))) > 8; // 芯（中心）まで測れていれば、囲む所はない
-  if (hasArea) // 点（各方向の測れた深さの所）を通る形。あとで点をドラッグして直せる
-    objs.push({ t: 'blob', c: '#E57373', w: N(7), dash: 1, fill: waveMode ? 'rgba(160,160,160,0.35)' : 'rgba(208,208,208,1)', pts: pts.map(q => [N(q[0]), N(q[1])]), name: anyDl ? '未測定部分' : '腐朽（空洞）部', base: 1, gen: 1 });
+  const unm = { t: 'blob', c: '#E57373', w: N(7), dash: 1, fill: waveMode ? 'rgba(160,160,160,0.35)' : 'rgba(208,208,208,1)', name: anyDl ? '未測定部分' : '腐朽（空洞）部', base: 1, gen: 1 };
+  const far = Math.max(0, ...pts.map(q => Math.hypot(q[0] - cx, q[1] - cy))), area = Math.abs(pts.reduce((a, q, j) => { const n2 = pts[(j + 1) % pts.length]; return a + q[0] * n2[1] - n2[0] * q[1]; }, 0)) / 2;
+  if (hasArea && area >= far * far * .15) objs.push({ ...unm, pts: pts.map(q => [N(q[0]), N(q[1])]) }); // 点（各方向の測れた深さの所）を通る形。あとで点をドラッグして直せる
+  else if (hasArea) [0, 1, 2, 3].forEach(p => { // ほかの向きは中心まで測れているとき：届かなかった向きだけ、帯の太さで、測れた所から中心までを未測定に
+    const q = inner[p]; if (!q || Math.hypot(q[0] - cx, q[1] - cy) <= 8) return;
+    const [ux, uy] = U[p], hw = half[p] || 13, L = Math.hypot(q[0] - cx, q[1] - cy); const n = Math.max(2, Math.ceil(L / 12)), m = Math.max(2, Math.ceil(hw * 2 / 12)), side = [];
+    const P = (t, v) => [q[0] - ux * L * t - uy * v, q[1] - uy * L * t + ux * v]; // t：測れた所→中心、v：帯の横
+    for (let j = 0; j <= n; j++) side.push(P(j / n, -hw)); for (let j = 1; j <= m; j++) side.push(P(1, -hw + 2 * hw * j / m)); // 点を細かく置くと、なめらかにしても四角のまま
+    for (let j = n - 1; j >= 0; j--) side.push(P(j / n, hw)); for (let j = m - 1; j >= 1; j--) side.push(P(0, -hw + 2 * hw * j / m));
+    objs.push({ ...unm, pts: side.map(v => [N(v[0]), N(v[1])]) });
+  });
   // 凡例
   x.font = `bold 38px ${F}`; x.fillStyle = '#111'; x.textAlign = 'left'; x.textBaseline = 'middle';
   if (hasArea) { x.fillStyle = '#d0d0d0'; x.fillRect(820, S - 90, 60, 36); x.setLineDash([3, 7]); x.lineWidth = 6; x.strokeStyle = '#e57373'; x.strokeRect(820, S - 90, 60, 36); x.setLineDash([]); x.fillStyle = '#111'; x.fillText(anyDl ? '未測定部分' : '腐朽（空洞）部', 895, S - 72); }
