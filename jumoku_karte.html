@@ -548,7 +548,7 @@ dialog.wide{max-width:720px}
 
 <dialog id="dlgCal" class="wide" style="max-width:940px">
   <h2 id="calTitle">目盛りを合わせる</h2>
-  <p class="hint">赤い線を<b>データの開始（樹皮と材の境目）</b>に、青い線を目盛りの数字のある線（例：50）に合わせ、その値を入れてください。赤い線の位置はそのまま使います。幹の表面（樹皮の外側＝断面図の円）は評価の色の帯の始まりから求めます。オレンジの点線で上下の余白を切り取れます。</p>
+  <p class="hint">赤い線を<b>データの開始</b>に、青い線を目盛りの数字のある線（例：50）に合わせ、その値を入れてください。赤い線の位置はそのまま使います。幹の表面（樹皮の外側＝断面図の円）は評価の色の帯の始まりから求めます。オレンジの点線で上下の余白を切り取れます。</p>
   <div style="overflow:auto;touch-action:none"><canvas id="calCv" style="display:block;touch-action:none;border:1px solid #ddd"></canvas></div>
   <div class="row" style="margin-top:10px;align-items:center"><span>青い線の目盛り</span><input class="inp" id="calV" inputmode="decimal" style="width:90px"><span>cm</span><span style="flex:1"></span><button class="btn" type="button" data-close>やめる</button><button class="btn pri" type="button" id="calOk">これで合わせる</button></div>
 </dialog>
@@ -6212,7 +6212,7 @@ async function calibrateWave(p, label) {
     const W = cv.width, H = cv.height; x.clearRect(0, 0, W, H); x.drawImage(img, 0, 0, W, H);
     x.fillStyle = 'rgba(0,0,0,.35)'; const ya = Math.min(cal.y0, cal.y1) * H, yb = Math.max(cal.y0, cal.y1) * H; x.fillRect(0, 0, W, ya); x.fillRect(0, yb, W, H - yb);
     const V = (xx, c, t) => { x.strokeStyle = c; x.lineWidth = 5; x.beginPath(); x.moveTo(xx * W, 0); x.lineTo(xx * W, H); x.stroke(); x.fillStyle = c; x.font = 'bold 28px sans-serif'; x.textAlign = xx > .5 ? 'right' : 'left'; x.textBaseline = 'top'; x.fillText(t, xx * W + (xx > .5 ? -10 : 10), 10); };
-    V(cal.x0, '#E53935', 'データの開始（樹皮と材の境目）'); V(cal.x1, '#1E88E5', ($('#calV').value || '？') + 'cm');
+    V(cal.x0, '#E53935', 'データの開始'); V(cal.x1, '#1E88E5', ($('#calV').value || '？') + 'cm');
     for (const yy of [cal.y0, cal.y1]) { x.setLineDash([12, 8]); x.strokeStyle = '#FB8C00'; x.lineWidth = 4; x.beginPath(); x.moveTo(0, yy * H); x.lineTo(W, yy * H); x.stroke(); x.setLineDash([]); }
   };
   let drag = null;
