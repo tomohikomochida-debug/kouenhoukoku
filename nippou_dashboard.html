@@ -52,6 +52,19 @@ main{max-width:920px;margin:0 auto;padding:18px 14px 60px}
 .res{font-size:14px}.res .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}
 .res .yr{color:var(--bark)}.res .v{font-weight:700;color:var(--leaf);font-variant-numeric:tabular-nums}
 .note{font-size:12px;color:var(--bark);margin-top:10px;margin-bottom:14px}
+.rf-people{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.rf-people button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+.rf-people button.on{background:var(--leaf);color:#fff;border-color:var(--leaf);font-weight:700}
+.rf-people button .rt{font-size:11px;opacity:.8;margin-left:4px}
+.rf-day{font-weight:800;font-size:13px;color:var(--bark);margin:14px 0 6px}
+.rf-item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--field);cursor:pointer}
+.rf-item:hover{border-color:var(--leaf2)}
+.rf-top{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
+.rf-top b{font-size:15px}
+.rf-top .rs{font-size:12px;color:var(--bark)}
+.rf-k{display:inline-block;font-size:11px;font-weight:700;color:#fff;background:var(--leaf2);border-radius:4px;padding:1px 6px;margin-right:6px}
+.rf-k.l{background:var(--tape)}
+.rf-t{font-size:14px;line-height:1.6;margin-top:4px}
 .mcard{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--field)}
 .mhead{font-weight:800;font-size:15px;display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .mcount{font-size:12px;font-weight:700;color:#fff;background:var(--warn);border-radius:999px;padding:2px 10px}
@@ -120,6 +133,7 @@ header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
     <button class="tab" data-p="cat">種類別</button>
     <button class="tab" data-p="cal">カレンダー</button>
     <button class="tab" data-p="missing">未記入チェック</button>
+    <button class="tab" data-p="refl" id="reflTab" hidden>振り返り</button>
     <button class="tab" data-p="search">現場分析</button>
   </div>
   <div class="panel on" id="rank"><div class="box"><h2 id="rankH">現場別 延べ人工</h2><div id="rankBars"></div></div></div>
@@ -134,6 +148,12 @@ header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
     <h2>日報の未記入チェック</h2>
     <div class="note">ほかの人の日報に名前が載っている（その日いっしょに働いた）のに、本人の日報が無い日を出します。未記入が多い人ほど上に出ます。</div>
     <div id="missList"><div class="loading">計算中…</div></div>
+  </div></div>
+  <div class="panel" id="refl"><div class="box">
+    <h2>振り返りチェック（今日できたこと・所感）</h2>
+    <div class="note">日報の「今日できたこと」「所感・学び」に書かれた内容を、新しい順に出します。上の期間で絞り込めます。タップで日報の中身が開きます。（この画面は親方だけに表示されます）</div>
+    <div class="rf-people" id="rfPeople"></div>
+    <div id="rfList"></div>
   </div></div>
   <div class="panel" id="search"><div class="box">
     <h2>現場ごとの分析（全年度・アーカイブ含む）</h2>
@@ -272,6 +292,53 @@ function renderMissing(records){
       }).join('')+`</div>`;
   }).join('');
 }
+/* ===== 振り返りチェック（親方だけ） ===== */
+function isOyakata(){
+  try{
+    if(new URLSearchParams(location.search).get('oyakata')==='1') localStorage.setItem('dash_oyakata','1');
+    return localStorage.getItem('nippou_author')==='親方' || localStorage.getItem('dash_oyakata')==='1';
+  }catch(e){ return false; }
+}
+let rfWho='';
+function renderRefl(records){
+  if(!isOyakata()) return;
+  document.getElementById('reflTab').hidden=false;
+  // 同じ人・同じ日の同じ振り返り（複数現場の日報に同じ文が入る）は1つにまとめる
+  const map={}, daysByPerson={};
+  records.forEach(r=>{
+    const a=r.author||'?', d=(r.date||'').slice(0,10);
+    (daysByPerson[a]=daysByPerson[a]||new Set()).add(d);
+    const done=String(r.done||'').trim(), learn=String(r.learn||'').trim();
+    if(!done && !learn) return;
+    const k=a+'|'+d+'|'+done+'|'+learn;
+    if(!map[k]) map[k]={author:a,date:d,done,learn,sites:[],rid:r.rid};
+    if(r.site && !map[k].sites.includes(r.site)) map[k].sites.push(r.site);
+  });
+  const items=Object.values(map).sort((x,y)=>x.date<y.date?1:x.date>y.date?-1:x.author.localeCompare(y.author,'ja'));
+  const wrote={}; items.forEach(x=>{ (wrote[x.author]=wrote[x.author]||new Set()).add(x.date); });
+  const people=Object.keys(daysByPerson).filter(a=>a!=='?').sort((a,b)=>(wrote[b]?wrote[b].size:0)-(wrote[a]?wrote[a].size:0));
+  if(rfWho && !people.includes(rfWho)) rfWho='';
+  document.getElementById('rfPeople').innerHTML=['',...people].map(p=>{
+    const lab=p||'全員';
+    const rt=p?`<span class="rt">${wrote[p]?wrote[p].size:0}/${daysByPerson[p].size}日</span>`:`<span class="rt">${items.length}件</span>`;
+    return `<button data-who="${esc(p)}" class="${rfWho===p?'on':''}">${esc(lab)}${rt}</button>`;
+  }).join('');
+  const view=items.filter(x=>!rfWho||x.author===rfWho);
+  const el=document.getElementById('rfList');
+  if(!view.length){ el.innerHTML='<div class="note">この期間に書かれた振り返りはありません。</div>'; return; }
+  let last='', h='';
+  view.forEach(x=>{
+    if(x.date!==last){ const dt=new Date(x.date+'T00:00:00'); h+=`<div class="rf-day">${x.date}（${'日月火水木金土'[dt.getDay()]||''}）</div>`; last=x.date; }
+    h+=`<div class="rf-item" data-rid="${esc(x.rid)}"><div class="rf-top"><b>${esc(x.author)}</b><span class="rs">${esc(x.sites.join('・'))}</span></div>`+
+      (x.done?`<div class="rf-t"><span class="rf-k">できたこと</span>${esc(x.done)}</div>`:'')+
+      (x.learn?`<div class="rf-t"><span class="rf-k l">所感</span>${esc(x.learn)}</div>`:'')+`</div>`;
+  });
+  el.innerHTML=h;
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('#rfPeople button'); if(b){ rfWho=b.dataset.who||''; renderRefl(filterPeriod(cur)); return; }
+  const it=e.target.closest('.rf-item'); if(it && it.dataset.rid) openDetail(it.dataset.rid);
+});
 function render(){
   const view=filterPeriod(cur);
   const totalNinku=Math.round(sum(view,x=>x.ninku)*10)/10;
@@ -291,7 +358,7 @@ function render(){
   if(curFY===_tfy) calYM=_tym;
   else if(cur.length) calYM=cur.map(x=>x.date.slice(0,7)).sort().reverse()[0];
   else calYM=`${curFY}-04`;
-  drawCal(); renderMissing(view);
+  drawCal(); renderMissing(view); renderRefl(view);
 }
 function bindOnce(){
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{

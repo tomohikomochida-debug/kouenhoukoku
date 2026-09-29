@@ -59,6 +59,11 @@
     box-shadow:var(--shadow);padding:16px;margin-bottom:16px}
 
   .chips{display:flex;gap:7px;flex-wrap:wrap}
+  .vrow{padding:10px 0;border-top:1px dashed var(--line)}
+  .vrow:first-child{border-top:none;padding-top:0}
+  .vrow .vn{font-size:15px;font-weight:700;margin-bottom:7px}
+  .vrow .vn .need{font-size:12px;color:var(--warn,#C0492F);font-weight:600;margin-left:6px}
+  .vempty{font-size:13px;color:var(--bark);opacity:.8}
   .chip{font-size:15px;border:1px solid var(--line);background:#fff;border-radius:999px;
     padding:9px 16px;cursor:pointer;color:var(--ink);font-family:inherit}
   .chip:hover{border-color:var(--leaf)}
@@ -213,6 +218,16 @@
       </div>
     </div>
 
+    <div class="sec-head"><span class="tag">車両</span><h2>運転する車</h2><span class="rule"></span></div>
+    <div class="card">
+      <span class="hint">運転者ごとに、乗る車を選んでください（記録に必要な項目です）</span>
+      <div id="vehicleRows" style="margin-top:10px"></div>
+      <div class="addable">
+        <input type="text" id="newVehicle" placeholder="一覧に無い車を追加（例：キャラバン2号・品川400あ1234）">
+        <button class="mini-btn" id="addVehicle">＋追加</button>
+      </div>
+    </div>
+
     <div class="sec-head"><span class="tag">確認</span><h2>確認のしかた・結果</h2><span class="rule"></span></div>
     <div class="card">
       <div class="field">
@@ -333,6 +348,7 @@ const TIMINGS=['業務前','業務後'];
 const state = {
   timing:'業務前',
   drivers:[],
+  vehicles:{},           // { 運転者: 車両 }
   detector:'使った',     // '使った' / '使ってない'
   result:'無',           // '無'(なし) / '有'(あり)
 };
@@ -343,6 +359,7 @@ const state = {
   buildOverlay();
   buildTimingChips();
   buildDriverChips();
+  buildVehicleRows();
   buildDetectorChips();
   buildResultChips();
   setNow();
@@ -393,7 +410,7 @@ function buildDriverChips(){
   ROSTER.forEach(n=>{ const b=document.createElement('button');
     b.className='chip'+(state.drivers.includes(n)?' on':''); b.textContent=n;
     b.onclick=()=>{ const i=state.drivers.indexOf(n); if(i<0)state.drivers.push(n); else state.drivers.splice(i,1);
-      b.classList.toggle('on'); updateSummary(); saveDraft(); };
+      b.classList.toggle('on'); buildVehicleRows(); updateSummary(); saveDraft(); };
     c.appendChild(b); });
 }
 document.getElementById('addDriver').onclick=()=>{
@@ -403,7 +420,35 @@ document.getElementById('addDriver').onclick=()=>{
       if(!ex.includes(v)){ ex.push(v); localStorage.setItem('alcohol_custom_drivers',JSON.stringify(ex)); } }catch(e){}
   }
   if(!state.drivers.includes(v)) state.drivers.push(v);
-  inp.value=''; buildDriverChips(); updateSummary(); saveDraft();
+  inp.value=''; buildDriverChips(); buildVehicleRows(); updateSummary(); saveDraft();
+};
+/* ===== 車両（運転者ごとに1台） ===== */
+const VEHICLES=['キャラバン','パッカー','軽トラ','軽ダンプ','3tダンプ','4tクレーン','高所作業車'];
+try{ JSON.parse(localStorage.getItem('alcohol_custom_vehicles')||'[]').forEach(v=>{ if(!VEHICLES.includes(v)) VEHICLES.push(v); }); }catch(e){}
+function buildVehicleRows(){
+  const box=document.getElementById('vehicleRows'); box.innerHTML='';
+  if(!state.drivers.length){ box.innerHTML='<div class="vempty">上で運転者を選ぶと、ここで車を選べます。</div>'; return; }
+  state.drivers.forEach(n=>{
+    const row=document.createElement('div'); row.className='vrow';
+    const cur=state.vehicles[n]||'';
+    row.innerHTML=`<div class="vn">${esc(n)}${cur?'':'<span class="need">車を選んでください</span>'}</div>`;
+    const c=document.createElement('div'); c.className='chips';
+    VEHICLES.forEach(v=>{ const b=document.createElement('button');
+      b.className='chip'+(cur===v?' on':''); b.textContent=v;
+      b.onclick=()=>{ state.vehicles[n]=(state.vehicles[n]===v?'':v); buildVehicleRows(); saveDraft(); };
+      c.appendChild(b); });
+    row.appendChild(c); box.appendChild(row);
+  });
+}
+document.getElementById('addVehicle').onclick=()=>{
+  const inp=document.getElementById('newVehicle'); const v=inp.value.trim(); if(!v) return;
+  if(!VEHICLES.includes(v)){ VEHICLES.push(v);
+    try{ const ex=JSON.parse(localStorage.getItem('alcohol_custom_vehicles')||'[]');
+      if(!ex.includes(v)){ ex.push(v); localStorage.setItem('alcohol_custom_vehicles',JSON.stringify(ex)); } }catch(e){}
+  }
+  // 車を選んでいない運転者が1人だけなら、その人に自動で当てる
+  const noCar=state.drivers.filter(n=>!state.vehicles[n]); if(noCar.length===1) state.vehicles[noCar[0]]=v;
+  inp.value=''; buildVehicleRows(); saveDraft();
 };
 function buildDetectorChips(){
   const c=document.getElementById('detectorChips'); c.innerHTML='';
@@ -439,7 +484,7 @@ function updateSummary(){
 function collectDraft(){
   return {
     date:document.getElementById('cdate').value, time:document.getElementById('ctime').value,
-    timing:state.timing, drivers:[...state.drivers], detector:state.detector,
+    timing:state.timing, drivers:[...state.drivers], vehicles:Object.assign({},state.vehicles), detector:state.detector,
     method:document.getElementById('method').value, result:state.result,
     instruct:document.getElementById('instruct').value, other:document.getElementById('other').value
   };
@@ -455,6 +500,8 @@ document.getElementById('draftRestore').onclick=()=>{
   if(dr.time) document.getElementById('ctime').value=dr.time;
   state.timing=dr.timing||'業務前';
   state.drivers=Array.isArray(dr.drivers)?dr.drivers:[];
+  state.vehicles=(dr.vehicles&&typeof dr.vehicles==='object')?dr.vehicles:{};
+  Object.values(state.vehicles).forEach(v=>{ if(v&&!VEHICLES.includes(v)) VEHICLES.push(v); });
   state.detector=dr.detector||'使った';
   state.result=dr.result||'無';
   dr.drivers.forEach(n=>{ if(!ROSTER.includes(n)) ROSTER.push(n); });
@@ -463,7 +510,7 @@ document.getElementById('draftRestore').onclick=()=>{
   document.getElementById('other').value=dr.other||'';
   document.getElementById('methodWrap').style.display=(state.detector==='使ってない')?'flex':'none';
   document.getElementById('resultWarn').classList.toggle('on', state.result==='有');
-  buildTimingChips(); buildDriverChips(); buildDetectorChips(); buildResultChips(); updateSummary();
+  buildTimingChips(); buildDriverChips(); buildVehicleRows(); buildDetectorChips(); buildResultChips(); updateSummary();
   document.getElementById('draftBanner').classList.remove('on');
 };
 document.getElementById('draftDiscard').onclick=()=>clearDraft();
@@ -475,6 +522,8 @@ function whenStr(){
 }
 document.getElementById('save').onclick=()=>{
   if(state.drivers.length===0){ alert('運転者を選んでください'); return; }
+  const noCar=state.drivers.filter(n=>!state.vehicles[n]);
+  if(noCar.length){ alert(noCar.join('、')+' の車を選んでください（記録に必要な項目です）'); document.getElementById('vehicleRows').scrollIntoView({behavior:'smooth',block:'center'}); return; }
   state.submitId=null; // 確認画面を開くたびに新しい送信（同じ画面での再送だけ同一扱い）
   const pb=document.getElementById('previewBody');
   const detLabel = state.detector==='使った' ? '使った' : '使わなかった';
@@ -482,7 +531,7 @@ document.getElementById('save').onclick=()=>{
   const rows=[
     ['確認者',checker],
     ['日時',whenStr()+'（'+state.timing+'）'],
-    ['運転者',state.drivers.join('、')],
+    ['運転者・車両',state.drivers.map(n=>n+'（'+state.vehicles[n]+'）').join('、')],
     ['検知器',detLabel],
   ];
   if(state.detector==='使ってない') rows.push(['確認方法',document.getElementById('method').value||'（未記入）']);
@@ -508,6 +557,7 @@ document.getElementById('confirmSave').onclick=async()=>{
   const row={
     checker:toReal(checker), when:whenStr(), timing:state.timing,
     drivers:state.drivers.map(toReal).join('\n'),
+    vehicles:state.drivers.map(n=>state.vehicles[n]||'').join('\n'),
     detector:state.detector,
     method:state.detector==='使ってない'?document.getElementById('method').value:'',
     result:state.result,
@@ -529,12 +579,12 @@ document.getElementById('confirmSave').onclick=async()=>{
 };
 function newSubmitId(){ return 'alc-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
 function resetForm(){
-  state.timing='業務前'; state.drivers=[]; state.detector='使った'; state.result='無';
+  state.timing='業務前'; state.drivers=[]; state.vehicles={}; state.detector='使った'; state.result='無';
   document.getElementById('method').value=''; document.getElementById('instruct').value=''; document.getElementById('other').value='';
   document.getElementById('methodWrap').style.display='none';
   document.getElementById('resultWarn').classList.remove('on');
   setNow();
-  buildTimingChips(); buildDriverChips(); buildDetectorChips(); buildResultChips(); updateSummary();
+  buildTimingChips(); buildDriverChips(); buildVehicleRows(); buildDetectorChips(); buildResultChips(); updateSummary();
 }
 
 /* ===== 一覧 ===== */
@@ -579,7 +629,8 @@ function renderList(records){
   body.innerHTML=days.map(day=>{
     const items=groups[day].map(r=>{
       const time=((r['作成日時']||'').split(' ')[1])||'';
-      const drivers=(r['運転者']||'').split('\n').filter(Boolean).map(toDisp).join('、');
+      const dl=(r['運転者']||'').split('\n'); const vl=String(r['車両']||'').split('\n');
+      const drivers=dl.map((d,i)=>d?toDisp(d)+(vl[i]?'（'+vl[i]+'）':''):'').filter(Boolean).join('、');
       const bad=(r['酒気帯びの有無']||'')==='有';
       const timing=r['区分']||'';
       const det=r['アルコール検知器の使用有無']||'';
@@ -603,7 +654,7 @@ function renderList(records){
 /* ===== CSV書き出し（Excelで開ける UTF-8 BOM） ===== */
 document.getElementById('csvBtn').onclick=()=>{
   if(!listCache.length){ alert('書き出す記録がありません。'); return; }
-  const cols=['作成日時','確認者','運転者','アルコール検知器の使用有無','酒気帯びの有無',
+  const cols=['作成日時','確認者','運転者','車両','アルコール検知器の使用有無','酒気帯びの有無',
     '区分','指示事項','その他必要な事項','検知器を使ってない場合の確認方法','レコード番号'];
   const esc2=v=>{ v=(v==null?'':String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
   const lines=[cols.join(',')];
