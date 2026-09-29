@@ -202,6 +202,19 @@ dialog h2{margin:0 0 10px;font-size:17px;color:var(--leaf)}
 .mpchips button.on{background:var(--leaf);color:#fff;border-style:solid}.mpchips button.done:not(.on){border-style:solid;background:#EEF6F0}
 .syncstat{font-size:13px;color:var(--bark);background:var(--field);border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin:-2px 0 10px;cursor:pointer}
 
+/* 📘 マニュアルのチェック */
+#tkBody h3{margin:14px 0 6px;font-size:15px}
+.tkrow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee}
+.tkrow .hint{margin-top:2px}
+.tkrow .btn{white-space:nowrap;flex:none}
+.tklist{margin:6px 0;padding-left:0;list-style:none}
+.tklist li{padding:5px 0;border-bottom:1px dashed #e5e5e5;line-height:1.5}
+.tklist li.tk-ng{color:#b3261e}
+.tklist li.tk-info{color:#444}
+.tkitems{margin:0 0 6px 10px;padding-left:10px;border-left:3px solid #e6efe9}
+.tkitem{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:4px 0;flex-wrap:wrap}
+.tkitem select{max-width:100%;flex:1 1 320px}
+
 /* ---- 型・調整・フォーム ---- */
 #karte.design .kc[data-k]{outline:1.5px dashed rgba(30,136,229,.75);outline-offset:-1px;background:rgba(30,136,229,.06)}
 #karte.design .kc[data-k="off"]{outline-color:rgba(120,120,120,.45);background:transparent}
@@ -430,6 +443,11 @@ dialog.wide{max-width:720px}
     <button class="btn pri" type="button" id="asApply">外観判定の欄に反映</button>
   </div>
 </dialog>
+<dialog id="dlgTk" class="wide">
+  <h2>📘 マニュアルのチェック（東京都 街路樹診断等マニュアル）</h2>
+  <div id="tkBody"></div>
+  <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn pri" type="button" data-close>閉じる</button></div>
+</dialog>
 <dialog id="dlgGloss">
   <h2>用語の説明</h2>
   <div id="glBody"></div>
@@ -548,7 +566,7 @@ dialog.wide{max-width:720px}
 
 <dialog id="dlgCal" class="wide" style="max-width:940px">
   <h2 id="calTitle">目盛りを合わせる</h2>
-  <p class="hint">赤い線を波形の <b>0cm</b>（データの開始・幹の表面）に、青い線を目盛りの数字のある線（例：40）に合わせ、その値を入れてください。オレンジの点線で上下の余白を切り取れます。</p>
+  <p class="hint">赤い線を<b>データの開始</b>に、青い線を目盛りの数字のある線（例：50）に合わせ、その値を入れてください。赤い線の位置はそのまま使います。幹の表面（樹皮の外側＝断面図の円）は評価の色の帯の始まりから求めます。オレンジの点線で上下の余白を切り取れます。</p>
   <div style="overflow:auto;touch-action:none"><canvas id="calCv" style="display:block;touch-action:none;border:1px solid #ddd"></canvas></div>
   <div class="row" style="margin-top:10px;align-items:center"><span>青い線の目盛り</span><input class="inp" id="calV" inputmode="decimal" style="width:90px"><span>cm</span><span style="flex:1"></span><button class="btn" type="button" data-close>やめる</button><button class="btn pri" type="button" id="calOk">これで合わせる</button></div>
 </dialog>
@@ -3250,13 +3268,15 @@ function gaikanPreset(F) {
   O('Q5', '植栽形態'); O('AK5', '支柱'); O('AF7', '樹勢'); O('AF8', '樹形');
   T('G9', '活力診断の所見', 'area', { phrases: DEFAULT_PHRASES.vital }); O('H11', '活力判定');
   for (const [k, lab] of [[13, '樹皮枯死・欠損・腐朽'], [14, '芯に達していない開口空洞'], [15, '芯に達した開口空洞']]) for (const p of ['root', 'trunk', 'branch']) O(col3[p] + k, `${lab}（${PL[p]}）`, 'single', { def: [0] });
+  T('U17', '根元：周囲長比率（％）', 'num'); T('AF17', '幹：周囲長比率（％）', 'num'); // 被害部幅÷周囲長で自動（tk.js）
   T('M17', '根元：被害部幅（cm）', 'num'); T('Q17', '根元：被害部周囲長（cm）', 'num'); T('X17', '幹：被害部幅（cm）', 'num'); T('AB17', '幹：被害部周囲長（cm）', 'num');
-  O('AL16', '枯枝', 'single', { def: [0] }); T('AP16', '枯枝の内容', 'text', { phrases: MANUAL.size }); O('AL17', 'スタブカット', 'single', { def: [0] }); T('AP17', 'スタブカットの内容');
-  const PH = { 18: MANUAL.fungi, 20: MANUAL.fork, 21: MANUAL.disease, 22: MANUAL.pest };
+  O('AL16', '枯枝', 'single', { def: [0] }); T('AP16', '枯枝の内容', 'text', { phrases: ['φ○cm', 'ℓ○m', '○本', ...MANUAL.size] }); O('AL17', 'スタブカット', 'single', { def: [0] }); T('AP17', 'スタブカットの内容', 'text', { phrases: ['切除可', '切除不可', 'φ○cm'] });
+  const PH = { 18: MANUAL.fungi, 19: ['大', '小', 'G.L.○-○m'], 20: ['亀裂', '入り皮', '腐朽', '空洞', ...MANUAL.fork], 21: MANUAL.disease, 22: MANUAL.pest }; // 括弧内に書く内容（表Ⅲ-2･23）
   for (const [lab, r] of [['キノコ（子実体）', 18], ['木槌打診（異常音）', 19], ['分岐部・付根の異常', 20], ['胴枯れなどの病害', 21], ['虫穴・虫フン、ヤニ', 22]]) for (const p of ['root', 'trunk', 'branch']) { O(col3[p] + r, `${lab}（${PL[p]}）`, 'single', { def: [0] }); T(txt3[p] + r, `${lab}（${PL[p]}）の内容`, 'text', { phrases: [...(PH[r] || []), ...MANUAL.size] }); }
-  for (const [lab, r] of [['根元の揺らぎ', 23], ['鋼棒貫入異常', 24], ['巻き根', 25], ['露出根被害', 27], ['不自然な傾斜', 28]]) { O('M' + r, lab, 'single', { def: [0] }); T('Q' + r, `${lab}の内容`, 'text', { phrases: MANUAL.size }); }
-  O('M26', 'ルートカラー', 'single', { def: [0] }); T('T26', 'ルートカラーの内容');
-  for (const [s, sl] of [['Z', '車道側'], ['AK', '歩道側']]) { O(s + 24, `建築限界越え ${sl}・幹`); T(s + 25, `建築限界越え ${sl}・幹の内容`); O(s + 26, `建築限界越え ${sl}・枝`); T(s + 27, `建築限界越え ${sl}・枝の内容`); }
+  const PR = { 23: ['大', '小'], 24: ['○cm', '芯達', '○/○cm 芯達'], 25: ['切除可', '切除不可'], 27: ['切断', '損傷', '踏圧'], 28: ['小', '大', '車道側', '歩道側'] }; // 括弧内に書く内容（表Ⅲ-2･23）
+  for (const [lab, r] of [['根元の揺らぎ', 23], ['鋼棒貫入異常', 24], ['巻き根', 25], ['露出根被害', 27], ['不自然な傾斜', 28]]) { O('M' + r, lab, 'single', { def: [0] }); T('Q' + r, `${lab}の内容`, 'text', { phrases: [...PR[r], ...MANUAL.size] }); }
+  O('M26', 'ルートカラー', 'single', { def: [0] }); T('T26', 'ルートカラーの内容', 'text', { phrases: ['深植え○cm', '盛土○cm'] });
+  for (const [s, sl] of [['Z', '車道側'], ['AK', '歩道側']]) { O(s + 24, `建築限界越え ${sl}・幹`); T(s + 25, `建築限界越え ${sl}・幹の内容`, 'text', { phrases: ['越え幅○cm', 'GL○m'] }); O(s + 26, `建築限界越え ${sl}・枝`); T(s + 27, `建築限界越え ${sl}・枝の内容`, 'text', { phrases: ['L○m', 'GL○m'] }); }
   T('G29', '部位診断の所見', 'area', { phrases: DEFAULT_PHRASES.part });
   const LV = ['健全か健全に近い', '注意すべき被害が見られる', '著しい被害が見られる', '不健全'];
   for (const p of ['root', 'trunk', 'branch']) {
@@ -3267,7 +3287,7 @@ function gaikanPreset(F) {
   for (const i of [1, 2]) { const r = 51 + i; T('L' + r, `測定データ${i}：部位（G.L.　m）`, 'num'); T('T' + r, `測定データ${i}：腐朽空洞率（%）`, 'num'); ['AC', 'AG', 'AK', 'AO'].forEach((c, k) => T(c + r, `測定データ${i}：t/R率 ${'①②③④'[k]}`, 'num')); }
   T('F54', '機器診断の所見', 'area'); O('G60', '総合判定'); T('F62', '総合判定の理由', 'area', { phrases: DEFAULT_PHRASES.reason });
   O('BD3', '処置の必要性'); O('BY3', '処置の緊急性'); O('AX4', '要観察', 'multi'); O('AX5', '剪定', 'multi');
-  for (const [a, b, l] of [['AX6', 'BC6', '樹体保護'], ['BR6', 'BY6', '植栽基盤の改善'], ['AX7', 'BC7', '根上がり'], ['BR7', 'BX7', '病虫害防除'], ['AX8', 'BA8', '更新'], ['BR8', 'BV8', 'その他の処置']]) { O(a, l, 'multi'); T(b, `${l}の内容`, 'text', l === '植栽基盤の改善' ? { phrases: ['土壌改良材鋤込み・竪穴式土壌改良'] } : {}); }
+  for (const [a, b, l] of [['AX6', 'BC6', '樹体保護'], ['BR6', 'BY6', '植栽基盤の改善'], ['AX7', 'BC7', '根上がり'], ['BR7', 'BX7', '病虫害防除'], ['AX8', 'BA8', '更新'], ['BR8', 'BV8', 'その他の処置']]) { O(a, l, 'multi'); T(b, `${l}の内容`, 'text', { phrases: ({ 樹体保護: ['支柱（○○）', 'ワイヤー', 'ブレース'], 植栽基盤の改善: ['土壌改良材鋤込み・竪穴式土壌改良', '酸素管', 'マルチング', '施肥', '樹木保護盤'], 根上がり: ['S.S.M工法', '防根シート', '植栽用エッジング', '縁石'], 病虫害防除: ['剪定', '薬剤'], 更新: ['立地条件', '植栽基盤'], その他の処置: ['癒合剤塗布'] })[l] || [] }); /* 括弧内に書く内容（表Ⅲ-2･23） */ }
   T('AY9', '処置の摘要', 'area', { phrases: DEFAULT_PHRASES.treat });
   P.AW15 = { k: 'photo', label: '立地平面図' }; P.BM13 = { k: 'photo', label: '診断概要図' };
   P.AW37 = { k: 'photo', label: '写真①' }; P.BK37 = { k: 'photo', label: '写真②' }; P.BY37 = { k: 'photo', label: '写真③' };
@@ -3346,6 +3366,28 @@ const MANUAL = {
 
 /* ---------- 用語の説明（東京都 街路樹診断マニュアル 第Ⅶ章「６ 用語集」「７ 事例集」より） ---------- */
 const GLOSSARY = [
+  // 東京都「令和3年度 街路樹診断等マニュアル」第Ⅲ章の判定基準（様式3・10・11）
+  ['活力度（表Ⅲ-2･2）', /^樹勢$|^樹形$/, '【樹勢】１：旺盛な生育状態を示し、被害が全く見られない／２：いくぶん被害の影響を受けているが、あまり目立たない／３：異常が明らかに認められる／４：生育状態が劣悪で回復の見込みが低い／５：ほぼ枯死している。・枝の伸長量　1良好／2いくぶん少ないがあまり目立たない／3枝は細くなり短い／4枝は極度に短小、ショウガ状の節間がある／5ほとんど成長していない。・梢や上枝の先端の枯損　1なし／2少しあるがあまり目立たない／3多い／4著しく多い／5ほとんど枯損している。・下枝の先端の枯損　1なし／2少しあるがあまり目立たない／3多い、切断が目立つ／4著しく多い、大きく切断されている／5ほとんど枯損している。・枝や幹の枯損、損傷　1なし／2穿孔・傷が少しあるがあまり目立たない／3古い傷が残る／4腐朽、空洞が著しい／5大きな腐朽、空洞、樹皮の剥がれがある。・剪定後の巻き込み　1巻き込みが早く良好／2普通／3やや遅く剪定断面が残る／4著しく不良で剪定断面が腐朽／5巻き込みが見られず腐朽が著しい。・葉の大きさ　1良好／2所々に小さい葉がある／3全体的にやや小さい／4全体的に著しく小さい／5小さな葉がわずかしかない。・葉の色　1良好／2少し変色が見られる／3変色が多い／4変色が著しい／5ほとんどが変色している。【樹形】１：望ましい樹形を保っている／２：若干の乱れはあるが、望ましい樹形に近い／３：望ましい樹形の崩壊が進んでいる／４：望ましい樹形がかなり崩壊し回復の見込みが低い／５：望ましい樹形が完全に崩壊している。・幹の傾きや湾曲　1なし／2少しあるがあまり目立たない／3やや大きい／4大きい／5極めて大きい。・幹の欠損や枯損　1なし／2少しあるがあまり目立たない／3やや大きい／4大きく欠損している、又は枯損が著しい／5欠損し、ほとんど失われている、又はほとんど枯損している。・枝の密度や分布　1小枝・中枝・大枝がバランスよく充実している／2普通、活力度1に比べてやや劣る／3枝の密度がやや疎、又は枝の分布がやや偏っている／4枝の密度が著しく疎、又は枝の分布が著しく偏っている／5生きた枝がほとんどない。', 'tokyo'],
+  ['活力判定（表Ⅲ-2･1）', /活力判定/, '樹勢・樹形の活力度が　どちらも１又は２→健全か健全に近い／３がある（４、５はない）→注意すべき被害／４はあるが５はない→著しい被害／５がある→不健全（撤去・植替え）。この時点で不健全となった場合は、部位診断で問題がなくとも外観診断判定では不健全とする。', 'tokyo'],
+  ['周囲長比率', /周囲長比率|被害部幅|被害部周囲長/, '被害箇所の幅がその部位の周囲長に対して1/3未満か1/3以上かを判定する（周囲長比率＝被害部幅÷被害部周囲長）。根元・幹は、樹皮枯死・欠損・腐朽、開口空洞の最大被害部の値を記入。幹・根元で1/2以上かつ被害が進行している場合は、所見欄に明確な理由を記入し不健全とする。', 'tokyo'],
+  ['樹皮枯死・欠損・腐朽（表Ⅲ-2･3）', /樹皮枯死/, 'なし→健全か健全に近い／1/3未満で軽微・処置不要→健全に近い／1/3未満で被害が進行していない・回復傾向、又は進行している→必要に応じて機器診断／1/3以上で被害が進行していない・回復傾向→必要に応じて機器診断／1/3以上で被害が進行している→機器診断が必要／幹・根元で1/2以上かつ被害が進行している→不健全（更新）。', 'tokyo'],
+  ['芯に達していない開口空洞（表Ⅲ-2･4）', /芯に達していない/, '開口部の周囲長がその部位の周囲長に対して1/3未満か1/3以上かを記入。幹・根元で1/2以上かつ被害が進行している場合は、機器診断せずに不健全とし所見に明確な理由を記入。空洞の大きさ・状況を所見に記載し、大きさが不明な場合は必要に応じて機器診断。', 'tokyo'],
+  ['芯に達した開口空洞（表Ⅲ-2･5）', /芯に達した/, '幹・根元で周囲長比率1/3以上かつ被害が進行している場合は、機器診断せずに不健全とするが、所見に明確な理由を記入。1/3以上で被害が進行していない・回復傾向でも機器診断が必要（表Ⅲ-2･21）。大枝は必要に応じて剪定・腐朽診断。', 'tokyo'],
+  ['枯枝（表Ⅲ-2･6）', /^枯枝/, 'なし→健全。あり→剪定。中枝・大枝や長さ30cm以上の枯枝は落枝の危険等から著しい被害として判定。括弧内：元口直径（φ、cm）・長さ（L、m）。剪定位置の配慮が必要な枯枝は診断概要図に望ましい剪定位置を記入。', 'tokyo'],
+  ['スタブカット（表Ⅲ-2･7）', /スタブカット|ｽﾀﾌﾞｶｯﾄ/, 'なし→健全。あり→被害が軽微なら注意、被害が大きく進行していれば著しい被害。直径3cm以上や長さ20cm以上のスタブカットは著しい被害として判定。括弧内：切除の可否。元口直径・長さ・本数の概略を記載。', 'tokyo'],
+  ['部位別の主なキノコの種類と対処法（表Ⅲ-2･8）', /キノコ/, '大枝：カワラタケ、アラゲカワラタケ、スエヒロタケ、キクラゲ、カワウソタケ、カイガラタケなど（落枝の危険）→枯枝剪定など。剪定痕が大きくなる場合は傷口癒合剤を塗布し、腐朽の進行など剪定後も注意。／幹：コフキタケ、シイサルノコシカケ、チャアナタケモドキ、カワラタケ、カワウソタケ、カイガラタケなど（幹折れの危険）→剪定（幹が二叉以上で幹枯死部にキノコが発生している場合）。機器診断：コフキタケは腐朽力が強いため必ず機器診断。それ以外は被害の程度で判断（1本の幹で、かつ半枯れでキノコが発生している場合など）。更新：幹にコフキタケが発生し、かつ梢端に枯れが多く発生している場合は腐朽が著しく進行していると考えられるため更新（植替え）。／根元や幹下部：ベッコウタケ、コフキタケ、マンネンタケ、スルメタケ、ナラタケ、ナラタケモドキなど（根返り・倒木の危険）→腐朽力の強いベッコウタケは必ず根株診断。コフキタケも機器診断が必要だが、発生箇所等により腐朽診断もしくは根株診断。それ以外は被害の程度で判断。根元にベッコウタケ、コフキタケ、ナラタケ、ナラタケモドキが発生し、かつ梢端に枯れが多く発生している場合は更新（植替え）。', 'tokyo'],
+  ['キノコ（表Ⅲ-2･9）', /キノコ/, 'コフキタケは腐朽力が強いため必ず機器診断を行う。ベッコウタケが発生し被害が進行している場合は根株診断。それ以外のキノコは被害の程度によって機器診断の必要性を判断。キノコ発生部位の被害が大きい→機器診断が必要。括弧内：種類等。発生箇所・種名・被害範囲を記載。', 'tokyo'],
+  ['木槌打診（表Ⅲ-2･10）', /木槌/, 'なし→健全。あり→必要に応じて機器診断。異常音が大きい、又は範囲が広い→機器診断が必要。括弧内：異常音の程度（大小）・範囲（G.L.からの高さの範囲）。', 'tokyo'],
+  ['分岐部・付根の異常（表Ⅲ-2･11）', /分岐部|付根/, 'なし→健全。亀裂・入り皮が小さい→注意。それ以上→必要に応じて支柱設置・切除・機器診断。括弧内：亀裂・入り皮・腐朽・空洞等の状況。', 'tokyo'],
+  ['鋼棒貫入異常', /鋼棒貫入/, '芯に達している→根株診断（表Ⅲ-2･21）。括弧内：鋼棒貫入の深さ（cm）、芯に達している場合は芯達と記載。', 'tokyo'],
+  ['括弧内に記載する内容（表Ⅲ-2･23）', /揺らぎ|巻き根|ルートカラー|露出根|不自然な傾斜|建築限界越え/, '根元の揺らぎ：揺らぎの程度（大小）／巻き根：切除の可否／ルートカラー：深植えや盛土の深さ（cm）・高さ（cm）／露出根被害：切断等の状況／不自然な傾斜：傾斜の程度・方向／建築限界越え：枝は越えている枝の長さ（L、m）・高さ（GL、m）、幹は越え幅（cm）・高さ（GL、m）。※詳しい説明が必要な場合は「その他特記事項」に記載する。', 'tokyo'],
+  ['機器診断の検討が必要な被害（表Ⅲ-2･21）', /機器診断が必要|要機器診断/, '樹皮枯死・欠損・腐朽、芯に達していない開口空洞：周囲長比率1/3以上で被害が進行している→機器診断／芯に達した開口空洞：1/3以上なら被害が進行していない・回復傾向でも機器診断／キノコ発生部位の被害が大きい・ベッコウタケやコフキタケが発生し被害が進行している／木槌打診で異常音が大きい又は範囲が広い／鋼棒貫入異常が芯に達している（根株診断）。機器診断が必要と判定した場合は、所見欄に必ず判定根拠となった被害状況を記載する。外観診断でＢ２と判定されたほとんどの街路樹は機器診断が必要。', 'tokyo'],
+  ['処置の括弧内に記載する内容（表Ⅲ-2･23）', /樹体保護|植栽基盤の改善|根上がり|根返り|病虫害防除|^更新|その他の処置/, '樹体保護：支柱の種類等／植栽基盤の改善：改善方法等（酸素管、マルチング、施肥、樹木保護盤等）／根返り：対策法等（S.S.M工法、防根シート、植栽用エッジング、縁石等）／病虫害の防除：防除対象とする病虫害名と方法（剪定、薬剤種類等）／更新：更新に当たっての留意点（立地条件、植栽基盤等）／その他：樹皮枯死・欠損・腐朽、開口空洞の処置が必要な場合の処置方法（癒合剤塗布等）。※詳しい説明が必要な場合は「その他特記事項」に記載する。', 'tokyo'],
+  ['外観診断判定（表Ⅲ-2･22）', /外観診断判定/, '部位判定は各診断項目の最も悪い判定を採用。外観診断判定は活力判定と部位判定の悪い方を採用。Ａ：樹勢及び樹形の活力度が１又は２で、その他の項目に異常がないか被害が軽微で処置の必要のないもの／Ｂ１：活力度が３、もしくは今後活力の低下や腐朽の進行が予測され注意を要するもの、簡易な処置を必要とするもの／Ｂ２：活力度が４、もしくは幹や根の腐朽が進行し何らかの処置を必要とするもの／Ｃ：活力度が５、もしくは幹や根の腐朽が著しく回復の見込みがないもの、倒木や幹折れの危険があるもの。', 'tokyo'],
+  ['総合判定（表Ⅲ-4･1・4･2）', /総合判定/, '外観診断判定、及び機器診断による腐朽空洞率に基づき総合的に判断（表Ⅲ-4･1）。Ａ：活力度が１又は２で、その他の項目に異常がないか被害が軽微で処置の必要のないもの（空洞率10%未満）／Ｂ１：活力度が３、もしくは今後活力の低下や腐朽の進行が予想され、その他の項目についても被害が各種見られ注意を要するもの。簡易な処置を必要とするもの（10%以上30%未満）／Ｂ２：活力度が４、もしくは幹や根の腐朽が進行し、その他の項目においても被害が見られ何らかの処置を必要とするもの（30%以上50%未満）／Ｃ：活力度が５、もしくは幹や根の腐朽が著しく極めて不健全な状態で回復の見込みがないもの。また倒木や幹折れの危険があるもの（50%以上）。その他に考慮する要素（表Ⅲ-4･2）：樹木の形状比（樹高/幹径≧50、枝長/枝径≧40。ただし立地環境（風を受けやすいか）や樹齢（若木は幹が柔軟で折れにくい）も考慮）／樹冠の形状（枝下高が高いと風心が高くなる、樹冠が大きく枝葉が密だと風荷重が大きい、枝葉が偏るとねじれによる破壊）／根系（根の切断や腐朽、伸長不良。植栽基盤の状況や工事履歴にも留意）／t/R率（0.3未満は折損の危険性。樹幹傾斜があれば健全なあて材が十分残っているか。長径が短径の1.5倍以上の楕円は健全部の厚みも考慮）／立地環境（植栽基盤・風環境・根の損傷・日照条件。電線共同溝工事等で根の損傷の可能性がある場合は特に考慮）。機器診断を行わない木は外観診断判定をもって総合判定とする。判定理由欄にその根拠を明記する。', 'tokyo'],
+  ['次回診断（表Ⅲ-4･3）', /次回/, 'Ａ：外観診断・5〜10年後（外観診断の実施サイクルに従って行う）／Ｂ１：外観診断・5〜10年後（外観診断の実施サイクルに従う。前回診断の被害状況を把握した上で、被害状況の変化に注意しながら診断）／Ｂ２：再診断（フォローアップ診断、必要に応じて機器診断を実施）・1〜3年後。※5年以上フォローアップ診断を継続した場合は外観診断を行う。時期は被害状況に応じて判断。【1年後の例】著しい樹勢衰退や穿孔虫害など短期間で被害が進行する可能性が高い場合、50%に近い腐朽空洞率が確認された場合。【3年後の例】30%程度の腐朽空洞率でその他大きな被害がなく活力が旺盛な場合など／Ｃ：更新（撤去・植替え）。Ｂ１・Ｂ２はカルテ裏面下の次回診断項目にチェック、Ｂ２は次回フォローアップ診断時期と診断年度も記載。', 'tokyo'],
+  ['所見・判定理由（p.45・p.65）', /所見|判定理由/, '部位診断で「なし」「見える」以外にチェックした項目は、被害の形状寸法・範囲・程度や状況を所見に記載。大枝やスタブカットなど速やかな剪定等が必要な場合はその旨を記載。機器診断を行わずに不健全判定となった場合は判定理由を必ず記載。問題や異常がありながら所見や判定理由が記載されていないカルテは成果品として認められない。', 'tokyo'],
+  ['t/R率・腐朽空洞率（p.57）', /t\/R|空洞率/, 't/R率＝各測定方向の半径に対して残っている健全材の厚さの割合（ti/Ri）。腐朽空洞率＝{（Ａ＋Ｂ）÷（ａ＋ｂ）}²。R, t, a, b は樹皮部の長さを含まない。根株診断では t 及び R は測定線分に沿った補正値を用いる。t/R率0.3未満又は腐朽空洞率50%以上の場合は所見に腐朽具合等を詳しく記載。長径が短径の1.5倍以上の楕円の幹はその旨を所見に記載。未測定部位は点線で記載した上で測定者が状態を判断する。', 'tokyo'],
   ['入り皮', /分岐部|入り皮/, '樹木の分岐部分で、幹と枝あるいは枝と枝の樹皮が互いに圧迫し合っているが、組織は完全につながっておらず、内部に樹皮が残された状態。風や雪などで力が加わると亀裂が入り、枝が裂けたり折れたりすることがある。', 'tokyo'],
   ['ライオンテイル', /分岐部|ライオンテイル/, '先端部分に枝葉が偏ってついている枝。枝が長く荷重が先端にかかるため、強風などで枝折れの危険が高くなる。L/D≧40（L：枝長、D：分枝部の枝径）の場合、折損する危険性が高くなる。', 'tokyo'],
   ['開口空洞', /開口空洞/, '幹や大枝の材が、著しい腐朽等により侵食され、外部に開いた空洞部。', 'tokyo'],
@@ -3405,7 +3447,7 @@ async function ensureBuiltin() {
   for (const [i, bi] of BUILTINS.entries()) {
     const b = types.find(t => t.id === bi.id);
     if (b && b.ver === BUILTIN_VER) continue;
-    const nt = { id: bi.id, name: bi.name, builtin: true, group: bi.kw ? '川崎市' : '東京都', assist: bi.kw ? 'kawasaki' : undefined, ver: BUILTIN_VER, file: bi.kw ? fileKw : file, sheet: bi.sheet, fields: {}, texts: {}, fileVer: Date.now(), created: i };
+    const nt = { id: bi.id, name: bi.name, builtin: true, group: bi.kw ? '川崎市' : '東京都', assist: bi.kw ? 'kawasaki' : 'tokyo', ver: BUILTIN_VER, file: bi.kw ? fileKw : file, sheet: bi.sheet, fields: {}, texts: {}, fileVer: Date.now(), created: i };
     const tpl = await loadTpl(nt);
     nt.fields = bi.preset(detectFields(tpl));
     if (bi.calc) nt.calc = b && b.calc && b.calc.userEdited ? b.calc : bi.calc();
@@ -3419,7 +3461,7 @@ async function saveType(ty) { ty.updated = Date.now(); await DB.put('types', ty)
 /* =========================================================
    木（1本分の記録）と値
    ========================================================= */
-const BUILTIN_VER = '9';
+const BUILTIN_VER = '10';
 const settingsLists = () => { try { return localStorage.getItem('jk_lists') !== '0'; } catch (e) { return true; } };
 const CHK = 1000; // 3段階の□で「☑（前回必要）」を表す値のずらし幅
 const boxGlyph = (orig, sel, i) => sel.has(i) ? tick(orig, true) : sel.has(i + CHK) ? '☑' : tick(orig, false);
@@ -3840,6 +3882,7 @@ function renderKTools() {
       b('全消し', false, async () => { if (!await ask('手書きの書き込みを全部消しますか？（入力した文字やチェックは消えません）')) return; cur.ink = {}; touch(); kPages.forEach(paintInk); }));
     else {
       if (curType.assist === 'kawasaki') t.append(b('💡 判定の候補', false, openAssist));
+      if (tkIs(curType)) t.append(b('📘 マニュアルのチェック', false, openTkCheck));
       if (curType.calc && curType.calc.kind === 'regi') t.append(b('📏 t/R・空洞率', false, openRegi, 'hl'));
       t.append(b('🛠 カルテを調整', false, () => setMode(false, true)));
     }
@@ -3885,7 +3928,7 @@ function openEditor(key) {
   else if (spec.k === 'date') inp = h('input', { type: 'date', class: 'inp' });
   else inp = h('input', { class: 'inp', inputmode: spec.k === 'num' ? 'decimal' : null, list: 'edList', enterkeyhint: 'done', autocomplete: 'off' });
   inp.value = v ?? ''; inp.id = 'edInput';
-  const set = () => { if (key.includes('#b')) { cur.v[key] = inp.value; } else { setV(cur, curType, key, inp.value); regiCellChanged(cur, curType, key); } touch(); refreshView(); };
+  const set = () => { if (key.includes('#b')) { cur.v[key] = inp.value; } else { setV(cur, curType, key, inp.value); regiCellChanged(cur, curType, key); tkCellChanged(cur, curType, key); } touch(); refreshView(); };
   inp.addEventListener('input', set);
   if (inp.tagName === 'INPUT') inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); closeEditor(); } });
   body.append(inp);
@@ -5612,7 +5655,9 @@ function regiCalc(inp) {
   inp.dirs.forEach((d, i) => {
     const b = num(d.b) || 0, t = num(d.t), Dx = D[axis(i)];
     const R = Dx == null ? null : Dx / 2 - b;
-    out.dirs.push({ b, t, R, snd: !!d.snd, tr: t != null && R > 0 ? Math.round(t / R * 1000) / 1000 : null, dl: num(d.dl), rExpr: Dx == null ? '' : `${f1(Dx)}/2${b ? '−' + f1(b) : ''}` });
+    // 芯まで健全：キリの届かない中心側（未測定部）も測定者が健全と判断した → t を中心まで（t＝R）。マニュアル「未測定部位は…測定者が状態を判断する」
+    const tE = t != null && d.snd && R > 0 ? Math.max(t, R) : t, unm = !!(d.snd && t != null && R > 0 && t < R - .05);
+    out.dirs.push({ b, t: tE, tm: t, unm, R, snd: !!d.snd, tr: tE != null && R > 0 ? Math.round(tE / R * 1000) / 1000 : null, dl: num(d.dl), rExpr: Dx == null ? '' : `${f1(Dx)}/2${b ? '−' + f1(b) : ''}` });
   });
   const ds = out.dirs, all = ds.every(x => x.t != null) && D.every(x => x != null);
   if (all) {
@@ -5644,9 +5689,19 @@ function regiValues(inp, ty) {
   return { v, r };
 }
 function regiApply(t, ty, inp) {
-  const map = ty.calc.map, { v } = regiValues(inp, ty);
+  const map = ty.calc.map, { v, r } = regiValues(inp, ty);
   for (const [k, ref] of Object.entries(map)) if (ref && k in v) setV(t, ty, ref, v[k]);
   t.v._regi = inp;
+  // 所見に自動の注記（前の自動の行は入れ替え。ほかの文はそのまま）
+  const nref = Object.keys(ty.fields || {}).find(k => ty.fields[k].k === 'area' && /^所見$/.test(ty.fields[k].label || ''));
+  if (nref) {
+    const auto = /^・(キリの届かない中心側|断面が楕円)/, cur0 = String(getV(t, ty, nref) || ''), keep = cur0.split('\n').filter(l => !auto.test(l)), add = [];
+    const um = r.dirs.map((d, i) => d.unm ? '①②③④'[i] : '').join('');
+    if (um) add.push(`・キリの届かない中心側（未測定部）は、波形から健全と判断した（${um}：t＝R、t/R＝1.000）`);
+    if (r.D[0] && r.D[1] && Math.max(...r.D) / Math.min(...r.D) >= 1.5) add.push(`・断面が楕円（長径/短径＝${(Math.max(...r.D) / Math.min(...r.D)).toFixed(2)}）のため、健全部の厚みも考慮する必要がある`);
+    const nx = [...keep.filter((l, i) => l !== '' || i < keep.length - 1), ...add].join('\n').replace(/^\n+/, '');
+    if (nx !== cur0) setV(t, ty, nref, nx);
+  }
 }
 
 // 根株：カルテの「俯角」「測定直径」を直接入れたときも、補正直径（測定直径×定数。30°→1.15、40°→1.31）を自動で入れる
@@ -5736,21 +5791,31 @@ function waveBarsFromImage(img, cal, raw = false) { // raw：0cm より手前も
   return segs.filter(sg => sg.b - sg.a >= 2).map(sg => { const { R, G, B } = sg, en = G > R + 60 && G > B + 60 ? 'intact' : R > G + 30 && R > B + 30 && R < 200 && G < 130 ? 'bark' : 'decay', f = (raw ? v => v : v => Math.max(0, v))(q1(Math.min(cm(sg.a), cm(sg.b + 1)))), t = q1(Math.max(cm(sg.a), cm(sg.b + 1)));
     return { c: '#' + hex(R) + hex(G) + hex(B), en, from: f, to: t, text: `From ${f.toFixed(2).replace('.', ',')} cm to ${t.toFixed(2).replace('.', ',')} cm : ${en}` }; }).filter(l => l.to > l.from).sort((a, b) => a.from - b.from);
 }
+// 0cm（幹の表面）を評価の色の帯の始まりに合わせる：樹皮も含めて測る（樹皮の厚さは帯から読む）。0cm を樹皮と材の境目に合わせていたら直す。1回だけ（zf）
+function waveFixZero(p, img) {
+  if (!p.cal || p.cal.zf || !(num(p.cal.v) > 0)) return false;
+  const segs = waveBarsFromImage(img, p.cal, true); let moved = false;
+  if (segs.length) {
+    const c0 = p.cal, dx = (c0.x1 - c0.x0) / num(c0.v), near = Math.min(...segs.map(q => q.from)), far = Math.max(...segs.map(q => q.to)); // cm（今の目盛りで）
+    if (Math.abs(near) > .3 && Math.abs(near) < 5) {
+      const nx0 = c0.x0 + dx * near, farX = c0.x0 + dx * far, nx1 = Math.abs(far - num(c0.v)) < 3 ? farX : c0.x1;
+      p.cal = { ...c0, x0: +nx0.toFixed(5), x1: +nx1.toFixed(5), ds: f1((c0.x0 - nx0) / ((nx1 - nx0) / num(c0.v))), refill: 1 }; moved = true; // 前に 0cm にしていた所（樹皮と材の境目）はデータの開始として残す
+      const ib = waveBarsFromImage(img, p.cal); if (ib.length) p.emf = { ...(p.emf || {}), legend: ib }; // 評価の範囲も合わせ直した目盛りで読み直す
+      p.strokes = (p.strokes || []).filter(s => !s.gen);
+    }
+  }
+  p.cal = { ...p.cal, zf: 1 }; return moved;
+}
 async function waveCropPhoto(p, img) {
   if (!p.cal) return false;
+  if (p.view && p.view.cropped && (p.view.v || 1) >= WAVE_VER) return waveFixZero(p, img);
   if (p.view && p.view.cropped) {
-    if ((p.view.v || 1) >= WAVE_VER) return false;
     // 前の版で切り取った波形：EMF なら元の画像から、目盛りの数字で合わせ直して切り取り直す（手で合わせた目盛りのずれを直す）
     if (p.orig && p.emf && p.emf.axis) {
       try { img = await loadImg(await photoURL(p.orig)); } catch (e) { img = null; }
       if (img) { const a = p.emf.axis; p.cal = { ...p.cal, x0: a.x0, x1: a.x1, y0: 0, y1: 1, v: String(a.v) }; p.view = null; p.id = p.orig; }
     }
-    if (p.view && p.view.cropped && !(p.emf && p.emf.axis)) { // EMF の目盛りの数字がないとき：評価の色の帯の端（0cm＝帯の始まり）で 0cm の位置を直す
-      const segs = waveBarsFromImage(img, p.cal, true); if (segs.length) {
-        const c0 = p.cal, dx = (c0.x1 - c0.x0) / num(c0.v), near = Math.min(...segs.map(q => q.from)), far = Math.max(...segs.map(q => q.to)); // cm（今の目盛りで）
-        if (Math.abs(near) > .3 && Math.abs(near) < 5) { const nx0 = c0.x0 + dx * near; let nx1 = c0.x1; const farX = c0.x0 + dx * far; if (Math.abs(far - num(c0.v)) < 3) nx1 = farX; p.cal = { ...c0, x0: +nx0.toFixed(5), x1: +nx1.toFixed(5) }; }
-      }
-    }
+    if (p.view && p.view.cropped) waveFixZero(p, img);
     if (p.view && p.view.cropped) { const ib = waveBarsFromImage(img, p.cal), lg = (p.emf && p.emf.legend) || []; if (ib.length && (!lg.length || (ib[0].from < .5 && !(lg[0] && lg[0].from < .5)) || ib.length > lg.length)) p.emf = { ...(p.emf || {}), legend: ib }; }
     if (p.view && p.view.cropped) { // 元がないとき：今の画像の左右に余白だけ足す
       const iw = img.naturalWidth, ih = img.naturalHeight, pad = Math.round(iw * .025), c = document.createElement('canvas'); c.width = iw + pad * 2; c.height = ih;
@@ -5760,6 +5825,7 @@ async function waveCropPhoto(p, img) {
       p.strokes = (p.strokes || []).filter(s => !s.gen); composeCache.clear && composeCache.clear(); return true;
     }
   }
+  if (!(p.view && p.view.cropped)) waveFixZero(p, img); // 切り取る前に 0cm を帯の始まりに
   const vw = waveView(img, p.cal, p.emf && p.emf.axis && p.emf.axis.yb); if (!vw) return false;
   const iw = img.naturalWidth, ih = img.naturalHeight, sw = Math.round(vw.w * iw), sh = Math.round(vw.h * ih); if (sw < 20 || sh < 10) return false;
   // 評価の帯を画像からも読む（EMF の凡例に短い帯が入っていないとき、そちらを使う）
@@ -5784,7 +5850,7 @@ async function regiWaveLines(t, ty, inp) {
     const cal = p.cal, dx = (cal.x1 - cal.x0) / num(cal.v), X = dep => cal.x0 + dx * dep, tr = waveTrim(img, cal);
     const y0 = Math.max(.01, Math.min(tr[0], ...(tr.bars || []).map(b => b[0])) - .02), y1 = Math.min(.99, tr[1] + .02), d = r.dirs[i], D = r.D[i % 2];
     const L = [];
-    const add = (role, dep, text) => { if (dep == null || !isFinite(dep)) return; const xx = X(dep); if (xx < 0 || xx > 1) return; L.push({ t: 'line', c: '#E53935', w: role === 'center' ? .004 : .003, x1: +xx.toFixed(4), y1: +y1.toFixed(4), x2: +xx.toFixed(4), y2: +y0.toFixed(4), ...(role === 'center' ? {} : { dash: 1 }), ...(text ? { text, s: .018 } : {}), role, base: 1, gen: 1 }); }; /* 文字は線の上の端に */
+    const add = (role, dep, text) => { if (dep == null || !isFinite(dep)) return; const xx = X(dep); if (xx < 0 || xx > 1) return; L.push({ t: 'line', c: '#E53935', w: role === 'center' ? .004 : .003, x1: +xx.toFixed(4), y1: +y1.toFixed(4), x2: +xx.toFixed(4), y2: +y0.toFixed(4), ...(role === 'center' ? {} : { dash: 1 }), ...(text ? { text, s: .021 } : {}), role, base: 1, gen: 1 }); }; /* 文字は線の上の端に */
     const same = D && d.t != null && Math.abs(d.b + d.t - D / 2) < .3; // 芯まで健全：中心と t が同じ位置なら文字は1つに
     if (D) add('center', D / 2, same ? '中心＝t' : '中心');
     if (d.b > 0) add('b', d.b, '');
@@ -5806,16 +5872,16 @@ async function regiWaveLines(t, ty, inp) {
         for (const l of rg) { const a = X(l.from), b = X(Math.min(l.to, num(cal.v))); L.push({ t: 'line', c: String(l.c || '#888888').toUpperCase(), w: +(hPx / Wi).toFixed(5), x1: +a.toFixed(4), y1: +yc.toFixed(4), x2: +b.toFixed(4), y2: +yc.toFixed(4), base: 1, gen: 1, role: 'lgbar', name: '評価の帯' }); }
         barBottom = bar[0] + hPx / Hi;
       }
-      const fsN = .017, mc = document.createElement('canvas').getContext('2d'), Wi = img.naturalWidth, gap = .008; mc.font = `bold ${fsN * Wi}px ${DFONT}`;
+      const fsN = .021, /* Excel で 10pt 以上（大きくされて重ならないように） */ mc = document.createElement('canvas').getContext('2d'), Wi = img.naturalWidth, gap = .02; mc.font = `bold ${fsN * Wi}px ${DFONT}`;
       let cur0 = X(0); // 0cm の所から深い方へ並べる
       for (const l of rg) {
-        const ja = waveJa(l.name), txt = `${/^[A-Za-z][A-Za-z ]*$/.test(l.name) ? l.name.toLowerCase() : l.name}${ja ? '：' + ja : ''}`, wN = mc.measureText(txt).width / Wi;
+        const ja = waveJa(l.name), txt = `${/^[A-Za-z][A-Za-z ]*$/.test(l.name) ? l.name.toLowerCase() : l.name}${ja ? '：' + ja : ''}`, wN = mc.measureText(txt).width / Wi * 1.15; /* Excel の字（Meiryo UI）は少し広い */
         const mid = (X(l.from) + X(Math.min(l.to, num(cal.v)))) / 2;
         let left = sd < 0 ? Math.min(mid + wN / 2, cur0 - (l === rg[0] ? 0 : gap)) - wN : Math.max(mid - wN / 2, cur0 + (l === rg[0] ? 0 : gap));
         left = Math.max(.004, Math.min(1 - wN - .004, left)); cur0 = sd < 0 ? left : left + wN;
         L.push({ t: 'text', c: '#111111', x: +left.toFixed(4), y: +Math.min(.9, barBottom + .012).toFixed(4), s: fsN, text: txt, base: 1, gen: 1, role: 'lg' });
       }
-      const ly = Math.min(.8, barBottom + .012 + fsN * Wi / img.naturalHeight * 1.6); // 赤い線の文字（中心・t）は、帯の意味の文字の下に
+      const ly = Math.min(.8, barBottom + .012 + fsN * Wi / img.naturalHeight * 2.1); // 赤い線の文字（中心・t）は、帯の意味の文字の下に
       for (const q of L) if (q.t === 'line' && q.role && q.role !== 'lgbar') q.ly = +ly.toFixed(4);
     }
     p.strokes = [...(p.strokes || []).filter(s => !s.gen), ...L];
@@ -5830,7 +5896,7 @@ async function regiLinesChanged(t, ty, p) {
   let nb = lb ? Math.max(0, dep(lb)) : b0;
   const sds = p.strokes.find(q => q.gen && q.role === 'ds' && q.t === 'stamp'), dsv = sds && sds.dep != null ? Math.max(0, (sds.x + sd * TRI_W * sds.s / 2 - p.cal.x0) / dx) : null;
   if (dsv != null && Math.abs(dsv - sds.dep) > .05) nb = dsv; // ◀データの開始＝樹皮と材の境目：動かしたら樹皮の厚さも直す
-  if (Math.abs(nb - b0) > .05) { d.b = f1(nb); ch = true; }
+  if (Math.abs(nb - b0) > .05) { d.b = f1(nb); ch = true; if (p.cal.ds != null) p.cal.ds = d.b; }
   if (lt) { const nt = Math.max(0, dep(lt) - nb); if (Math.abs(nt - (num(d.t) ?? -1)) > .05) { d.t = f1(nt); d.snd = ''; ch = true; } }
   // データの終点の三角：三角の先の位置を深さにする
   for (const [role, sg] of [['de', -1]]) {
@@ -5857,7 +5923,7 @@ function regiFromWaves(inp, waves, onlyEmpty = false) {
     if (onlyEmpty && String(d.t ?? '').trim() !== '') return;
     const rg = waveRanges(waves[i]); if (!rg.length) return;
     const D = r.D[i % 2], center = D ? D / 2 : null;
-    const bark = rg.find(x => isBarkName(x.name) && x.from <= .5) /* 帯の端の読み取りの誤差 */, b = bark ? bark.to : 0;
+    const bark = rg.find(x => isBarkName(x.name) && x.from <= .5) /* 帯の端の読み取りの誤差 */, cw = waves[i] && (waves[i].cal || (waves[i].p && waves[i].p.cal)), b = cw && num(cw.ds) != null ? num(cw.ds) : bark ? bark.to : 0; // データの開始（手で決めた樹皮と材の境目）があればそれ
     const bad = rg.find(x => !isBarkName(x.name) && !isSoundName(x.name) && x.to > b && (center == null || x.from < center));
     // 測れた深さ（その先は未測定）：評価の帯はグラフの端まで引かれることがあるので、波形のデータが終わる所（終点の三角）までにする
     const w = waves[i], cal = w && (w.cal || (w.p && w.p.cal)), tr = w && w.img && cal && num(cal.v) > 0 ? waveTrim(w.img, cal) : null, dxc = cal && num(cal.v) > 0 ? (cal.x1 - cal.x0) / num(cal.v) : 0;
@@ -5929,6 +5995,14 @@ async function regiDiagram(inp, waves = []) {
     const gap = 10, lx = ux > 0 ? cx + EX + 6 : ux < 0 ? cx - EX - 6 - lw : a1x - lw / 2, ly = uy > 0 ? a1y + gap : uy < 0 ? a1y - gap - fsL * 1.15 : cy - 16 - fsL * 1.15;
     objs.push({ t: 'text', c: '#111111', x: N(Math.max(4, Math.min(S - lw - 4, lx))), y: N(ly), s: N(fsL), text: lbl, base: 1, gen: 1 });
   });
+  // 方向指標（道路の方向）：マニュアル「あわせて、道路などの方向指標を記載する」。右上に「車道側」の矢印（あとで動かせる）
+  if (inp.road) {
+    const V = { 上: [0, -1], 右: [1, 0], 下: [0, 1], 左: [-1, 0] }[inp.road]; if (V) {
+      const Cx = S - 120, Cy = 120, L = 48, fsR = 44; x.font = `bold ${fsR}px ${DFONT}`; const lwR = x.measureText('車道側').width;
+      objs.push({ t: 'arrow2', c: '#111111', w: N(5), x1: N(Cx - V[0] * L), y1: N(Cy - V[1] * L), x2: N(Cx + V[0] * L), y2: N(Cy + V[1] * L), base: 1, gen: 1, name: '方向指標' });
+      objs.push({ t: 'text', c: '#111111', x: N(Math.min(S - lwR - 8, Cx - lwR / 2)), y: N(Cy + L + 12), s: N(fsR), text: '車道側', base: 1, gen: 1 });
+    }
+  }
   // 真ん中（未測定、または腐朽空洞の推定）
   const pts = [0, 1, 2, 3].map(p => inner[p]).filter(Boolean);
   const waveMode = waves.some(w => w && w.cal) && inp.fig !== 'bar', anyDl = waveMode || r.dirs.some(d => d.dl); // 波形のときは、赤い点線＝未測定部分
@@ -5961,7 +6035,7 @@ async function regiDiagram(inp, waves = []) {
 async function openRegi() {
   const t = cur, ty = curType; if (!ty.calc) return;
   // 前の版で入れた波形は、先に切り取り直す（EMF の目盛りの数字で合わせ直し、評価の帯を読み直す）
-  if (t.photos.some(p => (p.cal && p.view && p.view.cropped && (p.view.v || 1) < WAVE_VER) || (!p.cal && p.emf && p.emf.axis && waveSlots(ty).includes(p.slot)))) { try { await regiWaves(t, ty); touch(t); } catch (e) { } }
+  if (t.photos.some(p => (p.cal && waveSlots(ty).includes(p.slot) && (!p.cal.zf || (p.view && p.view.cropped && (p.view.v || 1) < WAVE_VER))) || (!p.cal && p.emf && p.emf.axis && waveSlots(ty).includes(p.slot)))) { try { await regiWaves(t, ty); touch(t); } catch (e) { } }
   const inp = clone(t.v._regi || regiDefault());
   const nekabu = !!ty.calc.map.ang;
   const body = $('#rgBody'); body.innerHTML = '';
@@ -5989,6 +6063,9 @@ async function openRegi() {
     const lseg = h('div', { class: 'seg sm' }); // 測定結果の波形の、評価（凡例）の色の帯の太さ
     for (const [v, l] of [[1, '元のまま'], [2, '太く'], [3, 'もっと太く']]) lseg.append(h('button', { type: 'button', class: +(inp.lgW || 1) === v ? 'on' : '', onclick: () => { inp.lgW = v; paintFig(); } }, l));
     figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '測定結果の色の帯：'), lseg, h('span', { class: 'hint' }, '（「カルテに入れる」で波形に反映）')));
+    const rseg = h('div', { class: 'seg sm' }); // 方向指標：車道側がどちらか（図の上下左右）
+    for (const [v, l] of [['', 'なし'], ['上', '↑上'], ['右', '→右'], ['下', '↓下'], ['左', '←左']]) rseg.append(h('button', { type: 'button', class: (inp.road || '') === v ? 'on' : '', onclick: () => { inp.road = v; paintFig(); } }, l));
+    figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '方向指標（車道側）：'), rseg));
     const sseg = h('div', { class: 'seg sm' }); // 幹の外形（扁平な木は楕円）
     for (const [v, l] of [['', '自動'], ['circle', '円'], ['oval', '楕円（直径に合わせる）']]) sseg.append(h('button', { type: 'button', class: (inp.shape || '') === v ? 'on' : '', onclick: () => { inp.shape = v; paintFig(); } }, l));
     figBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '幹の外形：'), sseg, h('span', { class: 'hint' }, '自動＝2つの直径が1割以上違えば楕円')));
@@ -5998,7 +6075,9 @@ async function openRegi() {
     if (wv.some(w => waveRanges(w).length)) {
       const fillBtn = h('button', { type: 'button', class: 'btn', onclick: () => { const n = regiFromWaves(inp, wv); build(); paint(); toast(n ? `波形の評価から${n}方向の樹皮・健全部を入れました` : '入れられる方向がありませんでした（直径を先に入れてください）'); } }, '🌊 波形の評価から樹皮・健全部 t を入れ直す');
       figBox.append(h('div', { class: 'row', style: 'margin-top:6px' }, fillBtn));
-      if (regiFromWaves(inp, wv, true)) { build(); paint(); }
+      const refill = wv.some(w => w && w.p.cal && w.p.cal.refill); // 目盛りを直した波形は、樹皮・t を入れ直す
+      if (regiFromWaves(inp, wv, !refill)) { build(); paint(); if (refill) toast('波形の目盛りに合わせて、樹皮・健全部 t を入れ直しました', 3000); }
+      for (const w of wv) if (w && w.p.cal) delete w.p.cal.refill;
     }
     slots.forEach((slot, i) => {
       if (!slot) return;
@@ -6148,7 +6227,7 @@ function regiExcelCells(t, ty, tpl) {
     put(2, rr, nv(d.b)); put(3, rr, nv(d.t)); put(4, rr, nv(d.dl)); put(7, rr, d.snd ? 1 : '');
     const B = A(2, rr), T = A(3, rr);
     put(5, rr, { f: `IF(${E}="","",${E}/2-N(${B}))` });
-    put(6, rr, { f: `IF(OR(${T}="",${A(5, rr)}=""),"",ROUND(${T}/${A(5, rr)},3))` });
+    put(6, rr, { f: `IF(OR(${T}="",${A(5, rr)}=""),"",ROUND(IF(N(${A(7, rr)})=1,MAX(${T},${A(5, rr)}),${T})/${A(5, rr)},3))` }); // 芯まで健全（1）なら t＝R
   });
   const b = i => A(2, 9 + i), tt = i => A(3, 9 + i);
   const txt = x => `TEXT(${x},"0.0")`, bark = i => `IF(N(${b(i)})=0,"","−"&${txt(b(i))})`;
@@ -6166,7 +6245,7 @@ function regiExcelCells(t, ty, tpl) {
   for (let i = 0; i < 4; i++) {
     const rr = 9 + i, E = i % 2 === 0 ? E1 : E2;
     F['tr' + (i + 1)] = { f: `IF(${A(6, rr)}="","",TEXT(${A(6, rr)},"0.000"))` };
-    F['t' + (i + 1)] = { f: `IF(${tt(i)}="","",${txt(tt(i))})` };
+    F['t' + (i + 1)] = { f: `IF(${tt(i)}="","",${txt(`IF(N(${A(7, rr)})=1,MAX(${tt(i)},${A(5, rr)}),${tt(i)})`)})` };
     F['R' + (i + 1)] = { f: `IF(OR(${tt(i)}="",${E}=""),"",${txt(E)}&"/2"&${bark(i)})` };
   }
   F.rate = { f: `IF(${A(1, 18)}="","",TEXT(${A(1, 18)},"0.0"))` };
@@ -6189,6 +6268,9 @@ async function waveAutoCal(p) {
 async function calibrateWave(p, label) {
   const img = await loadImg(await photoURL(p.id));
   const a = p.emf && p.emf.axis, cal = clone(p.cal || (a ? { x0: a.x0, x1: a.x1, y0: 0, y1: 1, v: String(a.v) } : { x0: .96, x1: .06, y0: 0, y1: 1, v: '' })); // EMF は目盛りの数字の位置から
+  // 赤い線＝データの開始（樹皮と材の境目）。今の目盛りから、その位置に赤い線を出す
+  if (num(cal.v) > 0) { const dx0 = (cal.x1 - cal.x0) / num(cal.v), bk = (waveRanges({ p }).find(q => isBarkName(q.name) && q.from <= .5) || {}).to, ds0 = num(cal.ds) ?? bk ?? 0; cal.x0 = +(cal.x0 + dx0 * ds0).toFixed(5); }
+  delete cal.ds; delete cal.zf;
   const d = $('#dlgCal'), cv = $('#calCv'), x = cv.getContext('2d');
   $('#calTitle').textContent = `${label || '波形'}：目盛りを合わせる`; $('#calV').value = cal.v || '';
   const fit = () => { const W = Math.max(280, cv.parentElement.clientWidth - 4), s = W / img.naturalWidth; /* ダイアログの幅いっぱい */ cv.style.width = W + 'px'; cv.style.height = Math.round(img.naturalHeight * s) + 'px'; cv.width = W * 2; cv.height = Math.round(img.naturalHeight * s) * 2; };
@@ -6196,7 +6278,7 @@ async function calibrateWave(p, label) {
     const W = cv.width, H = cv.height; x.clearRect(0, 0, W, H); x.drawImage(img, 0, 0, W, H);
     x.fillStyle = 'rgba(0,0,0,.35)'; const ya = Math.min(cal.y0, cal.y1) * H, yb = Math.max(cal.y0, cal.y1) * H; x.fillRect(0, 0, W, ya); x.fillRect(0, yb, W, H - yb);
     const V = (xx, c, t) => { x.strokeStyle = c; x.lineWidth = 5; x.beginPath(); x.moveTo(xx * W, 0); x.lineTo(xx * W, H); x.stroke(); x.fillStyle = c; x.font = 'bold 28px sans-serif'; x.textAlign = xx > .5 ? 'right' : 'left'; x.textBaseline = 'top'; x.fillText(t, xx * W + (xx > .5 ? -10 : 10), 10); };
-    V(cal.x0, '#E53935', '0cm'); V(cal.x1, '#1E88E5', ($('#calV').value || '？') + 'cm');
+    V(cal.x0, '#E53935', 'データの開始'); V(cal.x1, '#1E88E5', ($('#calV').value || '？') + 'cm');
     for (const yy of [cal.y0, cal.y1]) { x.setLineDash([12, 8]); x.strokeStyle = '#FB8C00'; x.lineWidth = 4; x.beginPath(); x.moveTo(0, yy * H); x.lineTo(W, yy * H); x.stroke(); x.setLineDash([]); }
   };
   let drag = null;
@@ -6211,7 +6293,16 @@ async function calibrateWave(p, label) {
   $('#calV').oninput = paint;
   return new Promise(res => {
     let saved = false;
-    $('#calOk').onclick = async () => { const v = num($('#calV').value); if (!(v > 0)) { $('#calV').focus(); toast('青い線の目盛りの値（cm）を入れてください'); return; } cal.v = String(v); p.cal = cal; await waveCropPhoto(p, img); touch(); photosChanged(); saved = true; d.close(); };
+    $('#calOk').onclick = async () => {
+      const v = num($('#calV').value); if (!(v > 0)) { $('#calV').focus(); toast('青い線の目盛りの値（cm）を入れてください'); return; }
+      // 赤い線はデータの開始（樹皮と材の境目）。0cm（幹の表面＝樹皮の外側）は、評価の色の帯の始まりから求める。赤い線の位置はそのまま使う（ずらさない）
+      cal.v = String(v); const xr = cal.x0, segs = waveBarsFromImage(img, cal, true), dxr = (cal.x1 - cal.x0) / v, near = segs.length ? Math.min(...segs.map(q => q.from)) : 0;
+      let nc = { ...cal, zf: 1 };
+      if (near < -.3 && near > -10) { const x0 = xr + dxr * near, ds = (xr - x0) / ((cal.x1 - x0) / v); nc = { ...cal, x0: +x0.toFixed(5), ds: f1(ds), zf: 1 }; }
+      p.cal = nc; const ib = waveBarsFromImage(img, nc); if (ib.length) p.emf = { ...(p.emf || {}), legend: ib };
+      p.strokes = (p.strokes || []).filter(s => !s.gen); p.cal.refill = 1; // 樹皮・t を入れ直す
+      await waveCropPhoto(p, img); touch(); photosChanged(); saved = true; d.close();
+    };
     d.onclose = () => res(saved);
     d.showModal(); fit(); paint();
   });
@@ -7631,6 +7722,7 @@ function picRect(tpl, g, iw, ih, fill = false) {
   let x0 = 0, y0 = 0; for (let i = 0; i < g.c1; i++) x0 += tpl.cw(i); for (let i = 0; i < g.r1; i++) y0 += tpl.rh(i);
   let W = 0, H = 0; for (let i = g.c1; i <= g.c2; i++) W += tpl.cw(i); for (let i = g.r1; i <= g.r2; i++) H += tpl.rh(i);
   if (g.parts) { H /= g.parts; y0 += H * (g.part - 1); } // 縦に分けた枠
+  x0 = Math.round(x0); y0 = Math.round(y0); // Excel の図形の位置は整数（EMU）でないと「問題が見つかりました」になる
   const pad = (fill ? 3 : 6) * 9525; W -= pad * 2; H -= pad * 2;
   if (fill) return { x: x0 + pad, y: y0 + pad, w: Math.round(W), h: Math.round(H) }; // 枠いっぱい（縦横の比率は変わる）
   const s = Math.min(W / iw, H / ih); const w = Math.round(iw * s), hh = Math.round(ih * s);
@@ -7853,6 +7945,7 @@ async function exportTrees(ids) {
       await shareOrDownload(new File([blob], base + '.' + ext, { type: blob.type }));
     } catch (e) { console.error(e); say(`「${ty.name}」のExcelを作れませんでした：` + e.message); }
   }
+  tkAfterExport(list); // 東京都の様式：マニュアルの基準で足りない記入があれば知らせる
 }
 
 /* =========================================================
@@ -8138,6 +8231,289 @@ function openAssist() {
     touch(); refreshView(); $('#dlgAssist').close(); toast('外観判定の欄に反映しました（あとから直せます）');
   };
   $('#dlgAssist').showModal();
+}
+
+/* ---------- 東京都「令和3年度 街路樹診断等マニュアル」の基準：判定の候補・自動計算・記入の確認 ----------
+   様式3（街路樹診断カルテ）・様式10/11（レジ）・様式12（フォローアップ）で使う。判定そのものは人が決める（候補と確認だけ）。 */
+const TK_J = ['Ａ', 'Ｂ１', 'Ｂ２', 'Ｃ'], TK_LV = ['健全か健全に近い', '注意すべき被害が見られる', '著しい被害が見られる', '不健全'];
+const tkIs = ty => !!ty && (ty.id === 'gaikan' || ty.id === 'tk_fukyu' || ty.id === 'tk_nekabu' || ty.id === 'tk_follow');
+const tkHas = (ty, ref) => !!(ty.fields && ty.fields[ref] && ty.fields[ref].k !== 'off');
+const tkOpt = (t, ty, ref) => { if (!tkHas(ty, ref)) return -1; const v = getV(t, ty, ref); return Array.isArray(v) && v.length ? v[0] % CHK : -1; }; // 1つ選ぶ欄の番号（未選択は -1）
+const tkOn = (t, ty, ref) => { if (!tkHas(ty, ref)) return false; const v = getV(t, ty, ref); return Array.isArray(v) && v.length > 0; }; // □1つの欄にチェックがあるか
+const tkTxt = (t, ty, ref) => tkHas(ty, ref) ? String(getV(t, ty, ref) ?? '').trim() : '';
+const tkNum = (t, ty, ref) => { const s = tkTxt(t, ty, ref).replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)); return s === '' || isNaN(+s) ? null : +s; };
+const TK_PART = { root: { name: '根元', ratio: 'M', txt: 'Q', j: 'P' }, trunk: { name: '幹', ratio: 'X', txt: 'AB', j: 'Z' }, branch: { name: '骨格となる大枝', ratio: 'AI', txt: 'AM', j: 'AJ' } };
+
+// 活力判定（表Ⅲ-2･1）：樹勢・樹形の活力度から
+function tkVital(t, ty) {
+  const a = tkOpt(t, ty, 'AF7'), b = tkOpt(t, ty, 'AF8'); if (a < 0 || b < 0) return -1;
+  const m = Math.max(a, b) + 1; return m <= 2 ? 0 : m === 3 ? 1 : m === 4 ? 2 : 3;
+}
+// 部位判定（今チェックされている段階）
+const tkPartJ = (t, ty, p) => { for (let i = 3; i >= 0; i--) if (tkOn(t, ty, TK_PART[p].j + (40 + i))) return i; return -1; };
+// 周囲長比率（％）＝被害部幅÷被害部周囲長×100（様式3 の根元・幹。上記3項目のうち最大被害部）
+function tkRatios(t, ty) {
+  const r = (w, c) => { const a = tkNum(t, ty, w), b = tkNum(t, ty, c); return a != null && b > 0 ? Math.round(a / b * 1000) / 10 : null; };
+  return { root: r('M17', 'Q17'), trunk: r('X17', 'AB17') };
+}
+function tkFillRatios(t, ty) {
+  if (ty.id !== 'gaikan') return false; const rs = tkRatios(t, ty); let ch = false;
+  for (const [p, ref] of [['root', 'U17'], ['trunk', 'AF17']]) if (tkHas(ty, ref)) { const v = rs[p] == null ? '' : rs[p].toFixed(1); if (tkTxt(t, ty, ref) !== v && (v !== '' || tkTxt(t, ty, ref) !== '')) { setV(t, ty, ref, v); ch = true; } }
+  return ch;
+}
+// 入力欄を直したとき（被害部幅・周囲長 → 周囲長比率）
+function tkCellChanged(t, ty, ref) { if (ty && ty.id === 'gaikan' && ['M17', 'Q17', 'X17', 'AB17'].includes(ref)) tkFillRatios(t, ty); }
+
+// 腐朽空洞率の参考（表Ⅲ-4･1）：A 10%未満／B1 10〜30%未満／B2 30〜50%未満／C 50%以上
+const tkRateJ = r => r == null ? -1 : r < 10 ? 0 : r < 30 ? 1 : r < 50 ? 2 : 3;
+function tkDevice(t, ty) { // 様式3 の機器診断欄（測定データ1・2）
+  const rows = [52, 53].map(r => ({ part: tkTxt(t, ty, 'L' + r), rate: tkNum(t, ty, 'T' + r), tr: ['AC', 'AG', 'AK', 'AO'].map(c => tkNum(t, ty, c + r)) })).filter(x => x.part || x.rate != null || x.tr.some(v => v != null));
+  const rates = rows.map(x => x.rate).filter(v => v != null), trs = rows.flatMap(x => x.tr).filter(v => v != null);
+  return { rows, rate: rates.length ? Math.max(...rates) : null, trMin: trs.length ? Math.min(...trs) : null };
+}
+// 形状比（表Ⅲ-4･2）：樹高H／幹径D ≧ 50 で折損しやすい。幹径は幹周÷π
+function tkShape(t, ty) { const H = tkNum(t, ty, 'Y4'), C = tkNum(t, ty, 'AF4'); if (!(H > 0 && C > 0)) return null; const D = C / Math.PI; return { hd: Math.round(H * 100 / D * 10) / 10, D: Math.round(D * 10) / 10 }; }
+
+// 機器診断が必要か（表Ⅲ-2･21）の候補。〇が腐朽診断と根株診断の両方にまたがるものは、診断者が被害状況に応じて判断（いずれか一方は必ず実施）
+const TK_EITHER = '腐朽診断または根株診断（被害状況に応じて判断し、いずれか一方は必ず実施）';
+function tkDeviceNeeds(t, ty) {
+  const out = [];
+  for (const [p, P] of Object.entries(TK_PART)) {
+    for (const [row, lab] of [[13, '樹皮枯死・欠損・腐朽'], [14, '芯に達していない開口空洞'], [15, '芯に達した開口空洞']]) if (tkOpt(t, ty, P.ratio + row) === 2)
+      out.push({ p, kind: TK_EITHER, why: `${P.name}の${lab}が周囲長比率1/3以上${row === 15 ? '（被害は進行していない、又は回復傾向でも）' : '（被害が進行している場合）'}` });
+    if (tkOpt(t, ty, P.ratio + 18) === 1) {
+      const s = tkTxt(t, ty, P.txt + 18);
+      if (/コフキ/.test(s)) out.push({ p, kind: '腐朽診断', why: `${P.name}にコフキタケ（被害が進行している場合。コフキタケは腐朽力が強いため必ず機器診断）` });
+      else if (/ベッコウ/.test(s)) out.push({ p, kind: '根株診断', why: `${P.name}にベッコウタケ（被害が進行している場合）` });
+      else out.push({ p, kind: TK_EITHER, why: `${P.name}にキノコ${s ? '（' + s + '）' : ''}：キノコ発生部位の被害が大きい場合` });
+    }
+    if (tkOpt(t, ty, P.ratio + 19) === 1) { const s = tkTxt(t, ty, P.txt + 19); out.push({ p, kind: TK_EITHER, why: `${P.name}の木槌打診${s ? '（' + s + '）' : ''}：異常音が大きい、又は範囲が広い場合` }); }
+  }
+  if (tkOpt(t, ty, 'M24') === 1) { const s = tkTxt(t, ty, 'Q24'); out.push({ p: 'root', kind: '根株診断', why: `鋼棒貫入異常${s ? '（' + s + '）' : ''}：芯に達している場合` }); }
+  return out;
+}
+// 部位診断の判定基準表（被害・程度 → 判定 0:健全か健全に近い 1:注意すべき被害 2:著しい被害 3:不健全、処置）
+const TK_RT = ['root', 'trunk'], TK_BR = ['branch'];
+const TK_T = {
+  // 周囲長比率の表（1/3未満・1/3以上で行が分かれる）。4番目＝その行が当てはまる部位
+  barkU: { no: '表Ⅲ-2･3', name: '樹皮枯死・欠損・腐朽（1/3未満）', rows: [['軽微な被害で処置不要', 0], ['被害は進行していない、又は回復傾向にある', 1, '必要に応じて機器診断'], ['被害が進行している', 2, '必要に応じて機器診断']] },
+  barkO: { no: '表Ⅲ-2･3', name: '樹皮枯死・欠損・腐朽（1/3以上）', rows: [['被害は進行していない、又は回復傾向にある', 1, '必要に応じて機器診断'], ['被害が進行している', 2, '機器診断が必要'], ['幹、根元で周囲長比率1/2以上、かつ被害が進行している', 3, '更新', TK_RT]] },
+  openU: { no: '表Ⅲ-2･4', name: '芯に達していない開口空洞（1/3未満）', rows: [['軽微な被害で処置不要', 0], ['被害は進行していない、又は回復傾向にある', 1, '必要に応じて機器診断'], ['被害が進行している', 2, '必要に応じて機器診断']] },
+  openO: { no: '表Ⅲ-2･4', name: '芯に達していない開口空洞（1/3以上）', rows: [['被害は進行していない、又は回復傾向にある', 1, '必要に応じて機器診断'], ['被害が進行している', 2, '機器診断が必要'], ['幹、根元で周囲長比率1/2以上、かつ被害が進行している', 3, '更新', TK_RT]] },
+  coreU: { no: '表Ⅲ-2･5', name: '芯に達した開口空洞（1/3未満）', rows: [['被害は進行していない、又は回復傾向にある', 1, '必要に応じて機器診断'], ['被害が進行している', 2, '必要に応じて機器診断']] },
+  coreO: { no: '表Ⅲ-2･5', name: '芯に達した開口空洞（1/3以上）', rows: [['被害は進行していない、又は回復傾向にある', 2, '機器診断が必要'], ['大枝で被害が進行している', 2, '必要に応じて剪定・腐朽診断', TK_BR], ['幹、根元で被害が進行している', 3, '更新', TK_RT]] },
+  dead: { no: '表Ⅲ-2･6', name: '枯枝', rows: [['落枝による危険性が低い（「小」の枯枝）', 1, '必要に応じて剪定'], ['落下による危険性が高い（「中・大」の枯枝）、又は剪定後の剪定痕等の経過に注意が必要', 2, '剪定が必要']] },
+  stub: { no: '表Ⅲ-2･7', name: 'スタブカット', rows: [['被害は軽微', 1, '可能な場合は切除を要する'], ['被害は大きく、進行している', 2, '切除を要する']] },
+  fungi: { no: '表Ⅲ-2･9', name: 'キノコ', rows: [['キノコ発生部位の被害は小さい', 0], ['枯枝に発生し、剪定できる', 1, '剪定が必要'], ['キノコ発生部位の被害はあまり進行していないが、今後拡大するおそれがある', 1, '必要に応じて機器診断'], ['キノコ発生部位の被害が大きい', 2, '機器診断が必要'], ['ナラタケ、ナラタケモドキが発生し、被害が進行している', 2, '必要に応じて根株診断'], ['ベッコウタケが発生し、被害が進行している', 2, '根株診断が必要'], ['コフキタケが発生し、被害が進行している', 2, '機器診断が必要'], ['ベッコウタケ、コフキタケ、ナラタケ、ナラタケモドキが発生し、かつ梢端に枯れや衰退が発生している', 3, '更新']] },
+  mallet: { no: '表Ⅲ-2･10', name: '木槌打診（異常音）', rows: [['異常音は小さい、かつ範囲は狭い', 1, '必要に応じて機器診断'], ['異常音は大きい、又は範囲が広い', 2, '機器診断が必要']] },
+  fork: { no: '表Ⅲ-2･11', name: '分岐部・付根の異常', rows: [['亀裂・入り皮は小さい', 1], ['亀裂・入り皮が大きい、かつ腐朽・開口空洞がある', 2, '必要に応じて支柱設置・切除・機器診断']] },
+  disease: { no: '表Ⅲ-2･12', name: '胴枯れなどの病害', rows: [['被害は小さい', 1, '必要に応じて切除、剪定'], ['被害が大きい', 2, '必要に応じて機器診断']] },
+  pest: { no: '表Ⅲ-2･13', name: '虫穴・虫フン、ヤニ', rows: [['被害は小さく特に問題ない', 0], ['被害は限定的', 1], ['被害が広範囲', 2, '必要に応じて機器診断']] },
+  sway: { no: '表Ⅲ-2･14', name: '根元の揺らぎ', rows: [['揺れは小さい', 1, '必要に応じて支柱設置'], ['揺れは中程度以上', 2, '必要に応じて支柱設置等・根株診断'], ['揺れが大きい・支柱などによる対処が不可能', 3, '更新']] },
+  rod: { no: '表Ⅲ-2･15', name: '鋼棒貫入異常', rows: [['芯に達していない', 1, '必要に応じて根株診断'], ['芯に達している', 2, '根株診断が必要']] },
+  girdle: { no: '表Ⅲ-2･16', name: '巻き根', rows: [['問題なく切除できる', 1, '必要に応じて切除'], ['切除できず、幹や根元を締め付けている', 2, '必要に応じて根株診断']] },
+  rootcollar: { no: '表Ⅲ-2･17', name: 'ルートカラー', rows: [['見えない：生育上の問題はない', 0], ['見えない：生育上の問題がある', 1, '必要に応じて支柱設置等・根株診断']] },
+  exposed: { no: '表Ⅲ-2･18', name: '露出根被害', rows: [['軽微な被害', 0], ['支持根ではない・今後被害拡大のおそれがある', 1], ['支持根である・今後被害拡大のおそれがある', 2, '必要に応じて根株診断']] },
+  lean: { no: '表Ⅲ-2･19', name: '不自然な傾斜', rows: [['傾斜は小さい・安定している', 0], ['傾斜が大きい・安定している', 1, '必要に応じて支柱設置'], ['傾斜は小さい・今後傾斜が増すおそれがある', 1, '必要に応じて支柱設置'], ['傾斜が大きい・今後傾斜が増すおそれがある', 2, '必要に応じて支柱設置等・根株診断'], ['根返りのおそれがある・支柱設置はできない', 3, '更新']] },
+  clearB: { no: '表Ⅲ-2･20', name: '建築限界越え（枝）', rows: [['枝が建築限界を越えており、剪定で対処できる', 1, '剪定が必要'], ['枝が建築限界を越えており、剪定すると将来的に活力が悪化する可能性がある', 2, '剪定が必要'], ['枝が建築限界を越えており、剪定すると枯死する可能性がある', 3, '更新']] },
+  clearT: { no: '表Ⅲ-2･20', name: '建築限界越え（幹）', rows: [['幹が建築限界越え', 3, '更新']] },
+};
+// 入力欄と表・部位の対応（「あり」「見えない」のときに表の行を選ぶ）
+const TK_ITEMS = [
+  ...Object.entries(TK_PART).flatMap(([p, P]) => [[13, 'bark'], [14, 'open'], [15, 'core']].map(([row, k]) => ({ ref: P.ratio + row, tb: v => k + (v === 1 ? 'U' : 'O'), p, on: v => v > 0 }))),
+  { ref: 'AL16', tb: 'dead', p: 'branch', on: k => k === 1 },
+  ...Object.entries(TK_PART).flatMap(([p, P]) => [{ ref: P.ratio + 18, tb: 'fungi', p, on: k => k === 1 }, { ref: P.ratio + 19, tb: 'mallet', p, on: k => k === 1 }, { ref: P.ratio + 20, tb: 'fork', p, on: k => k === 1 }]),
+  { ref: 'AL17', tb: 'stub', p: 'branch', on: k => k === 1 },
+  ...Object.entries(TK_PART).flatMap(([p, P]) => [{ ref: P.ratio + 21, tb: 'disease', p, on: k => k === 1 }, { ref: P.ratio + 22, tb: 'pest', p, on: k => k === 1 }]),
+  { ref: 'M23', tb: 'sway', p: 'root', on: k => k === 1 }, { ref: 'M24', tb: 'rod', p: 'root', on: k => k === 1 }, { ref: 'M25', tb: 'girdle', p: 'root', on: k => k === 1 },
+  { ref: 'M26', tb: 'rootcollar', p: 'root', on: k => k === 1 }, { ref: 'M27', tb: 'exposed', p: 'root', on: k => k === 1 }, { ref: 'M28', tb: 'lean', p: 'root', on: k => k === 1 },
+  { ref: 'Z24', tb: 'clearT', p: 'trunk', on: k => k === 1, side: '車道側' }, { ref: 'AK24', tb: 'clearT', p: 'trunk', on: k => k === 1, side: '歩道側' },
+  { ref: 'Z26', tb: 'clearB', p: 'branch', on: k => k === 1, side: '車道側' }, { ref: 'AK26', tb: 'clearB', p: 'branch', on: k => k === 1, side: '歩道側' },
+];
+const tkRowSel = (t, ref) => ((t.v || {})._tkRow || {})[ref];
+// 部位ごとの候補：表のある項目は選んだ行の判定、表のまだない異常の項目は「未判定」として数える
+function tkPartCand(t, ty) {
+  const out = {};
+  for (const p of Object.keys(TK_PART)) out[p] = { lv: 0, items: [], open: 0, acts: new Set() };
+  for (const it of TK_ITEMS) {
+    const k = tkOpt(t, ty, it.ref); if (!it.on(k)) continue;
+    const tb = typeof it.tb === 'function' ? it.tb(k) : it.tb, T0 = TK_T[tb], T = { ...T0, rows: T0.rows.filter(r => !r[3] || r[3].includes(it.p)) }, key = it.ref + ':' + tb, o = out[it.p];
+    const sel = T.rows.length === 1 ? 0 : tkRowSel(t, key), r = sel != null ? T.rows[sel] : null;
+    o.items.push({ it, T, sel, key }); if (!r) { o.open++; continue; } o.lv = Math.max(o.lv, r[1]); if (r[2]) o.acts.add(r[2]);
+  }
+  const tabled = new Set(TK_ITEMS.map(i => i.ref));
+  const others = tkDamages(t, ty, true).filter(d => !tabled.has(d.ref));
+  for (const d of others) out[d.p].other = (out[d.p].other || []).concat(d.lab);
+  return out;
+}
+// 部位診断で「なし」「見える」以外にチェックした項目（所見に詳しく書く：p.45）。raw＝{ ref, p, lab } で返す
+function tkDamages(t, ty, raw = false) {
+  const out = [], push = (ref, p, lab) => out.push({ ref, p, lab: (p ? TK_PART[p].name + '：' : '') + lab });
+  for (const [p, P] of Object.entries(TK_PART)) {
+    for (const [row, lab] of [[13, '樹皮枯死・欠損・腐朽'], [14, '芯に達していない開口空洞'], [15, '芯に達した開口空洞']]) { const k = tkOpt(t, ty, P.ratio + row); if (k > 0) push(P.ratio + row, p, `${lab}（${k === 1 ? '1/3未満' : '1/3以上'}）`); }
+    for (const [row, lab] of [[18, 'キノコ'], [19, '木槌打診（異常音）'], [20, '分岐部・付根の異常'], [21, '胴枯れなどの病害'], [22, '虫穴・虫フン、ヤニ']]) if (tkOpt(t, ty, P.ratio + row) === 1) push(P.ratio + row, p, lab);
+  }
+  for (const [ref, lab, p] of [['M23', '根元の揺らぎ', 'root'], ['M24', '鋼棒貫入異常', 'root'], ['M25', '巻き根', 'root'], ['M27', '露出根被害', 'root'], ['M28', '不自然な傾斜', 'root'], ['AL16', '枯枝', 'branch'], ['AL17', 'スタブカット', 'branch'], ['Z24', '建築限界越え 車道側・幹', 'trunk'], ['Z26', '建築限界越え 車道側・枝', 'branch'], ['AK24', '建築限界越え 歩道側・幹', 'trunk'], ['AK26', '建築限界越え 歩道側・枝', 'branch']]) if (tkOpt(t, ty, ref) === 1) push(ref, p, lab);
+  if (tkOpt(t, ty, 'M26') === 1) push('M26', 'root', 'ルートカラー（見えない）');
+  return raw ? out : out.map(d => d.lab);
+}
+// 同じ木（路線・樹木番号）の様式10・11 から、機器診断欄に入れる値
+function tkDeviceFrom(t, ty) {
+  const site = siteOf(t), no = String(roleVal(t, ty, 'treeNo') || '').trim(); if (!no) return [];
+  return trees.filter(x => x !== t && x.v && x.v._regi && siteOf(x) === site && String(roleVal(x, typeOf(x), 'treeNo') || '').trim() === no).map(x => {
+    const xt = typeOf(x), r = regiCalc(x.v._regi), nek = !!(xt.calc && xt.calc.map && xt.calc.map.ang);
+    return { t: x, part: nek ? '根株' : String(num(tkTxt(x, xt, 'F7')) ?? ''), rate: r.rate, tr: r.dirs.map(d => d.tr), nek };
+  }).sort((a, b) => a.nek - b.nek);
+}
+
+// 記入の確認：{ lv: 'ng'（直す）| 'warn'（確かめる）| 'info'（参考）, msg, src（マニュアルの所）}
+function tkIssues(t, ty) {
+  const I = [], add = (lv, msg, src) => I.push({ lv, msg, src });
+  if (ty.id === 'gaikan') {
+    const vc = tkVital(t, ty), vj = tkOpt(t, ty, 'H11');
+    if (vc < 0) add('ng', '樹勢・樹形の活力度が入っていません', '表Ⅲ-2･2');
+    if (vj < 0) add('ng', '活力判定が入っていません', '表Ⅲ-2･1');
+    else if (vc >= 0 && vj !== vc) add('warn', `活力判定：表Ⅲ-2･1 では「${TK_LV[vc]}」（樹勢・樹形の活力度から）`, '表Ⅲ-2･1');
+    const pj = Object.keys(TK_PART).map(p => tkPartJ(t, ty, p));
+    Object.keys(TK_PART).forEach((p, i) => { if (pj[i] < 0) add('ng', `部位判定（${TK_PART[p].name}）が選ばれていません`, 'p.44'); });
+    const pcI = tkPartCand(t, ty);
+    Object.keys(TK_PART).forEach((p, i) => { const o = pcI[p];
+      if (pj[i] >= 0 && pj[i] < o.lv) add('warn', `部位判定（${TK_PART[p].name}）「${TK_LV[pj[i]]}」：判定基準表で選んだ被害・程度からは少なくとも「${TK_LV[o.lv]}」`, 'p.44・表Ⅲ-2･3〜2･20');
+      if (o.open) add('info', `部位判定（${TK_PART[p].name}）：${o.items.filter(x => x.sel == null).map(x => x.T.name).join('、')}の被害・程度を選ぶと候補が出ます（📘 の部位判定）`, '表Ⅲ-2･3〜2･20'); });
+    const gj = tkOpt(t, ty, 'G46'), cand = Math.max(vj, ...pj);
+    if (gj < 0) add('ng', '外観診断判定が入っていません', 'p.45');
+    else if (vj >= 0 && pj.every(x => x >= 0) && gj !== cand) add('warn', `外観診断判定は活力判定と部位判定の悪い方：候補「${TK_J[cand]}」`, 'p.44');
+    if (vj === 3 && gj >= 0 && gj !== 3) add('ng', '活力判定が不健全のときは、部位診断に問題がなくとも外観診断判定は不健全（Ｃ）', 'p.18');
+    const dm = tkDamages(t, ty);
+    if (dm.length && !tkTxt(t, ty, 'G29')) add('ng', `部位診断の所見が空です（被害の形状寸法・範囲・程度などを書く）：${dm.join('、')}`, 'p.45');
+    if (gj > 0 && !tkTxt(t, ty, 'F48')) add('ng', '外観診断の判定理由が空です（問題や異常がありながら判定理由がないカルテは成果品として認められない）', 'p.45・p.65');
+    const rs = tkRatios(t, ty);
+    for (const [p, key] of [['root', 'M'], ['trunk', 'X']]) {
+      const r = rs[p]; if (r == null) continue; const ks = [13, 14, 15].map(row => tkOpt(t, ty, key + row));
+      if (r >= 100 / 3 && !ks.includes(2)) add('warn', `${TK_PART[p].name}の周囲長比率 ${r}% は1/3以上ですが、1/3以上にチェックがありません`, '表Ⅲ-2･3〜2･5');
+      if (r < 100 / 3 && ks.includes(2)) add('warn', `${TK_PART[p].name}の周囲長比率 ${r}% は1/3未満ですが、1/3以上にチェックがあります`, '表Ⅲ-2･3〜2･5');
+      if (r >= 50) add('warn', `${TK_PART[p].name}の周囲長比率 ${r}% は1/2以上：被害が進行している場合は不健全とし、所見に明確な理由を書く`, '表Ⅲ-2･3〜2･5');
+    }
+    const need = tkDeviceNeeds(t, ty), dFlag = Object.values(TK_PART).some(P => tkOn(t, ty, P.j + 45));
+    for (const n of need) add('info', `機器診断の検討：${n.why} → ${n.kind}`, '表Ⅲ-2･21');
+    if (dFlag && !tkTxt(t, ty, 'G29')) add('ng', '機器診断が必要と判定したときは、所見欄に必ず判定根拠となった被害状況を書く', 'p.43');
+    if (gj === 2 && !dFlag && !tkDevice(t, ty).rows.length) add('warn', '外観診断判定Ｂ２のほとんどの街路樹は機器診断が必要（Ｃでも状況に応じて）', 'p.15');
+    const dv = tkDevice(t, ty), sj = tkOpt(t, ty, 'G60');
+    if (dv.rate != null) { const rj = tkRateJ(dv.rate); add('info', `腐朽空洞率 ${dv.rate}%：表Ⅲ-4･1 の参考基準値では「${TK_J[rj]}」（10%未満Ａ／10〜30%Ｂ１／30〜50%Ｂ２／50%以上Ｃ）`, '表Ⅲ-4･1'); }
+    if (dv.trMin != null && dv.trMin < .3) add('warn', `t/R 率 ${dv.trMin} が0.3未満：折損の危険性が高い場合があるため注意（樹幹傾斜があれば健全なあて材が十分残っているかなども考慮）`, '表Ⅲ-4･2');
+    const sh = tkShape(t, ty); if (sh && sh.hd >= 50) add('warn', `形状比 樹高/幹径 ＝ ${sh.hd}（幹径 約${sh.D}cm）が50以上：細長い樹形の幹は途中で折損する可能性が高い。ただし立地環境（風を受けやすいか）や樹齢（若木は幹が柔軟で折れにくい）も考慮して判断する`, '表Ⅲ-4･2');
+    if (sj < 0 && gj >= 0) add('ng', '総合判定が入っていません（機器診断をしない木は外観診断判定と同じにする）', 'p.45・p.65');
+    else if (sj >= 0 && !dFlag && !dv.rows.length && gj >= 0 && sj !== gj) add('warn', `機器診断をしない木は、外観診断判定をもって総合判定とする（外観診断判定「${TK_J[gj]}」）`, 'p.45');
+    if (sj > 0 && !tkTxt(t, ty, 'F62')) add('ng', '総合判定の判定理由が空です（根拠を明記する）', 'p.65');
+    if (tkOpt(t, ty, 'BD3') < 0) add('ng', '処置の欄が空です（原則、全ての樹木について記入する）', 'p.45');
+    // 次回診断（表Ⅲ-4･3）
+    const nx = { fu: tkOn(t, ty, 'BD62'), dev: tkOn(t, ty, 'BL62'), gk: tkOn(t, ty, 'CC62') }, yr = tkOpt(t, ty, 'BD63'), fy = String((t.v || {})['BD63#b0'] || '').trim();
+    if (sj === 0 && !nx.gk) add('info', '総合判定Ａ：次回は外観診断（5〜10年後、外観診断の実施サイクルに従う）', '表Ⅲ-4･3');
+    if (sj === 1 && !(nx.fu || nx.dev || nx.gk)) add('ng', '総合判定Ｂ１：次回診断項目の必要箇所にチェックを入れる（外観診断 5〜10年後）', 'p.67');
+    if (sj === 2) { if (!nx.fu) add('ng', '総合判定Ｂ２：次回診断の「フォローアップ診断」にチェックを入れる', 'p.67'); if (yr < 0) add('ng', '総合判定Ｂ２：次回フォローアップ診断時期（1〜3年後）を選ぶ', 'p.67'); if (!fy) add('ng', '総合判定Ｂ２：診断年度を書く', 'p.67'); }
+    if (sj === 3 && !tkOn(t, ty, 'AX8')) add('warn', '総合判定Ｃ：更新（撤去・植替え）を行う', '表Ⅲ-4･3・表Ⅳ-1･1');
+    // 写真・位置
+    for (const [ph, cap] of [['AW37', 'AW54'], ['BK37', 'BK54'], ['BY37', 'BY54']]) if ((t.photos || []).some(p => p.slot === ph) && !tkTxt(t, ty, cap)) add('ng', `写真（${ph === 'AW37' ? '①' : ph === 'BK37' ? '②' : '③'}）に説明がありません（貼付した写真には必ず説明を書く）`, 'p.47');
+    if (!tkTxt(t, ty, 'BI64') || !tkTxt(t, ty, 'BZ64')) add('warn', '位置座標（緯度・経度、世界測地系）が入っていません', 'p.47');
+    if (tkOpt(t, ty, 'Z26') === 1 || tkOpt(t, ty, 'AK26') === 1) add('info', '枝が道路境界（建築限界）を越えている：剪定が必要。診断概要図に望ましい剪定位置を記入する', 'p.47');
+  }
+  if (ty.id === 'tk_fukyu' || ty.id === 'tk_nekabu') {
+    const inp = t.v && t.v._regi;
+    if (!tkTxt(t, ty, 'F7')) add('ng', '測定高さが入っていません', 'p.56');
+    if (!tkTxt(t, ty, 'Z7')) add('warn', '機種名が入っていません', 'p.56');
+    if (ty.id === 'tk_nekabu') { const a = inp && num(inp.ang); if (!a) add('ng', '俯角が入っていません（原則40度、石や土に当たる場合は30度）', 'p.61'); else if (a !== 40 && a !== 30) add('warn', `俯角 ${a}°：原則40度、根株の範囲から外れると想定される場合は30度`, 'p.61'); }
+    if (inp) {
+      const r = regiCalc(inp), low = r.dirs.map((d, i) => d.tr != null && d.tr < .3 ? '①②③④'[i] : '').join(''), note = String(tkTxt(t, ty, 'B34')).split('\n').filter(l => l && !/^・(キリの届かない中心側|断面が楕円)/.test(l)).join('');
+      if ((low || (r.rate != null && r.rate >= 50)) && !note) add('ng', `${low ? `t/R 0.3未満（${low}）` : ''}${low && r.rate >= 50 ? '・' : ''}${r.rate >= 50 ? '腐朽空洞率50%以上' : ''}：所見に腐朽具合等を詳しく書く`, 'p.58');
+      if (r.rate != null && r.rate >= 50) add('info', '腐朽空洞率50%以上で、波形の健全材と腐朽空洞部の境が不明瞭な場合は、判読の基準や根拠を簡潔に書く', 'p.58');
+      if (!inp.road) add('warn', '想定断面図に道路などの方向指標がありません（t/R の入力画面の「方向指標」で入れられます）', 'p.57');
+    } else add('ng', 't/R 率・腐朽空洞率が入っていません（📏 t/R・空洞率）', 'p.57');
+    const ph = new Set((t.photos || []).map(p => p.slot));
+    if (!['B9', 'B10'].some(s => ph.has(s))) add('ng', '想定断面図がありません', 'p.57');
+    if (!['X9', 'AG9', 'X18', 'AG18'].some(s => ph.has(s))) add('warn', '測定位置写真がありません', 'p.57');
+    if (![1, 2, 3, 4].some(i => ph.has(`B38#${i}/4`))) add('ng', '測定結果（波形グラフ）がありません', 'p.58');
+  }
+  if (ty.id === 'tk_follow') {
+    const sj = tkOpt(t, ty, 'G46'), fu = tkOn(t, ty, 'K59'), yr = tkOpt(t, ty, 'K60'), fy = String((t.v || {})['K60#b0'] || '').trim();
+    if (sj < 0) add('ng', '今回の総合判定が入っていません', 'p.65');
+    if (sj === 2) { if (!fu) add('ng', '総合判定Ｂ２：次回診断の「フォローアップ診断」にチェックを入れる', 'p.67'); if (yr < 0) add('ng', '総合判定Ｂ２：次回フォローアップ診断時期（1〜3年後）を選ぶ', 'p.67'); if (!fy) add('ng', '総合判定Ｂ２：診断年度を書く', 'p.67'); }
+    if (sj === 1 && !(fu || tkOn(t, ty, 'S59') || tkOn(t, ty, 'AH59'))) add('ng', '総合判定Ｂ１：次回診断項目の必要箇所にチェックを入れる', 'p.67');
+    if (sj === 3 && !tkOn(t, ty, 'E56')) add('warn', '総合判定Ｃ：更新（撤去・植替え）を行う', '表Ⅲ-4･3');
+  }
+  return I;
+}
+
+/* ---------- 画面：📘 マニュアルのチェック ---------- */
+function openTkCheck() {
+  const t = cur, ty = curType, b = $('#tkBody'); b.innerHTML = '';
+  const setOne = (ref, i) => { if (tkHas(ty, ref)) setV(t, ty, ref, i < 0 ? [] : [i]); };
+  const done = msg => { touch(); refreshView(true); toast(msg); openTkCheck(); };
+  const row = (title, body, btn) => b.append(h('div', { class: 'tkrow' }, h('div', {}, h('b', {}, title), h('div', { class: 'hint' }, body)), btn || ''));
+  const B = (l, f) => h('button', { type: 'button', class: 'btn' }, l); // 後で onclick
+  if (ty.id === 'gaikan') {
+    b.append(h('h3', {}, '判定の候補'));
+    const vc = tkVital(t, ty);
+    { const x = B(vc >= 0 ? `「${TK_LV[vc]}」にする` : '—'); x.disabled = vc < 0; x.onclick = () => { setOne('H11', vc); done('活力判定に入れました'); };
+      row('活力判定（表Ⅲ-2･1）', vc >= 0 ? `樹勢・樹形の活力度：どちらも1か2→健全か健全に近い／3がある→注意すべき被害／4がある→著しい被害／5がある→不健全。今の入力では「${TK_LV[vc]}」。` : '樹勢・樹形の活力度を入れると候補が出ます。', x); }
+    // 部位判定：判定基準表の「被害・程度」の行を選ぶ → 各部位の最も悪い判定
+    const pc = tkPartCand(t, ty);
+    for (const [p, P] of Object.entries(TK_PART)) {
+      const o = pc[p], box = h('div', { class: 'tkitems' });
+      for (const { it, T, sel, key } of o.items) {
+        const sl = h('select', { class: 'inp' }, h('option', { value: '' }, '（被害・程度を選ぶ）'), ...T.rows.map((r, i) => h('option', { value: i, selected: sel === i ? '' : null }, `${r[0]} → ${TK_LV[r[1]]}${r[2] ? '（' + r[2] + '）' : ''}`)));
+        sl.onchange = () => { t.v._tkRow = t.v._tkRow || {}; if (sl.value === '') delete t.v._tkRow[key]; else t.v._tkRow[key] = +sl.value; touch(); openTkCheck(); };
+        if (T.rows.length === 1) sl.disabled = true;
+        box.append(h('div', { class: 'tkitem' }, h('span', {}, `${T.name}${it.side ? '（' + it.side + '）' : ''}`, h('span', { class: 'hint' }, ` ${T.no}`)), sl));
+      }
+      if (o.other && o.other.length) box.append(h('div', { class: 'hint' }, `判定基準表をまだ入れていない項目：${o.other.join('、')}（判定は手で）`));
+      const ready = !o.open && !(o.other && o.other.length), lv = o.lv;
+      const x = B(o.items.length || (o.other && o.other.length) ? (ready ? `「${TK_LV[lv]}」にする` : `少なくとも「${TK_LV[lv]}」`) : `「${TK_LV[0]}」にする`);
+      x.onclick = () => {
+        for (let i = 0; i < 4; i++) { const r = P.j + (40 + i); if (tkHas(ty, r)) setV(t, ty, r, i === lv ? [0] : []); }
+        if ([...o.acts].some(a => /剪定が必要|^切除を要する/.test(a)) && tkHas(ty, P.j + 44)) setV(t, ty, P.j + 44, [0]);
+        if ([...o.acts].some(a => /診断が必要/.test(a)) && tkHas(ty, P.j + 45)) setV(t, ty, P.j + 45, [0]);
+        done(`部位判定（${P.name}）に入れました${ready ? '' : '（まだ選んでいない項目があります）'}`);
+      };
+      const acts = [...o.acts]; row(`部位判定（${P.name}）`, (o.items.length || (o.other && o.other.length) ? '各診断項目の最も悪い判定を採用（p.44）。' : '異常の入力がありません。') + (acts.length ? `処置：${acts.join('／')}` : ''), x);
+      if (o.items.length || (o.other && o.other.length)) b.append(box);
+    }
+    const pj = Object.keys(TK_PART).map(p => tkPartJ(t, ty, p)), vj = tkOpt(t, ty, 'H11'), cand = vj >= 0 && pj.every(x => x >= 0) ? Math.max(vj, ...pj) : -1;
+    { const x = B(cand >= 0 ? `「${TK_J[cand]}」にする` : '—'); x.disabled = cand < 0; x.onclick = () => { setOne('G46', cand); done('外観診断判定に入れました'); };
+      row('外観診断判定（p.44）', cand >= 0 ? `活力判定「${TK_LV[vj]}」と部位判定（根元「${TK_LV[pj[0]]}」・幹「${TK_LV[pj[1]]}」・大枝「${TK_LV[pj[2]]}」）の悪い方 → 「${TK_J[cand]}」` : '活力判定と、根元・幹・大枝の部位判定を入れると候補が出ます（部位判定は各診断項目の最も悪い判定）。', x); }
+    const gj = tkOpt(t, ty, 'G46'), dv = tkDevice(t, ty), rj = tkRateJ(dv.rate), dFlag = Object.values(TK_PART).some(P => tkOn(t, ty, P.j + 45));
+    const sc = gj < 0 ? -1 : (dv.rate != null ? Math.max(gj, rj) : gj);
+    { const x = B(sc >= 0 ? `「${TK_J[sc]}」にする` : '—'); x.disabled = sc < 0; x.onclick = () => { setOne('G60', sc); if (!tkTxt(t, ty, 'F62') && !dFlag && dv.rate == null) setV(t, ty, 'F62', tkTxt(t, ty, 'F48')); done('総合判定に入れました（最後は総合的に判断して直してください）'); };
+      row('総合判定（表Ⅲ-4･1）', gj < 0 ? '外観診断判定を入れると候補が出ます。' : dv.rate == null ? `機器診断をしない木は、外観診断判定をもって総合判定とする → 「${TK_J[gj]}」（判定理由も同じ内容）。` : `外観診断判定「${TK_J[gj]}」と腐朽空洞率 ${dv.rate}%（参考基準値「${TK_J[rj]}」）。参考として悪い方「${TK_J[sc]}」。t/R 率・形状比・根系・立地環境も考慮して総合的に判断する（表Ⅲ-4･2）。`, x); }
+    { const sh = tkShape(t, ty), dv2 = tkDevice(t, ty);
+      row('総合判定で考慮するその他の要素（表Ⅲ-4･2）', `樹木の形状比：樹高/幹径≧50（${sh ? '今の入力で ' + sh.hd : '樹高と幹周を入れると計算'}）・枝長/枝径≧40、立地環境や樹齢も考慮／樹冠の形状：枝下高が高い、樹冠が大きく枝葉が密、枝葉が偏っている／根系：根の切断や腐朽、伸長不良、植栽基盤の状況や工事履歴／t/R 率：0.3未満は折損の危険性（${dv2.trMin != null ? '最小 ' + dv2.trMin : '機器診断なし'}）、樹幹傾斜があれば健全なあて材が十分残っているか、長径が短径の1.5倍以上の楕円は健全部の厚みも考慮／立地環境：植栽基盤・風環境・根の損傷・日照条件、電線共同溝工事等で根の損傷の可能性。`); }
+    const sj = tkOpt(t, ty, 'G60');
+    { const x = B('次回診断に入れる'); x.disabled = sj < 0 || sj === 3; x.onclick = () => {
+        const on = (ref, v) => { if (tkHas(ty, ref)) setV(t, ty, ref, v ? [0] : []); };
+        on('CC62', sj <= 1); on('BD62', sj === 2); if (sj === 2 && dFlag) on('BL62', true);
+        done(sj === 2 ? '次回診断に入れました。フォローアップ診断の時期（1〜3年後）と年度は、被害状況に応じて選んでください' : '次回診断に入れました'); };
+      row('次回診断（表Ⅲ-4･3）', 'Ａ・Ｂ１：外観診断（5〜10年後）／Ｂ２：再診断＝フォローアップ診断・必要に応じて機器診断（1〜3年後。※5年以上フォローアップ診断を継続した場合は外観診断。著しい樹勢衰退・穿孔虫害・50%に近い空洞率なら1年後、30%程度で他に大きな被害がなく活力旺盛なら3年後）と診断年度／Ｃ：更新（撤去・植替え）。', x); }
+    b.append(h('h3', {}, '自動で入れる'));
+    const rs = tkRatios(t, ty);
+    { const x = B('周囲長比率を入れる'); x.onclick = () => { tkFillRatios(t, ty); done('周囲長比率を入れました'); };
+      row('周囲長比率（被害部幅÷被害部周囲長）', `根元 ${rs.root == null ? '—' : rs.root + '%'}・幹 ${rs.trunk == null ? '—' : rs.trunk + '%'}（被害部幅・周囲長を入れると自動で入ります）。1/3＝33.3%、1/2＝50%。`, x); }
+    const src = tkDeviceFrom(t, ty);
+    { const x = B(src.length ? `様式10・11 の${src.length}件から入れる` : '—'); x.disabled = !src.length; x.onclick = () => {
+        src.slice(0, 2).forEach((s, k) => { const r = 52 + k; setV(t, ty, 'L' + r, s.part); setV(t, ty, 'T' + r, s.rate == null ? '' : s.rate.toFixed(1)); ['AC', 'AG', 'AK', 'AO'].forEach((c, i) => setV(t, ty, c + r, s.tr[i] == null ? '' : s.tr[i].toFixed(3))); });
+        done('機器診断欄に入れました'); };
+      row('機器診断欄（測定データ1・2）', src.length ? `同じ路線・樹木番号の様式10・11：${src.map(s => `${s.nek ? '根株' : 'G.L.' + s.part + 'm'} 空洞率${s.rate == null ? '—' : s.rate.toFixed(1) + '%'}`).join('／')}` : '同じ路線・樹木番号の様式10・11 のカルテがありません（樹木番号をそろえると入れられます）。', x); }
+  }
+  b.append(h('h3', {}, '確認（マニュアルの基準）'));
+  const is = tkIssues(t, ty);
+  if (!is.length) b.append(h('p', {}, '✅ 気になる所はありません'));
+  const IC = { ng: '❗', warn: '⚠️', info: 'ℹ️' };
+  b.append(h('ul', { class: 'tklist' }, ...is.map(x => h('li', { class: 'tk-' + x.lv }, `${IC[x.lv]} ${x.msg}`, h('span', { class: 'hint' }, `（${x.src}）`)))));
+  b.append(h('p', { class: 'hint' }, '出典：東京都建設局「令和3年度 街路樹診断等マニュアル」第Ⅲ章。判定は候補です。最後は診断者が総合的に判断してください。'));
+  const d = $('#dlgTk'); if (!d.open) d.showModal();
+}
+// Excel に出したあと：確認が要る所があれば知らせる
+function tkAfterExport(list) {
+  let n = 0; for (const t of list) { const ty = typeOf(t); if (tkIs(ty)) n += tkIssues(t, ty).filter(x => x.lv === 'ng').length; }
+  if (n) setTimeout(() => toast(`マニュアルの基準で、記入が足りない所が${n}件あります（📘 マニュアルのチェック）`, 5000), 1800);
 }
 
 </script>
