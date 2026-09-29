@@ -5612,7 +5612,9 @@ function regiCalc(inp) {
   inp.dirs.forEach((d, i) => {
     const b = num(d.b) || 0, t = num(d.t), Dx = D[axis(i)];
     const R = Dx == null ? null : Dx / 2 - b;
-    out.dirs.push({ b, t, R, snd: !!d.snd, tr: t != null && R > 0 ? Math.round(t / R * 1000) / 1000 : null, dl: num(d.dl), rExpr: Dx == null ? '' : `${f1(Dx)}/2${b ? '−' + f1(b) : ''}` });
+    // 芯まで健全：キリの届かない中心側（未測定部）も測定者が健全と判断した → t を中心まで（t＝R）。マニュアル「未測定部位は…測定者が状態を判断する」
+    const tE = t != null && d.snd && R > 0 ? Math.max(t, R) : t, unm = !!(d.snd && t != null && R > 0 && t < R - .05);
+    out.dirs.push({ b, t: tE, tm: t, unm, R, snd: !!d.snd, tr: tE != null && R > 0 ? Math.round(tE / R * 1000) / 1000 : null, dl: num(d.dl), rExpr: Dx == null ? '' : `${f1(Dx)}/2${b ? '−' + f1(b) : ''}` });
   });
   const ds = out.dirs, all = ds.every(x => x.t != null) && D.every(x => x != null);
   if (all) {
@@ -5644,9 +5646,19 @@ function regiValues(inp, ty) {
   return { v, r };
 }
 function regiApply(t, ty, inp) {
-  const map = ty.calc.map, { v } = regiValues(inp, ty);
+  const map = ty.calc.map, { v, r } = regiValues(inp, ty);
   for (const [k, ref] of Object.entries(map)) if (ref && k in v) setV(t, ty, ref, v[k]);
   t.v._regi = inp;
+  // 所見に自動の注記（前の自動の行は入れ替え。ほかの文はそのまま）
+  const nref = Object.keys(ty.fields || {}).find(k => ty.fields[k].k === 'area' && /^所見$/.test(ty.fields[k].label || ''));
+  if (nref) {
+    const auto = /^・(キリの届かない中心側|断面が楕円)/, cur0 = String(getV(t, ty, nref) || ''), keep = cur0.split('\n').filter(l => !auto.test(l)), add = [];
+    const um = r.dirs.map((d, i) => d.unm ? '①②③④'[i] : '').join('');
+    if (um) add.push(`・キリの届かない中心側（未測定部）は、波形から健全と判断した（${um}：t＝R、t/R＝1.000）`);
+    if (r.D[0] && r.D[1] && Math.max(...r.D) / Math.min(...r.D) >= 1.5) add.push(`・断面が楕円（長径/短径＝${(Math.max(...r.D) / Math.min(...r.D)).toFixed(2)}）のため、健全部の厚みも考慮する必要がある`);
+    const nx = [...keep.filter((l, i) => l !== '' || i < keep.length - 1), ...add].join('\n').replace(/^\n+/, '');
+    if (nx !== cur0) setV(t, ty, nref, nx);
+  }
 }
 
 // 根株：カルテの「俯角」「測定直径」を直接入れたときも、補正直径（測定直径×定数。30°→1.15、40°→1.31）を自動で入れる
@@ -6161,7 +6173,7 @@ function regiExcelCells(t, ty, tpl) {
     put(2, rr, nv(d.b)); put(3, rr, nv(d.t)); put(4, rr, nv(d.dl)); put(7, rr, d.snd ? 1 : '');
     const B = A(2, rr), T = A(3, rr);
     put(5, rr, { f: `IF(${E}="","",${E}/2-N(${B}))` });
-    put(6, rr, { f: `IF(OR(${T}="",${A(5, rr)}=""),"",ROUND(${T}/${A(5, rr)},3))` });
+    put(6, rr, { f: `IF(OR(${T}="",${A(5, rr)}=""),"",ROUND(IF(N(${A(7, rr)})=1,MAX(${T},${A(5, rr)}),${T})/${A(5, rr)},3))` }); // 芯まで健全（1）なら t＝R
   });
   const b = i => A(2, 9 + i), tt = i => A(3, 9 + i);
   const txt = x => `TEXT(${x},"0.0")`, bark = i => `IF(N(${b(i)})=0,"","−"&${txt(b(i))})`;
@@ -6179,7 +6191,7 @@ function regiExcelCells(t, ty, tpl) {
   for (let i = 0; i < 4; i++) {
     const rr = 9 + i, E = i % 2 === 0 ? E1 : E2;
     F['tr' + (i + 1)] = { f: `IF(${A(6, rr)}="","",TEXT(${A(6, rr)},"0.000"))` };
-    F['t' + (i + 1)] = { f: `IF(${tt(i)}="","",${txt(tt(i))})` };
+    F['t' + (i + 1)] = { f: `IF(${tt(i)}="","",${txt(`IF(N(${A(7, rr)})=1,MAX(${tt(i)},${A(5, rr)}),${tt(i)})`)})` };
     F['R' + (i + 1)] = { f: `IF(OR(${tt(i)}="",${E}=""),"",${txt(E)}&"/2"&${bark(i)})` };
   }
   F.rate = { f: `IF(${A(1, 18)}="","",TEXT(${A(1, 18)},"0.0"))` };
