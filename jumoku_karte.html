@@ -4186,7 +4186,7 @@ const COLORS = ['#E53935', '#FB8C00', '#FDD835', '#43A047', '#1E88E5', '#FFFFFF'
 const TOOLS = [['move', '✋ 選ぶ'], ['callout', '💬 コメント'], ['arrow2', '➜ 矢印'], ['ellipse', '○'], ['rect', '□'], ['hatch', '▨ 異音'], ['st_reji', 'R レジ位置'], ['line', '／ 線'], ['num', '① 番号'], ['text', '文字'], ['pen', '✏️ ペン（手書き）'], ['marker', '🖍 マーカー'], ['plan', '📐 平面図']];
 // 平面図用：タップで置ける記号と、直線・寸法線
 const PLAN_TOOLS = [['line', '／ 直線'], ['dim', '↔ 寸法'], ['crown', '◌ 樹冠線'], ['st_tree', '🌳 樹木'], ['st_pole', '● 電柱'], ['st_north', '⬆ 方位'], ['rect', '▭ 建物'], ['text', '文字']];
-const STAMP_NAMES = { tree: '樹木', pole: '電柱', north: '方位', reji: 'レジ位置' };
+const STAMP_NAMES = { tree: '樹木', pole: '電柱', north: '方位', reji: 'レジ位置', tri: '三角の印' };
 // コメントの見た目（東京都マニュアルの例：枠なしの文字＋先が矢印の引き出し線）。最後に選んだものを覚える
 function cstyle() { try { const v = JSON.parse(localStorage.getItem('jk_cst') || 'null'); if (v) return v; } catch (e) { } return { nb: 1, ah: 1 }; }
 const DFONT = "'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',sans-serif";
@@ -4395,6 +4395,9 @@ function drawStrokes(x, strokes, W, H) {
         x.beginPath(); x.arc(cx, cy, Math.max(2, R * .14), 0, Math.PI * 2); x.fillStyle = s.c; x.fill();
       } else if (s.k === 'pole') {
         x.beginPath(); x.arc(cx, cy, R * .35, 0, Math.PI * 2); x.fillStyle = s.c; x.fill();
+      } else if (s.k === 'tri') { // データの開始◀・終点▶（カルテの凡例と同じ黒い三角）
+        const w = R * 1.2, hh = R * 1.6, d = s.dir || 1;
+        x.beginPath(); x.moveTo(cx + d * w / 2, cy); x.lineTo(cx - d * w / 2, cy - hh / 2); x.lineTo(cx - d * w / 2, cy + hh / 2); x.closePath(); x.fillStyle = s.c; x.fill();
       } else if (s.k === 'reji') { // レジストグラフの測定位置：R と矢印（枠ありは高さの文字ごと囲む）
         if (s.fr) { const fs = Math.max(10, R * .75), f = rejiFrame(x, s, R, fs, cx, cy); x.fillStyle = '#fff'; x.fillRect(f.a, f.b, f.c - f.a, f.d - f.b); x.lineWidth = Math.max(2, fs * .08); x.strokeStyle = s.c === '#FFFFFF' ? '#111' : s.c; x.strokeRect(f.a, f.b, f.c - f.a, f.d - f.b); }
         x.translate(cx, cy); x.rotate(s.r || 0);
@@ -4442,7 +4445,8 @@ function lineLabelPos(s, W, H) {
   const fs = (s.s || .03) * W;
   if (s.t === 'dim') return { x: (s.x1 + s.x2) / 2 * W, y: (s.y1 + s.y2) / 2 * H - fs * .35, align: 'center' };
   const r = s.x2 >= s.x1 ? [s.x2, s.y2] : [s.x1, s.y1]; // 右の端の上
-  return { x: r[0] * W - (s.x1 === s.x2 ? fs * .25 : 0), y: Math.max(r[1] * H - fs * .3, fs * (s.x1 === s.x2 ? 2 : 1.05)), align: 'right' }; // 上の端が絵の外に出るときは内側に
+  const vert = s.x1 === s.x2, lft = vert && r[0] * W < fs * (String(s.text || '').length + 1); // 縦の線が左の端に近いときは、文字を線の右に
+  return { x: r[0] * W + (vert ? (lft ? 1 : -1) * fs * .25 : 0), y: Math.max(r[1] * H - fs * .3, fs * (vert ? 2 : 1.05)), align: lft ? 'left' : 'right' }; // 上の端が絵の外に出るときは内側に
 }
 function stampLabelPos(s, W, H) { const R = s.s * W, fs = Math.max(10, R * .75); if (s.k === 'reji') return { x: s.x * W - R * .7, y: s.y * H + (s.fr ? String(s.text || '').split('\n').length * fs * .6 - fs * .1 : fs * .4), align: 'right', fs }; return s.k === 'pole' ? { x: s.x * W + R * .55, y: s.y * H + fs * .45, align: 'left', fs } : { x: s.x * W, y: s.y * H + R + fs * 1.15, align: 'center', fs }; }
 /* 当たり判定・外枠（キャンバスの画素で） */
@@ -4636,9 +4640,9 @@ function paintTools() {
   }
   if (dr.sel != null) {
     const s = dr.strokes[dr.sel];
-    sb.append(h('span', { class: 'lbl' }, ({ arrow2: '矢印', callout: 'コメント', num: '番号', text: '文字', ellipse: '○', rect: '□', pen: 'ペン', marker: 'マーカー', line: '線', dim: '寸法線', hatch: '異音の範囲', blob: '未測定部分（青い点をドラッグで形を直せます）' }[s.t] || STAMP_NAMES[s.k] || '') + 'を選択中：'));
+    sb.append(h('span', { class: 'lbl' }, ({ arrow2: '矢印', callout: 'コメント', num: '番号', text: '文字', ellipse: '○', rect: '□', pen: 'ペン', marker: 'マーカー', line: '線', dim: '寸法線', hatch: '異音の範囲', blob: '未測定部分（青い点をドラッグで形を直せます）' }[s.t] || (s.t === 'stamp' && s.name ? s.name + '（左右にドラッグで位置を直せます）' : STAMP_NAMES[s.k]) || '') + 'を選択中：'));
     if (s.t === 'hatch') sb.append(B('✏️ 異音の程度・高さ', false, async () => { await askHatch(s); redraw(); paintTools(); }));
-    if (['callout', 'text', 'line', 'dim', 'stamp'].includes(s.t)) sb.append(B(s.text ? '✏️ 文字を直す' : '✏️ 文字を入れる', false, async () => { const isR = s.t === 'stamp' && s.k === 'reji', t = await askText(isR ? '測定の高さ（m。数字だけでOK）' : '文字', s.text || '', s.t === 'callout'); if (t != null) { s.text = isR ? rejiHeight(t) : t; if (s.t !== 'callout' && s.t !== 'text' && !s.s) s.s = .03; redraw(); paintTools(); } }));
+    if (['callout', 'text', 'line', 'dim', 'stamp'].includes(s.t) && s.k !== 'tri') sb.append(B(s.text ? '✏️ 文字を直す' : '✏️ 文字を入れる', false, async () => { const isR = s.t === 'stamp' && s.k === 'reji', t = await askText(isR ? '測定の高さ（m。数字だけでOK）' : '文字', s.text || '', s.t === 'callout'); if (t != null) { s.text = isR ? rejiHeight(t) : t; if (s.t !== 'callout' && s.t !== 'text' && !s.s) s.s = .03; redraw(); paintTools(); } }));
     if (s.t === 'stamp' && s.k === 'reji') sb.append(h('span', { class: 'seg2' }, B('枠あり', !!s.fr, () => { s.fr = 1; s.nb = 1; delete s.lb; setRejiBox(true); redraw(); paintTools(); }), B('枠なし', !s.fr, () => { delete s.fr; s.nb = 1; delete s.lb; setRejiBox(false); redraw(); paintTools(); })));
     if (s.t === 'text') sb.append(h('span', { class: 'seg2' }, B('枠なし', !s.box, () => { delete s.box; redraw(); paintTools(); }), B('枠あり', !!s.box, () => { s.box = 1; redraw(); paintTools(); })));
     if (s.t === 'callout') sb.append(h('span', { class: 'seg2' }, B('枠あり', !s.nb, () => { delete s.nb; redraw(); paintTools(); }), B('枠なし', !!s.nb, () => { s.nb = 1; redraw(); paintTools(); })),
@@ -5009,9 +5013,13 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
       if (s.bot) parts.push(label(nm + ' 下端', s.bot, lft ? x1 - fs * .3 : x2 + fs * .3, y2 + fs * .45, fs, s.c, lft ? 'right' : 'left'));
       kids.push(parts.length > 1 ? group(nm, parts) : parts[0]);
     } else if (s.t === 'stamp') {
-      const cx = s.x * W, cy = s.y * H, R = s.s * W, lw = Math.max(2, R * .12), nm = nmOf(STAMP_NAMES[s.k] || '記号'), parts = [];
+      const cx = s.x * W, cy = s.y * H, R = s.s * W, lw = Math.max(2, R * .12), nm = nmOf(s.name || STAMP_NAMES[s.k] || '記号'), parts = [];
       if (s.k === 'tree') { parts.push(ellipse(nm + ' 円', cx, cy, R, ln(lw, s.c), null)); parts.push(ellipse(nm + ' 中心', cx, cy, Math.max(2, R * .14), '<a:ln><a:noFill/></a:ln>', fill(s.c))); }
       else if (s.k === 'pole') parts.push(ellipse(nm + ' 印', cx, cy, R * .35, '<a:ln><a:noFill/></a:ln>', fill(s.c)));
+      else if (s.k === 'tri') { // 三角（Excel の二等辺三角形を90度回す：凡例と同じ形）
+        const w = R * 1.2, hh = R * 1.6, a = X(cx - hh / 2), b = Y(cy - w / 2);
+        parts.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm)}<xdr:spPr>${xf(a, b, L(hh), L(w), { rot: (s.dir || 1) > 0 ? 5400000 : 16200000 })}<a:prstGeom prst="triangle"><a:avLst/></a:prstGeom>${fill(s.c)}<a:ln><a:noFill/></a:ln></xdr:spPr></xdr:sp>`, box: box(X(cx - w / 2), Y(cy - hh / 2), X(cx + w / 2), Y(cy + hh / 2)) });
+      }
       else if (s.k === 'reji') {
         const R = Math.max(s.s * W, minPx / .7); // 小さい写真枠でも「R」が最小の文字の大きさより小さくならないように
         if (s.fr) { const F = Math.max(Math.max(10, s.s * W * .75), minPx), f = rejiFrame(mc, s, R, F, cx, cy, 1.2), a = X(f.a), b = Y(f.b); parts.push({ xml: `<xdr:sp macro="" textlink="">${nv('Sp', nm + ' 枠')}<xdr:spPr>${xf(a, b, L(f.c - f.a), L(f.d - f.b))}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${fill('#FFFFFF')}${ln(Math.max(2, F * .08), s.c === '#FFFFFF' ? '#111111' : s.c)}</xdr:spPr></xdr:sp>`, box: box(a, b, a + L(f.c - f.a), b + L(f.d - f.b)) }); }
@@ -5702,6 +5710,7 @@ async function waveCropPhoto(p, img) {
   return true;
 }
 // 波形の上の赤い縦線：幹の中心（実線）と、評価の切り替わり（樹皮の終わり・健全部の終わり t・腐朽部の終わり：点線）。ドラッグで直すと t も直る
+const TRI_W = 1.2; // 三角の印の幅（大きさ s に対して）。高さは 1.6
 async function regiWaveLines(t, ty, inp) {
   const r = regiCalc(inp), slots = waveSlots(ty);
   for (let i = 0; i < 4; i++) {
@@ -5716,6 +5725,12 @@ async function regiWaveLines(t, ty, inp) {
     if (d.b > 0) add('b', d.b, '');
     if (d.t != null) add('t', d.b + d.t, same ? '' : 't');
     if (d.t != null && d.dl) add('e', d.b + d.t + d.dl, '');
+    // データの開始（◀）と終点（▶）の印：カルテの凡例と同じ黒い三角。波形の内側に置き、三角の辺をその深さに合わせる。ドラッグで直せる
+    const sd = dx < 0 ? -1 : 1, Rn = .011, wN = TRI_W * Rn, ym = (tr[0] + tr[1]) / 2;
+    const autoEnd = tr.end != null ? Math.max(0, (tr.end - cal.x0) / dx) : num(cal.v);
+    const ds = num(cal.ds) ?? 0, de = num(cal.de) ?? autoEnd;
+    const tri = (role, dep, dir, name) => { if (dep == null || !isFinite(dep)) return; const xx = X(dep) + (role === 'ds' ? 1 : -1) * sd * wN / 2; L.push({ t: 'stamp', k: 'tri', c: '#000000', x: +Math.min(1 - wN / 2, Math.max(wN / 2, xx)).toFixed(4), y: +ym.toFixed(4), s: Rn, dir, r: 0, base: 1, gen: 1, role, dep: +(+dep).toFixed(2), name }); };
+    tri('ds', ds, -1, 'データの開始'); tri('de', de, 1, 'データの終点');
     p.strokes = [...(p.strokes || []).filter(s => !s.gen), ...L];
   }
   touch(t); photosChanged();
@@ -5727,10 +5742,17 @@ async function regiLinesChanged(t, ty, p) {
   let ch = false; const b0 = num(d.b) || 0, lb = get('b'), lt = get('t');
   const nb = lb ? Math.max(0, dep(lb)) : b0; if (lb && Math.abs(nb - b0) > .05) { d.b = f1(nb); ch = true; }
   if (lt) { const nt = Math.max(0, dep(lt) - nb); if (Math.abs(nt - (num(d.t) ?? -1)) > .05) { d.t = f1(nt); d.snd = ''; ch = true; } }
-  if (!ch) return;
-  regiApply(t, ty, inp); touch(t); refreshView(true);
-  await regiSetDiagram(t, ty, inp); await regiWaveLines(t, ty, inp);
-  const rr = regiCalc(inp).dirs[i]; toast(`波形の線から直しました：${'①②③④'[i]} 樹皮 ${d.b}cm・健全部 t ${d.t}cm${rr.tr != null ? '・t/R ' + rr.tr.toFixed(3) : ''}`, 3500);
+  // データの開始・終点の三角：三角の辺（波形の側）の位置を深さにする
+  const sd = dx < 0 ? -1 : 1, mch = [];
+  for (const [role, sg] of [['ds', -1], ['de', 1]]) {
+    const s = p.strokes.find(q => q.gen && q.role === role && q.t === 'stamp'); if (!s || s.dep == null) continue;
+    const v = Math.max(0, (s.x + sg * sd * TRI_W * s.s / 2 - p.cal.x0) / dx); if (Math.abs(v - s.dep) > .05) { p.cal[role] = f1(v); mch.push(role); }
+  }
+  if (!ch && !mch.length) return;
+  if (ch) { regiApply(t, ty, inp); refreshView(true); }
+  touch(t); await regiSetDiagram(t, ty, inp); await regiWaveLines(t, ty, inp);
+  const rr = regiCalc(inp).dirs[i];
+  toast(ch ? `波形の線から直しました：${'①②③④'[i]} 樹皮 ${d.b}cm・健全部 t ${d.t}cm${rr.tr != null ? '・t/R ' + rr.tr.toFixed(3) : ''}` : `${'①②③④'[i]} ${mch.map(r => r === 'ds' ? `データの開始 ${p.cal.ds}cm` : `データの終点 ${p.cal.de}cm（断面図の未測定部分も合わせました）`).join('・')}`, 3500);
 }
 // 評価（Assessment）の範囲（cm）：EMF の凡例「From 0,00 cm to 2,00 cm : bark」から
 function waveRanges(w) {
@@ -5774,8 +5796,9 @@ async function regiDiagram(inp, waves = []) {
     if (wv) { // 波形の画像を、目盛りを合わせて十字に置く（0cm＝幹の表面、中心に向かって深くなる）
       const { img, cal } = wv, iw = img.naturalWidth, ih = img.naturalHeight;
       const pxcm = Math.abs(cal.x1 - cal.x0) * iw / num(cal.v), s = k / pxcm, maxcm = (r.D[i % 2] || Dm) / 2;
-      const trim0 = waveTrim(img, cal), Lfull = cal.x1 < cal.x0 ? cal.x0 * iw : (1 - cal.x0) * iw, Lpx = Math.min(maxcm * pxcm, Lfull);
-      measured = trim0.end != null ? Math.abs(trim0.end - cal.x0) * iw / pxcm : Lfull / pxcm; // 波形のデータが終わる所＝ドリルが届いた深さ
+      const trim0 = waveTrim(img, cal), Lfull = cal.x1 < cal.x0 ? cal.x0 * iw : (1 - cal.x0) * iw;
+      measured = num(cal.de) != null ? num(cal.de) : trim0.end != null ? Math.abs(trim0.end - cal.x0) * iw / pxcm : Lfull / pxcm; // 波形のデータが終わる所＝ドリルが届いた深さ（終点の三角で直せる）
+      const Lpx = Math.max(1, Math.min(maxcm * pxcm, Lfull, num(cal.de) != null ? measured * pxcm : Infinity)); // 終点を直したら、その先の波形は描かない
       const [ty0, ty1] = trim0, sy = ty0 * ih, shh = Math.max(4, (ty1 - ty0) * ih); // 上下の空きを詰める
       let hh = shh * s * vf; if (hh > RP * .5) hh = RP * .5; // 振幅の向きは強調してよい（標準2倍）
       const [ex, ey] = [cx + ux * Rr, cy + uy * Rr];
