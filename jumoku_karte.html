@@ -3585,10 +3585,12 @@ async function renderKarte() {
         if (b.du) add(b.du, X(q.c1), Y(q.r2 + 1), X(q.c2 + 1), Y(q.r1));
       }
     }
+    const decayC = regiDecayColor(cur, curType), lgRows = ty.calc && ty.calc.kind === 'regi' ? regiLegendRows(tpl) : new Set();
     for (const ln of tpl.lines) if (inPg(ln.c1, ln.r1)) {
       let x1 = X(ln.c1) + ln.x1 / 9525, y1 = Y(ln.r1) + ln.y1 / 9525, x2 = X(ln.c2) + ln.x2 / 9525, y2 = Y(ln.r2) + ln.y2 / 9525;
       if (ln.tri) { tplTris.push({ ...ln, x1, y1, x2, y2 }); continue; }
       if (ln.flipV) [y1, y2] = [y2, y1]; if (ln.flipH) [x1, x2] = [x2, x1];
+      if (lgRows.has(ln.r1) && !ln.head && !ln.tail) { tplLns.push({ ...ln, x1, y1, x2, y2, color: decayC || ln.color, lgd: ln.color || '#000000' }); continue; } // 凡例の腐朽の線は波形の腐朽の色（t/R を入れ直したら refreshView で塗り直す）
       if (ln.head || ln.tail || ln.color) { tplLns.push({ ...ln, x1, y1, x2, y2 }); continue; } // 矢印つきの線（測定直径の ↕ ↔ など）はテンプレートの形のまま
       add('connector', x1, y1, x2, y2);
     }
@@ -3597,7 +3599,7 @@ async function renderKarte() {
     for (const l of tplLns) {
       const c = l.color || '#000', w = Math.max(.8, l.w || .75), dx = l.x2 - l.x1, dy = l.y2 - l.y1, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, al = Math.min(5, L * .35), aw = al * .45;
       const tip = (x, y, s) => { const bx = x - s * ux * al, by = y - s * uy * al; return `<path d="M${x.toFixed(2)},${y.toFixed(2)}L${(bx - uy * aw).toFixed(2)},${(by + ux * aw).toFixed(2)}L${(bx + uy * aw).toFixed(2)},${(by - ux * aw).toFixed(2)}Z" fill="${c}"/>`; };
-      path += `<path d="M${l.x1.toFixed(2)},${l.y1.toFixed(2)}L${l.x2.toFixed(2)},${l.y2.toFixed(2)}" stroke="${c}" stroke-width="${w}" fill="none"/>` + (l.head ? tip(l.x1, l.y1, -1) : '') + (l.tail ? tip(l.x2, l.y2, 1) : '');
+      path += `<path d="M${l.x1.toFixed(2)},${l.y1.toFixed(2)}L${l.x2.toFixed(2)},${l.y2.toFixed(2)}"${l.lgd ? ` data-lgd="${l.lgd}"` : ''} stroke="${c}" stroke-width="${w}" fill="none"/>` + (l.head ? tip(l.x1, l.y1, -1) : '') + (l.tail ? tip(l.x2, l.y2, 1) : '');
     }
     // テンプレートの三角（凡例の ▶◀ など）：頂点が上の三角を、左右・上下の反転と回転をつけて
     for (const q of tplTris) {
@@ -3736,6 +3738,7 @@ function paintCtl(cc) {
 function refreshView(photos) {
   if (viewMode === 'form') { if (photos) renderFormPhotos(); refreshForm(); return; }
   for (const c of kCells) { if (c.photo) { if (photos) paintPhoto(c); } else if (c.ctl) paintCtl(c); else paintCell(c); }
+  if (photos) { const dc = regiDecayColor(cur, curType); for (const p of document.querySelectorAll('#karte path[data-lgd]')) p.setAttribute('stroke', dc || p.dataset.lgd); } // 凡例の腐朽の線
 }
 function fitKarte() {
   const root = $('#karte'); if (!kPages.length) return;
@@ -5926,6 +5929,13 @@ function waveRanges(w) {
   for (const l of (w && w.p && w.p.emf && w.p.emf.legend) || []) { if (l.from != null && l.to != null) { out.push({ from: l.from, to: l.to, name: l.en, c: l.c }); continue; } const m = /From\s*([\d.,]+)\s*cm\s*to\s*([\d.,]+)\s*cm/i.exec(l.text || ''); if (m) out.push({ from: +m[1].replace(',', '.'), to: +m[2].replace(',', '.'), name: l.en, c: l.c }); }
   return out.sort((a, b) => a.from - b.from);
 }
+// カルテの凡例の「腐朽（空洞）部」の線の色：波形の評価の腐朽（decay）と同じ色に（様式では黒）
+function regiDecayColor(t, ty) {
+  if (!t || !ty || !ty.calc || ty.calc.kind !== 'regi') return null;
+  for (const slot of waveSlots(ty)) { const p = slot && (t.photos || []).find(q => q.slot === slot); for (const l of (p && p.emf && p.emf.legend) || []) if (l.c && !isBarkName(l.en) && !isSoundName(l.en)) return String(l.c).toUpperCase(); }
+  return null;
+}
+const regiLegendRows = tpl => new Set([...tpl.cells.values()].filter(c => /腐朽（空洞）部/.test(String(c.val || ''))).map(c => c.r)); // 凡例の行（0始まり）
 const isBarkName = n => /bark|樹皮/i.test(n || ''), isSoundName = n => /intact|sound|healthy|健全/i.test(n || '');
 // 波形の評価から、樹皮・健全部 t・腐朽部を入れる（芯＝直径の半分より中心側は、反対の向きの測定に任せる）
 function regiFromWaves(inp, waves, onlyEmpty = false) {
@@ -7925,6 +7935,8 @@ async function buildWorkbook(ty, list, fileName = '') {
       const rootTag = () => (/<xdr:wsDr\b[^>]*>/.exec(dx) || [''])[0];
       if (!/xmlns:r=/.test(rootTag())) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"');
       if (!/xmlns:a=/.test(rootTag())) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"');
+      { const dcC = regiDecayColor(t, ty); if (dcC) { const rows = regiLegendRows(tpl); // 凡例の「腐朽（空洞）部」の線を波形の腐朽の色に
+        dx = dx.replace(/<xdr:twoCellAnchor\b[\s\S]*?<\/xdr:twoCellAnchor>/g, a => { const m = /<xdr:from><xdr:col>\d+<\/xdr:col><xdr:colOff>-?\d+<\/xdr:colOff><xdr:row>(\d+)<\/xdr:row>/.exec(a); if (!m || !rows.has(+m[1]) || !/prst="line"/.test(a) || /<a:(?:head|tail)End[^>]*type="(?!none)/.test(a)) return a; return a.replace(/(<a:ln\b[^>]*>\s*<a:solidFill>)[\s\S]*?(<\/a:solidFill>)/, `$1<a:srgbClr val="${dcC.slice(1)}"/>$2`); }); } }
       // 自動でつくった図（想定断面図）を入れた枠では、様式にもともとある図形（円・十字など）を外す
       // 枠の外から枠にかかる図形（様式の「車道側」など）は、図の後ろに隠れないよう前面へ。図に方向指標があれば、様式の車道側・歩道側は外す（重なるので）
       let front = '';
