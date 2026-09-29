@@ -5635,11 +5635,12 @@ async function regiDiagram(inp, waves = []) {
     const p = regiPos(inp, i), [ux, uy] = U[p], Rr = (r.D[i % 2] || Dm) / 2 * k; // その向きの半径（画素）
     const at = dist => [cx + ux * (Rr - dist * k), cy + uy * (Rr - dist * k)];
     const bar = (from, len, fill) => { const [ax, ay] = at(from), [bx, by] = at(from + len), w = 26; const x0 = Math.min(ax, bx) - (ux ? 0 : w / 2), y0 = Math.min(ay, by) - (uy ? 0 : w / 2), ww = ux ? Math.abs(bx - ax) : w, hh = uy ? Math.abs(by - ay) : w; x.fillStyle = fill; x.fillRect(x0, y0, ww, hh); x.lineWidth = 2; x.strokeStyle = '#111'; x.strokeRect(x0, y0, ww, hh); };
+    let measured = null; // 波形の向き：ドリルで測った深さ（cm）。これより先（中心側）が未測定
     const wv = inp.fig !== 'bar' && waves[i] && waves[i].cal && num(waves[i].cal.v) > 0 ? waves[i] : null;
     if (wv) { // 波形の画像を、目盛りを合わせて十字に置く（0cm＝幹の表面、中心に向かって深くなる）
       const { img, cal } = wv, iw = img.naturalWidth, ih = img.naturalHeight;
       const pxcm = Math.abs(cal.x1 - cal.x0) * iw / num(cal.v), s = k / pxcm, maxcm = (r.D[i % 2] || Dm) / 2;
-      const Lpx = Math.min(maxcm * pxcm, cal.x1 < cal.x0 ? cal.x0 * iw : (1 - cal.x0) * iw);
+      const Lfull = cal.x1 < cal.x0 ? cal.x0 * iw : (1 - cal.x0) * iw, Lpx = Math.min(maxcm * pxcm, Lfull); measured = Lfull / pxcm;
       const [ty0, ty1] = waveTrim(img, cal), sy = ty0 * ih, shh = Math.max(4, (ty1 - ty0) * ih); // 上下の空きを詰める
       let hh = shh * s; if (hh > RP * .24) hh = RP * .24; // 振幅の向きは縮めても良い
       const [ex, ey] = [cx + ux * Rr, cy + uy * Rr];
@@ -5657,7 +5658,7 @@ async function regiDiagram(inp, waves = []) {
       if (d.t != null) bar(d.b, d.t, '#fff');
       if (d.t != null && d.dl) bar(d.b + d.t, d.dl, '#111');
     }
-    const depth = d.t == null ? null : d.b + d.t + (d.dl || 0);
+    const depth = measured != null ? measured : d.t == null ? null : d.b + d.t + (d.dl || 0);
     inner[p] = depth == null ? null : at(Math.min(depth, (r.D[i % 2] || Dm) / 2));
     // 番号・方角と、貫入の向きの矢印
     const [ox, oy] = [cx + ux * (RP + 95), cy + uy * (RP + 95)];
@@ -5670,8 +5671,9 @@ async function regiDiagram(inp, waves = []) {
   });
   // 真ん中（未測定、または腐朽空洞の推定）
   const pts = [0, 1, 2, 3].map(p => inner[p]).filter(Boolean);
-  const anyDl = r.dirs.some(d => d.dl);
-  if (pts.length >= 3) {
+  const waveMode = waves.some(w => w && w.cal) && inp.fig !== 'bar', anyDl = waveMode || r.dirs.some(d => d.dl); // 波形のときは、赤い点線＝未測定部分
+  const hasArea = pts.length >= 3 && Math.max(...pts.map(q => Math.hypot(q[0] - cx, q[1] - cy))) > 8; // 芯（中心）まで測れていれば、囲む所はない
+  if (hasArea) {
     x.beginPath();
     const n = pts.length, mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     x.moveTo(...mid(pts[n - 1], pts[0]));
@@ -5679,8 +5681,8 @@ async function regiDiagram(inp, waves = []) {
     x.closePath(); x.fillStyle = waves.some(w => w && w.cal) && inp.fig !== 'bar' ? 'rgba(160,160,160,.35)' : '#d0d0d0'; x.fill(); x.setLineDash([4, 9]); x.lineCap = 'round'; x.lineWidth = 8; x.strokeStyle = '#e57373'; x.stroke(); x.setLineDash([]);
   }
   // 凡例
-  x.fillStyle = '#d0d0d0'; x.fillRect(820, S - 90, 60, 36); x.setLineDash([3, 7]); x.lineWidth = 6; x.strokeStyle = '#e57373'; x.strokeRect(820, S - 90, 60, 36); x.setLineDash([]);
-  x.font = `bold 34px ${F}`; x.fillStyle = '#111'; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText(anyDl ? '未測定部分' : '腐朽（空洞）部', 895, S - 72);
+  x.font = `bold 34px ${F}`; x.fillStyle = '#111'; x.textAlign = 'left'; x.textBaseline = 'middle';
+  if (hasArea) { x.fillStyle = '#d0d0d0'; x.fillRect(820, S - 90, 60, 36); x.setLineDash([3, 7]); x.lineWidth = 6; x.strokeStyle = '#e57373'; x.strokeRect(820, S - 90, 60, 36); x.setLineDash([]); x.fillStyle = '#111'; x.fillText(anyDl ? '未測定部分' : '腐朽（空洞）部', 895, S - 72); }
   const lg = waves.some(w => w && w.cal) && inp.fig !== 'bar' ? waveLegend(waves) : [];
   if (lg.length) { // 評価（Assessment）の色の意味（英語＋日本語）を左上に
     let fs = 28; x.font = `bold ${fs}px ${F}`; const txt = l => `${l.en}${l.ja ? '（' + l.ja + '）' : ''}`, wmax = Math.max(...lg.map(l => x.measureText(txt(l)).width));
