@@ -215,6 +215,17 @@ dialog h2{margin:0 0 10px;font-size:17px;color:var(--leaf)}
 .tkitem{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:4px 0;flex-wrap:wrap}
 .tkitem select{max-width:100%;flex:1 1 320px}
 
+/* 同じ木のカルテ（様式の切り替え） */
+.sibs{display:flex;gap:6px;padding:6px 12px 0;flex-wrap:wrap;align-items:center}
+.sibs .lab{font-size:12px;color:var(--mut, #667)}
+.sibs button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 12px;font-size:13px;min-height:32px;color:inherit}
+.sibs button.on{background:#E8F5E9;border-color:var(--leaf);font-weight:600}
+.sibs button.add{border-style:dashed;color:var(--leaf)}
+.sibrows{display:flex;flex-direction:column;gap:8px}
+.sibrow{display:flex;align-items:center;gap:8px;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.sibrow .nm{font-weight:600}
+.sibrow .st{font-size:12px;color:var(--mut, #667)}
+
 /* ---- 型・調整・フォーム ---- */
 #karte.design .kc[data-k]{outline:1.5px dashed rgba(30,136,229,.75);outline-offset:-1px;background:rgba(30,136,229,.06)}
 #karte.design .kc[data-k="off"]{outline-color:rgba(120,120,120,.45);background:transparent}
@@ -396,6 +407,7 @@ dialog.wide{max-width:720px}
       <button type="button" data-m="karte" role="tab">📋 カルテ画面</button>
       <button type="button" data-m="form" role="tab">☰ 入力フォーム</button>
     </div>
+    <div class="sibs hidden" id="sibs"></div>
     <div class="ktools hidden" id="ktools"></div>
   </div>
   <main id="form"></main>
@@ -447,6 +459,12 @@ dialog.wide{max-width:720px}
   <h2>📘 マニュアルのチェック（東京都 街路樹診断等マニュアル）</h2>
   <div id="tkBody"></div>
   <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn pri" type="button" data-close>閉じる</button></div>
+</dialog>
+<dialog id="dlgSib">
+  <h2>🌳 同じ木のカルテ</h2>
+  <p class="hint">外観診断・腐朽診断（レジ）・根株診断・フォローアップ診断を、同じ木で作れます。路線名・樹木番号・樹種名・樹高・幹周・枝張などは引き継ぎます。</p>
+  <div id="sibBody" class="sibrows"></div>
+  <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" type="button" data-close>閉じる</button></div>
 </dialog>
 <dialog id="dlgGloss">
   <h2>用語の説明</h2>
@@ -3895,7 +3913,7 @@ function renderKTools() {
     b(`🔍 ${Math.round(kState.zoom * 100)}%`, false, () => { kState.zoom = 1; kZoomSave(); fitKarte(); renderKTools(); }),
     b('＋ 拡大', false, () => { kState.zoom = Math.min(4, Math.round((kState.zoom + (kState.zoom >= 1.5 ? .5 : .1)) * 10) / 10); kZoomSave(); fitKarte(); renderKTools(); }),
     h('span', { class: 'sep' }),
-    b('Excelに出力', false, () => exportTrees([cur.id]), 'on'));
+    b('Excelに出力', false, () => exportTrees([cur.id, ...sibsOf(cur).map(x => x.id)]), 'on')); // 同じ木のほかの様式も同じブックに
 }
 
 /* ---------- 用語の説明 ---------- */
@@ -7462,6 +7480,7 @@ async function openTree(id) {
   for (const p of cur.photos) if (p.slot && !curType.fields[p.slot] && curType.fields[p.slot + '#1/4']) p.slot += '#1/4'; // 1枚だった枠を分けたとき
   if (tkAutoDevice(cur, curType)) touch(cur); // 様式3：同じ木の様式10・11 の結果を機器診断欄に
   curTpl = await loadTpl(curType);
+  renderSibs();
   kState.design = false; kState.ink = false; kRedo = [];
   $('#listView').classList.add('hidden'); $('#editView').classList.remove('hidden');
   window.scrollTo(0, 0); await showMode(viewMode, true);
@@ -7487,8 +7506,69 @@ async function nextTree() {
   await flush(); await createTree(ty, base, { proj: cur.proj, site: cur.site, kind: cur.kind }); toast('路線名・診断日などを引き継いで新しい木を作りました');
 }
 async function dupTree() {
-  await flush(); const t = clone(cur); t.id = uid(); t.created = t.updated = Date.now(); t.photos = []; t.ink = {};
+  await flush(); const t = clone(cur); t.id = uid(); delete t.tid; /* 複製は別の木 */ t.created = t.updated = Date.now(); t.photos = []; t.ink = {};
   trees.push(t); await DB.put('trees', t); await openTree(t.id); toast('複製しました（写真・手書き以外）');
+}
+/* ---------- 同じ木の別の様式（外観・レジ・根株・フォロー）：カルテを横断して作る・開く ---------- */
+const SIB_SHORT = { gaikan: '外観（様式3）', tk_fukyu: 'レジ（様式10）', tk_nekabu: '根株（様式11）', tk_follow: 'フォロー（様式12）', kw_gaikan: '外観（様式1）' };
+const typeShort = ty => SIB_SHORT[ty.id] || String(ty.name || '').replace(ty.group || '', '').trim();
+const sibTypes = ty => ty && ty.group ? types.filter(x => x.group === ty.group && x.id !== ty.id) : [];
+// 様式どうしで同じ意味の欄（ラベルが少し違う：樹高（H）m／樹高（m）など）
+function sibKey(s) {
+  if (!s || s.k === 'off' || s.k === 'photo') return null; const L = String(s.label || '');
+  if (['site', 'treeNo', 'species'].includes(s.role)) return s.role;
+  if (/^樹木医/.test(L)) return 'doctor'; if (/^事務所名/.test(L)) return 'office';
+  if (/^樹高/.test(L)) return 'H'; if (/^幹周/.test(L)) return 'C'; if (/^枝張/.test(L)) return 'W';
+  if (/^機種名/.test(L)) return 'device'; if (L === '植栽形態') return 'plant'; if (L === '支柱') return 'stake';
+  if (/^街路樹診断カルテ番号/.test(L)) return 'gno';
+  return null;
+}
+// 同じ木のほかの様式のカルテ：作ったときにつないだもの（tid）と、同じ案件・路線で樹木番号が同じもの
+function sibsOf(t) {
+  const ty = typeOf(t); if (!ty.group) return [];
+  const no = String(roleVal(t, ty, 'treeNo') || '').trim(), site = siteOf(t);
+  return trees.filter(x => {
+    if (x === t) return false; const xt = typeOf(x); if (xt.group !== ty.group) return false;
+    if (t.tid && x.tid === t.tid) return true;
+    const xn = String(roleVal(x, xt, 'treeNo') || '').trim();
+    return !!no && xn === no && x.typeId !== t.typeId && projOf(x) === projOf(t) && (siteOf(x) === site || !site || !siteOf(x));
+  });
+}
+async function makeSib(ty2) {
+  const src = cur, ty = curType; await flush();
+  if (!src.tid) { src.tid = src.id; touch(src); }
+  const [tpl1, tpl2] = [await loadTpl(ty), await loadTpl(ty2)], byKey = {}, base = {};
+  for (const [r, s] of Object.entries(ty.fields)) { const k = sibKey(s); if (k && !(k in byKey)) byKey[k] = r; }
+  for (const [r, s] of Object.entries(ty2.fields)) {
+    const k = sibKey(s); if (!k) continue;
+    if (k === 'gno') { const nr = ty.id === 'gaikan' && roleRef(ty, 'no'), v = nr && getV(src, ty, nr); if (v) base[r] = v; continue; } // 様式10・11 の「街路樹診断カルテ番号」＝様式3 の No.
+    const r1 = byKey[k], s1 = r1 && ty.fields[r1], v = r1 && (src.v || {})[r1]; if (v == null || v === '' || (Array.isArray(v) && !v.length)) continue;
+    if (s1.k !== s.k && !(TEXT_KINDS.has(s1.k) && TEXT_KINDS.has(s.k))) continue;
+    if (s.k === 'opt' && optionNames(baseText(ty, tpl1, r1)).join('|') !== optionNames(baseText(ty2, tpl2, r)).join('|')) continue; // 選ぶ欄は選択肢が同じときだけ
+    base[r] = clone(v);
+  }
+  const t = newTree(ty2, base); t.tid = src.tid; for (const k of ['proj', 'site', 'kind']) if (src[k] !== undefined) t[k] = src[k];
+  trees.push(t); await DB.put('trees', t); $('#dlgSib').open && $('#dlgSib').close(); await openTree(t.id);
+  toast(`同じ木の「${typeShort(ty2)}」を作りました（路線名・樹木番号・樹種名などを引き継ぎ）`);
+}
+// カルテの上の切り替え：この木のほかの様式（あれば）と「＋ 別の様式」
+function renderSibs() {
+  const box = $('#sibs'); if (!box) return; box.innerHTML = '';
+  const others = cur ? sibTypes(curType) : []; box.classList.toggle('hidden', !others.length); if (!others.length) return;
+  const sibs = sibsOf(cur), order = t => types.indexOf(typeOf(t));
+  box.append(h('span', { class: 'lab' }, '同じ木：'), h('button', { type: 'button', class: 'on', disabled: true }, typeShort(curType)));
+  for (const x of [...sibs].sort((a, b) => order(a) - order(b) || a.created - b.created)) box.append(h('button', { type: 'button', onclick: async () => { await flush(); await openTree(x.id); } }, typeShort(typeOf(x))));
+  box.append(h('button', { type: 'button', class: 'add', onclick: openSibs }, '＋ 別の様式'));
+}
+function openSibs() {
+  const b = $('#sibBody'); b.innerHTML = ''; const sibs = sibsOf(cur);
+  for (const ty2 of sibTypes(curType)) {
+    const have = sibs.filter(x => x.typeId === ty2.id);
+    const acts = have.map(x => h('button', { class: 'btn', type: 'button', onclick: async () => { $('#dlgSib').close(); await flush(); await openTree(x.id); } }, '開く'));
+    acts.push(h('button', { class: 'btn' + (have.length ? '' : ' pri'), type: 'button', onclick: () => makeSib(ty2) }, have.length ? '＋ もう1枚' : '＋ 作る'));
+    b.append(h('div', { class: 'sibrow' }, h('div', {}, h('div', { class: 'nm' }, typeShort(ty2)), h('div', { class: 'st' }, have.length ? `作成済み ${have.length}枚` : 'まだありません')), h('div', { class: 'row' }, ...acts)));
+  }
+  $('#dlgSib').showModal();
 }
 async function delTree() {
   if (!await ask('この木の記録を削除します。元に戻せません。よろしいですか？', '削除する', true)) return;
@@ -7818,9 +7898,9 @@ function annotatedPicXml(tpl, g, iw, ih, rid, id, name, strokes, idc, fr, fill =
 function anchorXml(fc, fco, fr, fro, tc, tco, tr, tro, x, y, w, hh, rid, id, name, editAs) {
   return `<xdr:twoCellAnchor${editAs ? ` editAs="${editAs}"` : ''}><xdr:from><xdr:col>${fc}</xdr:col><xdr:colOff>${fco}</xdr:colOff><xdr:row>${fr}</xdr:row><xdr:rowOff>${fro}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${tc}</xdr:col><xdr:colOff>${tco}</xdr:colOff><xdr:row>${tr}</xdr:row><xdr:rowOff>${tro}</xdr:rowOff></xdr:to><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="${xmlEsc(name)}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${hh}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`;
 }
-function sheetName(t, ty, used) {
+function sheetName(t, ty, used, pre = '') { // pre：いくつかの様式を1つのブックに入れるとき、頭に様式（外観・レジ など）
   const no = roleVal(t, ty, 'no'), sp = roleVal(t, ty, 'species'), tn = roleVal(t, ty, 'treeNo');
-  let n = `${no ? 'No.' + no + ' ' : ''}${sp || ty.name}${tn ? ' ' + tn : ''}`.replace(/[\[\]:*?\/\\']/g, '').slice(0, 28).trim() || 'カルテ';
+  let n = `${pre ? pre + ' ' : ''}${no ? 'No.' + no + ' ' : ''}${sp || ty.name}${tn ? ' ' + tn : ''}`.replace(/[\[\]:*?\/\\']/g, '').slice(0, 28).trim() || 'カルテ';
   let k = n, i = 2; while (used.has(k.toLowerCase())) k = `${n}(${i++})`.slice(0, 31); used.add(k.toLowerCase()); return k;
 }
 const quoteSheet = n => `'${n.replace(/'/g, "''")}'`;
@@ -7829,27 +7909,28 @@ function replaceSheetRef(text, oldN, newN) {
   if (/^[A-Za-z_　-鿿＀-￯][\w.　-鿿＀-￯]*$/.test(oldN)) s = s.replace(new RegExp(`(^|[^'\\w])${escRe(oldN)}!`, 'g'), `$1${quoteSheet(newN)}!`);
   return s;
 }
-async function buildWorkbook(ty, list, fileName = '') {
-  const tpl = await loadTpl(ty);
-  const zip = await JSZip.loadAsync(ty.file);
+// opt：同じブックにほかの様式も書くとき { zip（前の様式を書いたブック）, pass（何番目の様式か）, last（最後の様式なら true）}
+async function buildWorkbook(ty, list, fileName = '', opt = {}) {
+  const tpl = await loadTpl(ty), P = opt.pass || 0, tag = P ? P + '_' : '', last = opt.last !== false;
+  const zip = opt.zip || await JSZip.loadAsync(ty.file);
   const rd = p => zip.file(p).async('string');
   const info = await workbookInfo(zip);
   const sh = info.sheets.find(s => s.name === ty.sheet) || info.sheets[0];
   const idx = sh.index, n = list.length;
-  const withLists = settingsLists();
+  const withLists = settingsLists() && !P; // 一覧表・位置図は最初の様式のときだけ
   const kit = await styleKit(zip); // 判定の色など
   const pkg = { ct: await rd('[Content_Types].xml') };
   const addDefault = (ext, type) => { if (!new RegExp(`Extension="${ext}"`, 'i').test(pkg.ct)) pkg.ct = pkg.ct.replace(/<Types[^>]*>/, m => m + `<Default Extension="${ext}" ContentType="${type}"/>`); };
   addDefault('jpeg', 'image/jpeg'); addDefault('png', 'image/png');
   // 1) 2本目以降：書き込む前の元シートを複製
   const clones = [{ path: sh.path, map: new Map(), shapeMap: new Map() }];
-  for (let i = 1; i < n; i++) { const st = { map: new Map(), shapeMap: new Map(), suffix: 'k' + (i + 1), vmlBlock: 200 + i }; st.path = await clonePart(zip, sh.path, st, pkg); clones.push(st); }
+  for (let i = 1; i < n; i++) { const st = { map: new Map(), shapeMap: new Map(), suffix: 'k' + tag + (i + 1), vmlBlock: 200 + P * 60 + i }; st.path = await clonePart(zip, sh.path, st, pkg); clones.push(st); }
   // 2) 1本ずつ書き込む
   const used = new Set(info.sheets.filter(s => s.index !== idx).map(s => s.name.toLowerCase()));
   const names = [];
   for (let i = 0; i < n; i++) {
     const t = list[i], st = clones[i], sp = st.path;
-    names.push(sheetName(t, ty, used));
+    names.push(sheetName(t, ty, used, opt.pre || ''));
     const doc = parseXml(await rd(sp));
     const vals = {};
     for (const [ref, spec] of Object.entries(ty.fields)) {
@@ -7874,7 +7955,7 @@ async function buildWorkbook(ty, list, fileName = '') {
     paintJudgeCells(doc, t, ty, tpl, kit);
     for (const [ref, v] of Object.entries(vals)) { const m = typeof v === 'string' && /^-?\d+\.(\d*0)$/.exec(v.trim()), c = m && cellEl(doc, ref); if (c && !kidsOf(c, 'f').length && !c.getAttribute('t')) c.setAttribute('s', String(kit.dec(c.getAttribute('s') || 0, m[1].length))); } // 「1.000」の桁を残す
     fitMergedText(doc, tpl, kit); // 結合セルに入りきらない文字（「部位（G.L.」など）は縮めて全体を表示
-    for (const sv of byTag(doc, 'sheetView')) { sv.removeAttribute('topLeftCell'); sv.removeAttribute('tabSelected'); if (i === 0 && !withLists) sv.setAttribute('tabSelected', '1'); }
+    for (const sv of byTag(doc, 'sheetView')) { sv.removeAttribute('topLeftCell'); sv.removeAttribute('tabSelected'); if (i === 0 && !withLists && !P) sv.setAttribute('tabSelected', '1'); }
     // フォームのチェックボックス
     const srels = await readRels(zip, sp);
     for (const c of tpl.ctrls) {
@@ -7920,7 +8001,7 @@ async function buildWorkbook(ty, list, fileName = '') {
       let dpath;
       if (drel && zip.file(drel.path)) dpath = drel.path;
       else {
-        dpath = `xl/drawings/drawing_app${i + 1}_${Date.now() % 100000}.xml`;
+        dpath = `xl/drawings/drawing_app${tag}${i + 1}_${Date.now() % 100000}.xml`;
         zip.file(dpath, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"></xdr:wsDr>');
         pkg.ct = pkg.ct.replace('</Types>', `<Override PartName="/${dpath}" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`);
         const rp = relsPathOf(sp); const rid = 'rIdDrwApp';
@@ -7968,7 +8049,7 @@ async function buildWorkbook(ty, list, fileName = '') {
   let wbRels = await rd('xl/_rels/workbook.xml.rels');
   let after = orig;
   for (let i = 1; i < n; i++) {
-    const rid = `rIdKarte${i + 1}`;
+    const rid = `rIdKarte${tag}${i + 1}`;
     wbRels = wbRels.replace('</Relationships>', `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="${clones[i].path.replace(/^xl\//, '')}"/></Relationships>`);
     const se = wdoc.createElementNS(NS_MAIN, 'sheet'); se.setAttribute('name', names[i]); se.setAttribute('sheetId', String(++maxId)); se.setAttributeNS(NS_R, 'r:id', rid);
     after.parentNode.insertBefore(se, after.nextSibling); after = se;
@@ -7981,15 +8062,16 @@ async function buildWorkbook(ty, list, fileName = '') {
   for (const d of dns) if (d.getAttribute('localSheetId') === String(idx) && /^_xlnm\.(Print_Area|Print_Titles)$/.test(d.getAttribute('name'))) {
     for (let i = 1; i < n; i++) { const c = d.cloneNode(true); c.setAttribute('localSheetId', String(idx + i)); c.textContent = replaceSheetRef(d.textContent, names[0], names[i]); d.parentNode.insertBefore(c, d.nextSibling); }
   }
-  for (const v of byTag(wdoc, 'workbookView')) { v.setAttribute('activeTab', String(idx)); if (+v.getAttribute('firstSheet') > idx) v.setAttribute('firstSheet', String(idx)); }
+  if (!P) for (const v of byTag(wdoc, 'workbookView')) { v.setAttribute('activeTab', String(idx)); if (+v.getAttribute('firstSheet') > idx) v.setAttribute('firstSheet', String(idx)); }
+  else for (const v of byTag(wdoc, 'workbookView')) { const a = +v.getAttribute('activeTab') || 0; if (a > idx) v.setAttribute('activeTab', String(a + n - 1)); } // 前の様式のシートを開いたまま
   let calc = byTag(wdoc, 'calcPr')[0];
   if (!calc) { calc = wdoc.createElementNS(NS_MAIN, 'calcPr'); const ref = kidsOf(wdoc.documentElement).find(e => ['oleSize', 'customWorkbookViews', 'pivotCaches', 'smartTagPr', 'smartTagTypes', 'webPublishing', 'fileRecoveryPr', 'webPublishObjects', 'extLst'].includes(e.localName)); wdoc.documentElement.insertBefore(calc, ref || null); }
   calc.setAttribute('fullCalcOnLoad', '1');
-  if (settingsMap()) { const rx = { v: wbRels }; try { await addMapSheets(zip, pkg, wdoc, rx, ty, list, kit); } catch (e) { console.error(e); toast('位置図を作れませんでした：' + e.message); } wbRels = rx.v; }
+  if (settingsMap() && !P) { const rx = { v: wbRels }; try { await addMapSheets(zip, pkg, wdoc, rx, ty, list, kit); } catch (e) { console.error(e); toast('位置図を作れませんでした：' + e.message); } wbRels = rx.v; }
   kit.save();
   if (withLists) { const rx = { v: wbRels }; await addListSheets(zip, pkg, listSpecs(ty, tpl, list, names, fileName), wdoc, rx); wbRels = rx.v; }
   zip.file('xl/workbook.xml', serXml(wdoc)); zip.file('xl/_rels/workbook.xml.rels', wbRels);
-  for (const s of info.sheets) if (s.index !== idx && s.path && zip.file(s.path)) zip.file(s.path, (await rd(s.path)).replace(/ tabSelected="(1|true)"/g, ''));
+  if (!P) for (const s of info.sheets) if (s.index !== idx && s.path && zip.file(s.path)) zip.file(s.path, (await rd(s.path)).replace(/ tabSelected="(1|true)"/g, ''));
   // シート名の一覧（app.xml）は古いままだと紛らわしいので外す
   if (zip.file('docProps/app.xml')) {
     zip.remove('docProps/app.xml');
@@ -7997,6 +8079,7 @@ async function buildWorkbook(ty, list, fileName = '') {
     zip.file('_rels/.rels', (await rd('_rels/.rels')).replace(/<Relationship [^>]*Target="\/?docProps\/app.xml"\/>/, ''));
   }
   zip.file('[Content_Types].xml', pkg.ct);
+  if (!last) return { zip };
   const macro = /macroEnabled/.test(pkg.ct);
   const blob = await zip.generateAsync({ type: 'blob', mimeType: macro ? 'application/vnd.ms-excel.sheet.macroEnabled.12' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', compression: 'DEFLATE' });
   return { blob, ext: macro ? 'xlsm' : 'xlsx' };
@@ -8008,16 +8091,23 @@ async function exportTrees(ids) {
   const byType = new Map(); for (const t of list) { const ty = typeOf(t); if (!byType.has(ty)) byType.set(ty, []); byType.get(ty).push(t); }
   toast('Excelを作っています…', 1500);
   { const ch = list.filter(t => tkAutoDevice(t, typeOf(t))); if (ch.length) await saveTrees(ch); } // 様式3 の機器診断欄を最新の様式10・11 に
-  for (const [ty, arr] of byType) {
-    arr.sort((a, b) => projOf(a).localeCompare(projOf(b), 'ja') || siteOf(a).localeCompare(siteOf(b), 'ja') || (parseFloat(roleVal(a, ty, 'no')) || 1e9) - (parseFloat(roleVal(b, ty, 'no')) || 1e9) || a.created - b.created);
+  // 同じ様式集（東京都など）で同じひな形のブックにシートがある様式（外観・レジ・根株・フォロー）は、1つのブックにまとめる
+  const sameBook = (a, b) => a.group && a.group === b.group && (a.fileName || '') === (b.fileName || '') && a.file && b.file && a.file.size === b.file.size && a.sheet !== b.sheet;
+  const jobs = []; for (const [ty, arr] of [...byType].sort((p, q) => types.indexOf(p[0]) - types.indexOf(q[0]))) { const j = jobs.find(j => sameBook(j[0][0], ty)); if (j) j.push([ty, arr]); else jobs.push([[ty, arr]]); }
+  const sortArr = (ty, arr) => arr.sort((a, b) => projOf(a).localeCompare(projOf(b), 'ja') || siteOf(a).localeCompare(siteOf(b), 'ja') || (parseFloat(roleVal(a, ty, 'no')) || 1e9) - (parseFloat(roleVal(b, ty, 'no')) || 1e9) || a.created - b.created);
+  for (const job of jobs) {
+    const [ty, arr] = job[0], all = job.flatMap(x => x[1]), label = job.length > 1 ? `${ty.group}_カルテ` : ty.name;
+    for (const [t2, a2] of job) sortArr(t2, a2);
     try {
-      const sites = [...new Set(arr.map(siteOf).filter(Boolean))];
-      const projs = [...new Set(arr.map(projOf).filter(Boolean))];
-      const base = (arr.length === 1 ? `${ty.name}_${siteOf(arr[0])}_${roleVal(arr[0], ty, 'species')}${roleVal(arr[0], ty, 'no') ? '_No' + roleVal(arr[0], ty, 'no') : ''}` : `${ty.name}_${projs.length === 1 ? projs[0] + (sites.length === 1 ? '_' + sites[0] : '') : sites.slice(0, 3).join('・') || '樹木'}_${arr.length}本`).replace(/[\\/:*?"<>|]/g, '').replace(/_+/g, '_').replace(/^_|_$/g, '');
-      const macro = /\.xlsm$/i.test(ty.fileName || '');
-      const { blob, ext } = await buildWorkbook(ty, arr, base + (macro ? '.xlsm' : '.xlsx'));
-      await shareOrDownload(new File([blob], base + '.' + ext, { type: blob.type }));
-    } catch (e) { console.error(e); say(`「${ty.name}」のExcelを作れませんでした：` + e.message); }
+      const sites = [...new Set(all.map(siteOf).filter(Boolean))];
+      const projs = [...new Set(all.map(projOf).filter(Boolean))];
+      const one = new Set(all.map(t => t.tid || t.id)).size === 1 || arr.length === 1 && job.length === 1;
+      const base = (one ? `${label}_${siteOf(arr[0])}_${roleVal(arr[0], ty, 'species')}${roleVal(arr[0], ty, 'no') ? '_No' + roleVal(arr[0], ty, 'no') : ''}` : `${label}_${projs.length === 1 ? projs[0] + (sites.length === 1 ? '_' + sites[0] : '') : sites.slice(0, 3).join('・') || '樹木'}_${new Set(all.map(t => t.tid || t.id)).size}本`).replace(/[\\/:*?"<>|]/g, '').replace(/_+/g, '_').replace(/^_|_$/g, '');
+      const macro = /\.xlsm$/i.test(ty.fileName || ''), fname = base + (macro ? '.xlsm' : '.xlsx');
+      let zip = null, out = null;
+      for (let k = 0; k < job.length; k++) { out = await buildWorkbook(job[k][0], job[k][1], fname, { zip, pass: k, last: k === job.length - 1, pre: job.length > 1 ? typeShort(job[k][0]).replace(/（.*$/, '') : '' }); zip = out.zip; }
+      await shareOrDownload(new File([out.blob], base + '.' + out.ext, { type: out.blob.type }));
+    } catch (e) { console.error(e); say(`「${job.map(x => x[0].name).join('・')}」のExcelを作れませんでした：` + e.message); }
   }
   tkAfterExport(list); // 東京都の様式：マニュアルの基準で足りない記入があれば知らせる
 }
@@ -8183,7 +8273,7 @@ async function migrateOld() {
   $('#mPos').onclick = () => { $('#dlgMore').close(); measureTreePos(); };
   $('#mDup').onclick = () => { $('#dlgMore').close(); dupTree(); };
   $('#mDel').onclick = () => { $('#dlgMore').close(); delTree(); };
-  $('#mExcel').onclick = () => { $('#dlgMore').close(); exportTrees([cur.id]); };
+  $('#mExcel').onclick = () => { $('#dlgMore').close(); exportTrees([cur.id, ...sibsOf(cur).map(x => x.id)]); }; // 同じ木のほかの様式も同じブックに
   for (const b of document.querySelectorAll('.modes button')) b.onclick = () => showMode(b.dataset.m);
   $('#edMic').onclick = toggleVoice; $('#edOk').onclick = closeEditor; $('#edGps').onclick = fillGps;
   $('#edClear').onclick = () => { const i = $('#edInput'); i.value = ''; i.dispatchEvent(new Event('input')); i.focus(); };
