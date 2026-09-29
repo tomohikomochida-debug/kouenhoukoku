@@ -254,16 +254,18 @@ function stamp(t){ const d=new Date(t); return (d.getMonth()+1)+"/"+d.getDate()+
 async function load(){
   let cached=null; try{ cached=JSON.parse(localStorage.getItem(SUM_KEY)||"null"); }catch(e){}
   if(cached&&cached.d&&cached.d.wallet){ S=cached.d; render(); $("staleNote").hidden=false; $("staleNote").textContent="前回（"+stamp(cached.t)+"）の集計を表示中です。最新を読み込んでいます…"; }
-  const ac=new AbortController(); const tm=setTimeout(()=>ac.abort(),25000);
+  const get1=async(ms)=>{ const ac=new AbortController(); const tm=setTimeout(()=>ac.abort(),ms);
+    try{ return await (await fetch(GAS_URL+"?action=summary&_="+Date.now(),{signal:ac.signal,cache:"no-store"})).json(); }
+    finally{ clearTimeout(tm); } };
   try{
-    const d=await (await fetch(GAS_URL+"?action=summary",{signal:ac.signal})).json();
+    let d; try{ d=await get1(20000); }catch(e){ d=await get1(30000); }  // 1回目がダメなら自動でもう1回
     if(!d.ok||!d.wallet) throw new Error("bad");
     S=d; try{ localStorage.setItem(SUM_KEY, JSON.stringify({d, t:Date.now()})); }catch(e){}
     $("staleNote").hidden=true; render();
   }catch(e){
     if(cached&&cached.d&&cached.d.wallet){ $("staleNote").textContent="電波が弱いため、前回（"+stamp(cached.t)+"）の集計を表示しています。"; }
     else { $("loading").textContent="電波を確認して、もう一度お試しください。"; }
-  }finally{ clearTimeout(tm); }
+  }
 }
 
 /* ===== 財布を数えて合わせる ===== */
