@@ -97,10 +97,13 @@ main{max-width:920px;margin:0 auto;padding:18px 14px 60px}
 @media (max-width:400px){ .home-btn{padding:5px 8px} .home-btn .hb-t{display:none} }
 header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 @media (max-width:560px){ header{padding:12px 14px;gap:10px} header .mk{display:none} header h1{font-size:16px} .fysel{font-size:13px;padding:6px 10px;max-width:46%} }
+.stale{font-size:12px;color:var(--bark,#5B5750);background:#FBFAF6;border:1px solid #DCD9D0;border-left:3px solid #C77C30;border-radius:0 8px 8px 0;padding:8px 12px;margin:0 0 12px}
+.stale.err{border-left-color:#B0533F;color:#B0533F}
 </style></head><body>
 <header><a class="home-btn" href="index.html" title="アプリ一覧にもどる" aria-label="アプリ一覧（ホーム）にもどる"><span class="hb-ic">🏠</span><span class="hb-t">ホーム</span></a><span class="mk">庭乃持田園</span><h1>日報ダッシュボード</h1>
   <select class="fysel" id="fySel"></select></header>
 <main>
+  <div class="stale" id="staleNote" hidden></div>
   <div class="cards" id="kpis"></div>
   <div class="period">
     <span class="quick">
@@ -338,17 +341,47 @@ function resetPeriod(){ document.getElementById('pFrom').value=''; document.getE
 function fillYearSelect(){ document.getElementById('fySel').innerHTML=years.map(y=>`<option value="${y}" ${y===curFY?'selected':''}>${y}年度（${y}年4月〜）</option>`).join(''); }
 async function fetchYear(fy){
   try{ const res=await fetch(GAS_URL+'?action=dashboard&fy='+fy); const d=await res.json();
-    if(d&&d.cur){ cur=d.cur; curFY=d.fy; resetPeriod(); render(); } }
+    if(d&&d.cur){ cur=d.cur; curFY=d.fy; resetPeriod(); render(); hideStale(); } }
   catch(e){ alert('この年度の読み込みに失敗しました。電波の良い所でもう一度お試しください。'); }
 }
+/* ===== 前回のデータを端末に覚えておき、開いたらすぐ表示 → 最新は裏で読み込む ===== */
+function kvDB(){ return new Promise((res,rej)=>{ if(!window.indexedDB) return rej(new Error('no idb'));
+  const r=indexedDB.open('nippou_dash',1); r.onupgradeneeded=()=>r.result.createObjectStore('kv');
+  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function kvGet(k){ try{ const db=await kvDB(); return await new Promise(res=>{
+  const q=db.transaction('kv').objectStore('kv').get(k); q.onsuccess=()=>res(q.result||null); q.onerror=()=>res(null); }); }catch(e){ return null; } }
+async function kvSet(k,v){ try{ const db=await kvDB(); db.transaction('kv','readwrite').objectStore('kv').put(v,k); }catch(e){} }
+function fetchT(url,ms){ const ac=new AbortController(); const tm=setTimeout(()=>ac.abort(),ms||30000);
+  return fetch(url,{signal:ac.signal}).finally(()=>clearTimeout(tm)); }
+function stamp(t){ const d=new Date(t); return (d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function showStale(t,failed){ const n=document.getElementById('staleNote'); n.hidden=false; n.classList.toggle('err',!!failed);
+  n.textContent = failed ? '電波が弱いため、前回（'+stamp(t)+'）の記録を表示しています。' : '前回（'+stamp(t)+'）の記録を表示中です。最新を読み込んでいます…'; }
+function hideStale(){ document.getElementById('staleNote').hidden=true; }
+function applyDash(d){
+  cur=d.cur; search=d.search||{}; years=(d.years||[]).filter(y=>y!=null&&!isNaN(y)); curFY=d.fy;
+  if(!years.length) years=[curFY];
+}
 async function boot(){
+  const cached=await kvGet('dash');
+  if(cached && cached.d && cached.d.cur){
+    // 端末に前回ぶんがある → すぐ表示してから、裏で最新に差し替える
+    applyDash(cached.d); fillYearSelect(); bindOnce(); resetPeriod(); render(); showStale(cached.t);
+    try{
+      const d=await (await fetchT(GAS_URL+'?action=dashboard')).json();
+      if(!(d&&d.cur)) throw new Error('bad');
+      kvSet('dash',{d,t:Date.now()});
+      if(curFY===cached.d.fy){ applyDash(d); fillYearSelect(); render(); }   // 別の年度を見ている最中なら画面はそのまま
+      else { search=d.search||search; }
+      hideStale();
+    }catch(e){ showStale(cached.t,true); }
+    return;
+  }
   let d=null;
-  try{ const res=await fetch(GAS_URL+'?action=dashboard'); d=await res.json(); }catch(e){ console.warn('GAS取得に失敗。埋め込みデータを表示します。',e); }
-  if(d&&d.cur){ cur=d.cur; search=d.search||{}; years=(d.years||[]).filter(y=>y!=null&&!isNaN(y)); curFY=d.fy; }
+  try{ d=await (await fetchT(GAS_URL+'?action=dashboard')).json(); }catch(e){ console.warn('GAS取得に失敗。埋め込みデータを表示します。',e); }
+  if(d&&d.cur){ applyDash(d); kvSet('dash',{d,t:Date.now()}); }
   else { cur=FALLBACK.cur; search=FALLBACK.search||{};
     years=[...new Set(Object.values(search).flatMap(o=>Object.keys(o).map(Number)))].sort((a,b)=>b-a);
-    curFY=years.length?years[0]:2026; }
-  if(!years.length) years=[curFY];
+    curFY=years.length?years[0]:2026; if(!years.length) years=[curFY]; }
   fillYearSelect(); bindOnce(); resetPeriod(); render();
 }
 boot();

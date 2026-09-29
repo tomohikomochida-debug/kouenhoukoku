@@ -289,19 +289,42 @@ const toDisp = n => DISP_NAME[n] || n;
 const dispNames = s => String(s||'').split('\n').map(x=>x.trim()).filter(Boolean).map(toDisp).join('、');
 
 let ROSTER = ['親方','樋上','山口','甲斐','澤崎','荒木']; // 通信できないときの控え
-async function loadRoster(){
-  try{
-    const res=await fetch(GAS_URL+'?action=masters');
-    const m=await res.json();
-    if(m && Array.isArray(m.staff) && m.staff.length){
-      ROSTER = m.staff.filter(n=>n);
-    }
-  }catch(e){ /* 控えのまま進む */ }
-  // 端末で足した運転者を後ろに足す
+/* 名簿：前回の名簿（端末に保存）ですぐ画面を出し、最新は裏で取りに行く。
+   日報アプリと同じ場所（nippou_masters）を使うので、どちらかを開けば両方速くなる。 */
+function addCustomDrivers(){
   try{
     const extra=JSON.parse(localStorage.getItem('alcohol_custom_drivers')||'[]');
     extra.forEach(n=>{ if(n && !ROSTER.includes(n)) ROSTER.push(n); });
   }catch(e){}
+}
+async function fetchRoster(){
+  const ac=new AbortController(); const tm=setTimeout(()=>ac.abort(),20000);
+  try{
+    const res=await fetch(GAS_URL+'?action=masters',{signal:ac.signal});
+    const m=await res.json();
+    if(m && Array.isArray(m.staff) && m.staff.length){
+      ROSTER = m.staff.filter(n=>n);
+      try{ const old=JSON.parse(localStorage.getItem('nippou_masters')||'null')||{};
+        localStorage.setItem('nippou_masters', JSON.stringify({staff:m.staff, siteGroups:m.siteGroups||old.siteGroups})); }catch(e){}
+      addCustomDrivers();
+      return true;
+    }
+  }catch(e){ /* 控えのまま進む */ }
+  finally{ clearTimeout(tm); }
+  return false;
+}
+async function loadRoster(){
+  let cached=null;
+  try{ const m=JSON.parse(localStorage.getItem('nippou_masters')||'null'); if(m && Array.isArray(m.staff) && m.staff.length) cached=m.staff; }catch(e){}
+  if(cached){
+    ROSTER = cached.filter(n=>n); addCustomDrivers();
+    // 待たずに進む。最新が届いて名簿が変わっていたらボタンを作り直す
+    const before=JSON.stringify(ROSTER);
+    fetchRoster().then(ok=>{ if(ok && JSON.stringify(ROSTER)!==before){ buildOverlay(); buildDriverChips(); } });
+  }else{
+    await fetchRoster();   // 初回だけは待つ
+    addCustomDrivers();
+  }
 }
 
 /* ===== 状態 ===== */

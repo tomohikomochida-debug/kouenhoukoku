@@ -372,22 +372,36 @@ function fyOf(dateStr){ const s=normDate(dateStr); const y=+s.slice(0,4), mo=+s.
 function toast(m,err){const t=$('#toast');t.textContent=m;t.className='toast show'+(err?' err':'');setTimeout(()=>t.className='toast',2300);}
 const isContract=c=>MASTER.siteGroups[c] && !Array.isArray(MASTER.siteGroups[c]);
 
-/* ===== マスタ取得 ===== */
-async function loadMasters(){
-  // 日報マスタ（名簿・現場）
-  try{
-    const res=await fetch(NIPPOU_GAS_URL+'?action=masters'); const m=await res.json();
-    if(m&&m.staff&&m.staff.length) MASTER.staff=m.staff;
-    if(m&&m.siteGroups&&Object.keys(m.siteGroups).length) MASTER.siteGroups=m.siteGroups;
-  }catch(e){ /* オフライン時はフォールバック */ }
+/* ===== マスタ取得 =====
+   前回のマスタ（端末に保存）ですぐ画面を出し、最新は裏で取りに行く。
+   日報アプリと同じ場所（nippou_masters）に名簿・現場を覚えるので、どちらかを開けば両方速くなる。 */
+function fetchT(url, ms){ const ac=new AbortController(); const tm=setTimeout(()=>ac.abort(), ms||20000);
+  return fetch(url,{signal:ac.signal}).finally(()=>clearTimeout(tm)); }
+function loadMastersFromDevice(){
+  let has=false;
+  try{ const m=JSON.parse(localStorage.getItem('nippou_masters')||'null');
+    if(m&&m.staff&&m.staff.length){ MASTER.staff=m.staff; has=true; }
+    if(m&&m.siteGroups&&Object.keys(m.siteGroups).length) MASTER.siteGroups=JSON.parse(JSON.stringify(m.siteGroups));
+  }catch(e){}
   applyCustomSites();
-  // 残材の候補（その他・現場履歴）
   cand.places=JSON.parse(localStorage.getItem(LS.places)||'[]');
   cand.vehicles=JSON.parse(localStorage.getItem(LS.vehicles)||'[]');
   cand.types=JSON.parse(localStorage.getItem(LS.types)||'[]');
   cand.sites=JSON.parse(localStorage.getItem(LS.sites)||'[]');
-  if(GAS_URL!=='PASTE_YOUR_GAS_URL_HERE'){
-    try{ const res=await fetch(GAS_URL+'?action=masters'); const d=await res.json();
+  return has;
+}
+async function fetchMasters(){
+  // 日報マスタ（名簿・現場）と残材の候補を、同時に取りに行く
+  const a=fetchT(NIPPOU_GAS_URL+'?action=masters').then(r=>r.json()).then(m=>{
+    if(m&&m.staff&&m.staff.length){
+      MASTER.staff=m.staff;
+      if(m.siteGroups&&Object.keys(m.siteGroups).length) MASTER.siteGroups=m.siteGroups;
+      try{ localStorage.setItem('nippou_masters', JSON.stringify({staff:m.staff, siteGroups:m.siteGroups})); }catch(e){}
+      applyCustomSites();
+    }
+  }).catch(()=>{ /* オフライン時はそのまま */ });
+  const b=(GAS_URL==='PASTE_YOUR_GAS_URL_HERE') ? Promise.resolve() :
+    fetchT(GAS_URL+'?action=masters').then(r=>r.json()).then(d=>{
       if(d&&d.ok!==false){ cand.places=d.places||cand.places; cand.vehicles=d.vehicles||cand.vehicles;
         cand.types=d.types||cand.types; cand.sites=d.sites||cand.sites;
         localStorage.setItem(LS.places,JSON.stringify(cand.places));
@@ -395,7 +409,15 @@ async function loadMasters(){
         localStorage.setItem(LS.types,JSON.stringify(cand.types));
         localStorage.setItem(LS.sites,JSON.stringify(cand.sites));
       }
-    }catch(e){}
+    }).catch(()=>{});
+  await Promise.all([a,b]);
+}
+async function loadMasters(){
+  if(loadMastersFromDevice()){
+    // 端末に前回ぶんがある → 待たずに進む。最新が届いたら候補と名前ボタンだけ作り直す
+    fetchMasters().then(()=>{ renderCandSuggest(); if(!$('#overlay').classList.contains('hide')) renderNameGrid(); });
+  }else{
+    await fetchMasters();   // 初回だけは待つ
   }
 }
 function pushCustom(rec){ try{const c=JSON.parse(localStorage.getItem(LS.custom)||'[]');c.push(rec);localStorage.setItem(LS.custom,JSON.stringify(c));}catch(e){} }
