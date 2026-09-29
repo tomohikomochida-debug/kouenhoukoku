@@ -3483,7 +3483,12 @@ function toggleOpt(ref, i) {
    ========================================================= */
 let viewMode = (() => { try { return localStorage.getItem('jk_mode') || 'karte'; } catch (e) { return 'karte'; } })();
 let kRedo = []; // 手書きの「進む」用（戻した線）
-const kState = { zoom: 1, ink: false, design: false, tool: 'pen', color: '#111111', size: 1 };
+// カルテの表示の大きさ：1＝標準。端末ごとに覚える（パソコンとiPadで別々）
+const kZoomSaved = () => { try { const v = parseFloat(localStorage.getItem('jk_kzoom')); return v >= .4 && v <= 4 ? v : 1; } catch (e) { return 1; } };
+const kZoomSave = () => { try { localStorage.setItem('jk_kzoom', String(Math.round(kState.zoom * 100) / 100)); } catch (e) { } };
+// パソコン（マウス）では、横いっぱいに広げず、iPad の縦くらいの幅を標準にする
+const isMousePC = () => { try { return matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { return false; } };
+const kState = { zoom: kZoomSaved(), ink: false, design: false, tool: 'pen', color: '#111111', size: 1 };
 let kCells = [], kPages = [], kLastPage = null;
 const BW = { thin: 1, hair: .6, dotted: 1, dashed: 1, mediumDashed: 2, medium: 2, thick: 3, double: 3, dashDot: 1, mediumDashDot: 2, slantDashDot: 2, dashDotDot: 1, mediumDashDotDot: 2 };
 const BD = { dotted: '1.2 2', hair: '1 1.5', dashed: '4 2', mediumDashed: '5 2', dashDot: '4 2 1 2', mediumDashDot: '5 2 1 2', dashDotDot: '4 2 1 2 1 2' };
@@ -3662,9 +3667,9 @@ function refreshView(photos) {
 }
 function fitKarte() {
   const root = $('#karte'); if (!kPages.length) return;
-  const avail = Math.max(300, root.clientWidth - 16); const maxW = Math.max(...kPages.map(p => p.W));
+  const avail = Math.max(300, root.clientWidth - 16), base = isMousePC() ? Math.min(avail, 860) : avail; const maxW = Math.max(...kPages.map(p => p.W));
   for (const p of kPages) {
-    const s = avail / maxW * kState.zoom; p.scale = s;
+    const s = base / maxW * kState.zoom; p.scale = s;
     p.page.style.transform = `scale(${s})`; p.wrap.style.width = p.W * s + 'px'; p.wrap.style.height = p.H * s + 'px';
     const dpr = Math.min(3, (window.devicePixelRatio || 1) * s);
     const w = Math.round(p.W * dpr), hh = Math.round(p.H * dpr);
@@ -3741,7 +3746,7 @@ let kPinch = null;
     raf = requestAnimationFrame(() => {
       if (!kPinch) return;
       const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-      const z = Math.max(1, Math.min(4, kPinch.z0 * d / kPinch.d0)), f = z / kPinch.z0;
+      const z = Math.max(.4, Math.min(4, kPinch.z0 * d / kPinch.d0)), f = z / kPinch.z0;
       if (Math.abs(z - kState.zoom) > .005) { kState.zoom = z; fitKarte(); }
       const top = root.getBoundingClientRect().top + window.scrollY;
       root.scrollLeft = kPinch.cx * f - (m[0] - root.getBoundingClientRect().left);
@@ -3763,7 +3768,7 @@ let kPinch = null;
     const sc = e.scale || 1; cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       if (!gz) return;
-      const z = Math.max(1, Math.min(4, gz.z0 * sc)), f = z / gz.z0;
+      const z = Math.max(.4, Math.min(4, gz.z0 * sc)), f = z / gz.z0;
       if (Math.abs(z - kState.zoom) > .005) { kState.zoom = z; fitKarte(); }
       const top = root.getBoundingClientRect().top + window.scrollY;
       root.scrollLeft = gz.cx * f - (gz.mx - root.getBoundingClientRect().left);
@@ -3810,9 +3815,9 @@ function renderKTools() {
     }
   }
   t.append(h('span', { class: 'sep' }),
-    b('－', false, () => { kState.zoom = Math.max(1, kState.zoom - .5); fitKarte(); renderKTools(); }),
-    b('＋ 拡大', false, () => { kState.zoom = Math.min(4, kState.zoom + .5); fitKarte(); renderKTools(); }),
-    ...(kState.zoom > 1.01 ? [b(`🔍 全体（${Math.round(kState.zoom * 100)}%）`, false, () => { kState.zoom = 1; fitKarte(); renderKTools(); })] : []),
+    b('－ 縮小', false, () => { kState.zoom = Math.max(.4, Math.round((kState.zoom - (kState.zoom > 1.5 ? .5 : .1)) * 10) / 10); kZoomSave(); fitKarte(); renderKTools(); }),
+    b(`🔍 ${Math.round(kState.zoom * 100)}%`, false, () => { kState.zoom = 1; kZoomSave(); fitKarte(); renderKTools(); }),
+    b('＋ 拡大', false, () => { kState.zoom = Math.min(4, Math.round((kState.zoom + (kState.zoom >= 1.5 ? .5 : .1)) * 10) / 10); kZoomSave(); fitKarte(); renderKTools(); }),
     h('span', { class: 'sep' }),
     b('Excelに出力', false, () => exportTrees([cur.id]), 'on'));
 }
