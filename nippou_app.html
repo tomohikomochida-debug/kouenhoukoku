@@ -169,6 +169,28 @@
   .ed-block .ed-item{margin-bottom:0}
   .ed-addsite{width:100%;margin-top:5px;background:#fff;color:#3a6b46;border:1px dashed #9bb7a4;font-family:inherit;font-size:13px;font-weight:600;padding:9px;border-radius:8px;cursor:pointer}
   .ed-addsite:active{background:#eef3ee}
+  /* 送信待ち */
+  .outbox-badge{display:none;align-items:center;gap:5px;background:var(--tape);color:#fff;border:none;font-family:inherit;font-size:13px;font-weight:700;padding:7px 11px;border-radius:8px;cursor:pointer;white-space:nowrap}
+  .outbox-badge.show{display:inline-flex}
+  .outbox-badge.busy{opacity:.75}
+  @media (max-width:380px){ .outbox-badge .ob-lbl{display:none} }
+  .ob-item{background:#fff;border:1px solid #e5e0d4;border-left:4px solid var(--tape);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .ob-item.err{border-left-color:var(--danger)}
+  .ob-item .ob-date{font-size:12px;color:#8a8270}
+  .ob-item .ob-site{font-weight:600;font-size:15px;margin-top:2px}
+  .ob-item .ob-st{font-size:12px;margin-top:4px;color:var(--bark)}
+  .ob-item.err .ob-st{color:var(--danger)}
+  .ob-item .ob-acts{display:flex;justify-content:flex-end;margin-top:8px}
+  .ob-cancel{background:#fff;border:1px solid var(--line);color:var(--bark);font-family:inherit;font-size:13px;padding:6px 12px;border-radius:7px;cursor:pointer}
+  .ob-send{width:100%;background:var(--leaf);color:#fff;border:none;font-family:inherit;font-size:16px;font-weight:700;padding:14px;border-radius:10px;cursor:pointer;margin-bottom:14px}
+  .ob-send:disabled{opacity:.6}
+  /* 削除 */
+  .ed-del{width:100%;margin-top:26px;background:#fff;color:var(--danger);border:1px solid var(--danger);font-family:inherit;font-size:15px;font-weight:700;padding:12px;border-radius:10px;cursor:pointer}
+  .ed-del:active{background:#fbeeea}
+  .modal .acts .danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+  /* お知らせ（自動で消える） */
+  .toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:400;background:var(--ink);color:#fff;font-size:14px;padding:11px 16px;border-radius:10px;box-shadow:0 8px 24px -10px rgba(0,0,0,.5);max-width:calc(100% - 32px);display:none}
+  .toast.show{display:block}
 </style>
 </head>
 <body>
@@ -186,6 +208,7 @@
 <header>
   <div class="brand"><span class="mark">庭乃持田園</span><h1>作業日報</h1></div>
   <div class="hd-right">
+    <button class="outbox-badge" id="outboxBadge" title="電波が戻ったら自動で送ります">📤 <span class="ob-lbl">送信待ち</span> <b id="outboxCount">0</b></button>
     <button class="edit-entry" id="editEntry">✏️ 直す</button>
     <div class="whoami" id="whoami" title="名前を変える"><b id="whoamiName">—</b><span class="sw">変更</span></div>
   </div>
@@ -290,8 +313,34 @@
     <button class="ed-save" id="ed_submit">更新する</button>
     <button class="ed-addsite" id="ed_addsite" style="margin-top:9px">＋ この日にもう1現場ふやす（新規入力へ）</button>
     <div class="ed-note" style="margin-top:10px">※ 「もう1現場ふやす」は、今の日報はそのままで、同じ日にもう1件ぶんを新しく足します。<br>※ 写真の差し替えは、ここではできません（必要なときはスプレッドシートで対応してください）。</div>
+    <button class="ed-del" id="ed_delete">🗑 この日報を削除する</button>
   </div>
 </div>
+
+<!-- 削除の確認 -->
+<div class="modal" id="delModal" style="z-index:320">
+  <div class="sheet">
+    <h3>この日報を削除しますか？</h3>
+    <p class="lead" id="delLead"></p>
+    <div class="note">削除すると、一覧とダッシュボードの集計から消えます。<br>間違えて消したときのために、90日間は「削除済み日報」シートに残ります（その後は自動で消えます）。</div>
+    <div class="acts">
+      <button id="delCancel">やめる</button>
+      <button class="danger" id="delConfirm">削除する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 送信待ち一覧 -->
+<div class="ed-screen" id="obScreen" style="display:none">
+  <div class="ed-bar"><button class="ed-back" id="obClose">← もどる</button><b>送信待ちの日報</b></div>
+  <div class="ed-body">
+    <div class="ed-note">電波が届かなかった日報は、この端末に保管されています。電波が戻ると自動で送ります。<br>同じ日報を二重に送っても、1件だけ記録されるようになっています。</div>
+    <button class="ob-send" id="obSendNow">今すぐ送る</button>
+    <div id="obList"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script>
 /* =========================================================
@@ -299,13 +348,44 @@
    ========================================================= */
 const GAS_URL='https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
 function todayStr(){const t=new Date();return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');}
+/* 時間切れ付きの通信（圏外で待たされ続けないように）*/
+async function fetchT(url, opts, ms){
+  const ac=new AbortController(); const tm=setTimeout(()=>ac.abort(), ms||20000);
+  try{ return await fetch(url, Object.assign({}, opts||{}, {signal:ac.signal})); }
+  finally{ clearTimeout(tm); }
+}
+/* ===== マスタ：端末に覚えておき、起動時はそれで即表示 → 裏で最新に更新 ===== */
+const MASTERS_KEY='nippou_masters';
+function applyMasters(m){
+  if(!m) return false;
+  let changed=false;
+  if(m.staff && m.staff.length && JSON.stringify(m.staff)!==JSON.stringify(MASTER.staff)){ MASTER.staff=m.staff; changed=true; }
+  if(m.siteGroups && Object.keys(m.siteGroups).length && JSON.stringify(m.siteGroups)!==JSON.stringify(MASTER.siteGroups)){
+    MASTER.siteGroups=JSON.parse(JSON.stringify(m.siteGroups)); changed=true; }
+  return changed;
+}
+function loadCachedMasters(){
+  try{ const m=JSON.parse(localStorage.getItem(MASTERS_KEY)||'null');
+    if(m && m.staff && m.staff.length){ applyMasters(m); return true; } }catch(e){}
+  return false;
+}
+async function fetchMasters(){
+  const res=await fetchT(GAS_URL+'?action=masters', null, 20000);
+  const m=await res.json();
+  if(m && m.staff && m.staff.length){
+    try{ localStorage.setItem(MASTERS_KEY, JSON.stringify({staff:m.staff, siteGroups:m.siteGroups})); }catch(e){}
+  }
+  return m;
+}
 async function loadMasters(){
-  try{
-    const res=await fetch(GAS_URL+'?action=masters');
-    const m=await res.json();
-    if(m && m.staff && m.staff.length) MASTER.staff=m.staff;
-    if(m && m.siteGroups && Object.keys(m.siteGroups).length) MASTER.siteGroups=m.siteGroups;
-  }catch(e){ console.warn('マスタ取得に失敗。仮マスタで動作します。',e); }
+  try{ applyMasters(await fetchMasters()); }
+  catch(e){ console.warn('マスタ取得に失敗。仮マスタで動作します。',e); }
+}
+/* 裏で最新マスタを取り、変わっていれば名前ボタン等を作り直す */
+function refreshMastersInBackground(){
+  fetchMasters().then(m=>{
+    if(applyMasters(m)){ loadCustom(); initNames(); refreshPeoplePicks(); }
+  }).catch(()=>{});
 }
 
 /* マスタ（取得できない場合のフォールバック） */
@@ -710,8 +790,9 @@ function resetForm(){
   addSite(); updateSummary(); clearDraft();
 }
 
-document.getElementById('save').onclick=()=>{
+document.getElementById('save').onclick=async ()=>{
   if(!author){ document.getElementById('overlay').style.display='flex'; return; }
+  try{ await refreshPendingKeys(); }catch(e){}
   const rows=buildRows().filter(r=>r.site);
   if(rows.length===0){ alert('現場を1つ以上選んでください'); return; }
   const cols=[['date','日付'],['author','作成者'],['category','種類'],['contract','委託'],['site','現場名'],
@@ -730,23 +811,49 @@ document.getElementById('save').onclick=()=>{
   const dw=document.getElementById('dupWarn'); const warns=[];
   if(dup.length) warns.push('同じ現場が複数行あります。午前・午後で分けたのでなければご確認ください。');
   if(totalNinku>1.0) warns.push('1日の人工合計が1.0を超えています。入力ミスがないかご確認ください。');
+  // すでに送った／送信待ちの日報と「同じ人・同じ日・同じ現場」なら注意（二重入力の防止）
+  const already=rows.filter(r=>isAlreadySent(r)).map(r=>r.site);
+  if(already.length) warns.push('「'+already.join('」「')+'」は、同じ日の日報をすでに記録済み（または送信待ち）です。二重になっていないかご確認ください。');
   if(warns.length){ dw.style.display='block'; dw.innerHTML=warns.join('<br>'); } else { dw.style.display='none'; }
   document.getElementById('modal').classList.add('show');
 };
 document.getElementById('modalBack').onclick=()=>document.getElementById('modal').classList.remove('show');
+let saving=false;
 document.getElementById('modalConfirm').onclick=async ()=>{
+  if(saving) return;            // 連打しても1回だけ
+  saving=true;
   const rows=buildRows().filter(r=>r.site);
   const btn=document.getElementById('modalConfirm'); btn.disabled=true; btn.textContent='保存中…';
+  // 1) まず端末に保管（送信IDつき）。これで電波が切れても失くさない
+  const item={ id:newSubmitId(), rows, author, date:rows[0]&&rows[0].date, createdAt:Date.now(), tries:0, lastError:'', kind:'' };
+  let stored=false;
+  try{ await obxPut(item); stored=true; }catch(e){ console.warn('端末への保管に失敗',e); }
   try{
-    const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({rows})});
-    const r=await res.json();
+    if(stored){ resetForm(); }              // 保管できたので入力欄は次の日報へ
+    // 2) 送信（同じ送信IDなら何度送ってもスプレッドシートには1回だけ記録される）
+    const sending=sendItem(item, !stored);
+    let r=null;
+    if(stored){
+      // 電波が弱くて長引くときは15秒で画面を返し、送信は裏で続ける
+      r=await Promise.race([sending, new Promise(res=>setTimeout(()=>res({status:'slow'}),15000))]);
+    }else{ r=await sending; }
     document.getElementById('modal').classList.remove('show');
-    if(r.ok){ alert('保存しました（'+r.saved+'件）。続けて新しい日報を入力できます。'); resetForm(); }
-    else { alert('保存に失敗しました：'+(r.error||'不明なエラー')); }
-  }catch(e){
-    document.getElementById('modal').classList.remove('show');
-    alert('通信エラーで保存できませんでした。電波を確認して、もう一度お試しください。\n（下書きは残っています）');
-  }finally{ btn.disabled=false; btn.textContent='この内容で記録'; }
+    if(r.status==='slow'){
+      alert('電波が弱く、送信に時間がかかっています。\nこの日報は「送信待ち」に入れてあり、裏で送り続けます。このまま次の入力をして大丈夫です。');
+      sending.then(x=>{ if(x.status==='ok') toast('送信待ちの日報を送りました（'+x.saved+'件）'); updateOutboxBadge(); });
+    }else if(r.status==='ok'){
+      alert('保存しました（'+r.saved+'件）。続けて新しい日報を入力できます。');
+      if(!stored) resetForm();
+    }else if(r.status==='offline'){
+      if(stored) alert('電波が届かないため、この日報を「送信待ち」に入れました。\n電波が戻ったら自動で送ります。このまま次の入力をして大丈夫です。');
+      else alert('通信エラーで保存できませんでした。電波を確認して、もう一度お試しください。\n（下書きは残っています）');
+    }else{
+      alert('保存に失敗しました：'+r.error+(stored?'\n\nこの日報は「送信待ち」に残しています。':''));
+    }
+  }finally{
+    btn.disabled=false; btn.textContent='この内容で記録'; saving=false;
+    updateOutboxBadge();
+  }
 };
 document.getElementById('draftRestore').onclick=()=>{ try{ restoreDraft(JSON.parse(localStorage.getItem('nippou_draft'))); }catch(e){}
   document.getElementById('draftModal').classList.remove('show'); };
@@ -754,11 +861,15 @@ document.getElementById('draftDiscard').onclick=()=>{ clearDraft(); document.get
 
 /* ===== 初期化 ===== */
 (async function init(){
+  await null;   // スクリプト全体を読み終えてから初期化する（後ろで宣言している変数を使うため）
   document.getElementById('date').value=todayStr();
   document.getElementById('addSite').onclick=()=>addSite();
-  await loadMasters();   // スプレッドシートのマスタを取得（失敗時は仮マスタ）
+  // 前回のマスタが端末にあれば、待たずにすぐ表示（最新は裏で取りに行く）
+  if(loadCachedMasters()) refreshMastersInBackground();
+  else await loadMasters();   // 初回だけはスプレッドシートのマスタを待つ（失敗時は仮マスタ）
   loadCustom();
   initNames();
+  initOutbox();
   // ダッシュボードから「直す」で開かれた場合（?edit=RID）
   const params=new URLSearchParams(location.search);
   const editRid=params.get('edit');
@@ -908,6 +1019,188 @@ document.getElementById('ed_submit').onclick=async function(){
   }catch(e){ alert('通信エラーで更新できませんでした。電波を確認してください。'); }
   finally{ btn.disabled=false; btn.textContent='更新する'; }
 };
+
+/* ===== 日報の削除 ===== */
+document.getElementById('ed_delete').onclick=()=>{
+  const v=id=>document.getElementById(id).value;
+  document.getElementById('delLead').textContent=
+    (edRecAuthor?edRecAuthor+'さんの ':'')+(v('ed_date')||'')+'「'+(v('ed_site')||'')+'」の日報を削除します。';
+  document.getElementById('delModal').classList.add('show');
+};
+document.getElementById('delCancel').onclick=()=>document.getElementById('delModal').classList.remove('show');
+document.getElementById('delConfirm').onclick=async function(){
+  const btn=this; if(btn.disabled) return;
+  btn.disabled=true; btn.textContent='削除中…';
+  try{
+    const res=await fetchT(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({mode:'delete',rid:edRecRid,editor:author})}, 30000);
+    const r=await res.json();
+    document.getElementById('delModal').classList.remove('show');
+    if(r.ok){
+      forgetSent(edRecAuthor, document.getElementById('ed_date').value, document.getElementById('ed_site').value);
+      alert('削除しました。');
+      document.getElementById('edForm').style.display='none'; openEditList();
+    }else{ alert('削除できませんでした：'+(r.error||'不明なエラー')); }
+  }catch(e){
+    document.getElementById('delModal').classList.remove('show');
+    alert('通信エラーで削除できませんでした。電波を確認して、もう一度お試しください。');
+  }finally{ btn.disabled=false; btn.textContent='削除する'; }
+};
+
+/* =========================================================
+   送信待ち（電波が悪いときの保管と自動再送）
+   - 保存ボタンを押した日報は、まず端末（IndexedDB）に保管してから送る
+   - 送れなかったら保管したまま。電波が戻る／アプリを開く／1分ごとに自動で再送
+   - 送信IDつきなので、同じ日報を何度送ってもスプレッドシートには1回だけ
+   ========================================================= */
+function newSubmitId(){
+  if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'S'+Date.now().toString(36)+Math.random().toString(36).slice(2,10);
+}
+const OBX_LS='nippou_outbox';
+let obxDB=null;
+function obxOpen(){
+  if(obxDB) return Promise.resolve(obxDB);
+  return new Promise((res,rej)=>{
+    if(!window.indexedDB) return rej(new Error('no indexedDB'));
+    const rq=indexedDB.open('nippou_app',1);
+    rq.onupgradeneeded=()=>{ rq.result.createObjectStore('outbox',{keyPath:'id'}); };
+    rq.onsuccess=()=>{ obxDB=rq.result; res(obxDB); };
+    rq.onerror=()=>rej(rq.error);
+  });
+}
+function obxTx(mode, fn){
+  return obxOpen().then(db=>new Promise((res,rej)=>{
+    const tx=db.transaction('outbox',mode); const st=tx.objectStore('outbox');
+    const out=fn(st); tx.oncomplete=()=>res(out&&out.result); tx.onerror=()=>rej(tx.error); tx.onabort=()=>rej(tx.error);
+  }));
+}
+function lsGet(){ try{ return JSON.parse(localStorage.getItem(OBX_LS)||'[]'); }catch(e){ return []; } }
+function lsSet(a){ localStorage.setItem(OBX_LS, JSON.stringify(a)); }
+async function obxAll(){
+  let a=[]; try{ a=(await obxTx('readonly',st=>st.getAll()))||[]; }catch(e){}
+  const b=lsGet(); b.forEach(x=>{ if(!a.some(y=>y.id===x.id)) a.push(x); });
+  return a.sort((x,y)=>x.createdAt-y.createdAt);
+}
+async function obxPut(item){
+  try{ await obxTx('readwrite',st=>st.put(item)); return; }
+  catch(e){ const a=lsGet().filter(x=>x.id!==item.id); a.push(item); lsSet(a); }  // IndexedDBが使えない端末用
+}
+async function obxDel(id){
+  try{ await obxTx('readwrite',st=>st.delete(id)); }catch(e){}
+  const a=lsGet(); if(a.some(x=>x.id===id)) lsSet(a.filter(x=>x.id!==id));
+}
+
+/* 1件送る。戻り値 {status:'ok'|'offline'|'error'} */
+const inflight=new Set();   // 送信中の送信ID（同じ日報を同時に送らない）
+async function sendItem(item, noStore){
+  if(inflight.has(item.id)) return {status:'offline'};
+  inflight.add(item.id);
+  try{
+    const res=await fetchT(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({rows:item.rows, submitId:item.id})}, 90000);
+    const r=await res.json();
+    if(r.ok){
+      if(!noStore) await obxDel(item.id);
+      (item.rows||[]).forEach(rememberSent);
+      return {status:'ok', saved:r.saved, duplicate:!!r.duplicate};
+    }
+    item.tries++; item.lastError=r.error||'不明なエラー'; item.kind='server';
+    if(!noStore) await obxPut(item);
+    return {status:'error', error:item.lastError};
+  }catch(e){
+    item.tries++; item.lastError='電波が届かず送れませんでした'; item.kind='net';
+    if(!noStore) await obxPut(item);
+    return {status:'offline'};
+  }finally{ inflight.delete(item.id); }
+}
+
+let flushing=false;
+/* 送信待ちをまとめて送る。manual=true は「今すぐ送る」ボタンから */
+async function flushOutbox(manual){
+  if(flushing) return;
+  flushing=true; document.getElementById('outboxBadge').classList.add('busy');
+  let sent=0, failed=false;
+  try{
+    const list=await obxAll();
+    for(const item of list){
+      if(!manual && item.kind==='server') continue;       // 内容の問題で断られたものは手動でだけ再送
+      if(inflight.has(item.id)) continue;                  // いま送っている最中のものは飛ばす
+      const r=await sendItem(item);
+      if(r.status==='ok') sent++;
+      else if(r.status==='offline'){ failed=true; break; } // 圏外ならいったん止める
+    }
+  }finally{
+    flushing=false; document.getElementById('outboxBadge').classList.remove('busy');
+    await updateOutboxBadge();
+    if(document.getElementById('obScreen').style.display!=='none') renderOutbox();
+  }
+  if(sent) toast('送信待ちの日報を送りました（'+sent+'件）');
+  else if(manual && failed) toast('まだ電波が届かないようです。電波が戻ったら自動で送ります。');
+}
+async function updateOutboxBadge(){
+  const n=(await obxAll()).length;
+  document.getElementById('outboxCount').textContent=n;
+  document.getElementById('outboxBadge').classList.toggle('show', n>0);
+  return n;
+}
+async function renderOutbox(){
+  const box=document.getElementById('obList'); const list=await obxAll();
+  if(!list.length){ box.innerHTML='<div class="ed-empty">送信待ちの日報はありません。<br>すべてスプレッドシートに記録されています。</div>'; return; }
+  box.innerHTML=list.map(it=>{
+    const sitesTxt=(it.rows||[]).map(r=>r.site).filter(Boolean).join('・');
+    const when=new Date(it.createdAt); const hm=String(when.getHours()).padStart(2,'0')+':'+String(when.getMinutes()).padStart(2,'0');
+    const st=it.tries? it.lastError+'（'+it.tries+'回）' : '送信を待っています';
+    return `<div class="ob-item${it.kind==='server'?' err':''}">
+      <div class="ob-date">${esc(it.date||'')}　${esc(it.author||'')}さん　（${(when.getMonth()+1)}/${when.getDate()} ${hm} に保存）</div>
+      <div class="ob-site">${esc(sitesTxt||'（現場なし）')}</div>
+      <div class="ob-st">${esc(st)}</div>
+      <div class="ob-acts"><button class="ob-cancel" data-id="${esc(it.id)}">この日報を送らずに取り消す</button></div>
+    </div>`; }).join('');
+  box.querySelectorAll('.ob-cancel').forEach(b=>b.onclick=async()=>{
+    if(!confirm('この日報を送らずに取り消します。よろしいですか？\n（取り消すと元に戻せません）')) return;
+    await obxDel(b.dataset.id); await updateOutboxBadge(); renderOutbox();
+  });
+}
+function toast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toast._tm); toast._tm=setTimeout(()=>t.classList.remove('show'), 4000);
+}
+function initOutbox(){
+  document.getElementById('outboxBadge').onclick=()=>{ document.getElementById('obScreen').style.display='flex'; renderOutbox(); };
+  document.getElementById('obClose').onclick=()=>{ document.getElementById('obScreen').style.display='none'; };
+  document.getElementById('obSendNow').onclick=async function(){
+    this.disabled=true; this.textContent='送信中…';
+    try{ await flushOutbox(true); } finally{ this.disabled=false; this.textContent='今すぐ送る'; }
+  };
+  window.addEventListener('online', ()=>flushOutbox(false));
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') flushOutbox(false); });
+  setInterval(()=>{ if(document.getElementById('outboxBadge').classList.contains('show')) flushOutbox(false); }, 60000);
+  updateOutboxBadge().then(n=>{ if(n) flushOutbox(false); });
+}
+
+/* ===== 送った日報の控え（同じ日・同じ現場の二重入力に気づくため。30日分）===== */
+const SENT_KEY='nippou_sentlog';
+function sentKey(a,d,s){ return [a||'',d||'',s||''].join('|'); }
+function sentLog(){ try{ return JSON.parse(localStorage.getItem(SENT_KEY)||'[]'); }catch(e){ return []; } }
+function rememberSent(r){
+  try{ const lim=Date.now()-30*86400000;
+    const a=sentLog().filter(x=>x.t>lim); a.push({k:sentKey(r.author,r.date,r.site), t:Date.now()});
+    localStorage.setItem(SENT_KEY, JSON.stringify(a)); }catch(e){}
+}
+function forgetSent(a,d,s){
+  try{ const k=sentKey(a,d,s); const l=sentLog(); const i=l.findIndex(x=>x.k===k);
+    if(i>=0){ l.splice(i,1); localStorage.setItem(SENT_KEY, JSON.stringify(l)); } }catch(e){}
+}
+let _pendingKeys=[];
+function isAlreadySent(r){
+  const k=sentKey(r.author,r.date,r.site);
+  return sentLog().some(x=>x.k===k) || _pendingKeys.includes(k);
+}
+/* 送信待ちの中身も二重チェックに使う */
+async function refreshPendingKeys(){
+  _pendingKeys=[]; (await obxAll()).forEach(it=>(it.rows||[]).forEach(r=>_pendingKeys.push(sentKey(r.author,r.date,r.site))));
+}
 </script>
 </body>
 </html>
