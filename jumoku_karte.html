@@ -200,6 +200,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 dialog h2{margin:0 0 10px;font-size:17px;color:var(--leaf)}
 
 .mpchips button.on{background:var(--leaf);color:#fff;border-style:solid}.mpchips button.done:not(.on){border-style:solid;background:#EEF6F0}
+.syncstat{font-size:13px;color:var(--bark);background:var(--field);border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin:-2px 0 10px;cursor:pointer}
 
 /* ---- 型・調整・フォーム ---- */
 #karte.design .kc[data-k]{outline:1.5px dashed rgba(30,136,229,.75);outline-offset:-1px;background:rgba(30,136,229,.06)}
@@ -327,6 +328,7 @@ dialog.wide{max-width:720px}
       <label class="btn" title="AirDropした写真やiPadの写真を、撮った時刻で各木に割り振る">📥 写真をまとめて入れる<input type="file" id="fileInbox" accept="image/*" multiple hidden></label>
     </div>
     <input class="inp" id="listSearch" type="search" placeholder="🔍 No.・樹木番号・樹種・路線名・案件名でさがす" aria-label="さがす" style="margin-bottom:10px">
+    <div id="syncStat" class="syncstat hidden" role="button"></div>
     <div id="listHead"></div>
     <div id="treeList"></div>
     <div id="listMore" style="margin:6px 0 16px"></div>
@@ -349,6 +351,11 @@ dialog.wide{max-width:720px}
       <h3 style="margin:12px 0 2px;font-size:14.5px">保存のしかた（Excel・バックアップ・写真）</h3>
       <label class="chk"><input type="radio" name="optSave" value="ask"> <span>毎回、保存先を選ぶ<small class="hint" style="display:block;margin-top:2px">iPad：出てくるメニューで「“ファイル”に保存」→ フォルダ（iCloud Drive・このiPad内・OneDrive など）を選ぶ。AirDrop・メールでも送れます。パソコン：保存ダイアログでフォルダとファイル名を選ぶ。</small></span></label>
       <label class="chk"><input type="radio" name="optSave" value="dl"> <span>すぐ「ダウンロード」フォルダに保存<small class="hint" style="display:block;margin-top:2px">iPadでの保存場所は「設定」→ Safari →「ダウンロード」で変えられます。</small></span></label>
+    </div>
+    <div class="card">
+      <h2>☁️ 同期（OneDrive・Googleドライブ）</h2>
+      <p class="hint">パソコン・iPad・iPhone のデータを、OneDrive（とGoogleドライブ）の「樹木診断カルテ」フォルダを通してそろえます。木ごとに新しく直したほうが残ります。電波のない現場では、つながったときにまとめて同期します。</p>
+      <div id="syncBox"></div>
     </div>
     <div class="card">
       <h2>バックアップ・機種変更</h2>
@@ -404,7 +411,7 @@ dialog.wide{max-width:720px}
 <dialog id="dlgPhoto">
   <h2 id="phTitle"></h2>
   <div class="row" id="phBtns" style="flex-direction:column;align-items:stretch"></div>
-  <input type="file" id="phFile" accept="image/*" hidden>
+  <input type="file" id="phFile" accept="image/*,.emf,image/emf,image/x-emf" hidden>
 </dialog>
 <dialog id="dlgQty">
   <h2>数字を入れる</h2>
@@ -3483,7 +3490,12 @@ function toggleOpt(ref, i) {
    ========================================================= */
 let viewMode = (() => { try { return localStorage.getItem('jk_mode') || 'karte'; } catch (e) { return 'karte'; } })();
 let kRedo = []; // 手書きの「進む」用（戻した線）
-const kState = { zoom: 1, ink: false, design: false, tool: 'pen', color: '#111111', size: 1 };
+// カルテの表示の大きさ：1＝標準。端末ごとに覚える（パソコンとiPadで別々）
+const kZoomSaved = () => { try { const v = parseFloat(localStorage.getItem('jk_kzoom')); return v >= .4 && v <= 4 ? v : 1; } catch (e) { return 1; } };
+const kZoomSave = () => { try { localStorage.setItem('jk_kzoom', String(Math.round(kState.zoom * 100) / 100)); } catch (e) { } };
+// パソコン（マウス）では、横いっぱいに広げず、iPad の縦くらいの幅を標準にする
+const isMousePC = () => { try { return matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { return false; } };
+const kState = { zoom: kZoomSaved(), ink: false, design: false, tool: 'pen', color: '#111111', size: 1 };
 let kCells = [], kPages = [], kLastPage = null;
 const BW = { thin: 1, hair: .6, dotted: 1, dashed: 1, mediumDashed: 2, medium: 2, thick: 3, double: 3, dashDot: 1, mediumDashDot: 2, slantDashDot: 2, dashDotDot: 1, mediumDashDotDot: 2 };
 const BD = { dotted: '1.2 2', hair: '1 1.5', dashed: '4 2', mediumDashed: '5 2', dashDot: '4 2 1 2', mediumDashDot: '5 2 1 2', dashDotDot: '4 2 1 2 1 2' };
@@ -3662,9 +3674,9 @@ function refreshView(photos) {
 }
 function fitKarte() {
   const root = $('#karte'); if (!kPages.length) return;
-  const avail = Math.max(300, root.clientWidth - 16); const maxW = Math.max(...kPages.map(p => p.W));
+  const avail = Math.max(300, root.clientWidth - 16), base = isMousePC() ? Math.min(avail, 860) : avail; const maxW = Math.max(...kPages.map(p => p.W));
   for (const p of kPages) {
-    const s = avail / maxW * kState.zoom; p.scale = s;
+    const s = base / maxW * kState.zoom; p.scale = s;
     p.page.style.transform = `scale(${s})`; p.wrap.style.width = p.W * s + 'px'; p.wrap.style.height = p.H * s + 'px';
     const dpr = Math.min(3, (window.devicePixelRatio || 1) * s);
     const w = Math.round(p.W * dpr), hh = Math.round(p.H * dpr);
@@ -3741,7 +3753,7 @@ let kPinch = null;
     raf = requestAnimationFrame(() => {
       if (!kPinch) return;
       const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-      const z = Math.max(1, Math.min(4, kPinch.z0 * d / kPinch.d0)), f = z / kPinch.z0;
+      const z = Math.max(.4, Math.min(4, kPinch.z0 * d / kPinch.d0)), f = z / kPinch.z0;
       if (Math.abs(z - kState.zoom) > .005) { kState.zoom = z; fitKarte(); }
       const top = root.getBoundingClientRect().top + window.scrollY;
       root.scrollLeft = kPinch.cx * f - (m[0] - root.getBoundingClientRect().left);
@@ -3763,7 +3775,7 @@ let kPinch = null;
     const sc = e.scale || 1; cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       if (!gz) return;
-      const z = Math.max(1, Math.min(4, gz.z0 * sc)), f = z / gz.z0;
+      const z = Math.max(.4, Math.min(4, gz.z0 * sc)), f = z / gz.z0;
       if (Math.abs(z - kState.zoom) > .005) { kState.zoom = z; fitKarte(); }
       const top = root.getBoundingClientRect().top + window.scrollY;
       root.scrollLeft = gz.cx * f - (gz.mx - root.getBoundingClientRect().left);
@@ -3810,9 +3822,9 @@ function renderKTools() {
     }
   }
   t.append(h('span', { class: 'sep' }),
-    b('－', false, () => { kState.zoom = Math.max(1, kState.zoom - .5); fitKarte(); renderKTools(); }),
-    b('＋ 拡大', false, () => { kState.zoom = Math.min(4, kState.zoom + .5); fitKarte(); renderKTools(); }),
-    ...(kState.zoom > 1.01 ? [b(`🔍 全体（${Math.round(kState.zoom * 100)}%）`, false, () => { kState.zoom = 1; fitKarte(); renderKTools(); })] : []),
+    b('－ 縮小', false, () => { kState.zoom = Math.max(.4, Math.round((kState.zoom - (kState.zoom > 1.5 ? .5 : .1)) * 10) / 10); kZoomSave(); fitKarte(); renderKTools(); }),
+    b(`🔍 ${Math.round(kState.zoom * 100)}%`, false, () => { kState.zoom = 1; kZoomSave(); fitKarte(); renderKTools(); }),
+    b('＋ 拡大', false, () => { kState.zoom = Math.min(4, Math.round((kState.zoom + (kState.zoom >= 1.5 ? .5 : .1)) * 10) / 10); kZoomSave(); fitKarte(); renderKTools(); }),
     h('span', { class: 'sep' }),
     b('Excelに出力', false, () => exportTrees([cur.id]), 'on'));
 }
@@ -3850,7 +3862,7 @@ function openEditor(key) {
   else if (spec.k === 'date') inp = h('input', { type: 'date', class: 'inp' });
   else inp = h('input', { class: 'inp', inputmode: spec.k === 'num' ? 'decimal' : null, list: 'edList', enterkeyhint: 'done', autocomplete: 'off' });
   inp.value = v ?? ''; inp.id = 'edInput';
-  const set = () => { if (key.includes('#b')) { cur.v[key] = inp.value; } else setV(cur, curType, key, inp.value); touch(); refreshView(); };
+  const set = () => { if (key.includes('#b')) { cur.v[key] = inp.value; } else { setV(cur, curType, key, inp.value); regiCellChanged(cur, curType, key); } touch(); refreshView(); };
   inp.addEventListener('input', set);
   if (inp.tagName === 'INPUT') inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); closeEditor(); } });
   body.append(inp);
@@ -3861,6 +3873,10 @@ function openEditor(key) {
   }
   const phr = spec.phrases || [];
   if (phr.length) body.append(h('div', { class: 'chips' }, phr.map(p => h('button', { type: 'button', class: p.includes('○') ? 'qtychip' : '', onclick: async () => { const v = await fillPlaceholders(p); if (v) { inp.value += v; set(); } inp.focus(); } }, '＋' + p))));
+  const rm = curType.calc && curType.calc.kind === 'regi' && curType.calc.map;
+  if (rm && rm.ang === key) body.append(h('div', { class: 'chips' }, [30, 40].map(d => h('button', { type: 'button', onclick: () => { inp.value = String(d); set(); } }, `${d}°（×${regiKf(d).toFixed(2)}）`))),
+    h('p', { class: 'hint' }, '補正直径＝測定直径×定数（30°→1.15、40°→1.31。ほかの角度は 1/cos 俯角）。測定直径と俯角を入れると、補正直径は自動で入ります。'));
+  if (rm && rm.ang && (rm.D1 === key || rm.D2 === key)) body.append(h('p', { class: 'hint' }, '俯角が入っていれば、補正直径（×定数）も自動で入ります。'));
   const gl = glossaryFor(spec.label);
   if (gl.length) body.append(h('div', { class: 'row', style: 'margin-top:8px' }, ...gl.map(g => h('button', { type: 'button', class: 'btn', onclick: () => showGlossary([g]) }, '📖 ' + g[0]))));
   $('#edGps').classList.toggle('hidden', !spec.gps);
@@ -4067,6 +4083,10 @@ async function photoURL(id) {
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
 function canvasBlob(c, q = .85, type = 'image/jpeg') { return new Promise(r => c.toBlob(r, type, q)); }
 async function shrink(file, max = 1800) {
+  if (await isEmfFile(file)) { // レジストグラフのソフトが出す波形の図（EMF）は、画像にしてから入れる
+    const c = emfToCanvas(await file.arrayBuffer(), Math.max(max, 2400));
+    return { blob: await canvasBlob(c, 1, 'image/png'), w: c.width, h: c.height, emf: c.emf };
+  }
   const src = URL.createObjectURL(file);
   try {
     const img = await loadImg(src);
@@ -4101,8 +4121,8 @@ async function addPhotos(files, slot) {
   let first = null;
   for (const file of files) {
     try {
-      const { blob, w, h: hh } = await shrink(file); const id = uid(); await DB.put('photos', { id, blob });
-      const p = { id, slot: slot && !first ? takeSlot(slot) : '', strokes: [], w, h: hh };
+      const { blob, w, h: hh, emf } = await shrink(file); const id = uid(); await DB.put('photos', { id, blob });
+      const p = { id, slot: slot && !first ? takeSlot(slot) : '', strokes: [], w, h: hh }; if (emf) p.emf = emf; // EMF の色・文字（波形の凡例の候補）
       cur.photos.push(p); first = first || p;
       const t = cur; geoForFile(file).then(g => { if (g) { p.geo = g; touch(t); } }); // 撮影位置（写真の位置情報、なければいまの位置）
     } catch (e) { toast('写真を読み込めませんでした'); }
@@ -4128,7 +4148,8 @@ function photoMenu(slot) {
   file.onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; close(); if (fs.length) { const np = await addPhotos(fs, slot); if (np && await ask('この写真に矢印やコメントを書き込みますか？', '書き込む', false, 'あとで')) openDraw(np); } };
   if (camOn()) box.append(B(`📱 iPhoneで撮る（${p ? '差し替え' : 'この枠へ'}）`, () => { close(); camSetTarget(slot); toast('iPhoneのシャッターを押すと、この枠に入ります'); }, p ? '' : 'pri'));
   if (p) box.append(B('✏️ この写真に書き込む', () => { close(); openDraw(p); }, 'pri'));
-  box.append(B(p ? '📷 iPadで撮り直す・写真から選ぶ' : '📷 iPadで撮る・写真から選ぶ', () => file.click(), p || camOn() ? '' : 'pri'));
+  if (/波形/.test(label)) box.append(B('📈 波形のファイル（EMF・画像）を選ぶ', () => file.click(), p ? '' : 'pri'), h('p', { class: 'hint' }, 'レジのソフトで出したEMFをそのまま選べます（パソコンから AirDrop・メール・iCloud Drive などで iPad の「ファイル」に入れておき、出てくるメニューで「ファイルを選択」）。'));
+  else box.append(B(p ? '📷 iPadで撮り直す・写真から選ぶ' : '📷 iPadで撮る・写真から選ぶ', () => file.click(), p || camOn() ? '' : 'pri'));
   if (!camOn()) box.append(B('📱 iPhoneをカメラにする', () => { close(); openCamDialog(); }));
   box.append(B('✏️ 白紙に手描きする', () => { close(); addSketch(slot); }));
   const others = cur.photos.filter(x => x.slot !== slot);
@@ -5511,10 +5532,10 @@ const REGI_MAP_TOKYO = nekabu => ({
 const BEARINGS = ['北', '東', '南', '西'];
 const regiDefault = () => ({ mode: 'dir', D1: '', D2: '', ang: '', dirs: [{ bear: '南' }, { bear: '西' }, { bear: '北' }, { bear: '東' }].map(d => ({ ...d, b: '', t: '', dl: '' })) });
 const num = v => { const s = String(v ?? '').replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim(); return s === '' || isNaN(+s) ? null : +s; };
-const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
+const f1 = v => (Math.round(+(v * 10).toFixed(6)) / 10).toFixed(1); // 51.75 が 51.7 にならないように（小数の誤差）
 function regiCalc(inp) {
   const ang = num(inp.ang), kf = ang ? Math.round(100 / Math.cos(ang * Math.PI / 180)) / 100 : 1;
-  const D = [num(inp.D1), num(inp.D2)].map(d => d == null ? null : ang ? Math.round(d * kf * 10) / 10 : d);
+  const D = [num(inp.D1), num(inp.D2)].map(d => d == null ? null : ang ? Math.round(+(d * kf * 10).toFixed(6)) / 10 : d);
   const axis = i => (i % 2 === 0 ? 0 : 1); // ①③→直径1、②④→直径2
   const out = { D, kf, dirs: [] };
   inp.dirs.forEach((d, i) => {
@@ -5555,12 +5576,63 @@ function regiApply(t, ty, inp) {
   t.v._regi = inp;
 }
 
+// 根株：カルテの「俯角」「測定直径」を直接入れたときも、補正直径（測定直径×定数。30°→1.15、40°→1.31）を自動で入れる
+const regiKf = ang => ang ? Math.round(100 / Math.cos(ang * Math.PI / 180)) / 100 : null;
+function regiCellChanged(t, ty, ref) {
+  const m = ty.calc && ty.calc.kind === 'regi' && ty.calc.map; if (!m || !m.ang || ![m.D1, m.D2, m.ang].includes(ref)) return false;
+  if (t.v._regi) { // t/R の計算の入力もそろえて計算し直す
+    const inp = t.v._regi; inp.D1 = getV(t, ty, m.D1) ?? ''; inp.D2 = getV(t, ty, m.D2) ?? ''; inp.ang = getV(t, ty, m.ang) ?? '';
+    regiApply(t, ty, inp); return true;
+  }
+  const kf = regiKf(num(getV(t, ty, m.ang)));
+  for (const [dk, ck] of [['D1', 'CD1'], ['D2', 'CD2']]) { const d = num(getV(t, ty, m[dk])); setV(t, ty, m[ck], kf && d != null ? f1(d * kf) : ''); }
+  return true;
+}
+
 /* ---------- 想定断面図：十字に 健全部（白）・腐朽部（黒）を並べ、真ん中の未測定部分を点線で ---------- */
 function regiPos(inp, i) { // 0:上 1:右 2:下 3:左
   if (inp.mode === 'dir') { const k = BEARINGS.indexOf(inp.dirs[i].bear); if (k >= 0) return k; }
   return [2, 3, 0, 1][i]; // 十字：①下 ②左 ③上 ④右（東京都の記入例と同じ）
 }
 // waves[i] = { img, cal }：波形の画像と目盛り（cal: x0＝0cmの位置, x1＝もう1本の目盛りの位置, v＝その値(cm), y0/y1＝上下の切り取り。いずれも画像に対する割合）
+// 評価（Assessment）の色の意味：英語 → 日本語（レジのソフトの言葉）。直した訳は jk_wavelegend に覚える
+const WAVE_JA = [[/^bark$/i, '樹皮'], [/^intact$/i, '健全'], [/^sound( wood)?$/i, '健全材'], [/^healthy$/i, '健全'], [/incipient|beginning|early/i, '初期腐朽'], [/advanced/i, '進行した腐朽'], [/soft ?rot/i, '軟腐朽'], [/white ?rot/i, '白色腐朽'], [/brown ?rot/i, '褐色腐朽'], [/decay|rot|decomposed/i, '腐朽'],
+  [/cavity|hollow/i, '空洞'], [/void|gap/i, '空隙'], [/ring ?shake|shake/i, '目回り'], [/crack/i, '亀裂'], [/reaction/i, '反応帯'], [/included bark/i, '入皮'], [/heart ?wood/i, '心材'], [/sap ?wood/i, '辺材'], [/pith/i, '髄'], [/cambium/i, '形成層'], [/wet ?wood|wet/i, '水食い材'], [/knot/i, '節'], [/resin/i, '樹脂'], [/damage/i, '損傷'], [/unknown|unclear/i, '不明']];
+function waveLegendStore() { try { const v = JSON.parse(localStorage.getItem('jk_wavelegend') || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? { ja: v.ja || {}, manual: v.manual || [] } : { ja: {}, manual: [] }; } catch (e) { return { ja: {}, manual: [] }; } }
+function saveWaveLegend(v) { try { localStorage.setItem('jk_wavelegend', JSON.stringify(v)); } catch (e) { } }
+function waveJa(en) { const k = String(en || '').trim(), m = waveLegendStore().ja; if (m[k.toLowerCase()] != null) return m[k.toLowerCase()]; for (const [re, ja] of WAVE_JA) if (re.test(k)) return ja; return ''; }
+// 断面図に出す凡例：波形の EMF から読んだもの＋手で足したもの（同じ言葉は1つに）
+function waveLegend(waves) {
+  const out = [], seen = new Set(), add = (c, en) => { const k = String(en || '').trim(); if (!k || seen.has(k.toLowerCase())) return; seen.add(k.toLowerCase()); out.push({ c, en: k, ja: waveJa(k) }); };
+  for (const w of waves || []) for (const l of (w && w.p && w.p.emf && w.p.emf.legend) || []) add(l.c, l.en);
+  for (const l of waveLegendStore().manual) add(l.c, l.en);
+  return out;
+}
+// 波形の上下の余白（Amplitude の空き）を取り除く：切り取りの範囲の中で、波形の線がある行だけにする
+// 波形の線＝色のついた画素（グラフの線は色、目盛り・文字は黒や灰色が多い）。色の線がなければ濃い画素（横いっぱいの目盛り線は除く）
+const waveTrimCache = new WeakMap();
+function waveTrim(img, cal) {
+  const key = [cal.x0, cal.x1, cal.y0, cal.y1].join(','), memo = waveTrimCache.get(img); if (memo && memo.key === key) return memo.v;
+  const iw = img.naturalWidth, ih = img.naturalHeight, sc = Math.min(1, 700 / iw), W = Math.max(1, Math.round(iw * sc)), H = Math.max(1, Math.round(ih * sc));
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, W, H);
+  const xa = Math.round(Math.min(cal.x0, cal.x1) * W), xb = Math.round(Math.max(cal.x0, cal.x1) * W), ya = Math.round(Math.min(cal.y0, cal.y1) * H), yb = Math.round(Math.max(cal.y0, cal.y1) * H);
+  let v = [Math.min(cal.y0, cal.y1), Math.max(cal.y0, cal.y1)];
+  if (xb - xa > 10 && yb - ya > 6) {
+    const data = g.getImageData(xa, ya, xb - xa, yb - ya).data, w = xb - xa, rows = yb - ya, col = new Array(rows).fill(0), dark = new Array(rows).fill(0);
+    for (let y = 0; y < rows; y++) for (let x = 0; x < w; x++) { const k = (y * w + x) * 4, R = data[k], G = data[k + 1], B = data[k + 2], mx = Math.max(R, G, B), mn = Math.min(R, G, B); if (mx - mn >= 60 && mn < 200) col[y]++; else if ((R + G + B) / 3 < 110) dark[y]++; }
+    // 評価（Assessment）の色の線：横いっぱいに近い、細い（数画素の）色の帯。波形とは分けて、あとで波形のすぐ上に置く
+    const bars = [], thin = Math.max(3, Math.round(H * .012)), inBar = new Array(rows).fill(false);
+    for (let y = 0; y < rows;) { if (col[y] > w * .6) { let e = y; while (e + 1 < rows && col[e + 1] > w * .6) e++; if (e - y + 1 <= thin && (y === 0 || col[y - 1] < w * .3) && (e === rows - 1 || col[e + 1] < w * .3)) { bars.push([(ya + y) / H, (ya + e + 1) / H]); for (let k = y; k <= e; k++) inBar[k] = true; } y = e + 1; } else y++; }
+    const colC = col.map((n, y) => inBar[y] ? 0 : n), colTot = colC.reduce((a, b) => a + b, 0), use = colTot >= w * .3 ? colC : dark.map((n, y) => n > w * .6 || inBar[y] ? 0 : n); // 色の線が十分あればそれで
+    // 行のかたまりに分けて（すき間が少しならつなぐ）、いちばん多いかたまり＝波形。見出し・目盛りの数字・凡例の文字は別のかたまりになる
+    const gap = Math.max(2, Math.round(H * .006)), blocks = []; let cb = null;
+    use.forEach((n, y) => { if (n > 0) { if (cb && y - cb.e <= gap) { cb.e = y; cb.sum += n; } else { cb = { s: y, e: y, sum: n }; blocks.push(cb); } } });
+    const best = blocks.sort((p, q) => q.sum - p.sum)[0];
+    if (best) { const pad = Math.max(2, (best.e - best.s) * .04); v = [Math.max(ya, ya + best.s - pad) / H, Math.min(yb, ya + best.e + pad + 1) / H]; }
+    v.bars = bars;
+  }
+  waveTrimCache.set(img, { key, v }); return v;
+}
 async function regiDiagram(inp, waves = []) {
   const r = regiCalc(inp), S = 1200, c = document.createElement('canvas'); c.width = c.height = S;
   const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
@@ -5575,17 +5647,22 @@ async function regiDiagram(inp, waves = []) {
     const p = regiPos(inp, i), [ux, uy] = U[p], Rr = (r.D[i % 2] || Dm) / 2 * k; // その向きの半径（画素）
     const at = dist => [cx + ux * (Rr - dist * k), cy + uy * (Rr - dist * k)];
     const bar = (from, len, fill) => { const [ax, ay] = at(from), [bx, by] = at(from + len), w = 26; const x0 = Math.min(ax, bx) - (ux ? 0 : w / 2), y0 = Math.min(ay, by) - (uy ? 0 : w / 2), ww = ux ? Math.abs(bx - ax) : w, hh = uy ? Math.abs(by - ay) : w; x.fillStyle = fill; x.fillRect(x0, y0, ww, hh); x.lineWidth = 2; x.strokeStyle = '#111'; x.strokeRect(x0, y0, ww, hh); };
+    let measured = null; // 波形の向き：ドリルで測った深さ（cm）。これより先（中心側）が未測定
     const wv = inp.fig !== 'bar' && waves[i] && waves[i].cal && num(waves[i].cal.v) > 0 ? waves[i] : null;
     if (wv) { // 波形の画像を、目盛りを合わせて十字に置く（0cm＝幹の表面、中心に向かって深くなる）
       const { img, cal } = wv, iw = img.naturalWidth, ih = img.naturalHeight;
       const pxcm = Math.abs(cal.x1 - cal.x0) * iw / num(cal.v), s = k / pxcm, maxcm = (r.D[i % 2] || Dm) / 2;
-      const Lpx = Math.min(maxcm * pxcm, cal.x1 < cal.x0 ? cal.x0 * iw : (1 - cal.x0) * iw);
-      const sy = Math.min(cal.y0, cal.y1) * ih, shh = Math.max(4, Math.abs(cal.y1 - cal.y0) * ih);
+      const Lfull = cal.x1 < cal.x0 ? cal.x0 * iw : (1 - cal.x0) * iw, Lpx = Math.min(maxcm * pxcm, Lfull); measured = Lfull / pxcm;
+      const [ty0, ty1] = waveTrim(img, cal), sy = ty0 * ih, shh = Math.max(4, (ty1 - ty0) * ih); // 上下の空きを詰める
       let hh = shh * s; if (hh > RP * .24) hh = RP * .24; // 振幅の向きは縮めても良い
       const [ex, ey] = [cx + ux * Rr, cy + uy * Rr];
       x.save(); x.translate(ex, ey); x.rotate(Math.atan2(-uy, -ux)); // ＋X が中心向き
-      if (cal.x1 < cal.x0) { x.rotate(Math.PI); x.globalAlpha = .95; x.drawImage(img, cal.x0 * iw - Lpx, sy, Lpx, shh, -Lpx * s, -hh / 2, Lpx * s, hh); }
-      else { x.globalAlpha = .95; x.drawImage(img, cal.x0 * iw, sy, Lpx, shh, 0, -hh / 2, Lpx * s, hh); }
+      const trim = waveTrim(img, cal), barH = 9, sxa = cal.x1 < cal.x0 ? cal.x0 * iw - Lpx : cal.x0 * iw, dxa = cal.x1 < cal.x0 ? -Lpx * s : 0;
+      if (cal.x1 < cal.x0) x.rotate(Math.PI);
+      x.globalAlpha = .95; x.drawImage(img, sxa, sy, Lpx, shh, dxa, -hh / 2, Lpx * s, hh); x.globalAlpha = 1;
+      (trim.bars || []).forEach(([b0, b1], k) => { // 評価（Assessment）の色の線は、波形のすぐ上に詰めて置く
+        const by0 = -hh / 2 - (barH + 2) * (k + 1); x.fillStyle = '#fff'; x.fillRect(dxa, by0 - 1, Lpx * s, barH + 2); x.imageSmoothingEnabled = false;
+        x.drawImage(img, sxa, b0 * ih, Lpx, Math.max(1, (b1 - b0) * ih), dxa, by0, Lpx * s, barH); x.imageSmoothingEnabled = true; });
       x.globalAlpha = 1; x.lineWidth = 2; x.strokeStyle = '#555'; x.strokeRect(cal.x1 < cal.x0 ? -Lpx * s : 0, -hh / 2, Lpx * s, hh);
       x.restore();
       if (d.t != null) { const [tx, ty] = at(d.b + d.t); x.lineWidth = 5; x.strokeStyle = '#E53935'; x.beginPath(); x.moveTo(tx - uy * hh * .55, ty - ux * hh * .55); x.lineTo(tx + uy * hh * .55, ty + ux * hh * .55); x.stroke(); } // 健全部の終わり
@@ -5593,7 +5670,7 @@ async function regiDiagram(inp, waves = []) {
       if (d.t != null) bar(d.b, d.t, '#fff');
       if (d.t != null && d.dl) bar(d.b + d.t, d.dl, '#111');
     }
-    const depth = d.t == null ? null : d.b + d.t + (d.dl || 0);
+    const depth = measured != null ? measured : d.t == null ? null : d.b + d.t + (d.dl || 0);
     inner[p] = depth == null ? null : at(Math.min(depth, (r.D[i % 2] || Dm) / 2));
     // 番号・方角と、貫入の向きの矢印
     const [ox, oy] = [cx + ux * (RP + 95), cy + uy * (RP + 95)];
@@ -5606,8 +5683,9 @@ async function regiDiagram(inp, waves = []) {
   });
   // 真ん中（未測定、または腐朽空洞の推定）
   const pts = [0, 1, 2, 3].map(p => inner[p]).filter(Boolean);
-  const anyDl = r.dirs.some(d => d.dl);
-  if (pts.length >= 3) {
+  const waveMode = waves.some(w => w && w.cal) && inp.fig !== 'bar', anyDl = waveMode || r.dirs.some(d => d.dl); // 波形のときは、赤い点線＝未測定部分
+  const hasArea = pts.length >= 3 && Math.max(...pts.map(q => Math.hypot(q[0] - cx, q[1] - cy))) > 8; // 芯（中心）まで測れていれば、囲む所はない
+  if (hasArea) {
     x.beginPath();
     const n = pts.length, mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     x.moveTo(...mid(pts[n - 1], pts[0]));
@@ -5615,8 +5693,15 @@ async function regiDiagram(inp, waves = []) {
     x.closePath(); x.fillStyle = waves.some(w => w && w.cal) && inp.fig !== 'bar' ? 'rgba(160,160,160,.35)' : '#d0d0d0'; x.fill(); x.setLineDash([4, 9]); x.lineCap = 'round'; x.lineWidth = 8; x.strokeStyle = '#e57373'; x.stroke(); x.setLineDash([]);
   }
   // 凡例
-  x.fillStyle = '#d0d0d0'; x.fillRect(820, S - 90, 60, 36); x.setLineDash([3, 7]); x.lineWidth = 6; x.strokeStyle = '#e57373'; x.strokeRect(820, S - 90, 60, 36); x.setLineDash([]);
-  x.font = `bold 34px ${F}`; x.fillStyle = '#111'; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText(anyDl ? '未測定部分' : '腐朽（空洞）部', 895, S - 72);
+  x.font = `bold 34px ${F}`; x.fillStyle = '#111'; x.textAlign = 'left'; x.textBaseline = 'middle';
+  if (hasArea) { x.fillStyle = '#d0d0d0'; x.fillRect(820, S - 90, 60, 36); x.setLineDash([3, 7]); x.lineWidth = 6; x.strokeStyle = '#e57373'; x.strokeRect(820, S - 90, 60, 36); x.setLineDash([]); x.fillStyle = '#111'; x.fillText(anyDl ? '未測定部分' : '腐朽（空洞）部', 895, S - 72); }
+  const lg = waves.some(w => w && w.cal) && inp.fig !== 'bar' ? waveLegend(waves) : [];
+  if (lg.length) { // 評価（Assessment）の色の意味（英語＋日本語）を左上に
+    let fs = 28; x.font = `bold ${fs}px ${F}`; const txt = l => `${l.en}${l.ja ? '（' + l.ja + '）' : ''}`, wmax = Math.max(...lg.map(l => x.measureText(txt(l)).width));
+    if (wmax > 330) { fs = Math.max(16, Math.floor(fs * 330 / wmax)); }
+    x.font = `bold ${fs}px ${F}`; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = '#111'; x.fillText('Assessment（評価）', 24, 34);
+    lg.forEach((l, i) => { const y = 34 + (i + 1) * (fs + 14); x.fillStyle = l.c; x.fillRect(24, y - 6, 44, 12); x.fillStyle = '#111'; x.fillText(txt(l), 80, y); });
+  }
   if (waves.some(w => w && w.cal) && inp.fig !== 'bar') { x.lineWidth = 5; x.strokeStyle = '#E53935'; x.beginPath(); x.moveTo(40, S - 72); x.lineTo(100, S - 72); x.stroke(); x.fillStyle = '#111'; x.fillText('健全部の終わり（t）', 112, S - 72); }
   else {
     x.fillStyle = '#fff'; x.fillRect(40, S - 90, 60, 36); x.lineWidth = 2; x.strokeStyle = '#111'; x.strokeRect(40, S - 90, 60, 36);
@@ -5651,14 +5736,30 @@ function openRegi() {
     slots.forEach((slot, i) => {
       if (!slot) return;
       const p = t.photos.find(q => q.slot === slot);
-      const file = h('input', { type: 'file', accept: 'image/*', hidden: '' });
+      const file = h('input', { type: 'file', accept: 'image/*,.emf,image/emf,image/x-emf', hidden: '' });
       file.onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; if (!fs.length) return; await addPhotos(fs, slot); const np = cur.photos.find(q => q.slot === slot); if (np) await calibrateWave(np, ty.fields[slot].label); paintFig(); };
       figBox.append(h('div', { class: 'rgwave' }, h('b', {}, '波形' + '①②③④'[i]),
         p ? h('span', { class: p.cal && num(p.cal.v) > 0 ? 'ok' : 'ng' }, p.cal && num(p.cal.v) > 0 ? `目盛り合わせ済み（${p.cal.v}cm）` : '目盛りがまだです') : h('span', { class: 'hint' }, '写真がまだありません'),
         p ? h('button', { type: 'button', class: 'btn', onclick: async () => { await calibrateWave(p, ty.fields[slot].label); paintFig(); } }, '📐 目盛りを合わせる') : '',
-        h('label', { class: 'btn' }, p ? '差し替え' : '＋ 波形の画像を入れる', file)));
+        h('label', { class: 'btn' }, p ? '差し替え' : '＋ 波形（EMF・画像）を入れる', file)));
     });
-    figBox.append(h('p', { class: 'hint' }, '目盛りを合わせた波形は、直径に大きさを合わせて十字に並べます（0cm＝幹の表面）。合わせていない方向は太線で描きます。'));
+    figBox.append(h('p', { class: 'hint' }, '目盛りを合わせた波形は、直径に大きさを合わせて十字に並べます（0cm＝幹の表面）。合わせていない方向は太線で描きます。上下の空きは詰め、評価（Assessment）の色の線は波形のすぐ上に置きます。'));
+    // 評価（Assessment）の色の意味：EMF から読んだものと、手で足したもの。日本語訳は直せる（覚えておく）
+    const lgBox = h('div', { class: 'rglg' }); figBox.append(h('h3', {}, '評価（Assessment）の色の意味'), lgBox);
+    const paintLg = async () => {
+      lgBox.innerHTML = ''; const st = waveLegendStore(), lg = waveLegend((slots.map(sl => sl && t.photos.find(q => q.slot === sl)) || []).map(p => p && { p }));
+      if (!lg.length) lgBox.append(h('p', { class: 'hint' }, 'EMFの波形を入れると、Assessment の色と言葉（bark・Intact など）を読み取ります。画像の波形のときは、下で色と言葉を足してください。'));
+      for (const l of lg) {
+        const ja = h('input', { class: 'inp', value: l.ja, placeholder: '日本語訳', style: 'width:9em' }); ja.onchange = () => { const s2 = waveLegendStore(); s2.ja[l.en.toLowerCase()] = ja.value.trim(); saveWaveLegend(s2); };
+        const man = st.manual.findIndex(m => m.en.toLowerCase() === l.en.toLowerCase());
+        lgBox.append(h('div', { class: 'row', style: 'align-items:center;margin:4px 0' }, h('span', { style: `display:inline-block;width:36px;height:12px;background:${l.c};border:1px solid #0003` }), h('b', { style: 'min-width:7em' }, l.en), ja,
+          man >= 0 ? h('button', { type: 'button', class: 'btn', onclick: () => { const s2 = waveLegendStore(); s2.manual.splice(man, 1); saveWaveLegend(s2); paintLg(); } }, '✕') : ''));
+      }
+      const cIn = h('input', { type: 'color', value: '#00e600', style: 'width:44px;height:36px' }), eIn = h('input', { class: 'inp', placeholder: '英語（例：Intact）', style: 'width:9em' });
+      lgBox.append(h('div', { class: 'row', style: 'align-items:center;margin-top:6px' }, h('span', { class: 'hint' }, '手で足す：'), cIn, eIn,
+        h('button', { type: 'button', class: 'btn', onclick: () => { const en = eIn.value.trim(); if (!en) return eIn.focus(); const s2 = waveLegendStore(); s2.manual.push({ c: cIn.value, en }); saveWaveLegend(s2); paintLg(); } }, '＋ 足す')));
+    };
+    paintLg();
   };
   const build = () => {
     tbl.innerHTML = '';
@@ -6471,6 +6572,397 @@ async function openMapSettings(proj, site) {
 
 
 /* =========================================================
+   EMF（レジストグラフのソフトが出す波形の図）を画像にする
+   iPad の Safari は EMF を表示できないので、よく使われる GDI の命令だけを自前でキャンバスに描く。
+   ========================================================= */
+const isEmfBuf = buf => { if (!buf || buf.byteLength < 88) return false; const d = new DataView(buf); return d.getUint32(0, true) === 1 && d.getUint32(40, true) === 0x464D4520; };
+async function isEmfFile(file) { if (/\.emf$/i.test(file.name || '') || /emf/i.test(file.type || '')) return true; try { return isEmfBuf(await file.slice(0, 64).arrayBuffer()); } catch (e) { return false; } }
+function emfToCanvas(buf, maxSide = 2400) {
+  const d = new DataView(buf), n = d.byteLength;
+  const i32 = o => d.getInt32(o, true), u32 = o => d.getUint32(o, true), i16 = o => d.getInt16(o, true), f32 = o => d.getFloat32(o, true);
+  if (!isEmfBuf(buf)) throw new Error('EMFではありません');
+  // 出力の範囲：ヘッダーの描画範囲（装置の画素）。空なら枠（0.01mm）から
+  const devW = i32(72), devH = i32(76), mmW = i32(80) || 1, mmH = i32(84) || 1, pxPerMmX = devW / mmW, pxPerMmY = devH / mmH;
+  let bx = i32(8), by = i32(12), bw = i32(16) - bx + 1, bh = i32(20) - by + 1;
+  if (bw <= 1 || bh <= 1) { bx = i32(24) / 100 * pxPerMmX; by = i32(28) / 100 * pxPerMmY; bw = (i32(32) - i32(24)) / 100 * pxPerMmX; bh = (i32(36) - i32(28)) / 100 * pxPerMmY; }
+  const s = Math.min(maxSide / Math.max(bw, bh), 4);
+  const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(bw * s)); c.height = Math.max(1, Math.round(bh * s));
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  const col = v => `rgb(${v & 255},${(v >> 8) & 255},${(v >> 16) & 255})`;
+  const STOCK = { 0: { t: 'b', style: 0, c: '#fff' }, 1: { t: 'b', style: 0, c: '#c0c0c0' }, 2: { t: 'b', style: 0, c: '#808080' }, 3: { t: 'b', style: 0, c: '#404040' }, 4: { t: 'b', style: 0, c: '#000' }, 5: { t: 'b', style: 1 }, 6: { t: 'p', style: 0, w: 0, c: '#fff' }, 7: { t: 'p', style: 0, w: 0, c: '#000' }, 8: { t: 'p', style: 5 }, 13: { t: 'f', h: 16, weight: 400, face: 'Arial', esc: 0 }, 14: { t: 'f', h: 16, weight: 400, face: 'Arial', esc: 0 } };
+  const objs = {}, info = { col: {}, texts: [], boxes: [] }; // 使われた色と文字（凡例の候補にする）
+  const note = c0 => { if (c0) info.col[c0] = (info.col[c0] || 0) + 1; };
+  const init = () => ({ mapMode: 1, wo: [0, 0], we: [1, 1], vo: [0, 0], ve: [1, 1], xf: [1, 0, 0, 1, 0, 0], pen: STOCK[7], brush: STOCK[0], font: STOCK[13], textColor: '#000', align: 0, cur: [0, 0], polyFill: 'evenodd' });
+  let st = init(); const stack = [];
+  // 論理座標 → 装置の画素 → キャンバス
+  const scaleXY = () => {
+    const m = st.mapMode, k = { 2: .1, 3: .01, 4: .254, 5: .0254, 6: 25.4 / 1440 }[m];
+    if (k) return [k * pxPerMmX, -k * pxPerMmY];
+    if (m === 7 || m === 8) { let sx = st.ve[0] / (st.we[0] || 1), sy = st.ve[1] / (st.we[1] || 1); if (m === 7) { const a = Math.min(Math.abs(sx), Math.abs(sy)); sx = Math.sign(sx) * a; sy = Math.sign(sy) * a; } return [sx, sy]; }
+    return [1, 1];
+  };
+  const P = (lx, ly) => { const [a, b, cc, dd, e, f] = st.xf, wx = a * lx + cc * ly + e, wy = b * lx + dd * ly + f, [sx, sy] = scaleXY(); return [((wx - st.wo[0]) * sx + st.vo[0] - bx) * s, ((wy - st.wo[1]) * sy + st.vo[1] - by) * s]; };
+  const unit = () => { const [sx, sy] = scaleXY(), [a, b, cc, dd] = st.xf; return Math.sqrt(Math.abs((a * dd - b * cc) * sx * sy)) * s; };
+  const applyPen = () => {
+    const p = st.pen || STOCK[7], style = (p.style || 0) & 15; if (style === 5) return false;
+    x.strokeStyle = p.c || '#000'; note(p.c); x.lineWidth = Math.max(s * .8, (p.w || 0) * unit()); x.lineJoin = 'round'; x.lineCap = 'round';
+    const dash = { 1: [6, 3], 2: [1.5, 3], 3: [6, 3, 1.5, 3], 4: [6, 3, 1.5, 3, 1.5, 3] }[style]; x.setLineDash(dash ? dash.map(v => v * x.lineWidth) : []); return true;
+  };
+  const applyBrush = () => { const b = st.brush || STOCK[0]; if (b.style === 1) return false; x.fillStyle = b.c || '#fff'; note(b.c); return true; };
+  let path = null; // BeginPath〜EndPath の間はパスにためる
+  const draw = (build, fill, stroke = true) => {
+    if (path) { build(path); return; }
+    const p = new Path2D(); build(p);
+    if (fill && applyBrush()) x.fill(p, st.polyFill);
+    if (stroke && applyPen()) x.stroke(p);
+  };
+  const pts32 = (o, cnt) => { const a = []; for (let i = 0; i < cnt; i++) a.push(P(i32(o + i * 8), i32(o + i * 8 + 4))); return a; };
+  const pts16 = (o, cnt) => { const a = []; for (let i = 0; i < cnt; i++) a.push(P(i16(o + i * 4), i16(o + i * 4 + 2))); return a; };
+  const poly = (p, a, close, move = true) => { if (!a.length) return; if (move) p.moveTo(...a[0]); else p.lineTo(...a[0]); for (let i = 1; i < a.length; i++) p.lineTo(...a[i]); if (close) p.closePath(); };
+  const bez = (p, a, move = true) => { if (!a.length) return; let i = 0; if (move) { p.moveTo(...a[0]); i = 1; } for (; i + 2 < a.length + (move ? 0 : 0); i += 3) p.bezierCurveTo(...a[i], ...a[i + 1], ...a[i + 2]); };
+  const dib = (off, bmiOff, bitsOff) => { // BITMAPINFO＋ビット → canvas
+    const w = i32(bmiOff + 4), hRaw = i32(bmiOff + 8), h0 = Math.abs(hRaw), bpp = d.getUint16(bmiOff + 14, true), comp = u32(bmiOff + 16), hs = u32(bmiOff);
+    if (comp !== 0 && comp !== 3 || !w || !h0 || w * h0 > 2e7) return null;
+    const nPal = bpp <= 8 ? (u32(bmiOff + 32) || (1 << bpp)) : 0, pal = []; for (let i = 0; i < nPal; i++) { const q = bmiOff + hs + i * 4; pal.push([d.getUint8(q + 2), d.getUint8(q + 1), d.getUint8(q)]); }
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h0; const cx = cv.getContext('2d'), im = cx.createImageData(w, h0), stride = Math.floor((w * bpp + 31) / 32) * 4;
+    for (let yy = 0; yy < h0; yy++) {
+      const row = bitsOff + (hRaw > 0 ? h0 - 1 - yy : yy) * stride;
+      for (let xx = 0; xx < w; xx++) {
+        let r, g, b;
+        if (bpp === 24 || bpp === 32) { const q = row + xx * (bpp / 8); if (q + 2 >= n) continue; b = d.getUint8(q); g = d.getUint8(q + 1); r = d.getUint8(q + 2); }
+        else if (bpp === 16) { const v = d.getUint16(row + xx * 2, true); r = ((v >> 10) & 31) * 8; g = ((v >> 5) & 31) * 8; b = (v & 31) * 8; }
+        else { const bit = xx * bpp, byte = d.getUint8(row + (bit >> 3)), idx = (byte >> (8 - bpp - (bit & 7))) & ((1 << bpp) - 1); [r, g, b] = pal[idx] || [0, 0, 0]; }
+        const k = (yy * w + xx) * 4; im.data[k] = r; im.data[k + 1] = g; im.data[k + 2] = b; im.data[k + 3] = 255;
+      }
+    }
+    cx.putImageData(im, 0, 0); return cv;
+  };
+  const blit = (cv, dx, dy, dw, dh, sx0 = 0, sy0 = 0, sw, shh) => { if (!cv) return; const [ax, ay] = P(dx, dy), [cx2, cy2] = P(dx + dw, dy + dh); x.drawImage(cv, sx0, sy0, sw || cv.width, shh || cv.height, Math.min(ax, cx2), Math.min(ay, cy2), Math.abs(cx2 - ax), Math.abs(cy2 - ay)); };
+  let o = 0;
+  while (o + 8 <= n) {
+    const type = u32(o), size = u32(o + 4); if (size < 8 || o + size > n) break;
+    const R = k => o + k;
+    try {
+      switch (type) {
+        case 14: o = n; continue; // EOF
+        case 9: st.we = [i32(R(8)), i32(R(12))]; break;
+        case 10: st.wo = [i32(R(8)), i32(R(12))]; break;
+        case 11: st.ve = [i32(R(8)), i32(R(12))]; break;
+        case 12: st.vo = [i32(R(8)), i32(R(12))]; break;
+        case 17: st.mapMode = u32(R(8)); break;
+        case 19: st.polyFill = u32(R(8)) === 2 ? 'nonzero' : 'evenodd'; break;
+        case 22: st.align = u32(R(8)); break;
+        case 24: st.textColor = col(u32(R(8))); break;
+        case 33: stack.push({ ...st }); x.save(); break;
+        case 34: { let k = i32(R(8)); while (k++ < 0 && stack.length) { st = stack.pop(); x.restore(); } break; }
+        case 35: st.xf = [0, 4, 8, 12, 16, 20].map(q => f32(R(8 + q))); break;
+        case 36: { const m = [0, 4, 8, 12, 16, 20].map(q => f32(R(8 + q))), mode = u32(R(32)), a = st.xf;
+          const mul = (p, q) => [p[0] * q[0] + p[1] * q[2], p[0] * q[1] + p[1] * q[3], p[2] * q[0] + p[3] * q[2], p[2] * q[1] + p[3] * q[3], p[4] * q[0] + p[5] * q[2] + q[4], p[4] * q[1] + p[5] * q[3] + q[5]];
+          st.xf = mode === 1 ? [1, 0, 0, 1, 0, 0] : mode === 2 ? mul(m, a) : mode === 3 ? mul(a, m) : m; break; }
+        case 37: { const ih = u32(R(8)); const ob = ih & 0x80000000 ? STOCK[ih & 0x7fffffff] : objs[ih]; if (ob) { if (ob.t === 'p') st.pen = ob; else if (ob.t === 'b') st.brush = ob; else if (ob.t === 'f') st.font = ob; } break; }
+        case 38: objs[u32(R(8))] = { t: 'p', style: u32(R(12)), w: i32(R(16)), c: col(u32(R(24))) }; break;
+        case 95: objs[u32(R(8))] = { t: 'p', style: u32(R(28)), w: u32(R(32)), c: col(u32(R(40))) }; break;
+        case 39: objs[u32(R(8))] = { t: 'b', style: u32(R(12)) === 1 ? 1 : 0, c: col(u32(R(16))) }; break;
+        case 40: delete objs[u32(R(8))]; break;
+        case 82: { let face = ''; for (let q = 0; q < 32; q++) { const ch = d.getUint16(R(40 + q * 2), true); if (!ch) break; face += String.fromCharCode(ch); }
+          objs[u32(R(8))] = { t: 'f', h: i32(R(12)), weight: i32(R(28)), italic: d.getUint8(R(32)), esc: i32(R(20)), face }; break; }
+        case 27: st.cur = [i32(R(8)), i32(R(12))]; break;
+        case 54: { const a = P(...st.cur), b = P(i32(R(8)), i32(R(12))); st.cur = [i32(R(8)), i32(R(12))]; draw(p => { if (!path) p.moveTo(...a); else p.lineTo(...a); p.lineTo(...b); }, false); break; }
+        case 42: case 43: case 44: { const l = i32(R(8)), t = i32(R(12)), r = i32(R(16)), b = i32(R(20)); const [x1, y1] = P(l, t), [x2, y2] = P(r, b);
+          draw(p => { if (type === 42) p.ellipse((x1 + x2) / 2, (y1 + y2) / 2, Math.abs(x2 - x1) / 2, Math.abs(y2 - y1) / 2, 0, 0, Math.PI * 2); else p.rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)); }, true);
+          if (type !== 42 && st.brush && st.brush.style !== 1) info.boxes.push({ c: st.brush.c, x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) }); break; }
+        case 3: case 4: case 86: case 87: case 2: case 85: { const cnt = u32(R(24)), a = type >= 85 ? pts16(R(28), cnt) : pts32(R(28), cnt);
+          if ((type === 3 || type === 86) && cnt >= 4 && cnt <= 5 && st.brush && st.brush.style !== 1) { const xs = a.map(q => q[0]), ys = a.map(q => q[1]); info.boxes.push({ c: st.brush.c, x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }); } draw(p => (type === 2 || type === 85) ? bez(p, a) : poly(p, a, type === 3 || type === 86), type === 3 || type === 86); break; }
+        case 6: case 89: case 5: case 88: { const cnt = u32(R(24)), a = [P(...st.cur), ...(type >= 88 ? pts16(R(28), cnt) : pts32(R(28), cnt))];
+          const raw = type >= 88 ? [i16(R(28 + (cnt - 1) * 4)), i16(R(30 + (cnt - 1) * 4))] : [i32(R(28 + (cnt - 1) * 8)), i32(R(32 + (cnt - 1) * 8))]; st.cur = raw;
+          draw(p => (type === 5 || type === 88) ? bez(p, a) : poly(p, a, false, !path), false); break; }
+        case 7: case 8: case 90: case 91: { const np = u32(R(24)), tot = u32(R(28)), s16 = type >= 90; let q = R(32 + np * 4); const polys = [];
+          for (let i = 0; i < np; i++) { const cnt = u32(R(32 + i * 4)); polys.push(s16 ? pts16(q, cnt) : pts32(q, cnt)); q += cnt * (s16 ? 4 : 8); }
+          const fill = type === 8 || type === 91; draw(p => polys.forEach(a => poly(p, a, fill)), fill); break; }
+        case 59: path = new Path2D(); break;
+        case 60: break;
+        case 61: if (path) path.closePath(); break;
+        case 62: case 63: case 64: if (path) { const p = path; path = null; if (type !== 64 && applyBrush()) x.fill(p, st.polyFill); if (type !== 62 && applyPen()) x.stroke(p); } break;
+        case 30: { const [x1, y1] = P(i32(R(8)), i32(R(12))), [x2, y2] = P(i32(R(16)), i32(R(20))); x.beginPath(); x.rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)); x.clip(); break; }
+        case 84: case 83: { // 文字
+          const nch = u32(R(44)), offS = u32(R(48)); let str = '';
+          for (let i = 0; i < nch; i++) str += type === 84 ? String.fromCharCode(d.getUint16(R(offS + i * 2), true)) : String.fromCharCode(d.getUint8(R(offS + i)));
+          if (!str.trim()) break;
+          const f = st.font || STOCK[13], [px, py] = P(i32(R(36)), i32(R(40))), [, sy] = scaleXY(), fs = Math.max(4, Math.abs(f.h || 16) * Math.abs(sy) * s * (f.h > 0 ? .8 : 1));
+          x.save(); x.translate(px, py); if (f.esc) x.rotate(-f.esc / 10 * Math.PI / 180);
+          x.font = `${f.italic ? 'italic ' : ''}${f.weight >= 600 ? 'bold ' : ''}${fs}px ${JSON.stringify(f.face || 'Arial')}, Arial, sans-serif`;
+          const al = st.align; x.textAlign = (al & 6) === 6 ? 'center' : (al & 2) ? 'right' : 'left'; x.textBaseline = (al & 24) === 24 ? 'alphabetic' : (al & 8) ? 'bottom' : 'top';
+          x.fillStyle = st.textColor; x.fillText(str, 0, 0); x.restore(); if (info.texts.length < 200) info.texts.push({ s: str.trim().slice(0, 60), c: st.textColor, x: px, y: (al & 24) === 24 ? py - fs * .35 : (al & 8) ? py - fs * .5 : py + fs * .5, fs }); /* y＝文字の高さの真ん中 */ break; }
+        case 81: { const xd = i32(R(24)), yd = i32(R(28)), xs = i32(R(32)), ys = i32(R(36)), cxs = i32(R(40)), cys = i32(R(44)), offB = u32(R(48)), offBits = u32(R(56)), cxd = i32(R(72)), cyd = i32(R(76));
+          const cv = dib(o, R(offB), R(offBits)); if (cv) blit(cv, xd, yd, cxd, cyd, xs, cv.height - ys - cys < 0 ? 0 : ys, cxs, cys); break; }
+        case 76: case 77: { const xd = i32(R(24)), yd = i32(R(28)), cxd = i32(R(32)), cyd = i32(R(36)), cbBmi = u32(R(88));
+          if (!cbBmi) { if (applyBrush()) { const [x1, y1] = P(xd, yd), [x2, y2] = P(xd + cxd, yd + cyd); x.fillRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)); info.boxes.push({ c: st.brush.c, x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) }); } break; }
+          const cv = dib(o, R(u32(R(84))), R(u32(R(92)))); if (cv) blit(cv, xd, yd, cxd, cyd); break; }
+      }
+    } catch (e) { /* 読めない命令は飛ばす */ }
+    o += size;
+  }
+  // 色のついたもの（灰色・黒・白以外）だけ、多く使われた順に
+  const sat = c0 => { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(c0); if (!m) return false; const v = [+m[1], +m[2], +m[3]]; return Math.max(...v) - Math.min(...v) >= 60; };
+  // 評価（Assessment）の凡例：小さな色の四角と、同じ行の右にある文字（「From 0,00 cm to 2,00 cm : bark」の bark）
+  const legend = [];
+  for (const b of info.boxes) {
+    if (!sat(b.c) || b.w > c.width * .06 || b.h > c.height * .06 || b.w < 2 || b.h < 1) continue;
+    const cy0 = b.y + b.h / 2, row = info.texts.filter(t => t.x > b.x + b.w * .5 && t.x < b.x + c.width * .35 && Math.abs(t.y - cy0) < Math.max(b.h, t.fs) * .6).sort((p, q) => p.x - q.x);
+    if (!row.length) continue;
+    const line = row.map(t => t.s).join(' ').replace(/\s+/g, ' ').trim(), m = /:\s*([^:]+)$/.exec(line), name = (m ? m[1] : row[row.length - 1].s).trim();
+    const hex = rgbHex(b.c); if (name && !legend.some(l => l.c === hex && l.en === name)) legend.push({ c: hex, en: name, text: line });
+  }
+  c.emf = { colors: Object.entries(info.col).filter(([k]) => sat(k)).sort((a, b) => b[1] - a[1]).map(([k]) => rgbHex(k)).slice(0, 12), legend };
+  return c;
+}
+const rgbHex = c0 => { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(c0 || ''); return m ? '#' + [m[1], m[2], m[3]].map(v => (+v).toString(16).padStart(2, '0')).join('') : c0; };
+// EMF の File → 画像の Blob（PNG。線がにじまないように）
+async function emfFileToBlob(file, maxSide = 2400) {
+  const c = emfToCanvas(await file.arrayBuffer(), maxSide);
+  return await canvasBlob(c, 1, 'image/png');
+}
+
+
+/* =========================================================
+   同期（OneDrive・Googleドライブ）
+   クラウドの「樹木診断カルテ」フォルダに、木ごとの記録（trees/木.json）・写真（photos/写真）・
+   目次（index.json：木ごとの更新日時・削除した木）を置き、木ごとに新しいほうを残す。
+   写真は一度入れたら変わらない（書き込みは木の記録の側）ので、ない物だけやりとりする。
+   ========================================================= */
+const SYNC_DIR = '樹木診断カルテ';
+function syncCfg() { try { return JSON.parse(localStorage.getItem('jk_sync') || '{}') || {}; } catch (e) { return {}; } }
+function setSyncCfg(patch) { const c = { ...syncCfg(), ...patch }; try { localStorage.setItem('jk_sync', JSON.stringify(c)); } catch (e) { } return c; }
+function syncDeleted() { try { return JSON.parse(localStorage.getItem('jk_deleted') || '{}') || {}; } catch (e) { return {}; } }
+function markDeleted(id) { const d = syncDeleted(); d[id] = Date.now(); try { localStorage.setItem('jk_deleted', JSON.stringify(d)); } catch (e) { } }
+const b64url = u8 => btoa(String.fromCharCode(...u8)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const randStr = n => b64url(crypto.getRandomValues(new Uint8Array(n)));
+function blobB64(b) { return new Promise(r => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(b); }); }
+
+/* ---------- OneDrive（Microsoft Graph）。個人・会社（Microsoft 365）どちらのアカウントでも ---------- */
+const OD_AUTH = 'https://login.microsoftonline.com/common/oauth2/v2.0', OD_SCOPE = 'offline_access Files.ReadWrite User.Read';
+const odRedirect = () => location.origin + location.pathname;
+function odTok() { try { return JSON.parse(localStorage.getItem('jk_od_tok') || 'null'); } catch (e) { return null; } }
+async function odSignIn() {
+  const cid = (syncCfg().od || {}).clientId; if (!cid) return say('OneDrive のアプリ登録の「アプリケーション (クライアント) ID」を先に入れてください。');
+  await flush();
+  const verifier = randStr(48), challenge = b64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)))), state = 'jkod_' + randStr(12);
+  try { localStorage.setItem('jk_od_pkce', JSON.stringify({ verifier, state })); } catch (e) { }
+  location.href = `${OD_AUTH}/authorize?` + new URLSearchParams({ client_id: cid, response_type: 'code', redirect_uri: odRedirect(), response_mode: 'query', scope: OD_SCOPE, state, code_challenge: challenge, code_challenge_method: 'S256', prompt: 'select_account' });
+}
+// サインインから戻ってきたとき（URL に code と state が付いている）
+async function odHandleRedirect() {
+  const q = new URLSearchParams(location.search), st = q.get('state') || '';
+  if (!st.startsWith('jkod_')) return false;
+  history.replaceState(null, '', odRedirect());
+  let pk = null; try { pk = JSON.parse(localStorage.getItem('jk_od_pkce') || 'null'); localStorage.removeItem('jk_od_pkce'); } catch (e) { }
+  if (q.get('error')) { say('OneDrive にサインインできませんでした：' + (q.get('error_description') || q.get('error'))); return true; }
+  if (!pk || pk.state !== st || !q.get('code')) { say('OneDrive のサインインをやり直してください。'); return true; }
+  try { await odTokenReq({ grant_type: 'authorization_code', code: q.get('code'), redirect_uri: odRedirect(), code_verifier: pk.verifier }); toast('OneDrive にサインインしました'); setSyncCfg({ od: { ...(syncCfg().od || {}), on: true } }); }
+  catch (e) { say('OneDrive にサインインできませんでした：' + e.message); }
+  return true;
+}
+async function odTokenReq(params) {
+  const cid = (syncCfg().od || {}).clientId;
+  const r = await fetch(`${OD_AUTH}/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: cid, scope: OD_SCOPE, ...params }) });
+  const j = await r.json().catch(() => ({})); if (!r.ok || !j.access_token) throw new Error(j.error_description || j.error || ('HTTP ' + r.status));
+  let who = (odTok() || {}).who || '';
+  const t = { access: j.access_token, refresh: j.refresh_token || (odTok() || {}).refresh, exp: Date.now() + (j.expires_in || 3600) * 1000, who };
+  try { localStorage.setItem('jk_od_tok', JSON.stringify(t)); } catch (e) { }
+  if (!who) try { const me = await (await fetch('https://graph.microsoft.com/v1.0/me', { headers: { Authorization: 'Bearer ' + t.access } })).json(); t.who = me.userPrincipalName || me.mail || me.displayName || ''; localStorage.setItem('jk_od_tok', JSON.stringify(t)); } catch (e) { }
+  return t;
+}
+async function odAccess() {
+  const t = odTok(); if (!t) throw Object.assign(new Error('OneDrive にサインインしていません'), { signin: true });
+  if (t.exp > Date.now() + 60000) return t.access;
+  if (!t.refresh) throw Object.assign(new Error('OneDrive のサインインが切れました'), { signin: true });
+  try { return (await odTokenReq({ grant_type: 'refresh_token', refresh_token: t.refresh })).access; }
+  catch (e) { throw Object.assign(new Error('OneDrive のサインインが切れました（もう一度サインインしてください）'), { signin: true }); }
+}
+const odPath = p => [SYNC_DIR, ...p.split('/')].map(encodeURIComponent).join('/');
+const OneDriveBackend = {
+  name: 'OneDrive',
+  async req(method, p, suffix = '', body, type) {
+    const tok = await odAccess();
+    const r = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/${odPath(p)}${suffix}`, { method, headers: { Authorization: 'Bearer ' + tok, ...(type ? { 'Content-Type': type } : {}) }, body });
+    if (r.status === 404) return null;
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(`OneDrive：${(j.error && j.error.message) || r.status}`); }
+    return r;
+  },
+  async get(p, bin) { // 中身は、項目の情報にある「ダウンロード用のURL」から取る（サインイン不要のURL）
+    const r = await this.req('GET', p); if (!r) return null; const meta = await r.json(), u = meta['@microsoft.graph.downloadUrl']; if (!u) return null;
+    const d = await fetch(u); if (!d.ok) throw new Error('OneDrive：' + d.status); return bin ? d.blob() : d.json();
+  },
+  async put(p, data) { await this.req('PUT', p, ':/content', data, data instanceof Blob ? (data.type || 'application/octet-stream') : 'application/json'); },
+};
+
+/* ---------- Googleドライブ（Google Apps Script の Web アプリ経由。合言葉つき） ---------- */
+const GoogleBackend = {
+  name: 'Googleドライブ',
+  async call(body) {
+    const g = syncCfg().gd || {}; if (!g.url) throw new Error('Googleドライブ：Apps Script の URL がありません');
+    const r = await fetch(g.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: g.key || '', ...body }) });
+    const j = await r.json().catch(() => null); if (!j) throw new Error('Googleドライブ：返事を読めません（URL と公開の設定を確かめてください）'); if (!j.ok) throw new Error('Googleドライブ：' + (j.err === 'key' ? '合言葉がちがいます' : j.err || 'エラー')); return j;
+  },
+  async get(p, bin) { const j = await this.call({ op: 'get', path: p, bin: !!bin }); if (j.data == null) return null; return bin ? await (await fetch('data:application/octet-stream;base64,' + j.data)).blob() : JSON.parse(j.data); },
+  async put(p, data) { const bin = data instanceof Blob; await this.call({ op: 'put', path: p, bin, type: bin ? data.type : 'application/json', data: bin ? await blobB64(data) : data }); },
+};
+// テスト用（ローカルのファイル置き場）
+const MockBackend = {
+  name: 'テスト',
+  async get(p, bin) { const r = await fetch(syncCfg().mock + encodeURIComponent(p)); if (r.status === 404) return null; if (!r.ok) throw new Error('mock ' + r.status); return bin ? r.blob() : r.json(); },
+  async put(p, data) { const r = await fetch(syncCfg().mock + encodeURIComponent(p), { method: 'PUT', body: data }); if (!r.ok) throw new Error('mock ' + r.status); },
+};
+function syncBackends() {
+  const c = syncCfg(), out = [];
+  if (c.mock) out.push(MockBackend);
+  if (c.od && c.od.on && c.od.clientId && odTok()) out.push(OneDriveBackend);
+  if (c.gd && c.gd.on && c.gd.url) out.push(GoogleBackend);
+  return out;
+}
+
+/* ---------- 同期の本体 ---------- */
+const syncTypesLocal = () => types.filter(t => !t.builtin || Object.values(t.fields).some(f => f.userEdited) || Object.keys(t.texts || {}).length);
+const settingsSnapshot = () => { const s = {}; try { for (const k of SHARED_SETTINGS) { const v = localStorage.getItem(k); if (v != null) s[k] = v; } } catch (e) { } return JSON.stringify(s); };
+async function syncWith(B, log) {
+  const idx = (await B.get('index.json')) || { v: 1, trees: {}, del: {}, photos: {}, types: {}, settings: null };
+  idx.trees = idx.trees || {}; idx.del = idx.del || {}; idx.photos = idx.photos || {}; idx.types = idx.types || {};
+  let up = 0, down = 0, gone = 0;
+  const upPhoto = async id => { if (!id || idx.photos[id]) return; const rec = await DB.get('photos', id); if (!rec) return; await B.put('photos/' + id, rec.blob); idx.photos[id] = 1; };
+  const downPhoto = async id => { if (!id || await DB.get('photos', id)) return; const b = await B.get('photos/' + id, true); if (b) await DB.put('photos', { id, blob: b }); };
+  // 削除：この端末で消した木を目次へ。ほかの端末で消された木は、その後に直していなければ消す
+  for (const [id, tm] of Object.entries(syncDeleted())) if (!(idx.del[id] >= tm)) idx.del[id] = tm;
+  for (const [id, tm] of Object.entries(idx.del)) {
+    const t = trees.find(x => x.id === id);
+    if (t && (t.updated || 0) > tm) { delete idx.del[id]; continue; } // 消されたあとに直した木は残す
+    if (t) { if (cur && cur.id === id) continue; for (const p of t.photos || []) await DB.del('photos', p.id); await DB.del('trees', id); trees = trees.filter(x => x.id !== id); gone++; }
+    delete idx.trees[id];
+  }
+  // 取り込んだ様式・調整した様式
+  for (const ty of syncTypesLocal()) { const lu = ty.updated || ty.fileVer || 1; if (lu > (idx.types[ty.id] || 0)) { await B.put(`types/${ty.id}.json`, JSON.stringify({ ...ty, file: bytesB64(ty.file) })); idx.types[ty.id] = lu; } }
+  for (const [id, ru] of Object.entries(idx.types)) {
+    const ty = types.find(x => x.id === id); if (ty && (ty.updated || ty.fileVer || 1) >= ru) continue;
+    const nt = await B.get(`types/${id}.json`); if (!nt) continue; nt.file = b64bytes(nt.file).buffer;
+    const i = types.findIndex(x => x.id === id); if (i >= 0) types[i] = nt; else types.push(nt); await DB.put('types', nt); await loadTpl(nt);
+  }
+  // 木：新しいほうを残す
+  const ids = new Set([...Object.keys(idx.trees), ...trees.map(t => t.id)]);
+  for (const id of ids) {
+    if (idx.del[id]) continue;
+    const t = trees.find(x => x.id === id), ru = idx.trees[id] || 0, lu = t ? (t.updated || t.created || 1) : 0;
+    if (t && lu > ru) {
+      for (const p of t.photos || []) await upPhoto(p.id);
+      await B.put(`trees/${id}.json`, JSON.stringify(t)); idx.trees[id] = lu; up++;
+      log && log(`↑ ${up}本`);
+    } else if (ru > lu) {
+      const nt = await B.get(`trees/${id}.json`); if (!nt) continue;
+      for (const p of nt.photos || []) await downPhoto(p.id);
+      if (cur && cur.id === id) { await flush(); if ((cur.updated || 0) >= ru) continue; } // 開いている木は、こちらが新しければそのまま
+      const i = trees.findIndex(x => x.id === id); if (i >= 0) trees[i] = nt; else trees.push(nt);
+      if (cur && cur.id === id) cur = nt;
+      await DB.put('trees', nt); down++; log && log(`↓ ${down}本`);
+    }
+  }
+  // よく使う言葉・案件・路線などの設定：この端末で変えていれば送る、変えていなければ受け取る
+  const snap = settingsSnapshot(), lastSnap = localStorage.getItem('jk_sync_snap'), lastT = +(localStorage.getItem('jk_sync_t') || 0);
+  const rs = idx.settings;
+  const applyRemote = rs && rs.data !== snap && (lastSnap == null || (snap === lastSnap && rs.t > lastT)); // はじめての同期はクラウドのほうを使う
+  if (!rs || (!applyRemote && snap !== lastSnap && snap !== rs.data)) idx.settings = { t: Date.now(), data: snap };
+  else if (applyRemote) { try { for (const [k, v] of Object.entries(JSON.parse(rs.data))) if (SHARED_SETTINGS.includes(k)) localStorage.setItem(k, v); } catch (e) { } ROUTES = null; }
+  // 路線図の画像
+  for (const m of Object.values(routesAll())) if (m.mapId) { if (await DB.get('photos', m.mapId)) await upPhoto(m.mapId); else await downPhoto(m.mapId); }
+  idx.saved = new Date().toISOString();
+  await B.put('index.json', JSON.stringify(idx));
+  return { up, down, gone };
+}
+let syncBusy = false, syncTimer = null;
+async function syncNow(quiet = false) {
+  const bs = syncBackends(); if (!bs.length) { if (!quiet) say('同期の設定がありません。「カルテの型（様式）・Excel出力・バックアップ」の「☁️ 同期」で設定してください。'); return; }
+  if (syncBusy) return; if (!navigator.onLine) { syncStatus('☁️ オフライン（電波が戻ったら同期します）'); return; }
+  syncBusy = true; await flush();
+  const res = [];
+  try {
+    for (const B of bs) {
+      syncStatus(`☁️ ${B.name}と同期中…`);
+      try { const r = await syncWith(B, m => syncStatus(`☁️ ${B.name}と同期中… ${m}`)); res.push(`${B.name}：送った${r.up}本・受け取った${r.down}本${r.gone ? `・消した${r.gone}本` : ''}`); }
+      catch (e) { console.error(e); res.push(`${B.name}：できませんでした（${e.message}）`); if (e.signin && !quiet) toast(e.message, 4000); }
+    }
+    try { localStorage.setItem('jk_sync_snap', settingsSnapshot()); localStorage.setItem('jk_sync_t', String(Date.now())); localStorage.setItem('jk_sync_last', JSON.stringify({ at: Date.now(), res })); } catch (e) { }
+  } finally { syncBusy = false; }
+  syncStatus(); if (!quiet) toast(res.join('\n'), 4000);
+  if (!cur) renderList();
+}
+// 直したら少し待って同期（一覧に戻ったとき・画面を閉じたとき）
+function syncSoon(ms = 4000) { if (!syncBackends().length || (syncCfg().auto === false)) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(true), ms); }
+function syncStatus(msg) {
+  const el = $('#syncStat'); if (!el) return;
+  if (msg) { el.textContent = msg; el.classList.remove('hidden'); return; }
+  const bs = syncBackends(); if (!bs.length) { el.classList.add('hidden'); return; }
+  let last = null; try { last = JSON.parse(localStorage.getItem('jk_sync_last') || 'null'); } catch (e) { }
+  const ng = last && last.res.some(r => /できません/.test(r));
+  el.textContent = last ? `☁️ ${ng ? '⚠️ ' : ''}${bs.map(b => b.name).join('・')}　${fmtTs(last.at)} ${ng ? '同期できなかった所があります（タップで詳しく）' : '同期済み'}` : `☁️ ${bs.map(b => b.name).join('・')}：まだ同期していません（タップで同期）`;
+  el.classList.remove('hidden'); el.onclick = () => last && ng ? say(last.res.join('\n')) : syncNow();
+}
+
+/* ---------- 設定画面 ---------- */
+const GAS_CODE = `// 樹木診断カルテ：Googleドライブ同期（Google Apps Script）
+// 1. KEY を好きな合言葉に変える  2. デプロイ → 新しいデプロイ → 種類「ウェブアプリ」
+//    実行するユーザー：自分　アクセスできるユーザー：全員 → デプロイして URL をアプリに入れる
+const KEY = 'ここを合言葉に変える';
+const DIR = '樹木診断カルテ_同期';
+function folder_() { const it = DriveApp.getFoldersByName(DIR); return it.hasNext() ? it.next() : DriveApp.createFolder(DIR); }
+function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+function doPost(e) {
+  try {
+    const q = JSON.parse(e.postData.contents);
+    if (q.key !== KEY) return out_({ ok: false, err: 'key' });
+    const f = folder_(), name = String(q.path).replace(/\\//g, '__');
+    const it = f.getFilesByName(name), old = it.hasNext() ? it.next() : null;
+    if (q.op === 'get') {
+      if (!old) return out_({ ok: true, data: null });
+      const b = old.getBlob();
+      return out_({ ok: true, data: q.bin ? Utilities.base64Encode(b.getBytes()) : b.getDataAsString('UTF-8') });
+    }
+    if (q.op === 'put') {
+      const blob = q.bin ? Utilities.newBlob(Utilities.base64Decode(q.data), q.type || 'application/octet-stream', name) : Utilities.newBlob(q.data, 'application/json', name);
+      if (old && !q.bin) { old.setContent(q.data); } else { if (old) old.setTrashed(true); f.createFile(blob); }
+      return out_({ ok: true });
+    }
+    return out_({ ok: false, err: 'op' });
+  } catch (err) { return out_({ ok: false, err: String(err) }); }
+}
+function doGet() { return out_({ ok: true, app: 'jumoku_karte_sync' }); }`;
+function renderSyncCard() {
+  const box = $('#syncBox'); if (!box) return; box.innerHTML = '';
+  const c = syncCfg(), od = c.od || {}, gd = c.gd || {}, tok = odTok();
+  const I = (v, ph, on, type = 'text') => { const e = h('input', { class: 'inp', type, value: v || '', placeholder: ph, autocomplete: 'off' }); e.onchange = () => on(e.value.trim()); return e; };
+  box.append(
+    h('h3', { style: 'margin:6px 0 4px;font-size:14.5px' }, 'OneDrive（主）'),
+    h('label', { class: 'fld' }, h('span', {}, 'アプリケーション (クライアント) ID（Azure のアプリ登録）'), I(od.clientId, '例：12345678-abcd-…', v => { setSyncCfg({ od: { ...(syncCfg().od || {}), clientId: v } }); renderSyncCard(); })),
+    h('div', { class: 'row', style: 'align-items:center;margin-top:6px' },
+      tok ? h('span', { class: 'hint' }, `サインイン中：${tok.who || 'OneDrive'}`) : h('span', { class: 'hint' }, 'まだサインインしていません'),
+      h('button', { type: 'button', class: 'btn' + (tok ? '' : ' pri'), onclick: odSignIn }, tok ? 'サインインし直す' : 'Microsoft でサインイン'),
+      tok ? h('button', { type: 'button', class: 'btn warn', onclick: () => { localStorage.removeItem('jk_od_tok'); renderSyncCard(); syncStatus(); } }, 'サインアウト') : ''),
+    h('details', { style: 'margin-top:6px' }, h('summary', { class: 'hint' }, 'OneDrive の準備（最初に1回・パソコンで）'), h('ol', { class: 'hint', style: 'padding-left:1.4em;margin:6px 0' },
+      h('li', {}, 'https://portal.azure.com を開き、ふだんの Microsoft アカウントでサインイン →「アプリの登録」→「新規登録」'),
+      h('li', {}, '名前：樹木診断カルテ　／　サポートされているアカウントの種類：「任意の組織ディレクトリ内のアカウントと個人の Microsoft アカウント」'),
+      h('li', {}, `リダイレクト URI：種類「シングルページ アプリケーション (SPA)」、URI「${odRedirect()}」→ 登録`),
+      h('li', {}, '「API のアクセス許可」に Microsoft Graph の Files.ReadWrite・User.Read（委任）があることを確かめる（なければ追加）'),
+      h('li', {}, '「概要」の「アプリケーション (クライアント) ID」をコピーして、上の欄に貼る → 各端末で「Microsoft でサインイン」'),
+      h('li', {}, '会社の Microsoft 365 のアカウントでは、会社の管理者の許可が必要と出ることがあります'))),
+    h('h3', { style: 'margin:12px 0 4px;font-size:14.5px' }, 'Googleドライブ（予備）'),
+    h('label', { class: 'fld' }, h('span', {}, 'Apps Script のウェブアプリの URL'), I(gd.url, 'https://script.google.com/macros/s/…/exec', v => { setSyncCfg({ gd: { ...(syncCfg().gd || {}), url: v, on: !!v } }); syncStatus(); })),
+    h('label', { class: 'fld', style: 'margin-top:6px' }, h('span', {}, '合言葉（Apps Script の KEY と同じ）'), I(gd.key, '合言葉', v => setSyncCfg({ gd: { ...(syncCfg().gd || {}), key: v } }), 'password')),
+    h('details', { style: 'margin-top:6px' }, h('summary', { class: 'hint' }, 'Googleドライブの準備（Apps Script のコード）'),
+      h('p', { class: 'hint' }, 'https://script.google.com で「新しいプロジェクト」→ 下のコードを貼り付け → KEY を合言葉に変える →「デプロイ」→「新しいデプロイ」→ 種類「ウェブアプリ」、実行するユーザー「自分」、アクセスできるユーザー「全員」→ 出てきた URL を上の欄に。'),
+      h('button', { type: 'button', class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(GAS_CODE); toast('コードをコピーしました'); } catch (e) { say('コピーできませんでした。下のコードを選んでコピーしてください。'); } } }, '📋 コードをコピー'),
+      h('textarea', { rows: 8, readonly: '', style: 'width:100%;font-family:monospace;font-size:11px;margin-top:6px' }, GAS_CODE)),
+    h('label', { class: 'chk', style: 'margin-top:10px' }, (() => { const e = h('input', { type: 'checkbox' }); e.checked = c.auto !== false; e.onchange = () => setSyncCfg({ auto: e.checked }); return e; })(), ' 自動で同期する（開いたとき・一覧に戻ったとき）'),
+    h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { type: 'button', class: 'btn pri', onclick: () => syncNow() }, '☁️ 今すぐ同期')));
+}
+
+
+/* =========================================================
    木の操作
    ========================================================= */
 async function openTree(id) {
@@ -6497,7 +6989,7 @@ async function backToList() {
   if (cur) sessEnd(cur);
   await flush(); stopVoice(); cur = null; kCells = []; kPages = []; formRows = []; $('#karte').innerHTML = ''; $('#form').innerHTML = '';
   $('#editView').classList.add('hidden'); $('#listView').classList.remove('hidden');
-  renderList(); window.scrollTo(0, 0); camSync();
+  renderList(); window.scrollTo(0, 0); camSync(); syncSoon();
 }
 async function nextTree() {
   const ty = curType; const base = {};
@@ -6511,6 +7003,7 @@ async function dupTree() {
 }
 async function delTree() {
   if (!await ask('この木の記録を削除します。元に戻せません。よろしいですか？', '削除する', true)) return;
+  markDeleted(cur.id); // ほかの端末でも消えるように
   for (const p of cur.photos) await DB.del('photos', p.id);
   await DB.del('trees', cur.id); trees = trees.filter(t => t.id !== cur.id); selected.delete(cur.id);
   saveTimer = null; cur = null; await backToList(); toast('削除しました');
@@ -6700,7 +7193,7 @@ async function shareOrDownload(file) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
 }
 function blobToDataURL(b) { return new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); }
-const SHARED_SETTINGS = ['jk_callouts', 'jk_callouts_ver', 'jk_cst', 'jk_minpt', 'jk_shapes', 'jk_lists', 'jk_map', 'jk_projects', 'jk_routes'];
+const SHARED_SETTINGS = ['jk_callouts', 'jk_callouts_ver', 'jk_cst', 'jk_minpt', 'jk_shapes', 'jk_lists', 'jk_map', 'jk_projects', 'jk_routes', 'jk_wavelegend'];
 async function backup() {
   await flush();
   const photos = {};
@@ -7148,6 +7641,7 @@ async function migrateOld() {
   try { await DB.open(); [trees, types] = await Promise.all([DB.all('trees'), DB.all('types')]); }
   catch (e) { say('この端末では保存が使えません（プライベートブラウズ中かもしれません）'); }
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { }
+  const fromSignIn = await odHandleRedirect().catch(() => false); // OneDrive のサインインから戻ったとき
   try { await ensureBuiltin(); types.sort((a, b) => (b.builtin ? 1 : 0) - (a.builtin ? 1 : 0) || a.created - b.created); await migrateOld(); for (const ty of types) await loadTpl(ty); }
   catch (e) { console.error(e); say('カルテの様式を準備できませんでした：' + e.message); }
   $('#btnNew').onclick = async () => {
@@ -7193,9 +7687,11 @@ async function migrateOld() {
   for (const d of document.querySelectorAll('dialog [data-close]')) d.onclick = () => d.closest('dialog').close();
   window.addEventListener('resize', () => { if (viewMode === 'karte' && kPages.length) fitKarte(); });
   window.addEventListener('popstate', () => { if (dr) closeDraw(false); if (cur) backToList(); });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { flush(); if (syncBackends().length && syncCfg().auto !== false) syncNow(true); } });
+  window.addEventListener('online', () => syncSoon(1500));
   window.addEventListener('pagehide', () => { flush(); });
-  renderList();
+  renderList(); renderSyncCard(); syncStatus();
+  if (syncBackends().length && (fromSignIn || syncCfg().auto !== false)) setTimeout(() => syncNow(!fromSignIn), fromSignIn ? 300 : 1500);
 })();
 
 /* =========================================================
