@@ -4195,6 +4195,8 @@ const tboxOn = () => { try { return localStorage.getItem('jk_tbox') === '1'; } c
 const setTbox = v => { try { localStorage.setItem('jk_tbox', v ? '1' : '0'); } catch (e) { } };
 // レジ位置の枠：高さの文字と「R」をまとめて囲むか（最後に選んだものを覚える）
 const rejiBoxOn = () => { try { return localStorage.getItem('jk_rejibox') !== '0'; } catch (e) { return true; } };
+// レジ位置の高さは cm：数字だけ入れたら「cm」を付ける（全角の数字も）
+const rejiHeight = t => { const v = String(t || '').trim().replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)); return /^\d+(\.\d+)?$/.test(v) ? v + 'cm' : t; };
 const setRejiBox = v => { try { localStorage.setItem('jk_rejibox', v ? '1' : '0'); } catch (e) { } };
 // 枠の範囲（キャンバスの画素）：左の高さの文字から「R」の右まで
 function rejiFrame(mx, s, R, fs, cx, cy, k = 1) {
@@ -4610,7 +4612,7 @@ function paintTools() {
     const s = dr.strokes[dr.sel];
     sb.append(h('span', { class: 'lbl' }, ({ arrow2: '矢印', callout: 'コメント', num: '番号', text: '文字', ellipse: '○', rect: '□', pen: 'ペン', marker: 'マーカー', line: '線', dim: '寸法線', hatch: '異音の範囲' }[s.t] || STAMP_NAMES[s.k] || '') + 'を選択中：'));
     if (s.t === 'hatch') sb.append(B('✏️ 異音の程度・高さ', false, async () => { await askHatch(s); redraw(); paintTools(); }));
-    if (['callout', 'text', 'line', 'dim', 'stamp'].includes(s.t)) sb.append(B(s.text ? '✏️ 文字を直す' : '✏️ 文字を入れる', false, async () => { const t = await askText('文字', s.text || '', s.t === 'callout'); if (t != null) { s.text = t; if (s.t !== 'callout' && s.t !== 'text' && !s.s) s.s = .03; redraw(); paintTools(); } }));
+    if (['callout', 'text', 'line', 'dim', 'stamp'].includes(s.t)) sb.append(B(s.text ? '✏️ 文字を直す' : '✏️ 文字を入れる', false, async () => { const isR = s.t === 'stamp' && s.k === 'reji', t = await askText(isR ? '測定の高さ（cm。数字だけでOK）' : '文字', s.text || '', s.t === 'callout'); if (t != null) { s.text = isR ? rejiHeight(t) : t; if (s.t !== 'callout' && s.t !== 'text' && !s.s) s.s = .03; redraw(); paintTools(); } }));
     if (s.t === 'stamp' && s.k === 'reji') sb.append(h('span', { class: 'seg2' }, B('枠あり', !!s.fr, () => { s.fr = 1; s.nb = 1; delete s.lb; setRejiBox(true); redraw(); paintTools(); }), B('枠なし', !s.fr, () => { delete s.fr; s.nb = 1; delete s.lb; setRejiBox(false); redraw(); paintTools(); })));
     if (s.t === 'text') sb.append(h('span', { class: 'seg2' }, B('枠なし', !s.box, () => { delete s.box; redraw(); paintTools(); }), B('枠あり', !!s.box, () => { s.box = 1; redraw(); paintTools(); })));
     if (s.t === 'callout') sb.append(h('span', { class: 'seg2' }, B('枠あり', !s.nb, () => { delete s.nb; redraw(); paintTools(); }), B('枠なし', !!s.nb, () => { s.nb = 1; redraw(); paintTools(); })),
@@ -4733,7 +4735,7 @@ function closeDraw(save) {
     if (dr.tool.startsWith('st_')) { // 平面図の記号はタップで置く
       const k = dr.tool.slice(3); dr.pid = null;
       const o = { t: 'stamp', k, c: dr.color, x: px, y: py, s: (k === 'north' ? .045 : k === 'pole' ? .035 : k === 'reji' ? .035 : .05) * sz, text: k === 'pole' ? '電柱' : '', r: 0, base: sz };
-      if (k === 'reji') { o.nb = 1; if (rejiBoxOn()) o.fr = 1; const t = await askText('測定の高さ（例：1.2m・根株）', '', false); if (!dr) return; if (t) o.text = t; }
+      if (k === 'reji') { o.nb = 1; if (rejiBoxOn()) o.fr = 1; const t = await askText('測定の高さ（cm。数字だけでOK 例：120、根株）', '', false); if (!dr) return; if (t) o.text = rejiHeight(t); }
       add(o); return;
     }
     const w = { pen: .006, marker: .035, ellipse: .007, rect: .007, arrow2: .012, line: .006, dim: .004, crown: .005, hatch: .004 }[dr.tool] * sz;
@@ -4804,7 +4806,7 @@ function closeDraw(save) {
     if (snapped && dr.active) { const a = dr.active; dr.active = null; add(a); return; }
     if (dr.drag) { // 選んである物をもう一度タップ → 文字・番号を直す
       const d = dr.drag, s = dr.strokes[d.i], still = Math.hypot(dr.last[0] - dr.start[0], dr.last[1] - dr.start[1]) < .01; dr.drag = null;
-      if (still && dr.wasSel && s && ['callout', 'text', 'line', 'dim', 'stamp'].includes(s.t) && (s.text || s.t === 'callout' || s.t === 'text')) { const t = await askText('文字を直す', s.text, s.t === 'callout'); if (t != null && (t || s.t !== 'callout')) { s.text = t; redraw(); } }
+      if (still && dr.wasSel && s && ['callout', 'text', 'line', 'dim', 'stamp'].includes(s.t) && (s.text || s.t === 'callout' || s.t === 'text')) { const t = await askText('文字を直す', s.text, s.t === 'callout'); if (t != null && (t || s.t !== 'callout')) { s.text = s.t === 'stamp' && s.k === 'reji' ? rejiHeight(t) : t; redraw(); } }
       else if (still && dr.wasSel && s && s.t === 'num') { const t = await askText('番号', String(s.n), false); if (t) { s.n = t; redraw(); } }
       return;
     }
