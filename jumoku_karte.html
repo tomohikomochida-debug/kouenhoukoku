@@ -5993,7 +5993,7 @@ async function regiDiagram(inp, waves = []) {
     const [a1x, a1y] = [cx + ux * tail, cy + uy * tail], [a2x, a2y] = [cx + ux * head, cy + uy * head];
     objs.push({ t: 'arrow2', c: '#111111', w: N(5), x1: N(a1x), y1: N(a1y), x2: N(a2x), y2: N(a2y), base: 1, gen: 1 });
     // 上下の向き：矢印の外側（上・下）に。左右の向き：矢印の上で、幹の外側（波形の帯にかからない所）に
-    const gap = 10, lx = ux > 0 ? cx + EX + 12 : ux < 0 ? cx - EX - 12 - lw : a1x - lw / 2, ly = uy > 0 ? a1y + gap : uy < 0 ? a1y - gap - fsL * 1.15 : cy - 16 - fsL * 1.15;
+    const gap = 10, lx = ux > 0 ? cx + EX + 12 : ux < 0 ? cx - EX - 12 - lw : a1x - lw / 2, ly = uy > 0 ? a1y + gap : uy < 0 ? a1y - gap - fsL * 1.15 : cy - 30 - fsL * 1.2; /* 左右の向き：矢印の上に、Excel で字の高さが増えても矢印にかからない間をあける */
     objs.push({ t: 'text', c: '#111111', x: N(Math.max(4, Math.min(S - lw - 4, lx))), y: N(ly), s: N(fsL), text: lbl, al: ux < 0 ? 'r' : ux > 0 ? '' : 'c', base: 1, gen: 1 }); // 西側は右寄せ（Excel で字が広くなっても帯にかからない）
   });
   // 方向指標（道路の方向）：マニュアル「あわせて、道路などの方向指標を記載する」。右上に「車道側」の矢印（あとで動かせる）
@@ -7901,15 +7901,21 @@ async function buildWorkbook(ty, list, fileName = '') {
       if (!/xmlns:r=/.test(rootTag())) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"');
       if (!/xmlns:a=/.test(rootTag())) dx = dx.replace(/<xdr:wsDr\b/, '<xdr:wsDr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"');
       // 自動でつくった図（想定断面図）を入れた枠では、様式にもともとある図形（円・十字など）を外す
+      // 枠の外から枠にかかる図形（様式の「車道側」など）は、図の後ろに隠れないよう前面へ。図に方向指標があれば、様式の車道側・歩道側は外す（重なるので）
+      let front = '';
       for (const p of t.photos || []) {
-        if (!p.gen || !ty.fields[p.slot]) continue; const g = tpl.rangeOf(p.slot);
+        if (!p.gen || !ty.fields[p.slot]) continue; const g = tpl.rangeOf(p.slot), road = (p.strokes || []).some(s => s.name === '方向指標');
         dx = dx.replace(/<xdr:(twoCellAnchor|oneCellAnchor|absoluteAnchor)\b[\s\S]*?<\/xdr:\1>/g, a => {
           if (/r:embed="rIdP/.test(a)) return a; // このアプリが入れた写真は残す
           const m = /<xdr:from><xdr:col>(\d+)<\/xdr:col><xdr:colOff>-?\d+<\/xdr:colOff><xdr:row>(\d+)<\/xdr:row>/.exec(a); if (!m) return a;
-          const c = +m[1], r = +m[2]; return c >= g.c1 && c <= g.c2 && r >= g.r1 && r <= g.r2 ? '' : a;
+          const c = +m[1], r = +m[2]; if (c >= g.c1 && c <= g.c2 && r >= g.r1 && r <= g.r2) return '';
+          const e = /<xdr:to><xdr:col>(\d+)<\/xdr:col><xdr:colOff>-?\d+<\/xdr:colOff><xdr:row>(\d+)<\/xdr:row>/.exec(a); if (!e) return a;
+          if (+e[1] < g.c1 || c > g.c2 || +e[2] < g.r1 || r > g.r2) return a; // 枠にかからない
+          if (road && /[車歩]道側|道路/.test(a.replace(/<[^>]+>/g, ''))) return '';
+          front += a; return '';
         });
       }
-      dx = dx.replace('</xdr:wsDr>', pics + '</xdr:wsDr>');
+      dx = dx.replace('</xdr:wsDr>', pics + front + '</xdr:wsDr>');
       zip.file(dpath, dx);
       const drp = relsPathOf(dpath);
       const dr = zip.file(drp) ? await rd(drp) : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
