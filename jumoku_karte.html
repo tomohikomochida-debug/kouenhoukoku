@@ -5705,8 +5705,10 @@ function waveTrim(img, cal) {
 // 測定結果の枠に出す範囲：グラフ（評価の色の線〜波形〜深さの数字）だけを切り取り、枠いっぱいに広げる
 function waveView(img, cal, yb) { // yb：深さの数字の下の端（EMF のとき。数字の下の見出しは入れない）
   const tr = waveTrim(img, cal); if (!tr.chart) return null;
+  // グラフの横の範囲：波形のデータのある所に、目盛りの 0cm〜合わせた目盛りの所も足す（データが途中で終わっていてもグラフ全体を残す）
+  const cx0 = Math.max(0, Math.min(tr.chart[0], cal.x0, cal.x1)), cx1 = Math.min(1, Math.max(tr.chart[1], cal.x0, cal.x1)), ch = [cx0, cx1];
   const top = Math.min(tr[0], ...(tr.bars || []).map(b => b[0])) - .01, bottom = Math.min(1, yb > tr[1] ? yb + .005 : tr[1] + .07);
-  return { x: +Math.max(0, tr.chart[0] - .005).toFixed(4), y: +Math.max(0, top).toFixed(4), w: +Math.min(1 - Math.max(0, tr.chart[0] - .005), tr.chart[1] - tr.chart[0] + .01).toFixed(4), h: +(bottom - Math.max(0, top)).toFixed(4), fill: 1 };
+  return { x: +Math.max(0, ch[0] - .005).toFixed(4), y: +Math.max(0, top).toFixed(4), w: +Math.min(1 - Math.max(0, ch[0] - .005), ch[1] - ch[0] + .01).toFixed(4), h: +(bottom - Math.max(0, top)).toFixed(4), fill: 1 };
 }
 // 波形の画像を、グラフの所だけの画像に入れ替える（書き込みの線がずれないように、1回だけ）。目盛りも合わせ直す
 async function waveCropPhoto(p, img) {
@@ -5714,6 +5716,7 @@ async function waveCropPhoto(p, img) {
   const vw = waveView(img, p.cal, p.emf && p.emf.axis && p.emf.axis.yb); if (!vw) return false;
   const iw = img.naturalWidth, ih = img.naturalHeight, sw = Math.round(vw.w * iw), sh = Math.round(vw.h * ih); if (sw < 20 || sh < 10) return false;
   const c = document.createElement('canvas'); c.width = sw; c.height = sh; c.getContext('2d').drawImage(img, vw.x * iw, vw.y * ih, sw, sh, 0, 0, sw, sh);
+  const tr0 = waveTrim(img, p.cal), dx0 = (p.cal.x1 - p.cal.x0) / num(p.cal.v); if (tr0.end != null && dx0) p.dend = +Math.max(0, (tr0.end - p.cal.x0) / dx0).toFixed(2); // データの終わり（cm）
   const id = uid(); await DB.put('photos', { id, blob: await canvasBlob(c, 1, 'image/png') });
   const fx = v => +((v - vw.x) / vw.w).toFixed(5);
   p.orig = p.orig || p.id; p.id = id; p.w = sw; p.h = sh; p.cal = { ...p.cal, x0: fx(p.cal.x0), x1: fx(p.cal.x1), y0: 0, y1: 1 }; p.view = { fill: 1, cropped: 1 };
@@ -5738,7 +5741,7 @@ async function regiWaveLines(t, ty, inp) {
     if (d.t != null && d.dl) add('e', d.b + d.t + d.dl, '');
     // データの開始（◀）と終点（▶）の印：カルテの凡例と同じ黒い三角。波形の内側に置き、三角の辺をその深さに合わせる。ドラッグで直せる
     const sd = dx < 0 ? -1 : 1, Rn = .011, wN = TRI_W * Rn, ym = (tr[0] + tr[1]) / 2;
-    const autoEnd = tr.end != null ? Math.max(0, (tr.end - cal.x0) / dx) : num(cal.v);
+    const autoEnd = tr.end != null ? Math.max(0, (tr.end - cal.x0) / dx) : num(cal.v); if (tr.end != null) p.dend = +autoEnd.toFixed(2);
     const ds = num(cal.ds) ?? 0, de = num(cal.de) ?? autoEnd;
     const tri = (role, dep, dir, name) => { if (dep == null || !isFinite(dep)) return; const xx = X(dep) + (role === 'ds' ? 1 : -1) * sd * wN / 2; L.push({ t: 'stamp', k: 'tri', c: '#000000', x: +Math.min(1 - wN / 2, Math.max(wN / 2, xx)).toFixed(4), y: +ym.toFixed(4), s: Rn, dir, r: 0, base: 1, gen: 1, role, dep: +(+dep).toFixed(2), name }); };
     tri('ds', ds, -1, 'データの開始'); tri('de', de, 1, 'データの終点');
@@ -5781,9 +5784,12 @@ function regiFromWaves(inp, waves, onlyEmpty = false) {
     const D = r.D[i % 2], center = D ? D / 2 : null;
     const bark = rg.find(x => isBarkName(x.name) && x.from <= .5) /* 帯の端の読み取りの誤差 */, b = bark ? bark.to : 0;
     const bad = rg.find(x => !isBarkName(x.name) && !isSoundName(x.name) && x.to > b && (center == null || x.from < center));
-    const reach = Math.max(...rg.map(x => x.to)); // 測れた深さ（その先は未測定）
+    // 測れた深さ（その先は未測定）：評価の帯はグラフの端まで引かれることがあるので、波形のデータが終わる所（終点の三角）までにする
+    const w = waves[i], cal = w && (w.cal || (w.p && w.p.cal)), tr = w && w.img && cal && num(cal.v) > 0 ? waveTrim(w.img, cal) : null, dxc = cal && num(cal.v) > 0 ? (cal.x1 - cal.x0) / num(cal.v) : 0;
+    const dataEnd = cal && num(cal.de) != null ? num(cal.de) : tr && tr.end != null && dxc ? Math.max(0, (tr.end - cal.x0) / dxc) : w && w.p && w.p.dend != null ? w.p.dend : Infinity; // dend：波形を切り取ったときに覚えたデータの終わり
+    const reach = Math.min(Math.max(...rg.map(x => x.to)), dataEnd);
     const t = bad ? Math.max(0, bad.from - b) : center != null ? Math.min(center, reach) - b : null; if (t == null) return;
-    d.b = f1(b); d.t = f1(t); d.dl = bad ? f1(Math.min(bad.to, center ?? bad.to) - Math.max(bad.from, b)) : ''; d.snd = bad ? '' : 1; n++; // 腐朽が見つからなければ「芯まで健全」
+    d.b = f1(b); d.t = f1(t); d.dl = bad ? f1(Math.max(0, Math.min(bad.to, reach, center ?? bad.to) - Math.max(bad.from, b))) : ''; d.snd = bad ? '' : 1; n++; // 腐朽が見つからなければ「芯まで健全」
   });
   return n;
 }
@@ -5809,9 +5815,9 @@ async function regiDiagram(inp, waves = []) {
       const pxcm = Math.abs(cal.x1 - cal.x0) * iw / num(cal.v), s = k / pxcm, maxcm = (r.D[i % 2] || Dm) / 2;
       const trim0 = waveTrim(img, cal), Lfull = cal.x1 < cal.x0 ? cal.x0 * iw : (1 - cal.x0) * iw;
       measured = num(cal.de) != null ? num(cal.de) : trim0.end != null ? Math.abs(trim0.end - cal.x0) * iw / pxcm : Lfull / pxcm; // 波形のデータが終わる所＝ドリルが届いた深さ（終点の三角で直せる）
-      const Lpx = Math.max(1, Math.min(maxcm * pxcm, Lfull, num(cal.de) != null ? measured * pxcm : Infinity)); // 終点を直したら、その先の波形は描かない
+      const Lpx = Math.max(1, Math.min(maxcm * pxcm, Lfull, measured * pxcm + 2)); // データの終わり（終点の三角）より先の波形・グリッドは描かない（未測定部分）
       const [ty0, ty1] = trim0, sy = ty0 * ih, shh = Math.max(4, (ty1 - ty0) * ih); // 上下の空きを詰める
-      let hh = shh * s * vf; if (hh > RP * .5) hh = RP * .5; // 振幅の向きは強調してよい（標準2倍）
+      let hh = shh * s * vf; if (hh > RP * .28) hh = RP * .28; /* 十字の帯どうしが重なりすぎないように */ // 振幅の向きは強調してよい（標準2倍）
       const [ex, ey] = [cx + ux * Rr, cy + uy * Rr];
       x.save(); x.translate(ex, ey); x.rotate(Math.atan2(-uy, -ux)); // ＋X が中心向き
       const trim = waveTrim(img, cal), barH = 9, sxa = cal.x1 < cal.x0 ? cal.x0 * iw - Lpx : cal.x0 * iw, dxa = cal.x1 < cal.x0 ? -Lpx * s : 0;
