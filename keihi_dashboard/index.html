@@ -118,18 +118,30 @@ const ymLabel=ym=>ym.split("-")[0]+"年"+(+ym.split("-")[1])+"月";
 
 let months=[], cur=null;
 
-async function load(){
-  try{
-    const res=await fetch(GAS_URL+"?action=summary");
-    const d=await res.json();
-    if(!d.ok) throw 0;
-    months=d.months||[];
-  }catch(e){ $("loading").textContent="電波を確認して、もう一度お試しください"; return; }
-  if(months.length===0){ $("loading").textContent="まだ経費が入力されていません。入力アプリで登録すると、ここに集計が出ます。"; return; }
+/* 前回の集計を端末に覚えておき、開いたらすぐ表示 → 最新は裏で読み込む */
+const SUM_KEY="keihi_summary_cache";
+function showMonths(){
+  if(months.length===0){ $("loading").style.display="block"; $("content").hidden=true;
+    $("loading").textContent="まだ経費が入力されていません。入力アプリで登録すると、ここに集計が出ます。"; return; }
+  const keep=cur&&months.some(m=>m.ym===cur.ym)?cur.ym:months[0].ym;
   $("monthSel").innerHTML=months.map(m=>`<option value="${m.ym}">${ymLabel(m.ym)}${m.closed?"（締め済）":""}</option>`).join("");
   $("monthSel").onchange=()=>select($("monthSel").value);
   $("loading").style.display="none"; $("content").hidden=false;
-  select(months[0].ym);
+  select(keep);
+}
+async function load(){
+  let cached=null; try{ cached=JSON.parse(localStorage.getItem(SUM_KEY)||"null"); }catch(e){}
+  if(cached&&Array.isArray(cached.months)){ months=cached.months; showMonths(); }
+  const ac=new AbortController(); const tm=setTimeout(()=>ac.abort(),25000);
+  try{
+    const res=await fetch(GAS_URL+"?action=summary",{signal:ac.signal});
+    const d=await res.json();
+    if(!d.ok) throw 0;
+    months=d.months||[];
+    try{ localStorage.setItem(SUM_KEY, JSON.stringify({months, t:Date.now()})); }catch(e){}
+  }catch(e){ if(!cached){ $("loading").textContent="電波を確認して、もう一度お試しください"; } return; }
+  finally{ clearTimeout(tm); }
+  showMonths();
 }
 
 function select(ym){
