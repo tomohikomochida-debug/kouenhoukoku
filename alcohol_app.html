@@ -475,6 +475,7 @@ function whenStr(){
 }
 document.getElementById('save').onclick=()=>{
   if(state.drivers.length===0){ alert('運転者を選んでください'); return; }
+  state.submitId=null; // 確認画面を開くたびに新しい送信（同じ画面での再送だけ同一扱い）
   const pb=document.getElementById('previewBody');
   const detLabel = state.detector==='使った' ? '使った' : '使わなかった';
   const resLabel = state.result==='有' ? '⚠️ あり' : 'なし（問題なし）';
@@ -515,10 +516,10 @@ document.getElementById('confirmSave').onclick=async()=>{
   };
   try{
     const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body:JSON.stringify({app:'alcohol',row})});
+      body:JSON.stringify({app:'alcohol',row,submitId:(state.submitId=state.submitId||newSubmitId())})});
     const j=await res.json();
-    if(!j.ok) throw new Error(j.error||'save failed');
-    clearDraft(); resetForm();
+    if(!j.ok||!(j.no||j.duplicate)) throw new Error(j.error||'save failed');
+    state.submitId=null; clearDraft(); resetForm();
     document.getElementById('modal').classList.remove('show');
     alert('記録しました。');
   }catch(e){
@@ -526,6 +527,7 @@ document.getElementById('confirmSave').onclick=async()=>{
   }
   btn.disabled=false; btn.textContent='記録する';
 };
+function newSubmitId(){ return 'alc-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
 function resetForm(){
   state.timing='業務前'; state.drivers=[]; state.detector='使った'; state.result='無';
   document.getElementById('method').value=''; document.getElementById('instruct').value=''; document.getElementById('other').value='';
@@ -557,8 +559,8 @@ async function loadList(){
   const body=document.getElementById('listBody');
   body.innerHTML='<div class="loading">読み込み中…</div>';
   try{
-    const res=await fetch(GAS_URL+'?action=alcohol_list&limit=120');
-    const j=await res.json();
+    const ac=new AbortController(); const tm=setTimeout(()=>ac.abort(),25000);
+    let j; try{ const res=await fetch(GAS_URL+'?action=alcohol_list&limit=120&_='+Date.now(),{signal:ac.signal,cache:'no-store'}); j=await res.json(); }finally{ clearTimeout(tm); }
     if(!j.ok) throw new Error(j.error||'load failed');
     listCache=j.records||[];
     renderList(listCache);
