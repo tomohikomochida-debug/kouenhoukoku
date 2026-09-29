@@ -148,10 +148,15 @@ input:focus{outline:none; border-bottom-color:var(--leaf)}
     <div class="inj-list" id="injList"></div>
     <div class="bal"><span>財布の現金残高</span><span class="tnum big-amt" id="balance">¥0</span></div>
     <div class="bal-note" id="balNote"></div>
-    <label class="fl">月末に数えた現金
-      <input class="inp tnum" id="counted" inputmode="numeric" placeholder="数えた額">
+    <div class="bal-note" id="nowNote"></div>
+    <label class="fl">いま財布を数えた額
+      <div class="inj-add" style="margin-top:4px">
+        <input class="inp tnum" id="counted" inputmode="numeric" placeholder="数えた額">
+        <button class="btn primary sm" id="countBtn">この額で合わせる</button>
+      </div>
     </label>
     <div id="diffBox"></div>
+    <div class="inj-list" id="adjList"></div>
   </section>
 
   <section class="card owed" id="owedCard" hidden>
@@ -163,8 +168,8 @@ input:focus{outline:none; border-bottom-color:var(--leaf)}
 
   <section class="card close-card" id="closeCard" hidden>
     <div class="sum-h">月締め</div>
-    <p class="note" style="text-align:left">この月を締めると、いまの現金残高が翌月の「月初の残り」に繰り越されます。未清算の立て替えは翌月に残ります。</p>
-    <button class="btn primary" id="closeBtn" style="margin-top:10px">この月を締めて翌月へ繰り越す</button>
+    <p class="note" style="text-align:left">締めると、この月の記録が「確定」になります。残高は締めなくても翌月へ自動でつながるので、繰り越しの操作はいりません。未清算の立て替えは翌月に残ります。</p>
+    <button class="btn primary" id="closeBtn" style="margin-top:10px">この月を締める</button>
     <div id="closedInfo"></div>
   </section>
 
@@ -190,7 +195,8 @@ const yen=n=>"¥"+(Number(n)||0).toLocaleString("ja-JP");
 const $=id=>document.getElementById(id);
 
 let ym = (function(){ const d=new Date(); return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2); })();
-let state = {opening:0, counted:"", closed:false, records:[], injections:[]};
+let state = {opening:0, counted:"", closed:false, records:[], injections:[], adjustments:[], walletNow:null};
+const THIS_YM = ym;   // 今月（財布を数えて合わせるのは「いま」の財布）
 let pending = []; // {tempId, thumb, b64, status, errMsg}
 let staff = JSON.parse(localStorage.getItem("keihi_staff")||"[]");
 let stream=null, tempSeq=1;
@@ -228,7 +234,8 @@ async function load(){
   try{
     const d=await apiGet({action:"month", ym});
     if(!d.ok) throw new Error(d.error||"err");
-    state={opening:d.opening, counted:d.counted, closed:d.closed, records:d.records, injections:d.injections};
+    state={opening:d.opening, counted:d.counted, closed:d.closed, records:d.records, injections:d.injections,
+           adjustments:d.adjustments||[], walletNow:(d.walletNow==null?null:d.walletNow)};
     if(d.closed) $("monthLbl").innerHTML += '<span class="closed-tag">締め済</span>';
   }catch(e){ commErr(); }
   $("loading").style.display="none";
@@ -242,9 +249,10 @@ function calc(){
   const cash=state.records.filter(r=>r.pay==="cash").reduce((s,r)=>s+r.amount,0);
   const sAdv=state.records.filter(r=>r.pay==="advance"&&r.settled).reduce((s,r)=>s+r.amount,0);
   const inj=state.injections.reduce((s,x)=>s+x.amount,0);
-  const balance=state.opening+inj-cash-sAdv;
+  const adj=(state.adjustments||[]).reduce((s,x)=>s+(Number(x.amount)||0),0);
+  const balance=state.opening+inj-cash-sAdv+adj;
   const owed={}; state.records.filter(r=>r.pay==="advance"&&!r.settled).forEach(r=>{const k=r.who||"（名前なし）"; owed[k]=(owed[k]||0)+r.amount;});
-  return {t, all, cash, sAdv, inj, balance, owed};
+  return {t, all, cash, sAdv, inj, adj, balance, owed};
 }
 
 /* ===== 描画 ===== */
@@ -300,20 +308,27 @@ function renderSummary(){
 }
 
 function renderWallet(){
-  const {cash,sAdv,inj,balance}=calc();
+  const {cash,sAdv,inj,adj,balance}=calc();
   $("walletCard").hidden=false;
-  $("openingNote").textContent="月初の残り（繰越） "+yen(state.opening);
+  $("openingNote").textContent="月初の残り（前の月から自動でつながります） "+yen(state.opening);
   $("injList").innerHTML = state.injections.map((x,i)=>`<div class="inj-row"><span>入金${i+1}</span><span class="yen-pre">¥</span>
     <input class="inj-in tnum" data-act="injedit" data-id="${x.id}" inputmode="numeric" value="${x.amount||""}">
     <button class="inj-del" data-act="injdel" data-id="${x.id}">取り消し</button></div>`).join("")
     + (state.injections.length?`<div class="inj-sum">入金 計 ${yen(inj)}</div>`:"");
   $("balance").textContent=yen(balance);
-  $("balNote").textContent=`月初 ${yen(state.opening)} ＋入金 ${yen(inj)} −現金払い ${yen(cash)} −立替清算 ${yen(sAdv)}`;
-  if($("counted")!==document.activeElement) $("counted").value = state.counted===""?"":state.counted;
-  const cnt = state.counted===""?null:Number(state.counted);
-  const diff = cnt===null?null:cnt-balance;
+  $("balNote").textContent=`月初 ${yen(state.opening)} ＋入金 ${yen(inj)} −現金払い ${yen(cash)} −立替清算 ${yen(sAdv)}`
+    + (adj?` ${adj>0?"＋":"−"}過不足 ${yen(Math.abs(adj))}`:"");
+  // 過去の月を見ているときは「いまの財布」も出す
+  const isNow = ym===THIS_YM;
+  const nowBal = isNow ? balance : state.walletNow;
+  $("nowNote").innerHTML = (!isNow && nowBal!=null) ? `いまの財布（今日まで全部）：<b class="tnum">${yen(nowBal)}</b>` : "";
+  const cnt = $("counted").value===""?null:Number($("counted").value.replace(/[^\d]/g,""));
+  const diff = (cnt===null||nowBal==null)?null:cnt-nowBal;
   $("diffBox").innerHTML = diff===null?"":
-    `<div class="diff ${diff===0?"ok":"ng"}">${diff===0?"✓ 帳簿とぴったり合っています":`差額 ${yen(Math.abs(diff))}（${diff>0?"現金が多い":"現金が足りない"}）`}</div>`;
+    `<div class="diff ${diff===0?"ok":"ng"}">${diff===0?"✓ 帳簿とぴったり合っています":`帳簿より ${yen(Math.abs(diff))} ${diff>0?"多い":"足りない"} → 「この額で合わせる」で過不足として記録します`}</div>`;
+  $("adjList").innerHTML = (state.adjustments||[]).map(x=>`<div class="inj-row"><span>過不足</span>
+    <span class="tnum" style="flex:1;text-align:right;font-weight:700;color:${x.amount<0?"var(--danger)":"var(--ok)"}">${x.amount<0?"−":"＋"}${yen(Math.abs(x.amount))}</span>
+    <button class="inj-del" data-act="adjdel" data-id="${x.id}">取り消し</button></div>`).join("");
 }
 
 function renderOwed(){
@@ -338,6 +353,9 @@ document.addEventListener("click", async (e)=>{
   else if(act==="pay"){ const patch={pay:b.dataset.v}; if(b.dataset.v!=="advance") patch.settled=false; await editRec(id,patch); }
   else if(act==="delrec"){ await delRec(id); }
   else if(act==="injdel"){ await injDel(id); }
+  else if(act==="adjdel"){ if(!confirm("この過不足の記録を取り消しますか？")) return;
+    state.adjustments=state.adjustments.filter(x=>String(x.id)!==String(id)); renderWallet();
+    try{ await apiPost({mode:"deleteAdjustment",id}); load(); }catch(e){ commErr(); } }
   else if(act==="settle"){ await settle(b.dataset.who); }
   else if(act==="retry"){ const p=pending.find(x=>x.tempId==b.dataset.tid); if(p){p.status="reading";renderPending();analyze(p);} }
   else if(act==="pmanual"){ const p=pending.find(x=>x.tempId==b.dataset.tid); pending=pending.filter(x=>x!==p); renderPending(); await addManual(); }
@@ -381,9 +399,22 @@ $("addInj").onclick=async ()=>{
   try{ const d=await apiPost({mode:"addInjection",ym,amount:a}); if(!d.ok)throw 0; state.injections.push({id:d.id,amount:a}); renderWallet(); }
   catch(e){ commErr(); }
 };
-$("counted").addEventListener("change",async ()=>{
-  // 月末の数えた現金は月締め時に保存。ここでは表示計算のみ（締めると保存される）
-});
+$("counted").addEventListener("input",()=>renderWallet());
+$("countBtn").onclick=async ()=>{
+  const v=$("counted").value.replace(/[^\d]/g,"");
+  if(v===""){ toast("数えた額を入れてください"); return; }
+  const counted=Number(v);
+  if(!confirm("いまの財布の現金を "+yen(counted)+" として帳簿を合わせます。よろしいですか？")) return;
+  const btn=$("countBtn"); btn.disabled=true;
+  try{
+    await flushSaves();
+    const d=await apiPost({mode:"countCash",ym:THIS_YM,counted,who:localStorage.getItem("nippou_author")||""});
+    if(!d.ok) throw new Error(d.error||"err");
+    toast(d.diff===0?"帳簿とぴったりでした":"過不足 "+(d.diff>0?"＋":"−")+yen(Math.abs(d.diff))+" を記録して合わせました");
+    $("counted").value=""; load();
+  }catch(e){ commErr(); }
+  finally{ btn.disabled=false; }
+};
 
 async function settle(who){
   state.records.forEach(r=>{ if(r.pay==="advance"&&!r.settled&&(r.who||"（名前なし）")===who) r.settled=true; });
@@ -428,9 +459,8 @@ async function analyze(p){
 
 /* ===== 月締め・月移動 ===== */
 $("closeBtn").onclick=async ()=>{
-  if(!confirm("この月を締めますか？現金残高が翌月へ繰り越されます。")) return;
-  const counted=$("counted").value===""?0:Number($("counted").value.replace(/[^\d]/g,""));
-  try{ const d=await apiPost({mode:"closeMonth",ym,counted}); if(!d.ok)throw 0; toast("締めました。翌月へ "+yen(d.ending)+" を繰り越しました"); state.closed=true; state.counted=counted; renderAll(); load(); }
+  if(!confirm("この月を締めて、記録を確定しますか？")) return;
+  try{ await flushSaves(); const d=await apiPost({mode:"closeMonth",ym,counted:""}); if(!d.ok)throw 0; toast("締めました（月末の残り "+yen(d.ending)+"）"); state.closed=true; renderAll(); load(); }
   catch(e){ commErr(); }
 };
 function shiftMonth(n){ if(document.activeElement&&document.activeElement.blur)document.activeElement.blur(); flushSaves().then(()=>{ const [y,m]=ym.split("-").map(Number); const d=new Date(y,m-1+n,1); ym=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2); pending=[]; load(); }); }
