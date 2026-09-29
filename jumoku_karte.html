@@ -548,7 +548,7 @@ dialog.wide{max-width:720px}
 
 <dialog id="dlgCal" class="wide" style="max-width:940px">
   <h2 id="calTitle">目盛りを合わせる</h2>
-  <p class="hint">赤い線を波形の <b>0cm</b>（データの開始・幹の表面）に、青い線を目盛りの数字のある線（例：40）に合わせ、その値を入れてください。オレンジの点線で上下の余白を切り取れます。</p>
+  <p class="hint">赤い線を<b>データの開始（樹皮と材の境目）</b>に、青い線を目盛りの数字のある線（例：50）に合わせ、その値を入れてください。赤い線の位置はそのまま使います。幹の表面（樹皮の外側＝断面図の円）は評価の色の帯の始まりから求めます。オレンジの点線で上下の余白を切り取れます。</p>
   <div style="overflow:auto;touch-action:none"><canvas id="calCv" style="display:block;touch-action:none;border:1px solid #ddd"></canvas></div>
   <div class="row" style="margin-top:10px;align-items:center"><span>青い線の目盛り</span><input class="inp" id="calV" inputmode="decimal" style="width:90px"><span>cm</span><span style="flex:1"></span><button class="btn" type="button" data-close>やめる</button><button class="btn pri" type="button" id="calOk">これで合わせる</button></div>
 </dialog>
@@ -5736,21 +5736,31 @@ function waveBarsFromImage(img, cal, raw = false) { // raw：0cm より手前も
   return segs.filter(sg => sg.b - sg.a >= 2).map(sg => { const { R, G, B } = sg, en = G > R + 60 && G > B + 60 ? 'intact' : R > G + 30 && R > B + 30 && R < 200 && G < 130 ? 'bark' : 'decay', f = (raw ? v => v : v => Math.max(0, v))(q1(Math.min(cm(sg.a), cm(sg.b + 1)))), t = q1(Math.max(cm(sg.a), cm(sg.b + 1)));
     return { c: '#' + hex(R) + hex(G) + hex(B), en, from: f, to: t, text: `From ${f.toFixed(2).replace('.', ',')} cm to ${t.toFixed(2).replace('.', ',')} cm : ${en}` }; }).filter(l => l.to > l.from).sort((a, b) => a.from - b.from);
 }
+// 0cm（幹の表面）を評価の色の帯の始まりに合わせる：樹皮も含めて測る（樹皮の厚さは帯から読む）。0cm を樹皮と材の境目に合わせていたら直す。1回だけ（zf）
+function waveFixZero(p, img) {
+  if (!p.cal || p.cal.zf || !(num(p.cal.v) > 0)) return false;
+  const segs = waveBarsFromImage(img, p.cal, true); let moved = false;
+  if (segs.length) {
+    const c0 = p.cal, dx = (c0.x1 - c0.x0) / num(c0.v), near = Math.min(...segs.map(q => q.from)), far = Math.max(...segs.map(q => q.to)); // cm（今の目盛りで）
+    if (Math.abs(near) > .3 && Math.abs(near) < 5) {
+      const nx0 = c0.x0 + dx * near, farX = c0.x0 + dx * far, nx1 = Math.abs(far - num(c0.v)) < 3 ? farX : c0.x1;
+      p.cal = { ...c0, x0: +nx0.toFixed(5), x1: +nx1.toFixed(5), ds: f1((c0.x0 - nx0) / ((nx1 - nx0) / num(c0.v))), refill: 1 }; moved = true; // 前に 0cm にしていた所（樹皮と材の境目）はデータの開始として残す
+      const ib = waveBarsFromImage(img, p.cal); if (ib.length) p.emf = { ...(p.emf || {}), legend: ib }; // 評価の範囲も合わせ直した目盛りで読み直す
+      p.strokes = (p.strokes || []).filter(s => !s.gen);
+    }
+  }
+  p.cal = { ...p.cal, zf: 1 }; return moved;
+}
 async function waveCropPhoto(p, img) {
   if (!p.cal) return false;
+  if (p.view && p.view.cropped && (p.view.v || 1) >= WAVE_VER) return waveFixZero(p, img);
   if (p.view && p.view.cropped) {
-    if ((p.view.v || 1) >= WAVE_VER) return false;
     // 前の版で切り取った波形：EMF なら元の画像から、目盛りの数字で合わせ直して切り取り直す（手で合わせた目盛りのずれを直す）
     if (p.orig && p.emf && p.emf.axis) {
       try { img = await loadImg(await photoURL(p.orig)); } catch (e) { img = null; }
       if (img) { const a = p.emf.axis; p.cal = { ...p.cal, x0: a.x0, x1: a.x1, y0: 0, y1: 1, v: String(a.v) }; p.view = null; p.id = p.orig; }
     }
-    if (p.view && p.view.cropped && !(p.emf && p.emf.axis)) { // EMF の目盛りの数字がないとき：評価の色の帯の端（0cm＝帯の始まり）で 0cm の位置を直す
-      const segs = waveBarsFromImage(img, p.cal, true); if (segs.length) {
-        const c0 = p.cal, dx = (c0.x1 - c0.x0) / num(c0.v), near = Math.min(...segs.map(q => q.from)), far = Math.max(...segs.map(q => q.to)); // cm（今の目盛りで）
-        if (Math.abs(near) > .3 && Math.abs(near) < 5) { const nx0 = c0.x0 + dx * near; let nx1 = c0.x1; const farX = c0.x0 + dx * far; if (Math.abs(far - num(c0.v)) < 3) nx1 = farX; p.cal = { ...c0, x0: +nx0.toFixed(5), x1: +nx1.toFixed(5) }; }
-      }
-    }
+    if (p.view && p.view.cropped) waveFixZero(p, img);
     if (p.view && p.view.cropped) { const ib = waveBarsFromImage(img, p.cal), lg = (p.emf && p.emf.legend) || []; if (ib.length && (!lg.length || (ib[0].from < .5 && !(lg[0] && lg[0].from < .5)) || ib.length > lg.length)) p.emf = { ...(p.emf || {}), legend: ib }; }
     if (p.view && p.view.cropped) { // 元がないとき：今の画像の左右に余白だけ足す
       const iw = img.naturalWidth, ih = img.naturalHeight, pad = Math.round(iw * .025), c = document.createElement('canvas'); c.width = iw + pad * 2; c.height = ih;
@@ -5760,6 +5770,7 @@ async function waveCropPhoto(p, img) {
       p.strokes = (p.strokes || []).filter(s => !s.gen); composeCache.clear && composeCache.clear(); return true;
     }
   }
+  if (!(p.view && p.view.cropped)) waveFixZero(p, img); // 切り取る前に 0cm を帯の始まりに
   const vw = waveView(img, p.cal, p.emf && p.emf.axis && p.emf.axis.yb); if (!vw) return false;
   const iw = img.naturalWidth, ih = img.naturalHeight, sw = Math.round(vw.w * iw), sh = Math.round(vw.h * ih); if (sw < 20 || sh < 10) return false;
   // 評価の帯を画像からも読む（EMF の凡例に短い帯が入っていないとき、そちらを使う）
@@ -5830,7 +5841,7 @@ async function regiLinesChanged(t, ty, p) {
   let nb = lb ? Math.max(0, dep(lb)) : b0;
   const sds = p.strokes.find(q => q.gen && q.role === 'ds' && q.t === 'stamp'), dsv = sds && sds.dep != null ? Math.max(0, (sds.x + sd * TRI_W * sds.s / 2 - p.cal.x0) / dx) : null;
   if (dsv != null && Math.abs(dsv - sds.dep) > .05) nb = dsv; // ◀データの開始＝樹皮と材の境目：動かしたら樹皮の厚さも直す
-  if (Math.abs(nb - b0) > .05) { d.b = f1(nb); ch = true; }
+  if (Math.abs(nb - b0) > .05) { d.b = f1(nb); ch = true; if (p.cal.ds != null) p.cal.ds = d.b; }
   if (lt) { const nt = Math.max(0, dep(lt) - nb); if (Math.abs(nt - (num(d.t) ?? -1)) > .05) { d.t = f1(nt); d.snd = ''; ch = true; } }
   // データの終点の三角：三角の先の位置を深さにする
   for (const [role, sg] of [['de', -1]]) {
@@ -5857,7 +5868,7 @@ function regiFromWaves(inp, waves, onlyEmpty = false) {
     if (onlyEmpty && String(d.t ?? '').trim() !== '') return;
     const rg = waveRanges(waves[i]); if (!rg.length) return;
     const D = r.D[i % 2], center = D ? D / 2 : null;
-    const bark = rg.find(x => isBarkName(x.name) && x.from <= .5) /* 帯の端の読み取りの誤差 */, b = bark ? bark.to : 0;
+    const bark = rg.find(x => isBarkName(x.name) && x.from <= .5) /* 帯の端の読み取りの誤差 */, cw = waves[i] && (waves[i].cal || (waves[i].p && waves[i].p.cal)), b = cw && num(cw.ds) != null ? num(cw.ds) : bark ? bark.to : 0; // データの開始（手で決めた樹皮と材の境目）があればそれ
     const bad = rg.find(x => !isBarkName(x.name) && !isSoundName(x.name) && x.to > b && (center == null || x.from < center));
     // 測れた深さ（その先は未測定）：評価の帯はグラフの端まで引かれることがあるので、波形のデータが終わる所（終点の三角）までにする
     const w = waves[i], cal = w && (w.cal || (w.p && w.p.cal)), tr = w && w.img && cal && num(cal.v) > 0 ? waveTrim(w.img, cal) : null, dxc = cal && num(cal.v) > 0 ? (cal.x1 - cal.x0) / num(cal.v) : 0;
@@ -5961,7 +5972,7 @@ async function regiDiagram(inp, waves = []) {
 async function openRegi() {
   const t = cur, ty = curType; if (!ty.calc) return;
   // 前の版で入れた波形は、先に切り取り直す（EMF の目盛りの数字で合わせ直し、評価の帯を読み直す）
-  if (t.photos.some(p => (p.cal && p.view && p.view.cropped && (p.view.v || 1) < WAVE_VER) || (!p.cal && p.emf && p.emf.axis && waveSlots(ty).includes(p.slot)))) { try { await regiWaves(t, ty); touch(t); } catch (e) { } }
+  if (t.photos.some(p => (p.cal && waveSlots(ty).includes(p.slot) && (!p.cal.zf || (p.view && p.view.cropped && (p.view.v || 1) < WAVE_VER))) || (!p.cal && p.emf && p.emf.axis && waveSlots(ty).includes(p.slot)))) { try { await regiWaves(t, ty); touch(t); } catch (e) { } }
   const inp = clone(t.v._regi || regiDefault());
   const nekabu = !!ty.calc.map.ang;
   const body = $('#rgBody'); body.innerHTML = '';
@@ -5998,7 +6009,9 @@ async function openRegi() {
     if (wv.some(w => waveRanges(w).length)) {
       const fillBtn = h('button', { type: 'button', class: 'btn', onclick: () => { const n = regiFromWaves(inp, wv); build(); paint(); toast(n ? `波形の評価から${n}方向の樹皮・健全部を入れました` : '入れられる方向がありませんでした（直径を先に入れてください）'); } }, '🌊 波形の評価から樹皮・健全部 t を入れ直す');
       figBox.append(h('div', { class: 'row', style: 'margin-top:6px' }, fillBtn));
-      if (regiFromWaves(inp, wv, true)) { build(); paint(); }
+      const refill = wv.some(w => w && w.p.cal && w.p.cal.refill); // 目盛りを直した波形は、樹皮・t を入れ直す
+      if (regiFromWaves(inp, wv, !refill)) { build(); paint(); if (refill) toast('波形の目盛りに合わせて、樹皮・健全部 t を入れ直しました', 3000); }
+      for (const w of wv) if (w && w.p.cal) delete w.p.cal.refill;
     }
     slots.forEach((slot, i) => {
       if (!slot) return;
@@ -6189,6 +6202,9 @@ async function waveAutoCal(p) {
 async function calibrateWave(p, label) {
   const img = await loadImg(await photoURL(p.id));
   const a = p.emf && p.emf.axis, cal = clone(p.cal || (a ? { x0: a.x0, x1: a.x1, y0: 0, y1: 1, v: String(a.v) } : { x0: .96, x1: .06, y0: 0, y1: 1, v: '' })); // EMF は目盛りの数字の位置から
+  // 赤い線＝データの開始（樹皮と材の境目）。今の目盛りから、その位置に赤い線を出す
+  if (num(cal.v) > 0) { const dx0 = (cal.x1 - cal.x0) / num(cal.v), bk = (waveRanges({ p }).find(q => isBarkName(q.name) && q.from <= .5) || {}).to, ds0 = num(cal.ds) ?? bk ?? 0; cal.x0 = +(cal.x0 + dx0 * ds0).toFixed(5); }
+  delete cal.ds; delete cal.zf;
   const d = $('#dlgCal'), cv = $('#calCv'), x = cv.getContext('2d');
   $('#calTitle').textContent = `${label || '波形'}：目盛りを合わせる`; $('#calV').value = cal.v || '';
   const fit = () => { const W = Math.max(280, cv.parentElement.clientWidth - 4), s = W / img.naturalWidth; /* ダイアログの幅いっぱい */ cv.style.width = W + 'px'; cv.style.height = Math.round(img.naturalHeight * s) + 'px'; cv.width = W * 2; cv.height = Math.round(img.naturalHeight * s) * 2; };
@@ -6196,7 +6212,7 @@ async function calibrateWave(p, label) {
     const W = cv.width, H = cv.height; x.clearRect(0, 0, W, H); x.drawImage(img, 0, 0, W, H);
     x.fillStyle = 'rgba(0,0,0,.35)'; const ya = Math.min(cal.y0, cal.y1) * H, yb = Math.max(cal.y0, cal.y1) * H; x.fillRect(0, 0, W, ya); x.fillRect(0, yb, W, H - yb);
     const V = (xx, c, t) => { x.strokeStyle = c; x.lineWidth = 5; x.beginPath(); x.moveTo(xx * W, 0); x.lineTo(xx * W, H); x.stroke(); x.fillStyle = c; x.font = 'bold 28px sans-serif'; x.textAlign = xx > .5 ? 'right' : 'left'; x.textBaseline = 'top'; x.fillText(t, xx * W + (xx > .5 ? -10 : 10), 10); };
-    V(cal.x0, '#E53935', '0cm'); V(cal.x1, '#1E88E5', ($('#calV').value || '？') + 'cm');
+    V(cal.x0, '#E53935', 'データの開始（樹皮と材の境目）'); V(cal.x1, '#1E88E5', ($('#calV').value || '？') + 'cm');
     for (const yy of [cal.y0, cal.y1]) { x.setLineDash([12, 8]); x.strokeStyle = '#FB8C00'; x.lineWidth = 4; x.beginPath(); x.moveTo(0, yy * H); x.lineTo(W, yy * H); x.stroke(); x.setLineDash([]); }
   };
   let drag = null;
@@ -6211,7 +6227,16 @@ async function calibrateWave(p, label) {
   $('#calV').oninput = paint;
   return new Promise(res => {
     let saved = false;
-    $('#calOk').onclick = async () => { const v = num($('#calV').value); if (!(v > 0)) { $('#calV').focus(); toast('青い線の目盛りの値（cm）を入れてください'); return; } cal.v = String(v); p.cal = cal; await waveCropPhoto(p, img); touch(); photosChanged(); saved = true; d.close(); };
+    $('#calOk').onclick = async () => {
+      const v = num($('#calV').value); if (!(v > 0)) { $('#calV').focus(); toast('青い線の目盛りの値（cm）を入れてください'); return; }
+      // 赤い線はデータの開始（樹皮と材の境目）。0cm（幹の表面＝樹皮の外側）は、評価の色の帯の始まりから求める。赤い線の位置はそのまま使う（ずらさない）
+      cal.v = String(v); const xr = cal.x0, segs = waveBarsFromImage(img, cal, true), dxr = (cal.x1 - cal.x0) / v, near = segs.length ? Math.min(...segs.map(q => q.from)) : 0;
+      let nc = { ...cal, zf: 1 };
+      if (near < -.3 && near > -10) { const x0 = xr + dxr * near, ds = (xr - x0) / ((cal.x1 - x0) / v); nc = { ...cal, x0: +x0.toFixed(5), ds: f1(ds), zf: 1 }; }
+      p.cal = nc; const ib = waveBarsFromImage(img, nc); if (ib.length) p.emf = { ...(p.emf || {}), legend: ib };
+      p.strokes = (p.strokes || []).filter(s => !s.gen); p.cal.refill = 1; // 樹皮・t を入れ直す
+      await waveCropPhoto(p, img); touch(); photosChanged(); saved = true; d.close();
+    };
     d.onclose = () => res(saved);
     d.showModal(); fit(); paint();
   });
