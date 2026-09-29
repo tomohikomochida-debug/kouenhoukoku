@@ -302,7 +302,7 @@ html{touch-action:manipulation}
 dialog.ask{max-width:440px}
 dialog.wide{max-width:720px}
 .rgd{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.rgd label{display:flex;flex-direction:column;gap:4px;font-size:14px;flex:1;min-width:150px}
-.rgrow{display:grid;grid-template-columns:34px 80px 1fr 1fr 1fr;gap:6px;align-items:center;margin:4px 0}.rgrow b{font-size:20px;text-align:center}.rghead{font-size:12.5px;color:#666}
+.rgrow{display:grid;grid-template-columns:34px 80px 1fr 1fr 1fr 58px;gap:6px;align-items:center;margin:4px 0}.rgrow b{font-size:20px;text-align:center}.rghead{font-size:12.5px;color:#666}
 .rgfig{margin-top:12px;border-top:1px solid #e6e2d6;padding-top:6px}.rgwave{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:5px 0}.rgwave .ok{color:#2e7d55;font-weight:600}.rgwave .ng{color:#c62828}.rgwave .btn{min-height:36px;padding:6px 10px;font-size:13.5px}
 .rgwarn{margin-top:8px;background:#fdecea;color:#8c1d18;border-radius:8px;padding:8px 10px;font-weight:600}
 .rgres{background:#f5f3ec;border-radius:10px;padding:10px 12px;margin-top:10px;line-height:1.9;font-size:15px}.rgres b{font-size:17px}.rgres b.ng{color:#c62828}.rgrate{margin-top:4px}
@@ -3660,7 +3660,7 @@ function paintCell(cc) {
 async function paintPhoto(cc) {
   const p = cur.photos.find(x => x.slot === cc.photo); cc.el.innerHTML = '';
   if (!p) { cc.el.append(h('span', {}, '＋ ' + (curType.fields[cc.photo]?.label || '写真'))); paintCamSlot(cc); return; }
-  const img = h('img', { alt: '', style: p.view && p.view.fill && !p.strokes.length ? 'object-fit:fill' : '' }); cc.el.append(img); paintCamSlot(cc); // 測定結果の波形は枠いっぱい
+  const img = h('img', { alt: '', style: p.view && p.view.fill && (p.view.cropped || !p.strokes.length) ? 'object-fit:fill' : '' }); cc.el.append(img); paintCamSlot(cc); // 測定結果の波形は枠いっぱい
   img.src = await composeURL(p);
 }
 function paintCtl(cc) {
@@ -4106,7 +4106,7 @@ async function composeURL(p) {
 }
 async function composeBlob(p, max = 1600, ink = true, strokes = p.strokes) {
   const img = await loadImg(await photoURL(p.id));
-  const vw = p.view && !(strokes && strokes.length) ? p.view : null; // 測定結果の波形：グラフだけを切り取る
+  const vw = p.view && !p.view.cropped && p.view.w && !(strokes && strokes.length) ? p.view : null; // 測定結果の波形（前の形）：グラフだけを切り取る
   if (vw) {
     const sw = vw.w * img.naturalWidth, sh = vw.h * img.naturalHeight, s0 = Math.min(1, max / Math.max(sw, sh)), c0 = document.createElement('canvas'); c0.width = Math.round(sw * s0); c0.height = Math.round(sh * s0);
     c0.getContext('2d').drawImage(img, vw.x * img.naturalWidth, vw.y * img.naturalHeight, sw, sh, 0, 0, c0.width, c0.height); return canvasBlob(c0, .92);
@@ -4442,7 +4442,7 @@ function lineLabelPos(s, W, H) {
   const fs = (s.s || .03) * W;
   if (s.t === 'dim') return { x: (s.x1 + s.x2) / 2 * W, y: (s.y1 + s.y2) / 2 * H - fs * .35, align: 'center' };
   const r = s.x2 >= s.x1 ? [s.x2, s.y2] : [s.x1, s.y1]; // 右の端の上
-  return { x: r[0] * W, y: r[1] * H - fs * .3, align: 'right' };
+  return { x: r[0] * W - (s.x1 === s.x2 ? fs * .25 : 0), y: Math.max(r[1] * H - fs * .3, fs * (s.x1 === s.x2 ? 2 : 1.05)), align: 'right' }; // 上の端が絵の外に出るときは内側に
 }
 function stampLabelPos(s, W, H) { const R = s.s * W, fs = Math.max(10, R * .75); if (s.k === 'reji') return { x: s.x * W - R * .7, y: s.y * H + (s.fr ? String(s.text || '').split('\n').length * fs * .6 - fs * .1 : fs * .4), align: 'right', fs }; return s.k === 'pole' ? { x: s.x * W + R * .55, y: s.y * H + fs * .45, align: 'left', fs } : { x: s.x * W, y: s.y * H + R + fs * 1.15, align: 'center', fs }; }
 /* 当たり判定・外枠（キャンバスの画素で） */
@@ -4729,6 +4729,8 @@ function redraw() {
   }
 }
 function closeDraw(save) {
+  const edited = save && dr.p; // レジの波形の赤い線を直したら、t を直す（regi.js）
+  if (edited && edited.cal && typeof regiLinesChanged === 'function') setTimeout(() => regiLinesChanged(cur, curType, edited), 0);
   if (save) { dr.p.strokes = dr.strokes; if (dr.frame) dr.p.frame = dr.frame; if (typeof curTpl !== 'undefined' && curTpl) syncCaptions(cur, curType, curTpl); touch(); photosChanged(); }
   $('#draw').classList.add('hidden'); document.body.style.overflow = ''; dr = null; resetZoom();
 }
@@ -4979,7 +4981,7 @@ function shapesGroupXml(R, strokes, pic, idc, name) {
     const s = big(s0), W = Wp, H = Hp;
     if (s.t === 'arrow2' || s.t === 'arrow') {
       const t = Math.max(3, (s.w || .006) * W) * (s.b ? .8 : 1), nm = nmOf(s.b ? '矢印（裏）' : '矢印');
-      const lx = ln(t, s.c, { tail: 'triangle', tw: s.t === 'arrow' ? 'med' : 'lg', miter: !!s.b }), eff = glow(s.c, Math.max(1.5, t * .3));
+      const lx = ln(t, s.c, { tail: 'triangle', tw: s.t === 'arrow' || s.gen ? 'med' : 'lg', miter: !!s.b }), eff = glow(s.c, Math.max(1.5, t * .3));
       kids.push(s.b ? poly(nm, zigPts(s.x1 * W, s.y1 * H, s.x2 * W, s.y2 * H), lx, eff) : straight(nm, s.x1 * W, s.y1 * H, s.x2 * W, s.y2 * H, lx, eff));
     } else if (s.t === 'callout') {
       const g = calloutGeom(mc, s, W, H), tx = s.tx * W, ty = s.ty * H, nm = nmOf('コメント'), parts = [];
@@ -5568,7 +5570,7 @@ const REGI_MAP_TOKYO = nekabu => ({
   rate: 'F30', nA: 'K31', nB: 'Z31', dA: 'K32', dB: 'Z32',
 });
 const BEARINGS = ['北', '東', '南', '西'];
-const regiDefault = () => ({ mode: 'dir', D1: '', D2: '', ang: '', dirs: [{ bear: '南' }, { bear: '西' }, { bear: '北' }, { bear: '東' }].map(d => ({ ...d, b: '', t: '', dl: '' })) });
+const regiDefault = () => ({ mode: 'dir', D1: '', D2: '', ang: '', dirs: [{ bear: '南' }, { bear: '西' }, { bear: '北' }, { bear: '東' }].map(d => ({ ...d, b: '', t: '', dl: '', snd: '' })) });
 const num = v => { const s = String(v ?? '').replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim(); return s === '' || isNaN(+s) ? null : +s; };
 const f1 = v => (Math.round(+(v * 10).toFixed(6)) / 10).toFixed(1); // 51.75 が 51.7 にならないように（小数の誤差）
 function regiCalc(inp) {
@@ -5579,11 +5581,13 @@ function regiCalc(inp) {
   inp.dirs.forEach((d, i) => {
     const b = num(d.b) || 0, t = num(d.t), Dx = D[axis(i)];
     const R = Dx == null ? null : Dx / 2 - b;
-    out.dirs.push({ b, t, R, tr: t != null && R > 0 ? Math.round(t / R * 1000) / 1000 : null, dl: num(d.dl), rExpr: Dx == null ? '' : `${f1(Dx)}/2${b ? '−' + f1(b) : ''}` });
+    out.dirs.push({ b, t, R, snd: !!d.snd, tr: t != null && R > 0 ? Math.round(t / R * 1000) / 1000 : null, dl: num(d.dl), rExpr: Dx == null ? '' : `${f1(Dx)}/2${b ? '−' + f1(b) : ''}` });
   });
   const ds = out.dirs, all = ds.every(x => x.t != null) && D.every(x => x != null);
   if (all) {
-    const part = (Dx, p, q) => ({ n: Dx - p.b - q.b - p.t - q.t, d: Dx - p.b - q.b, nx: [f1(Dx), ...[p.b, q.b].filter(x => x).map(f1), f1(p.t), f1(q.t)].join('−'), dx: [f1(Dx), ...[p.b, q.b].filter(x => x).map(f1)].join('−') });
+    // 「芯まで健全」の向き（腐朽が見つからず、測れなかった中心側も健全とみなす）は、空洞率の計算では t を中心まで（Dx/2−樹皮）とする
+    const te = (Dx, p) => p.snd ? Math.max(p.t, Dx / 2 - p.b) : p.t;
+    const part = (Dx, p, q) => { const pt = te(Dx, p), qt = te(Dx, q); return { n: Math.max(0, Dx - p.b - q.b - pt - qt), d: Dx - p.b - q.b, nx: [f1(Dx), ...[p.b, q.b].filter(x => x).map(f1), f1(pt), f1(qt)].join('−'), dx: [f1(Dx), ...[p.b, q.b].filter(x => x).map(f1)].join('−') }; };
     const A = part(D[0], ds[0], ds[2]), B = part(D[1], ds[1], ds[3]);
     out.A = A; out.B = B; out.rate = Math.round(((A.n + B.n) / (A.d + B.d)) ** 2 * 1000) / 10;
   }
@@ -5685,6 +5689,49 @@ function waveView(img, cal) {
   const top = Math.min(tr[0], ...(tr.bars || []).map(b => b[0])) - .01, bottom = Math.min(1, tr[1] + .07);
   return { x: +Math.max(0, tr.chart[0] - .005).toFixed(4), y: +Math.max(0, top).toFixed(4), w: +Math.min(1 - Math.max(0, tr.chart[0] - .005), tr.chart[1] - tr.chart[0] + .01).toFixed(4), h: +(bottom - Math.max(0, top)).toFixed(4), fill: 1 };
 }
+// 波形の画像を、グラフの所だけの画像に入れ替える（書き込みの線がずれないように、1回だけ）。目盛りも合わせ直す
+async function waveCropPhoto(p, img) {
+  if (!p.cal || (p.view && p.view.cropped)) return false;
+  const vw = waveView(img, p.cal); if (!vw) return false;
+  const iw = img.naturalWidth, ih = img.naturalHeight, sw = Math.round(vw.w * iw), sh = Math.round(vw.h * ih); if (sw < 20 || sh < 10) return false;
+  const c = document.createElement('canvas'); c.width = sw; c.height = sh; c.getContext('2d').drawImage(img, vw.x * iw, vw.y * ih, sw, sh, 0, 0, sw, sh);
+  const id = uid(); await DB.put('photos', { id, blob: await canvasBlob(c, 1, 'image/png') });
+  const fx = v => +((v - vw.x) / vw.w).toFixed(5);
+  p.orig = p.orig || p.id; p.id = id; p.w = sw; p.h = sh; p.cal = { ...p.cal, x0: fx(p.cal.x0), x1: fx(p.cal.x1), y0: 0, y1: 1 }; p.view = { fill: 1, cropped: 1 };
+  p.strokes = (p.strokes || []).filter(s => !s.gen); composeCache.clear && composeCache.clear();
+  return true;
+}
+// 波形の上の赤い縦線：幹の中心（実線）と、評価の切り替わり（樹皮の終わり・健全部の終わり t・腐朽部の終わり：点線）。ドラッグで直すと t も直る
+async function regiWaveLines(t, ty, inp) {
+  const r = regiCalc(inp), slots = waveSlots(ty);
+  for (let i = 0; i < 4; i++) {
+    const p = slots[i] && t.photos.find(q => q.slot === slots[i]); if (!p || !p.cal || !(num(p.cal.v) > 0)) continue;
+    let img = await loadImg(await photoURL(p.id)); if (await waveCropPhoto(p, img)) img = await loadImg(await photoURL(p.id));
+    const cal = p.cal, dx = (cal.x1 - cal.x0) / num(cal.v), X = dep => cal.x0 + dx * dep, tr = waveTrim(img, cal);
+    const y0 = Math.max(.01, Math.min(tr[0], ...(tr.bars || []).map(b => b[0])) - .02), y1 = Math.min(.99, tr[1] + .02), d = r.dirs[i], D = r.D[i % 2];
+    const L = [];
+    const add = (role, dep, text) => { if (dep == null || !isFinite(dep)) return; const xx = X(dep); if (xx < 0 || xx > 1) return; L.push({ t: 'line', c: '#E53935', w: role === 'center' ? .004 : .003, x1: +xx.toFixed(4), y1: +y1.toFixed(4), x2: +xx.toFixed(4), y2: +y0.toFixed(4), ...(role === 'center' ? {} : { dash: 1 }), ...(text ? { text, s: .018 } : {}), role, base: 1, gen: 1 }); }; /* 文字は線の上の端に */
+    const same = D && d.t != null && Math.abs(d.b + d.t - D / 2) < .3; // 芯まで健全：中心と t が同じ位置なら文字は1つに
+    if (D) add('center', D / 2, same ? '中心＝t' : '中心');
+    if (d.b > 0) add('b', d.b, '');
+    if (d.t != null) add('t', d.b + d.t, same ? '' : 't');
+    if (d.t != null && d.dl) add('e', d.b + d.t + d.dl, '');
+    p.strokes = [...(p.strokes || []).filter(s => !s.gen), ...L];
+  }
+  touch(t); photosChanged();
+}
+// 波形の赤い線をドラッグして直したとき：樹皮・健全部 t を直して、計算と断面図を作り直す
+async function regiLinesChanged(t, ty, p) {
+  const i = waveSlots(ty).indexOf(p.slot), inp = t.v && t.v._regi; if (i < 0 || !inp || !p.cal || !(num(p.cal.v) > 0)) return;
+  const dx = (p.cal.x1 - p.cal.x0) / num(p.cal.v), dep = s => ((s.x1 + s.x2) / 2 - p.cal.x0) / dx, get = role => p.strokes.find(s => s.gen && s.role === role), d = inp.dirs[i];
+  let ch = false; const b0 = num(d.b) || 0, lb = get('b'), lt = get('t');
+  const nb = lb ? Math.max(0, dep(lb)) : b0; if (lb && Math.abs(nb - b0) > .05) { d.b = f1(nb); ch = true; }
+  if (lt) { const nt = Math.max(0, dep(lt) - nb); if (Math.abs(nt - (num(d.t) ?? -1)) > .05) { d.t = f1(nt); d.snd = ''; ch = true; } }
+  if (!ch) return;
+  regiApply(t, ty, inp); touch(t); refreshView(true);
+  await regiSetDiagram(t, ty, inp); await regiWaveLines(t, ty, inp);
+  const rr = regiCalc(inp).dirs[i]; toast(`波形の線から直しました：${'①②③④'[i]} 樹皮 ${d.b}cm・健全部 t ${d.t}cm${rr.tr != null ? '・t/R ' + rr.tr.toFixed(3) : ''}`, 3500);
+}
 // 評価（Assessment）の範囲（cm）：EMF の凡例「From 0,00 cm to 2,00 cm : bark」から
 function waveRanges(w) {
   const out = [];
@@ -5703,7 +5750,7 @@ function regiFromWaves(inp, waves, onlyEmpty = false) {
     const bad = rg.find(x => !isBarkName(x.name) && !isSoundName(x.name) && x.to > b && (center == null || x.from < center));
     const reach = Math.max(...rg.map(x => x.to)); // 測れた深さ（その先は未測定）
     const t = bad ? Math.max(0, bad.from - b) : center != null ? Math.min(center, reach) - b : null; if (t == null) return;
-    d.b = f1(b); d.t = f1(t); d.dl = bad ? f1(Math.min(bad.to, center ?? bad.to) - Math.max(bad.from, b)) : ''; n++;
+    d.b = f1(b); d.t = f1(t); d.dl = bad ? f1(Math.min(bad.to, center ?? bad.to) - Math.max(bad.from, b)) : ''; d.snd = bad ? '' : 1; n++; // 腐朽が見つからなければ「芯まで健全」
   });
   return n;
 }
@@ -5749,12 +5796,14 @@ async function regiDiagram(inp, waves = []) {
     const depth = measured != null ? measured : d.t == null ? null : d.b + d.t + (d.dl || 0);
     inner[p] = depth == null ? null : at(Math.min(depth, (r.D[i % 2] || Dm) / 2));
     // 番号・方角と、貫入の向きの矢印
-    const [ox, oy] = [cx + ux * (RP + 95), cy + uy * (RP + 95)], fsL = 44;
-    x.font = `bold ${fsL}px ${DFONT}`;
-    const lbl = '①②③④'[i] + (inp.mode === 'dir' && inp.dirs[i].bear ? ' ' + inp.dirs[i].bear : ''), lw = x.measureText(lbl).width, lx = ox + (uy ? 70 : 0), ly = oy + (ux ? -40 : 0);
-    objs.push({ t: 'text', c: '#111111', x: N(lx - lw / 2), y: N(ly - fsL * .55), s: N(fsL), text: lbl, base: 1, gen: 1 });
-    const [a1x, a1y] = [cx + ux * (RP + 60), cy + uy * (RP + 60)], [a2x, a2y] = [cx + ux * (RP + 8), cy + uy * (RP + 8)];
-    objs.push({ t: 'arrow2', c: '#111111', w: N(4), x1: N(a1x), y1: N(a1y), x2: N(a2x), y2: N(a2y), base: 1, gen: 1 });
+    // 貫入の向きの矢印（幹の外から）と、その外側に番号・方角。Excel で 10pt 以上になる大きさ（図の幅 約225pt）で、重ならない位置に
+    const fsL = 54, tail = RP + 58, head = RP + 8; x.font = `bold ${fsL}px ${DFONT}`;
+    const lbl = '①②③④'[i] + (inp.mode === 'dir' && inp.dirs[i].bear ? ' ' + inp.dirs[i].bear : ''), lw = x.measureText(lbl).width;
+    const [a1x, a1y] = [cx + ux * tail, cy + uy * tail], [a2x, a2y] = [cx + ux * head, cy + uy * head];
+    objs.push({ t: 'arrow2', c: '#111111', w: N(5), x1: N(a1x), y1: N(a1y), x2: N(a2x), y2: N(a2y), base: 1, gen: 1 });
+    // 上下の向き：矢印の外側（上・下）に。左右の向き：矢印の上で、幹の外側（波形の帯にかからない所）に
+    const gap = 10, lx = ux > 0 ? cx + RP + 6 : ux < 0 ? cx - RP - 6 - lw : a1x - lw / 2, ly = uy > 0 ? a1y + gap : uy < 0 ? a1y - gap - fsL * 1.15 : cy - 16 - fsL * 1.15;
+    objs.push({ t: 'text', c: '#111111', x: N(Math.max(4, Math.min(S - lw - 4, lx))), y: N(ly), s: N(fsL), text: lbl, base: 1, gen: 1 });
   });
   // 真ん中（未測定、または腐朽空洞の推定）
   const pts = [0, 1, 2, 3].map(p => inner[p]).filter(Boolean);
@@ -5763,11 +5812,11 @@ async function regiDiagram(inp, waves = []) {
   if (hasArea) // 点（各方向の測れた深さの所）を通る形。あとで点をドラッグして直せる
     objs.push({ t: 'blob', c: '#E57373', w: N(7), dash: 1, fill: waveMode ? 'rgba(160,160,160,0.35)' : 'rgba(208,208,208,1)', pts: pts.map(q => [N(q[0]), N(q[1])]), name: anyDl ? '未測定部分' : '腐朽（空洞）部', base: 1, gen: 1 });
   // 凡例
-  x.font = `bold 34px ${F}`; x.fillStyle = '#111'; x.textAlign = 'left'; x.textBaseline = 'middle';
+  x.font = `bold 38px ${F}`; x.fillStyle = '#111'; x.textAlign = 'left'; x.textBaseline = 'middle';
   if (hasArea) { x.fillStyle = '#d0d0d0'; x.fillRect(820, S - 90, 60, 36); x.setLineDash([3, 7]); x.lineWidth = 6; x.strokeStyle = '#e57373'; x.strokeRect(820, S - 90, 60, 36); x.setLineDash([]); x.fillStyle = '#111'; x.fillText(anyDl ? '未測定部分' : '腐朽（空洞）部', 895, S - 72); }
   const lg = waves.some(w => w && w.cal) && inp.fig !== 'bar' ? waveLegend(waves) : [];
   if (lg.length) { // 評価（Assessment）の色の意味（英語＋日本語）を左上に
-    let fs = 28; x.font = `bold ${fs}px ${F}`; const txt = l => `${l.en}${l.ja ? '（' + l.ja + '）' : ''}`, wmax = Math.max(...lg.map(l => x.measureText(txt(l)).width));
+    let fs = 34; x.font = `bold ${fs}px ${F}`; const txt = l => `${l.en}${l.ja ? '（' + l.ja + '）' : ''}`, wmax = Math.max(...lg.map(l => x.measureText(txt(l)).width));
     if (wmax > 330) { fs = Math.max(16, Math.floor(fs * 330 / wmax)); }
     x.font = `bold ${fs}px ${F}`; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = '#111'; x.fillText('Assessment（評価）', 24, 34);
     lg.forEach((l, i) => { const y = 34 + (i + 1) * (fs + 14); x.fillStyle = l.c; x.fillRect(24, y - 6, 44, 12); x.fillStyle = '#111'; x.fillText(txt(l), 80, y); });
@@ -5844,10 +5893,11 @@ function openRegi() {
   const build = () => {
     tbl.innerHTML = '';
     lblD[0].textContent = `直径 ${axisName(0)}（①③）`; lblD[1].textContent = `直径 ${axisName(1)}（②④）`;
-    tbl.append(h('div', { class: 'rgrow rghead' }, h('span', {}, ''), h('span', {}, inp.mode === 'dir' ? '方角' : ''), h('span', {}, '樹皮 cm'), h('span', {}, '健全部 t cm'), h('span', {}, '腐朽部 cm（図用・任意）')));
+    tbl.append(h('div', { class: 'rgrow rghead' }, h('span', {}, ''), h('span', {}, inp.mode === 'dir' ? '方角' : ''), h('span', {}, '樹皮 cm'), h('span', {}, '健全部 t cm'), h('span', {}, '腐朽部 cm（図用・任意）'), h('span', {}, '芯まで健全')));
     inp.dirs.forEach((d, i) => {
       const bear = inp.mode === 'dir' ? h('select', { class: 'inp', onchange: e => { d.bear = e.target.value; paint(); } }, ...BEARINGS.map(b => h('option', { value: b, selected: d.bear === b ? '' : null }, b))) : h('span', { class: 'hint' }, ['↕下', '↔左', '↕上', '↔右'][i]);
-      tbl.append(h('div', { class: 'rgrow' }, h('b', {}, '①②③④'[i]), bear, I(d.b, v => d.b = v, '0.4'), I(d.t, v => d.t = v, '18.6'), I(d.dl, v => d.dl = v, '9.4')));
+      const snd = h('input', { type: 'checkbox', title: '腐朽が見つからない向き：測れなかった中心側も健全とみなし、空洞率に入れない' }); snd.checked = !!d.snd; snd.onchange = () => { d.snd = snd.checked ? 1 : ''; paint(); };
+      tbl.append(h('div', { class: 'rgrow' }, h('b', {}, '①②③④'[i]), bear, I(d.b, v => d.b = v, '0.4'), I(d.t, v => d.t = v, '18.6'), I(d.dl, v => d.dl = v, '9.4'), h('label', { style: 'text-align:center' }, snd)));
     });
     paint();
   };
@@ -5869,6 +5919,7 @@ function openRegi() {
   $('#rgApply').onclick = async () => {
     regiApply(t, ty, inp); touch(t); refreshView();
     if ($('#rgFig').checked) await regiSetDiagram(t, ty, inp);
+    await regiWaveLines(t, ty, inp); // 波形の上の赤い縦線（中心・切り替わり）
     $('#dlgRegi').close(); toast('カルテに入れました');
   };
   $('#dlgRegi').showModal();
@@ -5878,7 +5929,7 @@ function openRegi() {
 function waveSlots(ty) { return [0, 1, 2, 3].map(i => (Object.entries(ty.fields).find(([, s]) => s.k === 'photo' && /波形/.test(s.label || '') && s.label.includes('①②③④'[i])) || [])[0] || null); }
 async function regiWaves(t, ty) {
   const out = [];
-  for (const slot of waveSlots(ty)) { const p = slot && t.photos.find(q => q.slot === slot); const img = p && await loadImg(await photoURL(p.id)); if (p && p.cal && !p.view) { const vw = waveView(img, p.cal); if (vw) p.view = vw; } out.push(p ? { img, cal: p.cal, p } : null); }
+  for (const slot of waveSlots(ty)) { const p = slot && t.photos.find(q => q.slot === slot); let img = p && await loadImg(await photoURL(p.id)); if (p && await waveCropPhoto(p, img)) img = await loadImg(await photoURL(p.id)); out.push(p ? { img, cal: p.cal, p } : null); }
   return out;
 }
 async function regiSetDiagram(t, ty, inp) {
@@ -5894,20 +5945,34 @@ async function regiSetDiagram(t, ty, inp) {
 
 /* ---------- Excel：印刷範囲の外に入力と計算式を置く ---------- */
 const regiBlockCol = tpl => Math.max(...tpl.pages.map(p => p.c2)) + 2; // 印刷範囲の右に1列あけた所（0始まり）
-// 計算欄の列幅（すでに列幅の指定がある所には手を出さない）
-function regiBlockCols(doc, tpl) {
-  const c0 = regiBlockCol(tpl) + 1, widths = [30, 10, 11, 13, 12, 9, 8];
-  let cols = byTag(doc, 'cols')[0];
-  const used = cols ? kidsOf(cols, 'col').some(c => +c.getAttribute('max') >= c0) : false; if (used) return;
-  if (!cols) { cols = doc.createElementNS(NS_MAIN, 'cols'); const sd = byTag(doc, 'sheetData')[0]; sd.parentNode.insertBefore(cols, sd); }
-  widths.forEach((w, i) => { const c = doc.createElementNS(NS_MAIN, 'col'); c.setAttribute('min', c0 + i); c.setAttribute('max', c0 + i); c.setAttribute('width', w); c.setAttribute('customWidth', '1'); cols.append(c); });
+// 欄外の列幅：様式の細い列の指定があっても、欄外の列だけ切り分けて広くする（文字がつぶれないように）
+// 欄外の表を書く行：カルテの行は高さがまちまちなので、低くて文字がつぶれる行はとばす（13pt以上の行だけ使う）
+function blockRows(tpl, minPt = 13) {
+  const r0 = Math.min(...tpl.pages.map(p => p.r1)) + 1, ok = [];
+  return dr => { for (let r = ok.length ? ok[ok.length - 1] + 1 : r0; ok.length <= dr; r++) if (tpl.rh(r) / 12700 >= minPt || r > r0 + 400) ok.push(r); return ok[dr]; };
 }
+function setColWidths(doc, c1, widths) { // c1 は1始まり
+  const c2 = c1 + widths.length - 1;
+  let cols = byTag(doc, 'cols')[0];
+  if (!cols) { cols = doc.createElementNS(NS_MAIN, 'cols'); const sd = byTag(doc, 'sheetData')[0]; sd.parentNode.insertBefore(cols, sd); }
+  const mk = (a, b, attrs) => { const c = doc.createElementNS(NS_MAIN, 'col'); for (const [k, v] of Object.entries(attrs)) c.setAttribute(k, v); c.setAttribute('min', a); c.setAttribute('max', b); return c; };
+  for (const c of kidsOf(cols, 'col')) {
+    const a = +c.getAttribute('min'), b = +c.getAttribute('max'); if (b < c1 || a > c2) continue;
+    const attrs = {}; for (const at of [...c.attributes]) if (at.name !== 'min' && at.name !== 'max') attrs[at.name] = at.value;
+    if (a < c1) cols.insertBefore(mk(a, c1 - 1, attrs), c);
+    if (b > c2) cols.insertBefore(mk(c2 + 1, b, attrs), c.nextSibling);
+    c.remove();
+  }
+  const after = kidsOf(cols, 'col').find(c => +c.getAttribute('min') > c2) || null;
+  widths.forEach((w, i) => cols.insertBefore(mk(c1 + i, c1 + i, { width: w, customWidth: '1' }), after));
+}
+function regiBlockCols(doc, tpl) { setColWidths(doc, regiBlockCol(tpl) + 1, [30, 10, 11, 13, 12, 9, 8, 14]); }
 function regiExcelCells(t, ty, tpl) {
   const inp = t.v && t.v._regi; if (!inp || !ty.calc) return null;
   const map = ty.calc.map, { v } = regiValues(inp, ty);
   // 置き場所：印刷範囲の右に1列あけた所
-  const c0 = regiBlockCol(tpl), r0 = Math.min(...tpl.pages.map(p => p.r1)) + 1;
-  const A = (dc, dr) => refOf(c0 + dc, r0 + dr), $A = (dc, dr) => A(dc, dr).replace(/^([A-Z]+)(\d+)$/, '$$$1$$$2');
+  const c0 = regiBlockCol(tpl), R = blockRows(tpl);
+  const A = (dc, dr) => refOf(c0 + dc, R(dr)), $A = (dc, dr) => A(dc, dr).replace(/^([A-Z]+)(\d+)$/, '$$$1$$$2');
   const cells = {};
   const put = (dc, dr, val) => { cells[A(dc, dr)] = val; };
   const nv = x => { const n = num(x); return n == null ? '' : n; };
@@ -5922,11 +5987,11 @@ function regiExcelCells(t, ty, tpl) {
   put(0, 5, '計算に使う直径1（補正）'); put(1, 5, { f: `IF(${D1}="","",ROUND(${D1}*${KF},1))` });
   put(0, 6, '計算に使う直径2（補正）'); put(1, 6, { f: `IF(${D2}="","",ROUND(${D2}*${KF},1))` });
   const E1 = $A(1, 5), E2 = $A(1, 6);
-  ['方向', '方角', '樹皮（cm）', '健全部 t（cm）', '腐朽部（cm）', 'R（cm）', 't/R率'].forEach((l, i) => put(i, 8, l));
+  ['方向', '方角', '樹皮（cm）', '健全部 t（cm）', '腐朽部（cm）', 'R（cm）', 't/R率', '芯まで健全（1）'].forEach((l, i) => put(i, 8, l));
   inp.dirs.forEach((d, i) => {
     const rr = 9 + i, E = i % 2 === 0 ? E1 : E2;
     put(0, rr, '①②③④'[i]); put(1, rr, inp.mode === 'dir' ? d.bear || '' : ['↕', '↔', '↕', '↔'][i]);
-    put(2, rr, nv(d.b)); put(3, rr, nv(d.t)); put(4, rr, nv(d.dl));
+    put(2, rr, nv(d.b)); put(3, rr, nv(d.t)); put(4, rr, nv(d.dl)); put(7, rr, d.snd ? 1 : '');
     const B = A(2, rr), T = A(3, rr);
     put(5, rr, { f: `IF(${E}="","",${E}/2-N(${B}))` });
     put(6, rr, { f: `IF(OR(${T}="",${A(5, rr)}=""),"",ROUND(${T}/${A(5, rr)},3))` });
@@ -5934,8 +5999,9 @@ function regiExcelCells(t, ty, tpl) {
   const b = i => A(2, 9 + i), tt = i => A(3, 9 + i);
   const txt = x => `TEXT(${x},"0.0")`, bark = i => `IF(N(${b(i)})=0,"","−"&${txt(b(i))})`;
   const allIn = `AND(${E1}<>"",${E2}<>"",COUNT(${tt(0)},${tt(1)},${tt(2)},${tt(3)})=4)`;
-  put(0, 14, '腐朽空洞率の分子1'); put(1, 14, { f: `IF(${allIn},${E1}-N(${b(0)})-N(${b(2)})-${tt(0)}-${tt(2)},"")` });
-  put(0, 15, '腐朽空洞率の分子2'); put(1, 15, { f: `IF(${allIn},${E2}-N(${b(1)})-N(${b(3)})-${tt(1)}-${tt(3)},"")` });
+  const te = i => { const E = i % 2 === 0 ? E1 : E2; return `IF(N(${A(7, 9 + i)})=1,MAX(${tt(i)},${E}/2-N(${b(i)})),${tt(i)})`; }; // 芯まで健全なら中心まで
+  put(0, 14, '腐朽空洞率の分子1'); put(1, 14, { f: `IF(${allIn},MAX(0,${E1}-N(${b(0)})-N(${b(2)})-${te(0)}-${te(2)}),"")` });
+  put(0, 15, '腐朽空洞率の分子2'); put(1, 15, { f: `IF(${allIn},MAX(0,${E2}-N(${b(1)})-N(${b(3)})-${te(1)}-${te(3)}),"")` });
   put(0, 16, '腐朽空洞率の分母1'); put(1, 16, { f: `IF(${allIn},${E1}-N(${b(0)})-N(${b(2)}),"")` });
   put(0, 17, '腐朽空洞率の分母2'); put(1, 17, { f: `IF(${allIn},${E2}-N(${b(1)})-N(${b(3)}),"")` });
   put(0, 18, '腐朽空洞率（%）'); put(1, 18, { f: `IF(${allIn},ROUND(((${A(1, 14)}+${A(1, 15)})/(${A(1, 16)}+${A(1, 17)}))^2*100,1),"")` });
@@ -5950,8 +6016,8 @@ function regiExcelCells(t, ty, tpl) {
     F['R' + (i + 1)] = { f: `IF(OR(${tt(i)}="",${E}=""),"",${txt(E)}&"/2"&${bark(i)})` };
   }
   F.rate = { f: `IF(${A(1, 18)}="","",TEXT(${A(1, 18)},"0.0"))` };
-  F.nA = { f: `IF(${allIn},${txt(E1)}&${bark(0)}&${bark(2)}&"−"&${txt(tt(0))}&"−"&${txt(tt(2))},"")` };
-  F.nB = { f: `IF(${allIn},${txt(E2)}&${bark(1)}&${bark(3)}&"−"&${txt(tt(1))}&"−"&${txt(tt(3))},"")` };
+  F.nA = { f: `IF(${allIn},${txt(E1)}&${bark(0)}&${bark(2)}&"−"&${txt(te(0))}&"−"&${txt(te(2))},"")` };
+  F.nB = { f: `IF(${allIn},${txt(E2)}&${bark(1)}&${bark(3)}&"−"&${txt(te(1))}&"−"&${txt(te(3))},"")` };
   F.dA = { f: `IF(${allIn},${txt(E1)}&${bark(0)}&${bark(2)},"")` };
   F.dB = { f: `IF(${allIn},${txt(E2)}&${bark(1)}&${bark(3)},"")` };
   for (const [k, ref] of Object.entries(map)) if (ref && F[k]) cells[ref] = { ...F[k], v: v[k] ?? '', str: true }; // 結果は文字（セルの%表示などに左右されない）
@@ -5984,7 +6050,7 @@ async function calibrateWave(p, label) {
   $('#calV').oninput = paint;
   return new Promise(res => {
     let saved = false;
-    $('#calOk').onclick = () => { const v = num($('#calV').value); if (!(v > 0)) { $('#calV').focus(); toast('青い線の目盛りの値（cm）を入れてください'); return; } cal.v = String(v); p.cal = cal; const vw = waveView(img, cal); if (vw) p.view = vw; else delete p.view; touch(); photosChanged(); saved = true; d.close(); };
+    $('#calOk').onclick = async () => { const v = num($('#calV').value); if (!(v > 0)) { $('#calV').focus(); toast('青い線の目盛りの値（cm）を入れてください'); return; } cal.v = String(v); p.cal = cal; await waveCropPhoto(p, img); touch(); photosChanged(); saved = true; d.close(); };
     d.onclose = () => res(saved);
     d.showModal(); fit(); paint();
   });
@@ -6351,19 +6417,14 @@ function geoExcelCells(t, ty, tpl, vals, c0) {
   const g = posGeo(t) || photoGeo(t, ty), { la, lo } = gpsRefs(ty);
   if (la && lo) { if (g && !fieldGeo(t, ty)) { vals[la] = g.lat.toFixed(7); vals[lo] = g.lon.toFixed(7); } return false; }
   if (!g) return false;
-  const r0 = Math.min(...tpl.pages.map(p => p.r1)) + 1, A = (dc, dr) => refOf(c0 + dc, r0 + dr);
+  const R = blockRows(tpl), A = (dc, dr) => refOf(c0 + dc, R(dr)); // 低い行はとばす（regi.js）
   const rows = [[g.pos ? '樹木の位置（幹の横で測定。この欄は印刷されません）' : '全景写真の撮影位置（この欄は印刷されません）', ''], ['緯度', g.lat.toFixed(7)], ['経度', g.lon.toFixed(7)], ['精度（m）', g.acc != null ? g.acc : ''], [g.pos ? '測った日時' : '撮影日時', fmtTs(g.ts)], ['位置の取り方', GEO_SRC[g.src] || ''], g.pos ? null : ['写真の枠', (ty.fields[g.slot] || {}).label || '（枠なし）']].filter(Boolean);
   rows.forEach(([a, b], i) => { vals[A(0, i)] = a; if (b !== '') vals[A(1, i)] = b; });
   vals[A(0, rows.length)] = '地図で見る';
   vals[A(1, rows.length)] = { f: `HYPERLINK("https://maps.gsi.go.jp/#18/${g.lat.toFixed(7)}/${g.lon.toFixed(7)}/","地理院地図で開く")`, v: '地理院地図で開く', str: true };
   return true;
 }
-function blockCols(doc, c1, widths) { // 列幅（すでに指定がある所には手を出さない）。c1 は1始まり
-  let cols = byTag(doc, 'cols')[0];
-  if (cols && kidsOf(cols, 'col').some(c => +c.getAttribute('max') >= c1)) return;
-  if (!cols) { cols = doc.createElementNS(NS_MAIN, 'cols'); const sd = byTag(doc, 'sheetData')[0]; sd.parentNode.insertBefore(cols, sd); }
-  widths.forEach((w, i) => { const c = doc.createElementNS(NS_MAIN, 'col'); c.setAttribute('min', c1 + i); c.setAttribute('max', c1 + i); c.setAttribute('width', w); c.setAttribute('customWidth', '1'); cols.append(c); });
-}
+function blockCols(doc, c1, widths) { setColWidths(doc, c1, widths); } // 欄外の列を広く（regi.js）
 // 公園・場所のカルテ：「路線名」の見出しを「公園名」に
 function parkLabelCells(t, ty, tpl, vals) {
   if (!isPark(t)) return;
@@ -7399,8 +7460,8 @@ function picElem(R, rid, id, name) {
   return `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="${xmlEsc(name)}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="${R.x}" y="${R.y}"/><a:ext cx="${R.w}" cy="${R.h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>`;
 }
 // 写真＋書き込み（図形）を1つのグループにして貼る
-function annotatedPicXml(tpl, g, iw, ih, rid, id, name, strokes, idc, fr) {
-  const R = picRect(tpl, g, iw, ih); // fr があるときは、R＝枠いっぱいの範囲、写真はその中の fr の位置
+function annotatedPicXml(tpl, g, iw, ih, rid, id, name, strokes, idc, fr, fill = false) {
+  const R = picRect(tpl, g, iw, ih, fill); // fr があるときは、R＝枠いっぱいの範囲、写真はその中の fr の位置
   const PR = fr ? { x: Math.round(R.x + fr.x * R.w), y: Math.round(R.y + fr.y * R.h), w: Math.round(fr.w * R.w), h: Math.round(fr.h * R.h) } : R;
   const G = shapesGroupXml(R, strokes, { xml: picElem(PR, rid, id, name + '（写真）'), box: [PR.x, PR.y, PR.x + PR.w, PR.y + PR.h] }, idc, name);
   const [a, b, c, d] = G.box;
@@ -7451,7 +7512,7 @@ async function buildWorkbook(ty, list, fileName = '') {
     for (const ref of Object.keys(ty.texts || {})) if (!(ref in vals)) vals[ref] = cellOut(ty, tpl, t, ref);
     const rc = ty.calc && ty.calc.kind === 'regi' ? regiExcelCells(t, ty, tpl) : null; // レジの計算は式で出す
     if (rc) Object.assign(vals, rc);
-    const gc = regiBlockCol(tpl) + (rc ? 8 : 0), geoBlock = geoExcelCells(t, ty, tpl, vals, gc); // 全景写真の撮影位置
+    const gc = regiBlockCol(tpl) + (rc ? 9 : 0), geoBlock = geoExcelCells(t, ty, tpl, vals, gc); // 全景写真の撮影位置
     parkLabelCells(t, ty, tpl, vals);
     for (const c of tpl.ctrls) if (c.link) {
       const parts = c.link.split('!'); const r = parts.pop().replace(/\$/g, '');
@@ -7488,8 +7549,8 @@ async function buildWorkbook(ty, list, fileName = '') {
       const media = `karte_${uid()}.jpeg`; zip.file(`xl/media/${media}`, await blob.arrayBuffer());
       const rid = `rIdP${pid}`; drels += `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${media}"/>`;
       const fg = shp && p.frame ? frameGeom(img.naturalWidth, img.naturalHeight, p.frame.a) : null;
-      pics += shp ? annotatedPicXml(tpl, tpl.rangeOf(p.slot), fg ? fg.fw : img.naturalWidth, fg ? fg.fh : img.naturalHeight, rid, pid, spec.label || '写真', strokes, idc, fg && fg.r)
-        : picXml(tpl, tpl.rangeOf(p.slot), img.naturalWidth, img.naturalHeight, rid, pid, spec.label || '写真', !!(p.view && p.view.fill && !strokes.length)); pid++;
+      pics += shp ? annotatedPicXml(tpl, tpl.rangeOf(p.slot), fg ? fg.fw : img.naturalWidth, fg ? fg.fh : img.naturalHeight, rid, pid, spec.label || '写真', strokes, idc, fg && fg.r, !!(p.view && p.view.fill && p.view.cropped))
+        : picXml(tpl, tpl.rangeOf(p.slot), img.naturalWidth, img.naturalHeight, rid, pid, spec.label || '写真', !!(p.view && p.view.fill && (p.view.cropped || !strokes.length))); pid++;
     }
     for (const [pi, strokes] of Object.entries(t.ink || {})) {
       const pg = tpl.pages[+pi]; if (!pg || !strokes || !strokes.length) continue;
