@@ -217,8 +217,8 @@ function saveRecAll(id){ const r=rec(id); if(!r) return; return saveRec(id,{stor
 
 /* ===== API ===== */
 async function apiGet(params){
-  const url=GAS_URL+"?"+new URLSearchParams(params).toString();
-  const res=await fetch(url); return res.json();
+  const url=GAS_URL+"?"+new URLSearchParams(Object.assign({},params,{_:Date.now()})).toString();
+  const res=await fetch(url,{cache:"no-store"}); return res.json();
 }
 async function apiPost(body){
   const res=await fetch(GAS_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)});
