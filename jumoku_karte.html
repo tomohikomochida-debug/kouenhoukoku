@@ -5657,7 +5657,7 @@ function regiPos(inp, i) { // 0:上 1:右 2:下 3:左
 }
 // waves[i] = { img, cal }：波形の画像と目盛り（cal: x0＝0cmの位置, x1＝もう1本の目盛りの位置, v＝その値(cm), y0/y1＝上下の切り取り。いずれも画像に対する割合）
 // 評価（Assessment）の色の意味：英語 → 日本語（レジのソフトの言葉）。直した訳は jk_wavelegend に覚える
-const WAVE_JA = [[/^bark$/i, '樹皮'], [/^intact$/i, '健全'], [/^sound( wood)?$/i, '健全材'], [/^healthy$/i, '健全'], [/incipient|beginning|early/i, '初期腐朽'], [/advanced/i, '進行した腐朽'], [/soft ?rot/i, '軟腐朽'], [/white ?rot/i, '白色腐朽'], [/brown ?rot/i, '褐色腐朽'], [/decay|rot|decomposed/i, '腐朽'],
+const WAVE_JA = [[/^bark$/i, '樹皮'], [/^decay$/i, '腐朽（空洞）'], [/^intact$/i, '健全'], [/^sound( wood)?$/i, '健全材'], [/^healthy$/i, '健全'], [/incipient|beginning|early/i, '初期腐朽'], [/advanced/i, '進行した腐朽'], [/soft ?rot/i, '軟腐朽'], [/white ?rot/i, '白色腐朽'], [/brown ?rot/i, '褐色腐朽'], [/decay|rot|decomposed/i, '腐朽'],
   [/cavity|hollow/i, '空洞'], [/void|gap/i, '空隙'], [/ring ?shake|shake/i, '目回り'], [/crack/i, '亀裂'], [/reaction/i, '反応帯'], [/included bark/i, '入皮'], [/heart ?wood/i, '心材'], [/sap ?wood/i, '辺材'], [/pith/i, '髄'], [/cambium/i, '形成層'], [/wet ?wood|wet/i, '水食い材'], [/knot/i, '節'], [/resin/i, '樹脂'], [/damage/i, '損傷'], [/unknown|unclear/i, '不明']];
 function waveLegendStore() { try { const v = JSON.parse(localStorage.getItem('jk_wavelegend') || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? { ja: v.ja || {}, manual: v.manual || [] } : { ja: {}, manual: [] }; } catch (e) { return { ja: {}, manual: [] }; } }
 function saveWaveLegend(v) { try { localStorage.setItem('jk_wavelegend', JSON.stringify(v)); } catch (e) { } }
@@ -5682,7 +5682,7 @@ function waveTrim(img, cal) {
     const data = g.getImageData(xa, ya, xb - xa, yb - ya).data, w = xb - xa, rows = yb - ya, col = new Array(rows).fill(0), dark = new Array(rows).fill(0);
     for (let y = 0; y < rows; y++) for (let x = 0; x < w; x++) { const k = (y * w + x) * 4, R = data[k], G = data[k + 1], B = data[k + 2], mx = Math.max(R, G, B), mn = Math.min(R, G, B); if (mx - mn >= 60 && mn < 200) col[y]++; else if ((R + G + B) / 3 < 110) dark[y]++; }
     // 評価（Assessment）の色の線：横いっぱいに近い、細い（数画素の）色の帯。波形とは分けて、あとで波形のすぐ上に置く
-    const bars = [], thin = Math.max(3, Math.round(H * .012)), inBar = new Array(rows).fill(false);
+    const bars = [], thin = Math.max(3, Math.round(H * .03)), /* 評価の帯の太さは EMF によって違う（画像の高さの 3% まで） */ inBar = new Array(rows).fill(false);
     for (let y = 0; y < rows;) { if (col[y] > w * .6) { let e = y; while (e + 1 < rows && col[e + 1] > w * .6) e++; if (e - y + 1 <= thin && (y === 0 || col[y - 1] < w * .3) && (e === rows - 1 || col[e + 1] < w * .3)) { bars.push([(ya + y) / H, (ya + e + 1) / H]); for (let k = y; k <= e; k++) inBar[k] = true; } y = e + 1; } else y++; }
     const colC = col.map((n, y) => inBar[y] ? 0 : n), colTot = colC.reduce((a, b) => a + b, 0), use = colTot >= w * .3 ? colC : dark.map((n, y) => n > w * .6 || inBar[y] ? 0 : n); // 色の線が十分あればそれで
     // 行のかたまりに分けて（すき間が少しならつなぐ）、いちばん多いかたまり＝波形。見出し・目盛りの数字・凡例の文字は別のかたまりになる
@@ -5703,15 +5703,15 @@ function waveTrim(img, cal) {
   waveTrimCache.set(img, { key, v }); return v;
 }
 // 測定結果の枠に出す範囲：グラフ（評価の色の線〜波形〜深さの数字）だけを切り取り、枠いっぱいに広げる
-function waveView(img, cal) {
+function waveView(img, cal, yb) { // yb：深さの数字の下の端（EMF のとき。数字の下の見出しは入れない）
   const tr = waveTrim(img, cal); if (!tr.chart) return null;
-  const top = Math.min(tr[0], ...(tr.bars || []).map(b => b[0])) - .01, bottom = Math.min(1, tr[1] + .07);
+  const top = Math.min(tr[0], ...(tr.bars || []).map(b => b[0])) - .01, bottom = Math.min(1, yb > tr[1] ? yb + .005 : tr[1] + .07);
   return { x: +Math.max(0, tr.chart[0] - .005).toFixed(4), y: +Math.max(0, top).toFixed(4), w: +Math.min(1 - Math.max(0, tr.chart[0] - .005), tr.chart[1] - tr.chart[0] + .01).toFixed(4), h: +(bottom - Math.max(0, top)).toFixed(4), fill: 1 };
 }
 // 波形の画像を、グラフの所だけの画像に入れ替える（書き込みの線がずれないように、1回だけ）。目盛りも合わせ直す
 async function waveCropPhoto(p, img) {
   if (!p.cal || (p.view && p.view.cropped)) return false;
-  const vw = waveView(img, p.cal); if (!vw) return false;
+  const vw = waveView(img, p.cal, p.emf && p.emf.axis && p.emf.axis.yb); if (!vw) return false;
   const iw = img.naturalWidth, ih = img.naturalHeight, sw = Math.round(vw.w * iw), sh = Math.round(vw.h * ih); if (sw < 20 || sh < 10) return false;
   const c = document.createElement('canvas'); c.width = sw; c.height = sh; c.getContext('2d').drawImage(img, vw.x * iw, vw.y * ih, sw, sh, 0, 0, sw, sh);
   const id = uid(); await DB.put('photos', { id, blob: await canvasBlob(c, 1, 'image/png') });
@@ -5768,7 +5768,7 @@ async function regiLinesChanged(t, ty, p) {
 // 評価（Assessment）の範囲（cm）：EMF の凡例「From 0,00 cm to 2,00 cm : bark」から
 function waveRanges(w) {
   const out = [];
-  for (const l of (w && w.p && w.p.emf && w.p.emf.legend) || []) { const m = /From\s*([\d.,]+)\s*cm\s*to\s*([\d.,]+)\s*cm/i.exec(l.text || ''); if (m) out.push({ from: +m[1].replace(',', '.'), to: +m[2].replace(',', '.'), name: l.en, c: l.c }); }
+  for (const l of (w && w.p && w.p.emf && w.p.emf.legend) || []) { if (l.from != null && l.to != null) { out.push({ from: l.from, to: l.to, name: l.en, c: l.c }); continue; } const m = /From\s*([\d.,]+)\s*cm\s*to\s*([\d.,]+)\s*cm/i.exec(l.text || ''); if (m) out.push({ from: +m[1].replace(',', '.'), to: +m[2].replace(',', '.'), name: l.en, c: l.c }); }
   return out.sort((a, b) => a.from - b.from);
 }
 const isBarkName = n => /bark|樹皮/i.test(n || ''), isSoundName = n => /intact|sound|healthy|健全/i.test(n || '');
@@ -5779,7 +5779,7 @@ function regiFromWaves(inp, waves, onlyEmpty = false) {
     if (onlyEmpty && String(d.t ?? '').trim() !== '') return;
     const rg = waveRanges(waves[i]); if (!rg.length) return;
     const D = r.D[i % 2], center = D ? D / 2 : null;
-    const bark = rg.find(x => isBarkName(x.name) && x.from <= .05), b = bark ? bark.to : 0;
+    const bark = rg.find(x => isBarkName(x.name) && x.from <= .5) /* 帯の端の読み取りの誤差 */, b = bark ? bark.to : 0;
     const bad = rg.find(x => !isBarkName(x.name) && !isSoundName(x.name) && x.to > b && (center == null || x.from < center));
     const reach = Math.max(...rg.map(x => x.to)); // 測れた深さ（その先は未測定）
     const t = bad ? Math.max(0, bad.from - b) : center != null ? Math.min(center, reach) - b : null; if (t == null) return;
@@ -5901,7 +5901,7 @@ function openRegi() {
       if (!slot) return;
       const p = t.photos.find(q => q.slot === slot);
       const file = h('input', { type: 'file', accept: 'image/*,.emf,image/emf,image/x-emf', hidden: '' });
-      file.onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; if (!fs.length) return; await addPhotos(fs, slot); const np = cur.photos.find(q => q.slot === slot); if (np) await calibrateWave(np, ty.fields[slot].label); paintFig(); };
+      file.onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; if (!fs.length) return; await addPhotos(fs, slot); const np = cur.photos.find(q => q.slot === slot); if (np && !(await waveAutoCal(np))) await calibrateWave(np, ty.fields[slot].label); paintFig(); };
       figBox.append(h('div', { class: 'rgwave' }, h('b', {}, '波形' + '①②③④'[i]),
         p ? h('span', { class: p.cal && num(p.cal.v) > 0 ? 'ok' : 'ng' }, p.cal && num(p.cal.v) > 0 ? `目盛り合わせ済み（${p.cal.v}cm）` : '目盛りがまだです') : h('span', { class: 'hint' }, '写真がまだありません'),
         p ? h('button', { type: 'button', class: 'btn', onclick: async () => { await calibrateWave(p, ty.fields[slot].label); paintFig(); } }, '📐 目盛りを合わせる') : '',
@@ -6059,6 +6059,13 @@ function regiExcelCells(t, ty, tpl) {
   return cells;
 }
 
+// EMF の深さの目盛り（数字）から、目盛り合わせを自動で。合わなければ「📐 目盛りを合わせる」で直せる
+async function waveAutoCal(p) {
+  const a = p && p.emf && p.emf.axis; if (!a || !(a.v > 0)) return false;
+  p.cal = { x0: a.x0, x1: a.x1, y0: 0, y1: 1, v: String(a.v) };
+  await waveCropPhoto(p, await loadImg(await photoURL(p.id))); touch(); photosChanged();
+  toast(`目盛りは EMF の数字から自動で合わせました（0〜${a.v}cm）`, 2500); return true;
+}
 /* ---------- 波形の目盛り合わせ：0cm の線と、もう1本の目盛りの線を合わせ、その値を入れる ---------- */
 async function calibrateWave(p, label) {
   const img = await loadImg(await photoURL(p.id));
@@ -6892,7 +6899,25 @@ function emfToCanvas(buf, maxSide = 2400) {
     if (!name || /^[\d.,%\s]+$/.test(name)) continue;
     const hex = rgbHex(b.c); if (name && !legend.some(l => l.c === hex && l.en === name)) legend.push({ c: hex, en: name, text: line });
   }
-  c.emf = { colors: Object.entries(info.col).filter(([k]) => sat(k)).sort((a, b) => b[1] - a[1]).map(([k]) => rgbHex(k)).slice(0, 12), legend };
+  // 深さの目盛り：同じ高さに横に並んだ数字（0, 2, 4 … 50）から、深さ(cm)と横の位置の関係を出す（目盛り合わせを自動にする）
+  let axis = null;
+  { const nums = info.texts.filter(t => /^\d+(?:[.,]\d+)?$/.test(t.s)).map(t => ({ v: +t.s.replace(',', '.'), x: t.x, y: t.y, fs: t.fs || 20 })), rows = [];
+    for (const n of nums) { const r = rows.find(r => Math.abs(r.y - n.y) < 4); r ? r.a.push(n) : rows.push({ y: n.y, a: [n] }); }
+    const row = rows.filter(r => r.a.length >= 3 && new Set(r.a.map(n => Math.round(n.x))).size >= 3).sort((p, q) => q.a.length - p.a.length)[0];
+    if (row) { const a = row.a, n = a.length, mx = a.reduce((s, q) => s + q.x, 0) / n, mv = a.reduce((s, q) => s + q.v, 0) / n, sxx = a.reduce((s, q) => s + (q.x - mx) ** 2, 0), b = a.reduce((s, q) => s + (q.x - mx) * (q.v - mv), 0) / sxx, a0 = mv - b * mx;
+      const err = Math.max(...a.map(q => Math.abs(a0 + b * q.x - q.v))), vmax = Math.max(...a.map(q => q.v));
+      if (isFinite(b) && b !== 0 && err < Math.max(.5, vmax * .02) && vmax > 0) axis = { x0: +((-a0 / b) / c.width).toFixed(5), x1: +(((vmax - a0) / b) / c.width).toFixed(5), v: vmax, yb: +((row.y + row.a[0].fs * .6) / c.height).toFixed(4), cm: X => a0 + b * X }; } }
+  // 評価（Assessment）の色の帯：グラフの上の細い色の四角。凡例の文字がない EMF では、帯の位置と色から範囲を出す（茶＝bark、緑＝intact、そのほか＝decay）
+  const barLegend = [];
+  if (axis) for (const b of info.boxes) {
+    if (!sat(b.c) || b.h > c.height * .04 || b.w < 2 || b.w < b.h * 1.5) continue;
+    const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(b.c), [R, G, B] = [+m[1], +m[2], +m[3]];
+    const en = G > R + 60 && G > B + 60 ? 'intact' : R > G + 30 && R > B + 30 && R < 200 && G < 130 ? 'bark' : 'decay';
+    const q1 = v => Math.round(v * 10) / 10, f = Math.max(0, q1(Math.min(axis.cm(b.x), axis.cm(b.x + b.w)))), t = q1(Math.max(axis.cm(b.x), axis.cm(b.x + b.w))), r2 = v => v.toFixed(2).replace('.', ','); // 0.1cm 単位
+    barLegend.push({ c: rgbHex(b.c), en, from: f, to: t, text: `From ${r2(f)} cm to ${r2(t)} cm : ${en}` });
+  }
+  c._info = info; // 調べるとき用
+  c.emf = { colors: Object.entries(info.col).filter(([k]) => sat(k)).sort((a, b) => b[1] - a[1]).map(([k]) => rgbHex(k)).slice(0, 12), legend: legend.length ? legend : barLegend.sort((p, q) => p.from - q.from), ...(axis ? { axis: { x0: axis.x0, x1: axis.x1, v: axis.v, yb: axis.yb } } : {}) };
   return c;
 }
 const rgbHex = c0 => { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(c0 || ''); return m ? '#' + [m[1], m[2], m[3]].map(v => (+v).toString(16).padStart(2, '0')).join('') : c0; };
