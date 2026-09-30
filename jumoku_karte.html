@@ -6780,16 +6780,45 @@ async function styleKit(zip) {
       let al = kidsOf(x, 'alignment')[0]; if (!al) { al = doc.createElementNS(NS_MAIN, 'alignment'); x.insertBefore(al, x.firstChild); } al.setAttribute('shrinkToFit', '1');
       xs.appendChild(x); xs.setAttribute('count', String(kidsOf(xs).length)); const i = kidsOf(xs).length - 1; cache.set(k, i); return i;
     },
+    fontSize(s) { const x = xfOf(s), f = x && kidsOf(byTag(doc, 'fonts')[0], 'font')[+x.getAttribute('fontId') || 0], z = f && kidsOf(f, 'sz')[0]; return z ? +z.getAttribute('val') : 11; },
+    wraps(s) { const x = xfOf(s), a = x && kidsOf(x, 'alignment')[0], v = a && a.getAttribute('wrapText'); return v === '1' || v === 'true' || !!(a && +a.getAttribute('textRotation')); },
+    // 文字の大きさを変えた書式（ほかはそのまま）
+    size(s, sz) {
+      const k = 'sz' + s + ':' + sz; if (cache.has(k)) return cache.get(k);
+      const x0 = xfOf(s), fonts = byTag(doc, 'fonts')[0], f0 = kidsOf(fonts, 'font')[+x0.getAttribute('fontId') || 0], f = f0.cloneNode(true);
+      let z = kidsOf(f, 'sz')[0]; if (!z) { z = doc.createElementNS(NS_MAIN, 'sz'); f.insertBefore(z, f.firstChild); } z.setAttribute('val', String(sz));
+      fonts.appendChild(f); fonts.setAttribute('count', String(kidsOf(fonts).length));
+      const xs = byTag(doc, 'cellXfs')[0], x = x0.cloneNode(true); x.setAttribute('fontId', String(kidsOf(fonts).length - 1)); x.setAttribute('applyFont', '1');
+      xs.appendChild(x); xs.setAttribute('count', String(kidsOf(xs).length)); const i = kidsOf(xs).length - 1; cache.set(k, i); return i;
+    },
     save() { zip.file(path, serXml(doc)); },
   };
 }
 function cellEl(doc, ref) { const [, rn] = splitRef(ref); const row = kidsOf(byTag(doc, 'sheetData')[0], 'row').find(r => +r.getAttribute('r') === rn); return row ? kidsOf(row, 'c').find(c => c.getAttribute('r') === ref) : null; }
 // 結合セル（1行）の文字は、はみ出すと切れて見えるので縮小して全体を表示に（Excel は入りきらないときだけ縮める）
-function fitMergedText(doc, tpl, kit) {
-  for (const [ref, g] of tpl.merges) {
-    if (g.r2 !== g.r1) continue;
-    const c = cellEl(doc, ref), t = c && c.getAttribute('t'); if (!c || !['s', 'str', 'inlineStr'].includes(t)) continue;
-    const s = c.getAttribute('s') || 0, n = kit.fit(s); if (n !== (+s || 0)) c.setAttribute('s', String(n));
+// 文字の幅の見積もり（em）：漢字・□ 1、かな 0.85、かっこ・句読点 0.6、半角カナ 0.5、英数字 0.55
+const textEm = s => { let w = 0; for (const ch of String(s)) { const c = ch.codePointAt(0); w += c < 0x80 ? .55 : c >= 0xFF61 && c <= 0xFF9F ? .5 : c >= 0x3040 && c <= 0x30FF ? .85 : '（）「」、。・：'.includes(ch) ? .6 : 1; } return w; }; // ＭＳ Ｐゴシックのおおよその字幅
+// 入りきらない文字：Excel の「縮小して全体を表示」に加えて、文字の大きさそのものも小さくする（iPad・iPhone の Excel は縮小して表示をしない）
+const FIT_SKIP = { gaikan: new Set(['E39']) }; // 様式の作り：隣の文字に隠れて読ませている見出し（「判定・処置」＋「現在」→「判定・現在」）
+function fitMergedText(doc, tpl, kit, ty) {
+  const skip = (ty && FIT_SKIP[ty.id]) || new Set();
+  const txt = (c, ref) => { const t = c.getAttribute('t'); if (t === 'inlineStr') return byTag(c, 't').map(x => x.textContent).join(''); if (t === 'str') return (kidsOf(c, 'v')[0] || {}).textContent || ''; if (t === 's') return String((tpl.cells.get(ref) || {}).val || ''); return ''; };
+  const one = (c, ref, c1, c2, extra = 0, merged = true) => {
+    const s = +(c.getAttribute('s') || 0), text = txt(c, ref).split('\n').map(x => x.trim()).reduce((a, b) => textEm(b) > textEm(a) ? b : a, ''); if (!text || kit.wraps(s)) return; // 前後の空白は数えない
+    let wpt = extra; for (let i = c1; i <= c2; i++) wpt += tpl.cw(i) / 12700;
+    const sz = kit.fontSize(s), need = textEm(text) * sz, avail = wpt - 3; let ns = merged ? kit.fit(s) : s; // 「縮小して全体を表示」は結合セルだけ（ふつうのセルに付けると、隣へのはみ出しがなくなって縮む）
+    if (avail > 0 && need > avail * 1.12) { const nsz = Math.max(6, Math.floor(sz * avail / need * 2) / 2); if (nsz < sz) ns = kit.size(ns, nsz); }
+    if (ns !== s) c.setAttribute('s', String(ns));
+  };
+  for (const [ref, g] of tpl.merges) { const c = cellEl(doc, ref); if (c) one(c, ref, g.c1, g.c2); } // 何行分の結合でも、折り返さない文字は1行
+  // 結合していないセル：文字は伸びる側の空いたセルにはみ出して見える（Excel と同じ）。はみ出す先に文字や結合セルがあると切れる
+  const free = (cc, rr) => { if (cc < 0 || tpl.cover.has(cc + ',' + rr)) return false; const e = cellEl(doc, refOf(cc, rr)); return !(e && txt(e, refOf(cc, rr))); };
+  const run = (c0, rr, d) => { let w = 0; for (let k = c0 + d, n = 0; n < 60 && free(k, rr); k += d, n++) w += tpl.cw(k) / 12700; return w; };
+  for (const cc of tpl.cells.values()) {
+    if (tpl.cover.has(cc.c + ',' + cc.r) || cc.formula) continue; const ref = refOf(cc.c, cc.r), c = cellEl(doc, ref); if (!c || skip.has(ref)) continue;
+    const hz = (cc.xf && cc.xf.h) || '', R = run(cc.c, cc.r, 1), Lw = run(cc.c, cc.r, -1);
+    const extra = hz === 'right' ? Lw : hz === 'center' || hz === 'centerContinuous' ? 2 * Math.min(R, Lw) : hz === 'fill' || hz === 'justify' || hz === 'distributed' ? 0 : R;
+    one(c, ref, cc.c, cc.c, extra, false);
   }
 }
 function paintJudgeCells(doc, t, ty, tpl, kit) {
@@ -8029,7 +8058,7 @@ async function buildWorkbook(ty, list, fileName = '', opt = {}) {
     if (geoBlock) blockCols(doc, gc + 1, [24, 18]);
     // 判定の色はカルテのシートには付けない（一覧表・位置図だけ）
     for (const [ref, v] of Object.entries(vals)) { const m = typeof v === 'string' && /^-?\d+\.(\d*0)$/.exec(v.trim()), c = m && cellEl(doc, ref); if (c && !kidsOf(c, 'f').length && !c.getAttribute('t')) c.setAttribute('s', String(kit.dec(c.getAttribute('s') || 0, m[1].length))); } // 「1.000」の桁を残す
-    fitMergedText(doc, tpl, kit); // 結合セルに入りきらない文字（「部位（G.L.」など）は縮めて全体を表示
+    fitMergedText(doc, tpl, kit, ty); // 結合セルに入りきらない文字（「部位（G.L.」など）は縮めて全体を表示
     for (const sv of byTag(doc, 'sheetView')) { sv.removeAttribute('topLeftCell'); sv.removeAttribute('tabSelected'); if (i === 0 && !withLists && !P) sv.setAttribute('tabSelected', '1'); }
     // フォームのチェックボックス
     const srels = await readRels(zip, sp);
