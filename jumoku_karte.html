@@ -5330,7 +5330,7 @@ function listSpecs0(ty, tpl, arr, names, fileName) {
         mark(t, ty, 'D102'), mark(t, ty, 'D103'), ...[1, 2, 3, 4, 5, 6].map(k => mark(t, ty, 'D104', k)), ...[1, 2, 3, 4, 5].map(k => mark(t, ty, 'D106', k)), mark(t, ty, 'D108'), other || mark(t, ty, 'D109'), memo];
     });
     return [
-      { name: '樹木診断一覧表', title: '樹木診断一覧表', corner: '【様式2】', heads: [['', 4], ['路線名', 14], ['樹木No.', 12], ['樹種名', 10], ['診断日', 13], ['樹木位置\nデータ', 10], ['樹高\nH\n（m）', 6], ['幹周\nC\n（cm）', 6], ['枝張\nW\n（m）', 6], ['健全度\n判定', 7], ['判定理由', 46], ['樹木診断カルテ\n（外観診断）\nファイル名', 22]], rows: rows1, wrapCols: [5, 10, 11], judgeCols: [9] },
+      { off: { heads: [['緯度（欄外）', 13], ['経度（欄外）', 13]], rows: arr.map(LATLON) }, name: '樹木診断一覧表', title: '樹木診断一覧表', corner: '【様式2】', heads: [['', 4], ['路線名', 14], ['樹木No.', 12], ['樹種名', 10], ['診断日', 13], ['樹木位置\nデータ', 10], ['樹高\nH\n（m）', 6], ['幹周\nC\n（cm）', 6], ['枝張\nW\n（m）', 6], ['健全度\n判定', 7], ['判定理由', 46], ['樹木診断カルテ\n（外観診断）\nファイル名', 22]], rows: rows1, wrapCols: [5, 10, 11], judgeCols: [9] },
       { name: '今後の処置等一覧表', title: '今後の処置等一覧表', corner: '【様式3】', heads: [['', 4], ['樹木No.', 10], ['樹種名', 10], ['健全\n度\n判定', 5.5], ['精密\n診断\n高さ', 12], ['観察\n周期', 5.5], ['標準\n周期', 5.5], ['撤去', 5], ['幹の\n切除', 5], ['剪定\n枯枝', 5], ['剪定\n支障\n枝', 5], ['剪定\n基本\n剪定', 5], ['剪定\n樹高\n低減', 5], ['剪定\n切り\n戻し', 5], ['剪定\nその\n他', 5], ['支柱\n撤去', 5], ['支柱\n再\n設置', 5], ['支柱\n結束\n直し', 5], ['支柱\nﾜｲﾔｰ\n結束', 5], ['支柱\nその\n他', 5], ['薬剤\n散布', 5], ['その\n他', 10], ['摘要', 30]], rows: rows2, wrapCols: [4, 21, 22], center: true, judgeCols: [3] },
     ];
   }
@@ -5370,9 +5370,10 @@ async function addListSheets(zip, pkg, specs, wdoc, relsXml) {
     let nm = sp.name, j = 2; while (used.has(nm.toLowerCase())) nm = `${sp.name}(${j++})`; used.add(nm.toLowerCase()); sp.sheet = nm;
     const nc = sp.heads.length, last = colName(nc);
     let rows = `<row r="1" ht="24" customHeight="1">${cellX('A1', sp.title, X.title)}${sp.corner ? cellX(last + '1', sp.corner, X.corner) : ''}</row>`;
-    rows += `<row r="2" ht="48" customHeight="1">${sp.heads.map(([hd], c) => cellX(colName(c + 1) + '2', hd, X.head)).join('')}</row>`;
-    sp.rows.forEach((r, ri) => { rows += `<row r="${ri + 3}">${r.map((v, c) => cellX(colName(c + 1) + (ri + 3), v, (sp.judgeCols || []).includes(c) && JUDGE_SET.has(v) && jx[judgeColorKey(v, sp.b3)] != null ? jx[judgeColorKey(v, sp.b3)] : sp.wrapCols.includes(c) ? X.wrap : c === 0 || sp.center && c >= 3 && c < nc - 1 ? X.cellC : X.cell)).join('')}</row>`; });
-    const cols = sp.heads.map(([, w], c) => `<col min="${c + 1}" max="${c + 1}" width="${w}" customWidth="1"/>`).join('');
+    const oc0 = nc + 2, off = sp.off; // 欄外（印刷しない）の列：表の右に1列あけて
+    rows += `<row r="2" ht="48" customHeight="1">${sp.heads.map(([hd], c) => cellX(colName(c + 1) + '2', hd, X.head)).join('')}${off ? off.heads.map(([hd], k) => cellX(colName(oc0 + k) + '2', hd, X.head)).join('') : ''}</row>`;
+    sp.rows.forEach((r, ri) => { rows += `<row r="${ri + 3}">${r.map((v, c) => cellX(colName(c + 1) + (ri + 3), v, (sp.judgeCols || []).includes(c) && JUDGE_SET.has(v) && jx[judgeColorKey(v, sp.b3)] != null ? jx[judgeColorKey(v, sp.b3)] : sp.wrapCols.includes(c) ? X.wrap : c === 0 || sp.center && c >= 3 && c < nc - 1 ? X.cellC : X.cell)).join('')}${off ? (off.rows[ri] || []).map((v, k) => cellX(colName(oc0 + k) + (ri + 3), v, X.cell)).join('') : ''}</row>`; });
+    const cols = sp.heads.map(([, w], c) => `<col min="${c + 1}" max="${c + 1}" width="${w}" customWidth="1"/>`).join('') + (off ? `<col min="${nc + 1}" max="${nc + 1}" width="3" customWidth="1"/>` + off.heads.map(([, w], k) => `<col min="${oc0 + k}" max="${oc0 + k}" width="${w}" customWidth="1"/>`).join('') : '');
     const merge = sp.corner ? `A1:${colName(nc - 1)}1` : `A1:${last}1`;
     const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"${si === 0 ? ' tabSelected="1"' : ''}><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${cols}</cols><sheetData>${rows}</sheetData><mergeCells count="1"><mergeCell ref="${merge}"/></mergeCells><pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`;
     const path = `xl/worksheets/list_${si + 1}.xml`; zip.file(path, xml);
@@ -5386,6 +5387,8 @@ async function addListSheets(zip, pkg, specs, wdoc, relsXml) {
   for (const d of byTag(wdoc, 'definedName')) { const l = d.getAttribute('localSheetId'); if (l != null) d.setAttribute('localSheetId', String(+l + k)); }
   if (!dnsEl) { dnsEl = wdoc.createElementNS(NS_MAIN, 'definedNames'); const calc = byTag(wdoc, 'calcPr')[0]; wdoc.documentElement.insertBefore(dnsEl, calc || null); }
   specs.forEach((sp, si) => { const d = wdoc.createElementNS(NS_MAIN, 'definedName'); d.setAttribute('name', '_xlnm.Print_Titles'); d.setAttribute('localSheetId', String(si)); d.textContent = `${quoteSheet(sp.sheet)}!$1:$2`; dnsEl.insertBefore(d, dnsEl.firstChild); });
+  // 欄外の列があるシートは、印刷範囲を表だけに
+  specs.forEach((sp, si) => { if (!sp.off) return; const d = wdoc.createElementNS(NS_MAIN, 'definedName'); d.setAttribute('name', '_xlnm.Print_Area'); d.setAttribute('localSheetId', String(si)); d.textContent = `${quoteSheet(sp.sheet)}!$A$1:$${colName(sp.heads.length)}$${sp.rows.length + 2}`; dnsEl.insertBefore(d, dnsEl.firstChild); });
   for (const v of byTag(wdoc, 'workbookView')) { v.setAttribute('activeTab', '0'); v.setAttribute('firstSheet', '0'); }
 }
 
@@ -6780,16 +6783,45 @@ async function styleKit(zip) {
       let al = kidsOf(x, 'alignment')[0]; if (!al) { al = doc.createElementNS(NS_MAIN, 'alignment'); x.insertBefore(al, x.firstChild); } al.setAttribute('shrinkToFit', '1');
       xs.appendChild(x); xs.setAttribute('count', String(kidsOf(xs).length)); const i = kidsOf(xs).length - 1; cache.set(k, i); return i;
     },
+    fontSize(s) { const x = xfOf(s), f = x && kidsOf(byTag(doc, 'fonts')[0], 'font')[+x.getAttribute('fontId') || 0], z = f && kidsOf(f, 'sz')[0]; return z ? +z.getAttribute('val') : 11; },
+    wraps(s) { const x = xfOf(s), a = x && kidsOf(x, 'alignment')[0], v = a && a.getAttribute('wrapText'); return v === '1' || v === 'true' || !!(a && +a.getAttribute('textRotation')); },
+    // 文字の大きさを変えた書式（ほかはそのまま）
+    size(s, sz) {
+      const k = 'sz' + s + ':' + sz; if (cache.has(k)) return cache.get(k);
+      const x0 = xfOf(s), fonts = byTag(doc, 'fonts')[0], f0 = kidsOf(fonts, 'font')[+x0.getAttribute('fontId') || 0], f = f0.cloneNode(true);
+      let z = kidsOf(f, 'sz')[0]; if (!z) { z = doc.createElementNS(NS_MAIN, 'sz'); f.insertBefore(z, f.firstChild); } z.setAttribute('val', String(sz));
+      fonts.appendChild(f); fonts.setAttribute('count', String(kidsOf(fonts).length));
+      const xs = byTag(doc, 'cellXfs')[0], x = x0.cloneNode(true); x.setAttribute('fontId', String(kidsOf(fonts).length - 1)); x.setAttribute('applyFont', '1');
+      xs.appendChild(x); xs.setAttribute('count', String(kidsOf(xs).length)); const i = kidsOf(xs).length - 1; cache.set(k, i); return i;
+    },
     save() { zip.file(path, serXml(doc)); },
   };
 }
 function cellEl(doc, ref) { const [, rn] = splitRef(ref); const row = kidsOf(byTag(doc, 'sheetData')[0], 'row').find(r => +r.getAttribute('r') === rn); return row ? kidsOf(row, 'c').find(c => c.getAttribute('r') === ref) : null; }
 // 結合セル（1行）の文字は、はみ出すと切れて見えるので縮小して全体を表示に（Excel は入りきらないときだけ縮める）
-function fitMergedText(doc, tpl, kit) {
-  for (const [ref, g] of tpl.merges) {
-    if (g.r2 !== g.r1) continue;
-    const c = cellEl(doc, ref), t = c && c.getAttribute('t'); if (!c || !['s', 'str', 'inlineStr'].includes(t)) continue;
-    const s = c.getAttribute('s') || 0, n = kit.fit(s); if (n !== (+s || 0)) c.setAttribute('s', String(n));
+// 文字の幅の見積もり（em）：漢字・□ 1、かな 0.85、かっこ・句読点 0.6、半角カナ 0.5、英数字 0.55
+const textEm = s => { let w = 0; for (const ch of String(s)) { const c = ch.codePointAt(0); w += c < 0x80 ? .55 : c >= 0xFF61 && c <= 0xFF9F ? .5 : c >= 0x3040 && c <= 0x30FF ? .85 : '（）「」、。・：'.includes(ch) ? .6 : 1; } return w; }; // ＭＳ Ｐゴシックのおおよその字幅
+// 入りきらない文字：Excel の「縮小して全体を表示」に加えて、文字の大きさそのものも小さくする（iPad・iPhone の Excel は縮小して表示をしない）
+const FIT_SKIP = { gaikan: new Set(['E39']) }; // 様式の作り：隣の文字に隠れて読ませている見出し（「判定・処置」＋「現在」→「判定・現在」）
+function fitMergedText(doc, tpl, kit, ty) {
+  const skip = (ty && FIT_SKIP[ty.id]) || new Set();
+  const txt = (c, ref) => { const t = c.getAttribute('t'); if (t === 'inlineStr') return byTag(c, 't').map(x => x.textContent).join(''); if (t === 'str') return (kidsOf(c, 'v')[0] || {}).textContent || ''; if (t === 's') return String((tpl.cells.get(ref) || {}).val || ''); return ''; };
+  const one = (c, ref, c1, c2, extra = 0, merged = true) => {
+    const s = +(c.getAttribute('s') || 0), text = txt(c, ref).split('\n').map(x => x.trim()).reduce((a, b) => textEm(b) > textEm(a) ? b : a, ''); if (!text || kit.wraps(s)) return; // 前後の空白は数えない
+    let wpt = extra; for (let i = c1; i <= c2; i++) wpt += tpl.cw(i) / 12700;
+    const sz = kit.fontSize(s), need = textEm(text) * sz, avail = wpt - 3; let ns = merged ? kit.fit(s) : s; // 「縮小して全体を表示」は結合セルだけ（ふつうのセルに付けると、隣へのはみ出しがなくなって縮む）
+    if (avail > 0 && need > avail * 1.12) { const nsz = Math.max(6, Math.floor(sz * avail / need * 2) / 2); if (nsz < sz) ns = kit.size(ns, nsz); }
+    if (ns !== s) c.setAttribute('s', String(ns));
+  };
+  for (const [ref, g] of tpl.merges) { const c = cellEl(doc, ref); if (c) one(c, ref, g.c1, g.c2); } // 何行分の結合でも、折り返さない文字は1行
+  // 結合していないセル：文字は伸びる側の空いたセルにはみ出して見える（Excel と同じ）。はみ出す先に文字や結合セルがあると切れる
+  const free = (cc, rr) => { if (cc < 0 || tpl.cover.has(cc + ',' + rr)) return false; const e = cellEl(doc, refOf(cc, rr)); return !(e && txt(e, refOf(cc, rr))); };
+  const run = (c0, rr, d) => { let w = 0; for (let k = c0 + d, n = 0; n < 60 && free(k, rr); k += d, n++) w += tpl.cw(k) / 12700; return w; };
+  for (const cc of tpl.cells.values()) {
+    if (tpl.cover.has(cc.c + ',' + cc.r) || cc.formula) continue; const ref = refOf(cc.c, cc.r), c = cellEl(doc, ref); if (!c || skip.has(ref)) continue;
+    const hz = (cc.xf && cc.xf.h) || '', R = run(cc.c, cc.r, 1), Lw = run(cc.c, cc.r, -1);
+    const extra = hz === 'right' ? Lw : hz === 'center' || hz === 'centerContinuous' ? 2 * Math.min(R, Lw) : hz === 'fill' || hz === 'justify' || hz === 'distributed' ? 0 : R;
+    one(c, ref, cc.c, cc.c, extra, false);
   }
 }
 function paintJudgeCells(doc, t, ty, tpl, kit) {
@@ -7562,8 +7594,9 @@ async function dupTree() {
 }
 /* ---------- 同じ木の別の様式（外観・レジ・根株・フォロー）：カルテを横断して作る・開く ---------- */
 const SIB_SHORT = { gaikan: '外観（様式3）', tk_fukyu: 'レジ（様式10）', tk_nekabu: '根株（様式11）', tk_follow: 'フォロー（様式12）', kw_gaikan: '外観（様式1）' };
-const typeShort = ty => SIB_SHORT[ty.id] || String(ty.name || '').replace(ty.group || '', '').trim();
-const sibTypes = ty => ty && ty.group ? types.filter(x => x.group === ty.group && x.id !== ty.id) : [];
+const typeShort = (ty, from) => { const s = SIB_SHORT[ty.id] || String(ty.name || '').replace(ty.group || '', '').trim(); return from && ty.group && ty.group !== from.group ? `${ty.group} ${s}` : s; }; // ほかの自治体の様式は頭に自治体名
+// 別の様式：同じ自治体の様式を先に、ほかの自治体・取り込んだ様式も（川崎市の木のレジを東京都の様式10・11 で作るなど）
+const sibTypes = ty => !ty ? [] : types.filter(x => x.id !== ty.id).sort((a, b) => ((b.group && b.group === ty.group) - (a.group && a.group === ty.group)) || types.indexOf(a) - types.indexOf(b));
 // 様式どうしで同じ意味の欄（ラベルが少し違う：樹高（H）m／樹高（m）など）
 function sibKey(s) {
   if (!s || s.k === 'off' || s.k === 'photo') return null; const L = String(s.label || '');
@@ -7576,11 +7609,11 @@ function sibKey(s) {
 }
 // 同じ木のほかの様式のカルテ：作ったときにつないだもの（tid）と、同じ案件・路線で樹木番号が同じもの
 function sibsOf(t) {
-  const ty = typeOf(t); if (!ty.group) return [];
+  const ty = typeOf(t);
   const no = String(roleVal(t, ty, 'treeNo') || '').trim(), site = siteOf(t);
   return trees.filter(x => {
-    if (x === t) return false; const xt = typeOf(x); if (xt.group !== ty.group) return false;
-    if (t.tid && x.tid === t.tid) return true;
+    if (x === t) return false; if (t.tid && x.tid === t.tid) return true; // 「＋ 別の様式」で作ったもの（自治体がちがっても）
+    const xt = typeOf(x); if (!ty.group || xt.group !== ty.group) return false;
     const xn = String(roleVal(x, xt, 'treeNo') || '').trim();
     return !!no && xn === no && x.typeId !== t.typeId && projOf(x) === projOf(t) && (siteOf(x) === site || !site || !siteOf(x));
   });
@@ -7600,7 +7633,7 @@ async function makeSib(ty2) {
   }
   const t = newTree(ty2, base); t.tid = src.tid; for (const k of ['proj', 'site', 'kind']) if (src[k] !== undefined) t[k] = src[k];
   trees.push(t); await DB.put('trees', t); $('#dlgSib').open && $('#dlgSib').close(); await openTree(t.id);
-  toast(`同じ木の「${typeShort(ty2)}」を作りました（路線名・樹木番号・樹種名などを引き継ぎ）`);
+  toast(`同じ木の「${typeShort(ty2, ty)}」を作りました（路線名・樹木番号・樹種名などを引き継ぎ）`);
 }
 // カルテの上の切り替え：この木のほかの様式（あれば）と「＋ 別の様式」
 function renderSibs() {
@@ -7608,7 +7641,7 @@ function renderSibs() {
   const others = cur ? sibTypes(curType) : []; box.classList.toggle('hidden', !others.length); if (!others.length) return;
   const sibs = sibsOf(cur), order = t => types.indexOf(typeOf(t));
   box.append(h('span', { class: 'lab' }, '同じ木：'), h('button', { type: 'button', class: 'on', disabled: true }, typeShort(curType)));
-  for (const x of [...sibs].sort((a, b) => order(a) - order(b) || a.created - b.created)) box.append(h('button', { type: 'button', onclick: async () => { await flush(); await openTree(x.id); } }, typeShort(typeOf(x))));
+  for (const x of [...sibs].sort((a, b) => order(a) - order(b) || a.created - b.created)) box.append(h('button', { type: 'button', onclick: async () => { await flush(); await openTree(x.id); } }, typeShort(typeOf(x), curType)));
   box.append(h('button', { type: 'button', class: 'add', onclick: openSibs }, '＋ 別の様式'));
 }
 function openSibs() {
@@ -7617,7 +7650,7 @@ function openSibs() {
     const have = sibs.filter(x => x.typeId === ty2.id);
     const acts = have.map(x => h('button', { class: 'btn', type: 'button', onclick: async () => { $('#dlgSib').close(); await flush(); await openTree(x.id); } }, '開く'));
     acts.push(h('button', { class: 'btn' + (have.length ? '' : ' pri'), type: 'button', onclick: () => makeSib(ty2) }, have.length ? '＋ もう1枚' : '＋ 作る'));
-    b.append(h('div', { class: 'sibrow' }, h('div', {}, h('div', { class: 'nm' }, typeShort(ty2)), h('div', { class: 'st' }, have.length ? `作成済み ${have.length}枚` : 'まだありません')), h('div', { class: 'row' }, ...acts)));
+    b.append(h('div', { class: 'sibrow' }, h('div', {}, h('div', { class: 'nm' }, typeShort(ty2, curType)), h('div', { class: 'st' }, have.length ? `作成済み ${have.length}枚` : 'まだありません')), h('div', { class: 'row' }, ...acts)));
   }
   $('#dlgSib').showModal();
 }
@@ -8028,7 +8061,7 @@ async function buildWorkbook(ty, list, fileName = '', opt = {}) {
     if (geoBlock) blockCols(doc, gc + 1, [24, 18]);
     // 判定の色はカルテのシートには付けない（一覧表・位置図だけ）
     for (const [ref, v] of Object.entries(vals)) { const m = typeof v === 'string' && /^-?\d+\.(\d*0)$/.exec(v.trim()), c = m && cellEl(doc, ref); if (c && !kidsOf(c, 'f').length && !c.getAttribute('t')) c.setAttribute('s', String(kit.dec(c.getAttribute('s') || 0, m[1].length))); } // 「1.000」の桁を残す
-    fitMergedText(doc, tpl, kit); // 結合セルに入りきらない文字（「部位（G.L.」など）は縮めて全体を表示
+    fitMergedText(doc, tpl, kit, ty); // 結合セルに入りきらない文字（「部位（G.L.」など）は縮めて全体を表示
     for (const sv of byTag(doc, 'sheetView')) { sv.removeAttribute('topLeftCell'); sv.removeAttribute('tabSelected'); if (i === 0 && !withLists && !P) sv.setAttribute('tabSelected', '1'); }
     // フォームのチェックボックス
     const srels = await readRels(zip, sp);
