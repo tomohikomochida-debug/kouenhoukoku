@@ -5330,7 +5330,7 @@ function listSpecs0(ty, tpl, arr, names, fileName) {
         mark(t, ty, 'D102'), mark(t, ty, 'D103'), ...[1, 2, 3, 4, 5, 6].map(k => mark(t, ty, 'D104', k)), ...[1, 2, 3, 4, 5].map(k => mark(t, ty, 'D106', k)), mark(t, ty, 'D108'), other || mark(t, ty, 'D109'), memo];
     });
     return [
-      { name: '樹木診断一覧表', title: '樹木診断一覧表', corner: '【様式2】', heads: [['', 4], ['路線名', 14], ['樹木No.', 12], ['樹種名', 10], ['診断日', 13], ['樹木位置\nデータ', 10], ['樹高\nH\n（m）', 6], ['幹周\nC\n（cm）', 6], ['枝張\nW\n（m）', 6], ['健全度\n判定', 7], ['判定理由', 46], ['樹木診断カルテ\n（外観診断）\nファイル名', 22]], rows: rows1, wrapCols: [5, 10, 11], judgeCols: [9] },
+      { off: { heads: [['緯度（欄外）', 13], ['経度（欄外）', 13]], rows: arr.map(LATLON) }, name: '樹木診断一覧表', title: '樹木診断一覧表', corner: '【様式2】', heads: [['', 4], ['路線名', 14], ['樹木No.', 12], ['樹種名', 10], ['診断日', 13], ['樹木位置\nデータ', 10], ['樹高\nH\n（m）', 6], ['幹周\nC\n（cm）', 6], ['枝張\nW\n（m）', 6], ['健全度\n判定', 7], ['判定理由', 46], ['樹木診断カルテ\n（外観診断）\nファイル名', 22]], rows: rows1, wrapCols: [5, 10, 11], judgeCols: [9] },
       { name: '今後の処置等一覧表', title: '今後の処置等一覧表', corner: '【様式3】', heads: [['', 4], ['樹木No.', 10], ['樹種名', 10], ['健全\n度\n判定', 5.5], ['精密\n診断\n高さ', 12], ['観察\n周期', 5.5], ['標準\n周期', 5.5], ['撤去', 5], ['幹の\n切除', 5], ['剪定\n枯枝', 5], ['剪定\n支障\n枝', 5], ['剪定\n基本\n剪定', 5], ['剪定\n樹高\n低減', 5], ['剪定\n切り\n戻し', 5], ['剪定\nその\n他', 5], ['支柱\n撤去', 5], ['支柱\n再\n設置', 5], ['支柱\n結束\n直し', 5], ['支柱\nﾜｲﾔｰ\n結束', 5], ['支柱\nその\n他', 5], ['薬剤\n散布', 5], ['その\n他', 10], ['摘要', 30]], rows: rows2, wrapCols: [4, 21, 22], center: true, judgeCols: [3] },
     ];
   }
@@ -5370,9 +5370,10 @@ async function addListSheets(zip, pkg, specs, wdoc, relsXml) {
     let nm = sp.name, j = 2; while (used.has(nm.toLowerCase())) nm = `${sp.name}(${j++})`; used.add(nm.toLowerCase()); sp.sheet = nm;
     const nc = sp.heads.length, last = colName(nc);
     let rows = `<row r="1" ht="24" customHeight="1">${cellX('A1', sp.title, X.title)}${sp.corner ? cellX(last + '1', sp.corner, X.corner) : ''}</row>`;
-    rows += `<row r="2" ht="48" customHeight="1">${sp.heads.map(([hd], c) => cellX(colName(c + 1) + '2', hd, X.head)).join('')}</row>`;
-    sp.rows.forEach((r, ri) => { rows += `<row r="${ri + 3}">${r.map((v, c) => cellX(colName(c + 1) + (ri + 3), v, (sp.judgeCols || []).includes(c) && JUDGE_SET.has(v) && jx[judgeColorKey(v, sp.b3)] != null ? jx[judgeColorKey(v, sp.b3)] : sp.wrapCols.includes(c) ? X.wrap : c === 0 || sp.center && c >= 3 && c < nc - 1 ? X.cellC : X.cell)).join('')}</row>`; });
-    const cols = sp.heads.map(([, w], c) => `<col min="${c + 1}" max="${c + 1}" width="${w}" customWidth="1"/>`).join('');
+    const oc0 = nc + 2, off = sp.off; // 欄外（印刷しない）の列：表の右に1列あけて
+    rows += `<row r="2" ht="48" customHeight="1">${sp.heads.map(([hd], c) => cellX(colName(c + 1) + '2', hd, X.head)).join('')}${off ? off.heads.map(([hd], k) => cellX(colName(oc0 + k) + '2', hd, X.head)).join('') : ''}</row>`;
+    sp.rows.forEach((r, ri) => { rows += `<row r="${ri + 3}">${r.map((v, c) => cellX(colName(c + 1) + (ri + 3), v, (sp.judgeCols || []).includes(c) && JUDGE_SET.has(v) && jx[judgeColorKey(v, sp.b3)] != null ? jx[judgeColorKey(v, sp.b3)] : sp.wrapCols.includes(c) ? X.wrap : c === 0 || sp.center && c >= 3 && c < nc - 1 ? X.cellC : X.cell)).join('')}${off ? (off.rows[ri] || []).map((v, k) => cellX(colName(oc0 + k) + (ri + 3), v, X.cell)).join('') : ''}</row>`; });
+    const cols = sp.heads.map(([, w], c) => `<col min="${c + 1}" max="${c + 1}" width="${w}" customWidth="1"/>`).join('') + (off ? `<col min="${nc + 1}" max="${nc + 1}" width="3" customWidth="1"/>` + off.heads.map(([, w], k) => `<col min="${oc0 + k}" max="${oc0 + k}" width="${w}" customWidth="1"/>`).join('') : '');
     const merge = sp.corner ? `A1:${colName(nc - 1)}1` : `A1:${last}1`;
     const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"${si === 0 ? ' tabSelected="1"' : ''}><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${cols}</cols><sheetData>${rows}</sheetData><mergeCells count="1"><mergeCell ref="${merge}"/></mergeCells><pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`;
     const path = `xl/worksheets/list_${si + 1}.xml`; zip.file(path, xml);
@@ -5386,6 +5387,8 @@ async function addListSheets(zip, pkg, specs, wdoc, relsXml) {
   for (const d of byTag(wdoc, 'definedName')) { const l = d.getAttribute('localSheetId'); if (l != null) d.setAttribute('localSheetId', String(+l + k)); }
   if (!dnsEl) { dnsEl = wdoc.createElementNS(NS_MAIN, 'definedNames'); const calc = byTag(wdoc, 'calcPr')[0]; wdoc.documentElement.insertBefore(dnsEl, calc || null); }
   specs.forEach((sp, si) => { const d = wdoc.createElementNS(NS_MAIN, 'definedName'); d.setAttribute('name', '_xlnm.Print_Titles'); d.setAttribute('localSheetId', String(si)); d.textContent = `${quoteSheet(sp.sheet)}!$1:$2`; dnsEl.insertBefore(d, dnsEl.firstChild); });
+  // 欄外の列があるシートは、印刷範囲を表だけに
+  specs.forEach((sp, si) => { if (!sp.off) return; const d = wdoc.createElementNS(NS_MAIN, 'definedName'); d.setAttribute('name', '_xlnm.Print_Area'); d.setAttribute('localSheetId', String(si)); d.textContent = `${quoteSheet(sp.sheet)}!$A$1:$${colName(sp.heads.length)}$${sp.rows.length + 2}`; dnsEl.insertBefore(d, dnsEl.firstChild); });
   for (const v of byTag(wdoc, 'workbookView')) { v.setAttribute('activeTab', '0'); v.setAttribute('firstSheet', '0'); }
 }
 
