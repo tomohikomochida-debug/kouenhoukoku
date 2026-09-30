@@ -7562,8 +7562,9 @@ async function dupTree() {
 }
 /* ---------- 同じ木の別の様式（外観・レジ・根株・フォロー）：カルテを横断して作る・開く ---------- */
 const SIB_SHORT = { gaikan: '外観（様式3）', tk_fukyu: 'レジ（様式10）', tk_nekabu: '根株（様式11）', tk_follow: 'フォロー（様式12）', kw_gaikan: '外観（様式1）' };
-const typeShort = ty => SIB_SHORT[ty.id] || String(ty.name || '').replace(ty.group || '', '').trim();
-const sibTypes = ty => ty && ty.group ? types.filter(x => x.group === ty.group && x.id !== ty.id) : [];
+const typeShort = (ty, from) => { const s = SIB_SHORT[ty.id] || String(ty.name || '').replace(ty.group || '', '').trim(); return from && ty.group && ty.group !== from.group ? `${ty.group} ${s}` : s; }; // ほかの自治体の様式は頭に自治体名
+// 別の様式：同じ自治体の様式を先に、ほかの自治体・取り込んだ様式も（川崎市の木のレジを東京都の様式10・11 で作るなど）
+const sibTypes = ty => !ty ? [] : types.filter(x => x.id !== ty.id).sort((a, b) => ((b.group && b.group === ty.group) - (a.group && a.group === ty.group)) || types.indexOf(a) - types.indexOf(b));
 // 様式どうしで同じ意味の欄（ラベルが少し違う：樹高（H）m／樹高（m）など）
 function sibKey(s) {
   if (!s || s.k === 'off' || s.k === 'photo') return null; const L = String(s.label || '');
@@ -7576,11 +7577,11 @@ function sibKey(s) {
 }
 // 同じ木のほかの様式のカルテ：作ったときにつないだもの（tid）と、同じ案件・路線で樹木番号が同じもの
 function sibsOf(t) {
-  const ty = typeOf(t); if (!ty.group) return [];
+  const ty = typeOf(t);
   const no = String(roleVal(t, ty, 'treeNo') || '').trim(), site = siteOf(t);
   return trees.filter(x => {
-    if (x === t) return false; const xt = typeOf(x); if (xt.group !== ty.group) return false;
-    if (t.tid && x.tid === t.tid) return true;
+    if (x === t) return false; if (t.tid && x.tid === t.tid) return true; // 「＋ 別の様式」で作ったもの（自治体がちがっても）
+    const xt = typeOf(x); if (!ty.group || xt.group !== ty.group) return false;
     const xn = String(roleVal(x, xt, 'treeNo') || '').trim();
     return !!no && xn === no && x.typeId !== t.typeId && projOf(x) === projOf(t) && (siteOf(x) === site || !site || !siteOf(x));
   });
@@ -7600,7 +7601,7 @@ async function makeSib(ty2) {
   }
   const t = newTree(ty2, base); t.tid = src.tid; for (const k of ['proj', 'site', 'kind']) if (src[k] !== undefined) t[k] = src[k];
   trees.push(t); await DB.put('trees', t); $('#dlgSib').open && $('#dlgSib').close(); await openTree(t.id);
-  toast(`同じ木の「${typeShort(ty2)}」を作りました（路線名・樹木番号・樹種名などを引き継ぎ）`);
+  toast(`同じ木の「${typeShort(ty2, ty)}」を作りました（路線名・樹木番号・樹種名などを引き継ぎ）`);
 }
 // カルテの上の切り替え：この木のほかの様式（あれば）と「＋ 別の様式」
 function renderSibs() {
@@ -7608,7 +7609,7 @@ function renderSibs() {
   const others = cur ? sibTypes(curType) : []; box.classList.toggle('hidden', !others.length); if (!others.length) return;
   const sibs = sibsOf(cur), order = t => types.indexOf(typeOf(t));
   box.append(h('span', { class: 'lab' }, '同じ木：'), h('button', { type: 'button', class: 'on', disabled: true }, typeShort(curType)));
-  for (const x of [...sibs].sort((a, b) => order(a) - order(b) || a.created - b.created)) box.append(h('button', { type: 'button', onclick: async () => { await flush(); await openTree(x.id); } }, typeShort(typeOf(x))));
+  for (const x of [...sibs].sort((a, b) => order(a) - order(b) || a.created - b.created)) box.append(h('button', { type: 'button', onclick: async () => { await flush(); await openTree(x.id); } }, typeShort(typeOf(x), curType)));
   box.append(h('button', { type: 'button', class: 'add', onclick: openSibs }, '＋ 別の様式'));
 }
 function openSibs() {
@@ -7617,7 +7618,7 @@ function openSibs() {
     const have = sibs.filter(x => x.typeId === ty2.id);
     const acts = have.map(x => h('button', { class: 'btn', type: 'button', onclick: async () => { $('#dlgSib').close(); await flush(); await openTree(x.id); } }, '開く'));
     acts.push(h('button', { class: 'btn' + (have.length ? '' : ' pri'), type: 'button', onclick: () => makeSib(ty2) }, have.length ? '＋ もう1枚' : '＋ 作る'));
-    b.append(h('div', { class: 'sibrow' }, h('div', {}, h('div', { class: 'nm' }, typeShort(ty2)), h('div', { class: 'st' }, have.length ? `作成済み ${have.length}枚` : 'まだありません')), h('div', { class: 'row' }, ...acts)));
+    b.append(h('div', { class: 'sibrow' }, h('div', {}, h('div', { class: 'nm' }, typeShort(ty2, curType)), h('div', { class: 'st' }, have.length ? `作成済み ${have.length}枚` : 'まだありません')), h('div', { class: 'row' }, ...acts)));
   }
   $('#dlgSib').showModal();
 }
