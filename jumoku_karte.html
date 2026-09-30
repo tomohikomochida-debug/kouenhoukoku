@@ -2979,7 +2979,7 @@ const DB = {
   tx(store, mode, fn) {
     return new Promise((res, rej) => {
       const t = this.db.transaction(store, mode); const q = fn(t.objectStore(store));
-      t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error);
+      t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('保存が中断されました'));
     });
   },
   all(s) { return this.tx(s, 'readonly', x => x.getAll()); },
@@ -3470,10 +3470,11 @@ async function ensureBuiltin() {
     nt.fields = bi.preset(detectFields(tpl));
     if (bi.calc) nt.calc = b && b.calc && b.calc.userEdited ? b.calc : bi.calc();
     if (b) { nt.texts = b.texts || {}; for (const [k, v] of Object.entries(b.fields || {})) if (v.userEdited) nt.fields[k] = v; }
-    await DB.put('types', nt);
+    try { if (!DB.db) throw new Error('保存が使えません'); await DB.put('types', nt); } catch (err) { console.error(err); builtinSaveErr = builtinSaveErr || err; } // 保存できなくても、この回は使えるように（次に開いたときにまた作る）
     types = types.filter(t => t.id !== bi.id); types.push(nt);
   }
 }
+let builtinSaveErr = null;
 async function saveType(ty) { ty.updated = Date.now(); await DB.put('types', ty); }
 
 /* =========================================================
@@ -8229,6 +8230,8 @@ async function migrateOld() {
    起動
    ========================================================= */
 (async function init() {
+  // ページを最後まで読み終えてから（様式のデータ TEMPLATE_B64 と Excel の部品 JSZip はこのあとの <script> にある。ネットが遅いとまだ届いていない）
+  if (document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r, { once: true }));
   // 電波のない現場でも開けるように、このページを端末に保存しておく
   try { if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('jumoku_sw.js').catch(() => { }); } catch (e) { }
   if (CAM_MODE) { camPhone(CAM_MODE); return; } // iPhone：撮影画面だけを出す
@@ -8236,8 +8239,11 @@ async function migrateOld() {
   catch (e) { say('この端末では保存が使えません（プライベートブラウズ中かもしれません）'); }
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { }
   const fromSignIn = await odHandleRedirect().catch(() => false); // OneDrive のサインインから戻ったとき
-  try { await ensureBuiltin(); types.sort((a, b) => (b.builtin ? 1 : 0) - (a.builtin ? 1 : 0) || a.created - b.created); await migrateOld(); for (const ty of types) await loadTpl(ty); }
-  catch (e) { console.error(e); say('カルテの様式を準備できませんでした：' + e.message); }
+  try { await ensureBuiltin(); } catch (e) { console.error(e); say('カルテの様式を準備できませんでした：' + (e && (e.name + ' ' + e.message))); }
+  if (builtinSaveErr) toast('この端末に様式を保存できませんでした（' + builtinSaveErr.name + '）。Safari で開き直してください', 6000);
+  types.sort((a, b) => (b.builtin ? 1 : 0) - (a.builtin ? 1 : 0) || a.created - b.created);
+  try { await migrateOld(); } catch (e) { console.error(e); }
+  for (const ty of types) { try { await loadTpl(ty); } catch (e) { console.error(e); toast(`「${ty.name}」の様式を読めませんでした：${e.message}`, 5000); } } // 1つ壊れていてもほかの様式は使えるように
   $('#btnNew').onclick = async () => {
     // 路線の中から追加するときは、その路線の最後の木の様式・引き継ぎ欄・No.+1 を使う
     if (LS.site != null && !LS.q) {
