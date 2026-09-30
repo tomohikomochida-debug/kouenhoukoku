@@ -4277,8 +4277,8 @@ function photoMenu(slot) {
   file.onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; close(); if (fs.length) { const np = await addPhotos(fs, slot); if (np && await ask('この写真に矢印やコメントを書き込みますか？', '書き込む', false, 'あとで')) openDraw(np); } };
   if (camOn()) box.append(B(`📱 iPhoneで撮る（${p ? '差し替え' : 'この枠へ'}）`, () => { close(); camSetTarget(slot); toast('iPhoneのシャッターを押すと、この枠に入ります'); }, p ? '' : 'pri'));
   if (p) box.append(B('✏️ この写真に書き込む', () => { close(); openDraw(p); }, 'pri'));
-  if (/波形/.test(label)) box.append(B('📈 波形のファイル（EMF・画像）を選ぶ', () => file.click(), p ? '' : 'pri'), h('p', { class: 'hint' }, 'レジのソフトで出したEMFをそのまま選べます（パソコンから AirDrop・メール・iCloud Drive などで iPad の「ファイル」に入れておき、出てくるメニューで「ファイルを選択」）。'));
-  else box.append(B(p ? '📷 iPadで撮り直す・写真から選ぶ' : '📷 iPadで撮る・写真から選ぶ', () => file.click(), p || camOn() ? '' : 'pri'));
+  if (/波形/.test(label)) box.append(B('📈 波形のファイル（EMF・画像）を選ぶ', () => { file.removeAttribute('accept'); file.click(); } /* 種類を指定しない（iPad で EMF が暗くならないように） */, p ? '' : 'pri'), h('p', { class: 'hint' }, 'レジのソフトで出したEMFをそのまま選べます（パソコンから AirDrop・メール・iCloud Drive などで iPad の「ファイル」に入れておき、出てくるメニューで「ファイルを選択」）。'));
+  else box.append(B(p ? '📷 iPadで撮り直す・写真から選ぶ' : '📷 iPadで撮る・写真から選ぶ', () => { file.setAttribute('accept', 'image/*,.emf,image/emf,image/x-emf'); file.click(); }, p || camOn() ? '' : 'pri'));
   if (!camOn()) box.append(B('📱 iPhoneをカメラにする', () => { close(); openCamDialog(); }));
   box.append(B('✏️ 白紙に手描きする', () => { close(); addSketch(slot); }));
   const others = cur.photos.filter(x => x.slot !== slot);
@@ -6180,7 +6180,7 @@ async function openRegi() {
     slots.forEach((slot, i) => {
       if (!slot) return;
       const p = t.photos.find(q => q.slot === slot);
-      const file = h('input', { type: 'file', accept: 'image/*,.emf,image/emf,image/x-emf', hidden: '' });
+      const file = h('input', { type: 'file', hidden: '' }); // 種類を指定しない：iPad は EMF の種類を知らず、指定があると EMF が暗くなって選べない
       file.onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; if (!fs.length) return; await addPhotos(fs, slot); const np = cur.photos.find(q => q.slot === slot); if (np && !(await waveAutoCal(np))) await calibrateWave(np, ty.fields[slot].label); paintFig(); };
       figBox.append(h('div', { class: 'rgwave' }, h('b', {}, '波形' + '①②③④'[i]),
         p ? h('span', { class: p.cal && num(p.cal.v) > 0 ? 'ok' : 'ng' }, p.cal && num(p.cal.v) > 0 ? `目盛り合わせ済み（${p.cal.v}cm）` : '目盛りがまだです') : h('span', { class: 'hint' }, '写真がまだありません'),
@@ -7802,6 +7802,16 @@ async function delType(ty) {
    ========================================================= */
 // 保存のしかた：'ask' = 毎回保存先を選ぶ（パソコンは保存ダイアログ、iPad は共有メニュー）／'dl' = すぐダウンロードフォルダへ
 const settingsSave = () => { try { return localStorage.getItem('jk_save') || 'ask'; } catch (e) { return 'ask'; } };
+// ボタンを押したその場で共有メニューを出す（押した直後でないと iPad は出させてくれない）。保存・取りやめで true、失敗で false
+function shareByTap(file) {
+  return new Promise(res => {
+    const d = $('#dlgAsk'); $('#askMsg').textContent = `Excelができました（${file.name}）。「保存する」を押すと保存のメニューが出ます。`;
+    const b = $('#askOk'), n = $('#askNo'); b.textContent = '保存する'; b.className = 'btn pri'; n.textContent = 'やめる'; n.classList.remove('hidden');
+    let v = true; d.onclose = () => res(v);
+    b.onclick = () => { navigator.share({ files: [file], title: file.name }).then(() => d.close(), er => { if (er.name !== 'AbortError') v = false; d.close(); }); };
+    n.onclick = () => d.close(); d.showModal();
+  });
+}
 async function shareOrDownload(file) {
   if (settingsSave() === 'ask') {
     const touch = /iPad|iPhone|Android|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document;
@@ -7815,7 +7825,11 @@ async function shareOrDownload(file) {
     if (touch && navigator.canShare && navigator.canShare({ files: [file] })) {
       let hinted = false; try { hinted = localStorage.getItem('jk_savehint') === '1'; localStorage.setItem('jk_savehint', '1'); } catch (e) { }
       if (!hinted) await say('このあと出るメニューで「“ファイル”に保存」を選ぶと、保存するフォルダ（iCloud Drive・このiPad内・OneDrive など）を選べます。AirDrop やメールで送ることもできます。');
-      try { await navigator.share({ files: [file], title: file.name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+      try { await navigator.share({ files: [file], title: file.name }); return; } catch (e) {
+        if (e.name === 'AbortError') return;
+        // 作るのに時間がかかると、共有メニューを出す許可が切れる（NotAllowedError）。ボタンを押してもらって、もう一度出す
+        if (e.name === 'NotAllowedError') { const r = await shareByTap(file); if (r) return; }
+      }
     }
   }
   const a = h('a', { href: URL.createObjectURL(file), download: file.name }); document.body.append(a); a.click();
