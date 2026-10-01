@@ -1132,16 +1132,15 @@ async function exportExcel(){
 /* =========================================================
    PDF 書き出し：調査マスター → 位置図 → 写真帳 を1つの PDF に
    iPhone の印刷（window.print）は白紙になることがあるので使わない。
-   ページを画像（A4・150dpi）に描き、その画像を並べた PDF を端末の上で作る。
+   ページ（A4 縦・150dpi）を画像に描き、その画像を並べた PDF を端末の上で作る。
+   白い所を作らないように、項目ごとに改ページせず、空きがあれば続けて詰める。
    位置図の番号は、アプリと同じ「地図の左から何割・上から何割」で描く（ずれない）
    ========================================================= */
-const PDF_DPI=150, PDF_A4P=[1240,1754], PDF_A4L=[1754,1240], PDF_M=64;
+const PDF_DPI=150, PDF_W=1240, PDF_H=1754, PDF_M=64;
 const PDF_FONT='"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,sans-serif';
 function loadImgEl(src){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error("画像を読めませんでした")); im.src=src; }); }
 async function toJpeg(src){ const im=await loadImgEl(src), c=document.createElement("canvas"); c.width=im.naturalWidth; c.height=im.naturalHeight;
   const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0); return c.toDataURL("image/jpeg",0.9); }
-function pdfPage(land){ const [W,H]=land?PDF_A4L:PDF_A4P, cv=document.createElement("canvas"); cv.width=W; cv.height=H;
-  const x=cv.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,W,H); x.fillStyle="#000"; x.textBaseline="alphabetic"; return {cv,x,W,H}; }
 const pfont=(px,b)=>`${b?"bold ":""}${px}px ${PDF_FONT}`;
 /* 文字を幅に収まるように折り返す（日本語は1文字ずつ） */
 function pdfWrap(x,text,maxW){ const out=[];
@@ -1149,78 +1148,90 @@ function pdfWrap(x,text,maxW){ const out=[];
     for(const ch of para){ if(line&&x.measureText(line+ch).width>maxW){ out.push(line); line=ch; } else line+=ch; }
     out.push(line); }
   return out; }
-/* ページの見出し：左に題、右に日付など、下に線 */
-function pdfHead(p,title,sub){ const {x,W}=p; let y=PDF_M+34;
-  x.fillStyle="#000"; x.font=pfont(34,true); x.textAlign="left"; x.fillText(title,PDF_M,y);
-  if(sub){ x.font=pfont(20); x.fillStyle="#555"; x.textAlign="right"; x.fillText(sub,W-PDF_M,y); x.textAlign="left"; x.fillStyle="#000"; }
-  y+=14; x.fillRect(PDF_M,y,W-PDF_M*2,3); return y+24; }
-async function pdfJpeg(p){ const b=await new Promise(r=>p.cv.toBlob(r,"image/jpeg",0.85)); p.cv.width=p.cv.height=1; // iPhone のメモリを早めに空ける
-  return { w:p.W, h:p.H, data:new Uint8Array(await b.arrayBuffer()) }; }
-/* 調査マスター（Excel の「調査マスター」と同じ列） */
-async function pdfMaster(name,date,out){
-  const ST=window.surveyText, trees=state.trees||[];
-  const heads=["番号","区分","品名","仕様","数量","単位","摘要"], ws=[6,8,22,22,7,7,16], sum=ws.reduce((a,b)=>a+b,0);
-  const center=[true,true,false,false,true,true,false], FS=21, LH=30, PAD=10;
-  let p=null, y=0, cw=null, page=0;
-  const start=()=>{ p=pdfPage(false); page++; const CW=p.W-PDF_M*2; cw=ws.map(w=>w/sum*CW);
-    y=pdfHead(p,"現地調査マスター",(page>1?"（つづき）　":"")+(date||""));
-    p.x.font=pfont(21); p.x.fillText("案件："+(name||"")+(state.place?"　／　工事場所："+state.place:""),PDF_M,y+8); y+=34;
-    row(heads,true); };
-  const row=(vals,head)=>{ const x=p.x; x.font=pfont(FS,head);
-    const lines=vals.map((v,k)=>pdfWrap(x,v,cw[k]-PAD*2)), h=Math.max(1,...lines.map(l=>l.length))*LH+PAD*2-6;
-    let cx=PDF_M;
-    if(head){ x.fillStyle="#8c8c8c"; x.fillRect(PDF_M,y,cw.reduce((a,b)=>a+b,0),h); }
-    vals.forEach((v,k)=>{ x.strokeStyle="#bbb"; x.lineWidth=1.5; x.strokeRect(cx,y,cw[k],h);
-      x.fillStyle=head?"#fff":"#000"; x.textAlign=center[k]||head?"center":"left";
-      lines[k].forEach((ln,li)=>x.fillText(ln,center[k]||head?cx+cw[k]/2:cx+PAD,y+PAD+FS+li*LH-2)); cx+=cw[k]; });
-    x.textAlign="left"; y+=h; };
-  start();
-  for(let i=0;i<trees.length;i++){ const t=trees[i];
-    const vals=[i+1,ST.kubun(t),ST.nameOf(t),ST.specOf(t),ST.qtyOf(t),ST.unitOf(t),t.type==="exterior"?"":(t.memo||"")];
-    p.x.font=pfont(FS); const h=Math.max(...vals.map((v,k)=>pdfWrap(p.x,v,cw[k]-PAD*2).length))*LH+PAD*2;
-    if(y+h>p.H-PDF_M){ out.push(await pdfJpeg(p)); start(); }
-    row(vals,false); }
-  if(!trees.length){ p.x.font=pfont(21); p.x.fillStyle="#777"; p.x.fillText("（まだ項目がありません）",PDF_M,y+40); }
-  out.push(await pdfJpeg(p));
-}
-/* 位置図：地図をページに収め、番号を同じ割合の位置に描く */
-async function pdfMap(name,date,out){
-  if(!state.mapImage) return;
-  const im=await loadImgEl(state.mapImage), land=im.naturalWidth>=im.naturalHeight, p=pdfPage(land), x=p.x;
-  const top=pdfHead(p,"位置図　"+(name||""),date||""), aw=p.W-PDF_M*2, ah=p.H-PDF_M-top;
-  const s=Math.min(aw/im.naturalWidth,ah/im.naturalHeight), w=im.naturalWidth*s, h=im.naturalHeight*s, ox=PDF_M+(aw-w)/2, oy=top;
-  x.imageSmoothingQuality="high"; x.drawImage(im,ox,oy,w,h); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,oy,w,h);
-  const d=Math.max(30,Math.min(48,w*0.03));
-  state.trees.forEach((t,i)=>{ if(t.mx==null||t.my==null) return; const cx=ox+t.mx*w, cy=oy+t.my*h;
-    x.beginPath(); x.arc(cx,cy,d/2,0,Math.PI*2); x.fillStyle="rgba(214,40,40,.92)"; x.fill(); x.lineWidth=d*0.08; x.strokeStyle="#fff"; x.stroke();
-    const lb=String(i+1); x.fillStyle="#fff"; x.font=pfont(Math.round(d*(lb.length>2?0.42:0.55)),true); x.textAlign="center"; x.textBaseline="middle"; x.fillText(lb,cx,cy+1); });
-  x.textAlign="left"; x.textBaseline="alphabetic";
-  out.push(await pdfJpeg(p));
-}
-/* 写真帳：3列×2段＝6枚/ページ（Excel の写真帳と同じ並び） */
-async function pdfBook(name,date,out){
-  const ST=window.surveyText, frames=[];
-  state.trees.forEach((t,i)=>{ const no=i+1, ph=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
-    if(ph.length) ph.forEach((src,k)=>frames.push({src,cap:ST.caption(t,no)+(ph.length>1?"\n（"+(k+1)+"/"+ph.length+"）":"")}));
-    else frames.push({src:null,cap:ST.caption(t,no)}); });
-  if(!frames.length) return;
-  const pages=Math.ceil(frames.length/6);
-  for(let pg=0;pg<pages;pg++){
-    const p=pdfPage(false), x=p.x, top=pdfHead(p,(state.bookTitle||"写真帳")+"　"+(name||""),`${date||""}　全${state.trees.length}件　${pg+1}/${pages}`);
-    const G=20, fw=(p.W-PDF_M*2-G*2)/3, ph=fw*330/250, ch=Math.min(200,(p.H-PDF_M-top-G)/2-ph);
-    for(let k=0;k<6;k++){ const fr=frames[pg*6+k]; if(!fr) break;
-      const fx=PDF_M+(k%3)*(fw+G), fy=top+(k<3?0:ph+ch+G);
-      x.fillStyle="#f0f2f4"; x.fillRect(fx,fy,fw,ph);
-      if(fr.src){ try{ const im=await loadImgEl(fr.src), sc=Math.max(fw/im.naturalWidth,ph/im.naturalHeight), iw=im.naturalWidth*sc, ih=im.naturalHeight*sc;
-          x.save(); x.beginPath(); x.rect(fx,fy,fw,ph); x.clip(); x.drawImage(im,fx+(fw-iw)/2,fy+(ph-ih)/2,iw,ih); x.restore(); }catch(e){} }
-      else { x.fillStyle="#888"; x.font=pfont(22); x.textAlign="center"; x.fillText("写真なし",fx+fw/2,fy+ph/2); x.textAlign="left"; }
-      x.strokeStyle="#9aa2ac"; x.lineWidth=2; x.strokeRect(fx,fy,fw,ph+ch); x.beginPath(); x.moveTo(fx,fy+ph); x.lineTo(fx+fw,fy+ph); x.stroke();
-      const lines=[]; fr.cap.split("\n").forEach((ln,li)=>{ x.font=pfont(li?19:21,!li); pdfWrap(x,ln,fw-20).forEach(l=>lines.push([l,!li])); });
-      const LH=26, maxL=Math.floor((ch-12)/LH);
-      lines.slice(0,maxL).forEach(([l,b],li)=>{ x.fillStyle="#000"; x.font=pfont(b?21:19,b); x.fillText(li===maxL-1&&lines.length>maxL?l.slice(0,-1)+"…":l,fx+10,fy+ph+8+LH*(li+1)-6); });
-    }
-    out.push(await pdfJpeg(p));
+/* 割り付け：ページごとに「描く手順」を並べる。描くのは後でページ1枚ずつ（iPhone のメモリを使いすぎない） */
+function pdfLayout(name,date){
+  const ST=window.surveyText, mx=document.createElement("canvas").getContext("2d");
+  const X0=PDF_M, CW=PDF_W-PDF_M*2, TOP=PDF_M+64, BOT=PDF_H-PDF_M-28, FULL=BOT-TOP;
+  const pages=[[]]; let y=TOP;
+  const add=fn=>pages[pages.length-1].push(fn);
+  const newPage=()=>{ pages.push([]); y=TOP; };
+  const room=()=>BOT-y;
+  const TH=58; // 見出しの高さ
+  const title=(t,sub)=>{ const yy=y; add(x=>{ x.fillStyle="#214A37"; x.fillRect(X0,yy+6,8,34); x.fillStyle="#000"; x.font=pfont(30,true); x.textAlign="left"; x.fillText(t,X0+20,yy+34); const tw=x.measureText(t).width;
+      if(sub){ x.font=pfont(19); x.fillStyle="#555"; x.fillText(sub,X0+20+tw+18,yy+34); x.fillStyle="#000"; } }); y+=TH; };
+  const gap=g=>{ if(y>TOP) y+=g; };
+
+  /* 1. 調査マスター（Excel の「調査マスター」と同じ列） */
+  const trees=state.trees||[], heads=["番号","区分","品名","仕様","数量","単位","摘要"], ws=[6,8,22,22,7,7,16], sum=ws.reduce((a,b)=>a+b,0);
+  const cw=ws.map(w=>w/sum*CW), center=[true,true,false,false,true,true,false], FS=21, LH=30, PAD=10;
+  const rowH=(vals,head)=>{ mx.font=pfont(FS,head); return Math.max(1,...vals.map((v,k)=>pdfWrap(mx,v,cw[k]-PAD*2).length))*LH+PAD*2-6; };
+  const row=(vals,head)=>{ const yy=y, h=rowH(vals,head); add(x=>{ x.font=pfont(FS,head); let cx=X0;
+      if(head){ x.fillStyle="#8c8c8c"; x.fillRect(X0,yy,CW,h); }
+      vals.forEach((v,k)=>{ x.strokeStyle="#bbb"; x.lineWidth=1.5; x.strokeRect(cx,yy,cw[k],h); x.fillStyle=head?"#fff":"#000";
+        const c=center[k]||head; x.textAlign=c?"center":"left";
+        pdfWrap(x,v,cw[k]-PAD*2).forEach((ln,li)=>x.fillText(ln,c?cx+cw[k]/2:cx+PAD,yy+PAD+FS+li*LH-2)); cx+=cw[k]; });
+      x.textAlign="left"; }); y+=h; };
+  title("調査マスター",trees.length+"件");
+  const info="案件："+(name||"")+(state.place?"　／　工事場所："+state.place:"")+(date?"　／　調査日："+date:"");
+  mx.font=pfont(20); const infoL=pdfWrap(mx,info,CW); { const yy=y; add(x=>{ x.font=pfont(20); x.fillStyle="#000"; infoL.forEach((l,i)=>x.fillText(l,X0,yy+22+i*28)); }); y+=infoL.length*28+12; }
+  row(heads,true);
+  trees.forEach((t,i)=>{ const vals=[i+1,ST.kubun(t),ST.nameOf(t),ST.specOf(t),ST.qtyOf(t),ST.unitOf(t),t.type==="exterior"?"":(t.memo||"")];
+    if(rowH(vals,false)>room()){ newPage(); row(heads,true); }
+    row(vals,false); });
+
+  /* 2. 位置図：空きが足りなければ次のページ。番号は地図の同じ割合の位置に */
+  if(state.mapImage){
+    const sz=state.mapSize||[1800,1240], ar=sz[0]/sz[1];
+    let w=CW, h=w/ar; if(h>FULL-TH){ h=FULL-TH; w=h*ar; }
+    gap(36);
+    if(TH+h>room()){ const fit=room()-TH, fw=Math.min(CW,fit*ar); if(fw>=w*0.5&&fit>=FULL*0.3){ w=fw; h=w/ar; } else newPage(); } // 半分までの縮小で入るなら、空いた所に詰める
+    title("位置図");
+    const yy=y, ox=X0+(CW-w)/2, src=state.mapImage, mks=state.trees.map((t,i)=>t.mx!=null&&t.my!=null?[t.mx,t.my,i+1]:null).filter(Boolean);
+    add(async x=>{ const im=await loadImgEl(src); x.imageSmoothingQuality="high"; x.drawImage(im,ox,yy,w,h); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,yy,w,h);
+      const d=Math.max(28,Math.min(46,w*0.032));
+      for(const [u,v,n] of mks){ const cx=ox+u*w, cy=yy+v*h;
+        x.beginPath(); x.arc(cx,cy,d/2,0,Math.PI*2); x.fillStyle="rgba(214,40,40,.92)"; x.fill(); x.lineWidth=d*0.08; x.strokeStyle="#fff"; x.stroke();
+        const lb=String(n); x.fillStyle="#fff"; x.font=pfont(Math.round(d*(lb.length>2?0.42:0.55)),true); x.textAlign="center"; x.textBaseline="middle"; x.fillText(lb,cx,cy+1); }
+      x.textAlign="left"; x.textBaseline="alphabetic"; });
+    y+=h;
   }
+
+  /* 3. 写真帳：3列。写真のない項目は入れない（白い枠を作らない）。説明の高さはその段の文字の量に合わせる */
+  const frames=[];
+  trees.forEach((t,i)=>{ const ph=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
+    ph.forEach((src,k)=>frames.push({src,cap:ST.caption(t,i+1)+(ph.length>1?"\n（"+(k+1)+"/"+ph.length+"）":"")})); });
+  if(frames.length){
+    const G=20, fw=(CW-G*2)/3, fh=fw*330/250, CLH=26, CPAD=12;
+    const capLines=fr=>{ const out=[]; fr.cap.split("\n").forEach((ln,li)=>{ mx.font=pfont(li?19:21,!li); pdfWrap(mx,ln,fw-20).forEach(l=>out.push([l,!li])); }); return out; };
+    gap(36); let first=true;
+    for(let s=0;s<frames.length;s+=3){
+      const grp=frames.slice(s,s+3).map(fr=>({...fr,lines:capLines(fr)})), ch=Math.max(...grp.map(f=>f.lines.length))*CLH+CPAD*2-4, rh=fh+ch;
+      if((first?TH:0)+rh>room()){ newPage(); }
+      if(first){ title("写真帳",frames.length+"枚"); first=false; }
+      const yy=y;
+      add(async x=>{ for(let k=0;k<grp.length;k++){ const fr=grp[k], fx=X0+k*(fw+G);
+          x.fillStyle="#f0f2f4"; x.fillRect(fx,yy,fw,fh);
+          try{ const im=await loadImgEl(fr.src), sc=Math.max(fw/im.naturalWidth,fh/im.naturalHeight), iw=im.naturalWidth*sc, ih=im.naturalHeight*sc;
+            x.save(); x.beginPath(); x.rect(fx,yy,fw,fh); x.clip(); x.drawImage(im,fx+(fw-iw)/2,yy+(fh-ih)/2,iw,ih); x.restore(); }catch(e){}
+          x.strokeStyle="#9aa2ac"; x.lineWidth=2; x.strokeRect(fx,yy,fw,rh); x.beginPath(); x.moveTo(fx,yy+fh); x.lineTo(fx+fw,yy+fh); x.stroke();
+          fr.lines.forEach(([l,b],li)=>{ x.fillStyle="#000"; x.font=pfont(b?21:19,b); x.fillText(l,fx+10,yy+fh+CPAD+CLH*(li+1)-6); }); } });
+      y+=rh+G;
+    }
+  }
+  if(!pages[pages.length-1].length) pages.pop(); // 最後に何も描かないページは作らない
+  return pages;
+}
+/* 1ページを描いて JPEG に（キャンバスは1枚を使い回す） */
+async function pdfRender(cv,steps,no,total,name,date){
+  const x=cv.getContext("2d"); x.setTransform(1,0,0,1,0,0); x.fillStyle="#fff"; x.fillRect(0,0,PDF_W,PDF_H); x.fillStyle="#000"; x.textBaseline="alphabetic"; x.textAlign="left";
+  // 上：案件名と日付、下：ページ番号
+  x.font=pfont(22,true); x.fillText(((state.bookTitle&&state.bookTitle!=="写真帳")?state.bookTitle+"　":"現地調査　")+(name||""),PDF_M,PDF_M+26);
+  x.font=pfont(19); x.fillStyle="#555"; x.textAlign="right"; x.fillText(date||"",PDF_W-PDF_M,PDF_M+26);
+  x.fillStyle="#000"; x.fillRect(PDF_M,PDF_M+40,PDF_W-PDF_M*2,2);
+  x.fillStyle="#555"; x.textAlign="center"; x.font=pfont(18); x.fillText(no+" / "+total,PDF_W/2,PDF_H-PDF_M+8); x.textAlign="left"; x.fillStyle="#000";
+  for(const fn of steps) await fn(x);
+  const b=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85));
+  return { w:PDF_W, h:PDF_H, data:new Uint8Array(await b.arrayBuffer()) };
 }
 /* JPEG のページを並べた PDF（1ページ＝1枚の画像） */
 function makePdf(pages){
@@ -1246,10 +1257,10 @@ async function exportPdf(){
     state.caseName=document.getElementById("caseName").value; state.caseDate=document.getElementById("caseDate").value;
     if(!window.surveyText){ alert("PDFの部品を読み込めませんでした。"); return; }
     if(btn){ btn.disabled=true; btn.textContent="PDF作成中…"; }
-    const name=state.caseName||"", date=(state.caseDate||"").replace(/-/g,"/"), pages=[];
-    await pdfMaster(name,date,pages);
-    await pdfMap(name,date,pages);
-    await pdfBook(name,date,pages);
+    const name=state.caseName||"", date=(state.caseDate||"").replace(/-/g,"/"), plan=pdfLayout(name,date), pages=[];
+    const cv=document.createElement("canvas"); cv.width=PDF_W; cv.height=PDF_H;
+    for(let i=0;i<plan.length;i++){ if(btn) btn.textContent="PDF作成中… "+(i+1)+"/"+plan.length; pages.push(await pdfRender(cv,plan[i],i+1,plan.length,name,date)); }
+    cv.width=cv.height=1; // iPhone のメモリを早めに空ける
     const blob=makePdf(pages);
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
     a.download=(state.caseName||"現場調査").replace(/[\/:*?"<>|\\]/g,"_")+"_"+(state.caseDate||"")+".pdf";
