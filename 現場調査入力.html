@@ -264,7 +264,7 @@ header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 <button id="toMapBtn" class="tomap noprint" onclick="toMap()" style="display:none">🗺 地図へ</button>
 <div class="bar noprint">
   <button id="xlsxBtn" class="solid" onclick="exportExcel()">Excel書き出し</button>
-  <button onclick="window.print()">写真帳をPDF保存</button>
+  <button id="pdfBtn" onclick="exportPdf()">PDF書き出し</button>
   <button onclick="exportJSON()">事務所へ書き出し</button>
   <button onclick="document.getElementById('imp').click()">読み込み</button>
   <input id="imp" type="file" accept="application/json" style="display:none" onchange="importJSON(event)">
@@ -397,22 +397,31 @@ header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 
     /* ===== 位置図（マーカーは独立オブジェクト＝Excelで移動/削除可） ===== */
     if (imgs.map) {
-      var COLW = 8, ROWH = 15, WPX = COLW * 7 + 5, HPX = ROWH * 4 / 3; // 均一グリッドで座標→セル換算
+      /* 地図と番号はすべて A列の中に、位置を EMU で直接置く。
+         列の幅の px は Excel・端末のフォントで変わり、ExcelJS は「何列目の何割」を列幅×10000 EMU で計算する
+         （幅8の列なら本当は約58万 EMU なのに 8万 EMU）ので、列をまたいで置くと番号が最大1列分ずれていた */
+      var EMU = 9525, R1 = 32, RH = 20; // 1行目 24pt＝32px、ほかの行 15pt＝20px（行の高さは pt なので端末によらず同じ）
       var mp = wb.addWorksheet("位置図", { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1 } });
-      var gcols = Math.ceil(1000 / WPX) + 2, grows = Math.ceil(760 / HPX) + 4;
-      for (var gc = 1; gc <= gcols; gc++) mp.getColumn(gc).width = COLW;
-      for (var gr = 1; gr <= grows; gr++) mp.getRow(gr).height = ROWH;
+      mp.getColumn(1).width = 150; // 地図（最大900px）より十分広く
       mp.getCell("A1").value = "位置図　" + name; mp.getCell("A1").font = font(14, true);
-      var MW = 900, MH = 620, ox = 4, oy = 34;
+      var MW = 900, MH = 620, ox = 24, oy = R1 + 12, sz = 42;
       if (imgs.mapW && imgs.mapH) { var fs = Math.min(900 / imgs.mapW, 620 / imgs.mapH); MW = Math.round(imgs.mapW * fs); MH = Math.round(imgs.mapH * fs); } // 縦横比を変えない（縮尺が狂わない）
+      var nRows = Math.ceil((oy + MH + sz - R1) / RH) + 2;
+      mp.getRow(1).height = 24; for (var gr = 2; gr <= nRows; gr++) mp.getRow(gr).height = 15;
+      var at = function (x, y) {
+        x = Math.max(0, x); y = Math.max(0, y);
+        var row = y < R1 ? 0 : 1 + Math.floor((y - R1) / RH), off = y < R1 ? y : (y - R1) - (row - 1) * RH;
+        return { nativeCol: 0, nativeColOff: Math.round(x * EMU), nativeRow: row, nativeRowOff: Math.round(off * EMU) };
+      };
       var mid = wb.addImage({ base64: raw(imgs.map), extension: "jpeg" });
-      mp.addImage(mid, { tl: { col: ox / WPX, row: oy / HPX }, ext: { width: MW, height: MH }, editAs: "oneCell" });
+      mp.addImage(mid, { tl: at(ox, oy), ext: { width: MW, height: MH }, editAs: "oneCell" });
       (imgs.markers || []).forEach(function (mk) {
         if (!mk || !mk.img) return;
-        var sz = 42, cx = ox + mk.x * MW, cy = oy + mk.y * MH;
+        var cx = ox + mk.x * MW, cy = oy + mk.y * MH;
         var kid = wb.addImage({ base64: raw(mk.img), extension: "png" });
-        mp.addImage(kid, { tl: { col: (cx - sz / 2) / WPX, row: (cy - sz / 2) / HPX }, ext: { width: sz, height: sz }, editAs: "oneCell" });
+        mp.addImage(kid, { tl: at(cx - sz / 2, cy - sz / 2), ext: { width: sz, height: sz }, editAs: "oneCell" });
       });
+      mp.pageSetup.printArea = "A1:A" + nRows;
     }
 
     /* ===== 写真帳（複数写真対応・3列×2段＝6枚/ページ・写真下コメント） ===== */
@@ -446,6 +455,7 @@ header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   }
 
   root.buildTreeWorkbook = buildTreeWorkbook;
+  root.surveyText = { nameOf: nameOf, specOf: specOf, qtyOf: qtyOf, unitOf: unitOf, kubun: kubun, caption: caption };
   if (typeof module !== "undefined" && module.exports) module.exports = { buildTreeWorkbook: buildTreeWorkbook };
 })(typeof window !== "undefined" ? window : globalThis);
 
@@ -1108,6 +1118,7 @@ async function exportExcel(){
     var markers = [];
     for(var mmi=0; mmi<state.trees.length; mmi++){ var tt=state.trees[mmi]; if(tt.mx!=null&&tt.my!=null) markers.push({x:tt.mx,y:tt.my,img:markerPng(mmi+1)}); }
     var msz = mapImg ? (state.mapSize || await imgSize(mapImg)) : null;
+    if(mapImg && !/^data:image\/jpeg/.test(mapImg)) mapImg = await toJpeg(mapImg); // Excel には jpeg として入れる
     var wb=window.buildTreeWorkbook(window.ExcelJS, stCopy, {map: mapImg, mapW: msz&&msz[0], mapH: msz&&msz[1], markers: markers});
     var buf=await wb.xlsx.writeBuffer();
     var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
@@ -1116,6 +1127,136 @@ async function exportExcel(){
     a.click();
   }catch(e){ alert('Excel作成でエラー: '+(e&&e.message?e.message:e)); }
   finally{ if(btn){ btn.textContent='Excel書き出し'; btn.disabled=false; } }
+}
+
+/* =========================================================
+   PDF 書き出し：調査マスター → 位置図 → 写真帳 を1つの PDF に
+   iPhone の印刷（window.print）は白紙になることがあるので使わない。
+   ページを画像（A4・150dpi）に描き、その画像を並べた PDF を端末の上で作る。
+   位置図の番号は、アプリと同じ「地図の左から何割・上から何割」で描く（ずれない）
+   ========================================================= */
+const PDF_DPI=150, PDF_A4P=[1240,1754], PDF_A4L=[1754,1240], PDF_M=64;
+const PDF_FONT='"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,sans-serif';
+function loadImgEl(src){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error("画像を読めませんでした")); im.src=src; }); }
+async function toJpeg(src){ const im=await loadImgEl(src), c=document.createElement("canvas"); c.width=im.naturalWidth; c.height=im.naturalHeight;
+  const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0); return c.toDataURL("image/jpeg",0.9); }
+function pdfPage(land){ const [W,H]=land?PDF_A4L:PDF_A4P, cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+  const x=cv.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,W,H); x.fillStyle="#000"; x.textBaseline="alphabetic"; return {cv,x,W,H}; }
+const pfont=(px,b)=>`${b?"bold ":""}${px}px ${PDF_FONT}`;
+/* 文字を幅に収まるように折り返す（日本語は1文字ずつ） */
+function pdfWrap(x,text,maxW){ const out=[];
+  for(const para of String(text==null?"":text).split("\n")){ let line="";
+    for(const ch of para){ if(line&&x.measureText(line+ch).width>maxW){ out.push(line); line=ch; } else line+=ch; }
+    out.push(line); }
+  return out; }
+/* ページの見出し：左に題、右に日付など、下に線 */
+function pdfHead(p,title,sub){ const {x,W}=p; let y=PDF_M+34;
+  x.fillStyle="#000"; x.font=pfont(34,true); x.textAlign="left"; x.fillText(title,PDF_M,y);
+  if(sub){ x.font=pfont(20); x.fillStyle="#555"; x.textAlign="right"; x.fillText(sub,W-PDF_M,y); x.textAlign="left"; x.fillStyle="#000"; }
+  y+=14; x.fillRect(PDF_M,y,W-PDF_M*2,3); return y+24; }
+async function pdfJpeg(p){ const b=await new Promise(r=>p.cv.toBlob(r,"image/jpeg",0.85)); p.cv.width=p.cv.height=1; // iPhone のメモリを早めに空ける
+  return { w:p.W, h:p.H, data:new Uint8Array(await b.arrayBuffer()) }; }
+/* 調査マスター（Excel の「調査マスター」と同じ列） */
+async function pdfMaster(name,date,out){
+  const ST=window.surveyText, trees=state.trees||[];
+  const heads=["番号","区分","品名","仕様","数量","単位","摘要"], ws=[6,8,22,22,7,7,16], sum=ws.reduce((a,b)=>a+b,0);
+  const center=[true,true,false,false,true,true,false], FS=21, LH=30, PAD=10;
+  let p=null, y=0, cw=null, page=0;
+  const start=()=>{ p=pdfPage(false); page++; const CW=p.W-PDF_M*2; cw=ws.map(w=>w/sum*CW);
+    y=pdfHead(p,"現地調査マスター",(page>1?"（つづき）　":"")+(date||""));
+    p.x.font=pfont(21); p.x.fillText("案件："+(name||"")+(state.place?"　／　工事場所："+state.place:""),PDF_M,y+8); y+=34;
+    row(heads,true); };
+  const row=(vals,head)=>{ const x=p.x; x.font=pfont(FS,head);
+    const lines=vals.map((v,k)=>pdfWrap(x,v,cw[k]-PAD*2)), h=Math.max(1,...lines.map(l=>l.length))*LH+PAD*2-6;
+    let cx=PDF_M;
+    if(head){ x.fillStyle="#8c8c8c"; x.fillRect(PDF_M,y,cw.reduce((a,b)=>a+b,0),h); }
+    vals.forEach((v,k)=>{ x.strokeStyle="#bbb"; x.lineWidth=1.5; x.strokeRect(cx,y,cw[k],h);
+      x.fillStyle=head?"#fff":"#000"; x.textAlign=center[k]||head?"center":"left";
+      lines[k].forEach((ln,li)=>x.fillText(ln,center[k]||head?cx+cw[k]/2:cx+PAD,y+PAD+FS+li*LH-2)); cx+=cw[k]; });
+    x.textAlign="left"; y+=h; };
+  start();
+  for(let i=0;i<trees.length;i++){ const t=trees[i];
+    const vals=[i+1,ST.kubun(t),ST.nameOf(t),ST.specOf(t),ST.qtyOf(t),ST.unitOf(t),t.type==="exterior"?"":(t.memo||"")];
+    p.x.font=pfont(FS); const h=Math.max(...vals.map((v,k)=>pdfWrap(p.x,v,cw[k]-PAD*2).length))*LH+PAD*2;
+    if(y+h>p.H-PDF_M){ out.push(await pdfJpeg(p)); start(); }
+    row(vals,false); }
+  if(!trees.length){ p.x.font=pfont(21); p.x.fillStyle="#777"; p.x.fillText("（まだ項目がありません）",PDF_M,y+40); }
+  out.push(await pdfJpeg(p));
+}
+/* 位置図：地図をページに収め、番号を同じ割合の位置に描く */
+async function pdfMap(name,date,out){
+  if(!state.mapImage) return;
+  const im=await loadImgEl(state.mapImage), land=im.naturalWidth>=im.naturalHeight, p=pdfPage(land), x=p.x;
+  const top=pdfHead(p,"位置図　"+(name||""),date||""), aw=p.W-PDF_M*2, ah=p.H-PDF_M-top;
+  const s=Math.min(aw/im.naturalWidth,ah/im.naturalHeight), w=im.naturalWidth*s, h=im.naturalHeight*s, ox=PDF_M+(aw-w)/2, oy=top;
+  x.imageSmoothingQuality="high"; x.drawImage(im,ox,oy,w,h); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,oy,w,h);
+  const d=Math.max(30,Math.min(48,w*0.03));
+  state.trees.forEach((t,i)=>{ if(t.mx==null||t.my==null) return; const cx=ox+t.mx*w, cy=oy+t.my*h;
+    x.beginPath(); x.arc(cx,cy,d/2,0,Math.PI*2); x.fillStyle="rgba(214,40,40,.92)"; x.fill(); x.lineWidth=d*0.08; x.strokeStyle="#fff"; x.stroke();
+    const lb=String(i+1); x.fillStyle="#fff"; x.font=pfont(Math.round(d*(lb.length>2?0.42:0.55)),true); x.textAlign="center"; x.textBaseline="middle"; x.fillText(lb,cx,cy+1); });
+  x.textAlign="left"; x.textBaseline="alphabetic";
+  out.push(await pdfJpeg(p));
+}
+/* 写真帳：3列×2段＝6枚/ページ（Excel の写真帳と同じ並び） */
+async function pdfBook(name,date,out){
+  const ST=window.surveyText, frames=[];
+  state.trees.forEach((t,i)=>{ const no=i+1, ph=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
+    if(ph.length) ph.forEach((src,k)=>frames.push({src,cap:ST.caption(t,no)+(ph.length>1?"\n（"+(k+1)+"/"+ph.length+"）":"")}));
+    else frames.push({src:null,cap:ST.caption(t,no)}); });
+  if(!frames.length) return;
+  const pages=Math.ceil(frames.length/6);
+  for(let pg=0;pg<pages;pg++){
+    const p=pdfPage(false), x=p.x, top=pdfHead(p,(state.bookTitle||"写真帳")+"　"+(name||""),`${date||""}　全${state.trees.length}件　${pg+1}/${pages}`);
+    const G=20, fw=(p.W-PDF_M*2-G*2)/3, ph=fw*330/250, ch=Math.min(200,(p.H-PDF_M-top-G)/2-ph);
+    for(let k=0;k<6;k++){ const fr=frames[pg*6+k]; if(!fr) break;
+      const fx=PDF_M+(k%3)*(fw+G), fy=top+(k<3?0:ph+ch+G);
+      x.fillStyle="#f0f2f4"; x.fillRect(fx,fy,fw,ph);
+      if(fr.src){ try{ const im=await loadImgEl(fr.src), sc=Math.max(fw/im.naturalWidth,ph/im.naturalHeight), iw=im.naturalWidth*sc, ih=im.naturalHeight*sc;
+          x.save(); x.beginPath(); x.rect(fx,fy,fw,ph); x.clip(); x.drawImage(im,fx+(fw-iw)/2,fy+(ph-ih)/2,iw,ih); x.restore(); }catch(e){} }
+      else { x.fillStyle="#888"; x.font=pfont(22); x.textAlign="center"; x.fillText("写真なし",fx+fw/2,fy+ph/2); x.textAlign="left"; }
+      x.strokeStyle="#9aa2ac"; x.lineWidth=2; x.strokeRect(fx,fy,fw,ph+ch); x.beginPath(); x.moveTo(fx,fy+ph); x.lineTo(fx+fw,fy+ph); x.stroke();
+      const lines=[]; fr.cap.split("\n").forEach((ln,li)=>{ x.font=pfont(li?19:21,!li); pdfWrap(x,ln,fw-20).forEach(l=>lines.push([l,!li])); });
+      const LH=26, maxL=Math.floor((ch-12)/LH);
+      lines.slice(0,maxL).forEach(([l,b],li)=>{ x.fillStyle="#000"; x.font=pfont(b?21:19,b); x.fillText(li===maxL-1&&lines.length>maxL?l.slice(0,-1)+"…":l,fx+10,fy+ph+8+LH*(li+1)-6); });
+    }
+    out.push(await pdfJpeg(p));
+  }
+}
+/* JPEG のページを並べた PDF（1ページ＝1枚の画像） */
+function makePdf(pages){
+  const enc=new TextEncoder(), chunks=[], offs=[]; let len=0;
+  const push=v=>{ const b=typeof v==="string"?enc.encode(v):v; chunks.push(b); len+=b.length; };
+  const begin=n=>{ offs[n]=len; push(n+" 0 obj\n"); };
+  push("%PDF-1.4\n"); push(new Uint8Array([0x25,0xE2,0xE3,0xCF,0xD3,0x0A]));
+  const n=pages.length, kids=pages.map((_,i)=>(3+i*3)+" 0 R").join(" ");
+  begin(1); push("<</Type/Catalog/Pages 2 0 R>>\nendobj\n");
+  begin(2); push(`<</Type/Pages/Kids[${kids}]/Count ${n}>>\nendobj\n`);
+  pages.forEach((pg,i)=>{ const P=3+i*3, C=P+1, I=P+2, pw=(pg.w*72/PDF_DPI).toFixed(2), ph=(pg.h*72/PDF_DPI).toFixed(2), cs=`q ${pw} 0 0 ${ph} 0 0 cm /Im0 Do Q`;
+    begin(P); push(`<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pw} ${ph}]/Resources<</XObject<</Im0 ${I} 0 R>>>>/Contents ${C} 0 R>>\nendobj\n`);
+    begin(C); push(`<</Length ${cs.length}>>\nstream\n${cs}\nendstream\nendobj\n`);
+    begin(I); push(`<</Type/XObject/Subtype/Image/Width ${pg.w}/Height ${pg.h}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${pg.data.length}>>\nstream\n`); push(pg.data); push("\nendstream\nendobj\n"); });
+  const xref=len, N=3+n*3;
+  push(`xref\n0 ${N}\n0000000000 65535 f \n`); for(let k=1;k<N;k++) push(String(offs[k]).padStart(10,"0")+" 00000 n \n");
+  push(`trailer\n<</Size ${N}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`);
+  return new Blob(chunks,{type:"application/pdf"});
+}
+async function exportPdf(){
+  const btn=document.getElementById("pdfBtn");
+  try{
+    state.caseName=document.getElementById("caseName").value; state.caseDate=document.getElementById("caseDate").value;
+    if(!window.surveyText){ alert("PDFの部品を読み込めませんでした。"); return; }
+    if(btn){ btn.disabled=true; btn.textContent="PDF作成中…"; }
+    const name=state.caseName||"", date=(state.caseDate||"").replace(/-/g,"/"), pages=[];
+    await pdfMaster(name,date,pages);
+    await pdfMap(name,date,pages);
+    await pdfBook(name,date,pages);
+    const blob=makePdf(pages);
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download=(state.caseName||"現場調査").replace(/[\/:*?"<>|\\]/g,"_")+"_"+(state.caseDate||"")+".pdf";
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),60000);
+    toast("PDFを作りました（"+pages.length+"ページ）");
+  }catch(e){ alert("PDF作成でエラー: "+(e&&e.message?e.message:e)); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent="PDF書き出し"; } }
 }
 
 </script>
