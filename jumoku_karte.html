@@ -231,6 +231,20 @@ dialog h2{margin:0 0 10px;font-size:17px;color:var(--leaf)}
 .bar .bbtn:disabled{opacity:.35}
 #btnUndo,#btnRedo{font-size:18px;min-width:40px}
 
+/* 知らせの中のボタン（↶ 戻す など） */
+.toast .tact{margin-left:12px;background:transparent;border:1px solid rgba(255,255,255,.6);color:#fff;border-radius:8px;padding:3px 10px;font-size:14px}
+
+/* 端末に保存できなかったとき（消えない赤い帯）・バックアップのすすめ */
+.saveerr{position:fixed;left:0;right:0;top:0;z-index:150;background:#FDECEA;color:#8C1D18;border-bottom:2px solid #C62828;
+  padding:calc(8px + env(safe-area-inset-top)) 14px 10px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:14px;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.saveerr .row{flex:none}
+.bknote{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:#FFF8E1;border:1px solid #E8C872;border-radius:10px;padding:8px 12px;margin:0 0 10px}
+.bknote .hint{margin:2px 0 0}
+.rvrow{align-items:flex-start}
+.rvrow .tklist{margin:2px 0 0}
+.rvrow .tklist li{padding:2px 0;border:0}
+.tklist li.tk-warn{color:#8A5A00}
+
 /* ---- 型・調整・フォーム ---- */
 #karte.design .kc[data-k]{outline:1.5px dashed rgba(30,136,229,.75);outline-offset:-1px;background:rgba(30,136,229,.06)}
 #karte.design .kc[data-k="off"]{outline-color:rgba(120,120,120,.45);background:transparent}
@@ -346,6 +360,7 @@ dialog.wide{max-width:720px}
 <body>
 
 <!-- ===================== 一覧画面 ===================== -->
+<div id="saveErr" class="saveerr hidden" role="alert"></div>
 <section id="listView">
   <div class="bar">
     <a class="bbtn" href="index.html" aria-label="アプリ一覧へ">🏠 ホーム</a>
@@ -358,9 +373,11 @@ dialog.wide{max-width:720px}
     </div>
     <input class="inp" id="listSearch" type="search" placeholder="🔍 No.・樹木番号・樹種・路線名・案件名でさがす" aria-label="さがす" style="margin-bottom:10px">
     <div id="syncStat" class="syncstat hidden" role="button"></div>
+    <div id="bkNote" class="bknote hidden"></div>
     <div id="listHead"></div>
     <div id="treeList"></div>
     <div id="listMore" style="margin:6px 0 16px"></div>
+    <button class="btn hidden" id="btnTrash" type="button" style="margin:0 0 16px">🗑 ゴミ箱</button>
     <details class="card mng"><summary><h2>カルテの型（様式）・Excel出力・バックアップ</h2></summary>
     <div class="card">
       <h2>カルテの型（様式）</h2>
@@ -473,6 +490,19 @@ dialog.wide{max-width:720px}
   <p class="hint">外観診断・腐朽診断（レジ）・根株診断・フォローアップ診断を、同じ木で作れます。路線名・樹木番号・樹種名・樹高・幹周・枝張などは引き継ぎます。</p>
   <div id="sibBody" class="sibrows"></div>
   <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" type="button" data-close>閉じる</button></div>
+</dialog>
+<dialog id="dlgReview">
+  <h2>🔍 見直し（入れ忘れの確認）</h2>
+  <p class="hint" id="rvSum"></p>
+  <div id="rvBody" class="sibrows"></div>
+  <p class="hint">No.・樹種・判定・写真・位置と、東京都の様式はマニュアルの基準で「足りない」とされる所を確かめます。内容が正しいかまでは確かめません。</p>
+  <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" type="button" id="rvNo" data-close>やめる</button><button class="btn pri" type="button" id="rvGo">このまま出力</button></div>
+</dialog>
+<dialog id="dlgTrash">
+  <h2>🗑 ゴミ箱</h2>
+  <p class="hint">削除した木は、写真も含めて30日間ここに残ります。「戻す」で一覧に戻ります（ほかの端末で削除された木もここに入ります）。</p>
+  <div id="trashBody" class="sibrows"></div>
+  <div class="row" style="margin-top:12px;justify-content:space-between"><button class="btn danger" type="button" id="trashEmpty">ゴミ箱を空にする</button><button class="btn" type="button" data-close>閉じる</button></div>
 </dialog>
 <dialog id="dlgGloss">
   <h2>用語の説明</h2>
@@ -2969,6 +2999,8 @@ function resetZoom() {
   m.setAttribute('content', c + ', maximum-scale=1'); setTimeout(() => m.setAttribute('content', c), 350);
 }
 function toast(msg, ms = 2600) { const t = h('div', { class: 'toast', role: 'status' }, msg); document.body.append(t); setTimeout(() => t.remove(), ms); }
+// ボタン付きの知らせ（「戻す」など）。少し長めに出す
+function toastAct(msg, label, fn, ms = 6000) { const b = h('button', { type: 'button', class: 'tact' }, label); const t = h('div', { class: 'toast', role: 'status' }, msg, b); b.onclick = () => { t.remove(); fn(); }; document.body.append(t); setTimeout(() => t.remove(), ms); }
 function b64bytes(b64) { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
 function bytesB64(buf) { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
 const fmtDate = d => { if (!d) return ''; const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(d); return m ? `${+m[1]}年${+m[2]}月${+m[3]}日` : d; };
@@ -2978,8 +3010,8 @@ const DB = {
   db: null,
   open() {
     return new Promise((res, rej) => {
-      const r = indexedDB.open('jumoku_karte', 2);
-      r.onupgradeneeded = () => { const d = r.result; for (const s of ['trees', 'photos', 'types']) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' }); };
+      const r = indexedDB.open('jumoku_karte', 3);
+      r.onupgradeneeded = () => { const d = r.result; for (const s of ['trees', 'photos', 'types', 'trash']) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' }); };
       r.onsuccess = () => { this.db = r.result; res(); };
       r.onerror = () => rej(r.error);
     });
@@ -3531,10 +3563,26 @@ function newTree(ty, base = {}) {
 function touch(t = cur) {
   if (!t) return;
   t.updated = Date.now();
-  if (t !== cur) { DB.put('trees', t); return; }
+  if (t !== cur) { DB.put('trees', t).then(() => saveFailed(null), saveFailed); return; }
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => { saveTimer = null; DB.put('trees', cur).catch(e => toast('保存に失敗しました: ' + e.message)); }, 300);
+  saveTimer = setTimeout(() => { saveTimer = null; const t2 = cur; if (t2) DB.put('trees', t2).then(() => saveFailed(null), saveFailed); }, 300);
   updateTitle(); histMark();
+}
+// 端末への保存に失敗したら、画面の上に赤い帯を出したままにする（閉じたり再読み込みしたりすると、入力が消えるかもしれない）
+let saveErr = null;
+function saveFailed(e) {
+  if (!e) { if (saveErr) { saveErr = null; const el = $('#saveErr'); if (el) el.classList.add('hidden'); } return; }
+  console.error(e); saveErr = e;
+  const el = $('#saveErr'); if (!el) return toast('保存に失敗しました: ' + e.message, 5000);
+  const full = e.name === 'QuotaExceededError' || /quota/i.test(e.message || '');
+  el.innerHTML = '';
+  el.append(h('div', {}, h('b', {}, '⚠️ この端末に保存できませんでした'),
+    h('div', {}, full ? '端末の空き容量が足りません。いらない写真・動画やアプリを消して空きを作ってから「もう一度保存」を押してください。' : `（${e.name || ''} ${e.message || ''}）`),
+    h('div', {}, '画面を閉じたり再読み込みしたりせず、まず「バックアップを保存」で今の内容をファイルに残してください。')),
+    h('div', { class: 'row' },
+      h('button', { type: 'button', class: 'btn', onclick: () => backup() }, 'バックアップを保存'),
+      h('button', { type: 'button', class: 'btn pri', onclick: async () => { try { if (cur) { clearTimeout(saveTimer); saveTimer = null; await DB.put('trees', cur); } saveFailed(null); toast('保存しました'); } catch (er) { saveFailed(er); } } }, 'もう一度保存')));
+  el.classList.remove('hidden');
 }
 /* ---------- 入力の「戻す・進む」（文字・□・手書き。写真の書き込みは写真の画面の戻す・進む） ---------- */
 const HIST = { id: null, list: [], i: -1, timer: null, busy: false };
@@ -6582,6 +6630,7 @@ function renderRoutes(all, head, list) {
   const geoN = xs.filter(x => treeGeo(x.t)).length;
   head.append(h('div', { class: 'row lt' },
     xs.length ? h('button', { type: 'button', class: 'btn pri', onclick: () => exportTrees(xs.map(x => x.t.id)) }, `この案件の${xs.length}本をExcelに`) : null,
+    xs.length ? h('button', { type: 'button', class: 'btn', onclick: () => reviewTrees(xs.map(x => x.t)) }, '🔍 見直し') : null,
     xs.length ? h('button', { type: 'button', class: 'btn', onclick: () => exportGis(xs.map(x => x.t), P) }, `🗺 地図データ（GIS）${geoN}本`) : null,
     P !== NO_PROJ ? h('button', { type: 'button', class: 'btn', onclick: () => renameProj(P) }, '✎ 案件名を変える') : null));
   if (!routes.size) list.append(h('div', { class: 'empty' }, '「＋ 路線・公園を追加」から、路線（または公園・場所）を作ってください。'));
@@ -7423,7 +7472,7 @@ async function syncWith(B, log) {
   for (const [id, tm] of Object.entries(idx.del)) {
     const t = trees.find(x => x.id === id);
     if (t && (t.updated || 0) > tm) { delete idx.del[id]; continue; } // 消されたあとに直した木は残す
-    if (t) { if (cur && cur.id === id) continue; for (const p of t.photos || []) await DB.del('photos', p.id); await DB.del('trees', id); trees = trees.filter(x => x.id !== id); gone++; }
+    if (t) { if (cur && cur.id === id) continue; await toTrash(t); gone++; } // ほかの端末で消した木も、この端末のゴミ箱から戻せる
     delete idx.trees[id];
   }
   // 取り込んだ様式・調整した様式
@@ -7654,20 +7703,63 @@ function openSibs() {
   }
   $('#dlgSib').showModal();
 }
+/* ---------- ゴミ箱：削除した木は30日間ここに置き、戻せるようにする（写真もそのまま残す） ---------- */
+const TRASH_DAYS = 30;
+let trash = []; // { id, tree, at }
+function unmarkDeleted(id) { const d = syncDeleted(); if (!(id in d)) return; delete d[id]; try { localStorage.setItem('jk_deleted', JSON.stringify(d)); } catch (e) { } }
+async function toTrash(t) {
+  const at = Date.now();
+  await DB.put('trash', { id: t.id, tree: t, at }); await DB.del('trees', t.id);
+  trash = trash.filter(x => x.id !== t.id); trash.push({ id: t.id, tree: t, at });
+  trees = trees.filter(x => x.id !== t.id); selected.delete(t.id);
+}
+async function fromTrash(ids) {
+  for (const id of ids) {
+    const x = trash.find(y => y.id === id); if (!x) continue;
+    const t = x.tree; t.updated = Date.now(); // ほかの端末で消されていても、消したあとに直した木として残る（同期）
+    await DB.put('trees', t); await DB.del('trash', id); unmarkDeleted(id);
+    trees = trees.filter(y => y.id !== id); trees.push(t); trash = trash.filter(y => y.id !== id);
+  }
+  syncSoon();
+}
+async function purgeTrash(ids) {
+  for (const id of ids) {
+    const x = trash.find(y => y.id === id); if (!x) continue;
+    for (const p of x.tree.photos || []) if (!trees.some(t => (t.photos || []).some(q => q.id === p.id))) await DB.del('photos', p.id);
+    await DB.del('trash', id); trash = trash.filter(y => y.id !== id);
+  }
+}
 // 一覧で選んだ木をまとめて削除
 async function delTrees(list) {
   if (!list.length) return;
-  if (!await ask(`選んだ${list.length}本の記録（写真・手書きも）を削除します。元に戻せません。よろしいですか？`, '削除する', true)) return;
-  for (const t of list) { markDeleted(t.id); for (const p of t.photos || []) await DB.del('photos', p.id); await DB.del('trees', t.id); selected.delete(t.id); }
-  const ids = new Set(list.map(t => t.id)); trees = trees.filter(t => !ids.has(t.id));
-  renderList(); toast(`${list.length}本を削除しました`);
+  if (!await ask(`選んだ${list.length}本の記録をゴミ箱に移します。${TRASH_DAYS}日間は戻せます。`, 'ゴミ箱へ', true)) return;
+  for (const t of list) { markDeleted(t.id); await toTrash(t); }
+  renderList(); syncSoon();
+  const ids = list.map(t => t.id); toastAct(`${list.length}本をゴミ箱に移しました`, '↶ 戻す', async () => { await fromTrash(ids); renderList(); toast('戻しました'); });
 }
 async function delTree() {
-  if (!await ask('この木の記録を削除します。元に戻せません。よろしいですか？', '削除する', true)) return;
+  if (!await ask(`この木の記録をゴミ箱に移します。${TRASH_DAYS}日間は戻せます。`, 'ゴミ箱へ', true)) return;
   markDeleted(cur.id); // ほかの端末でも消えるように
-  for (const p of cur.photos) await DB.del('photos', p.id);
-  await DB.del('trees', cur.id); trees = trees.filter(t => t.id !== cur.id); selected.delete(cur.id);
-  saveTimer = null; cur = null; await backToList(); toast('削除しました');
+  const id = cur.id; clearTimeout(saveTimer); saveTimer = null; await toTrash(cur);
+  cur = null; await backToList();
+  toastAct('ゴミ箱に移しました', '↶ 戻す', async () => { await fromTrash([id]); renderList(); toast('戻しました'); });
+}
+function openTrash() {
+  const b = $('#trashBody'); b.innerHTML = '';
+  const xs = [...trash].sort((a, c) => c.at - a.at);
+  if (!xs.length) b.append(h('div', { class: 'empty' }, 'ゴミ箱は空です。'));
+  for (const x of xs) {
+    const ty = typeOf(x.tree), left = Math.max(0, TRASH_DAYS - Math.floor((Date.now() - x.at) / 864e5));
+    b.append(h('div', { class: 'sibrow' },
+      h('div', {}, h('div', { class: 'nm' }, ty ? treeTitle(x.tree, ty) : '（様式のない記録）'),
+        h('div', { class: 'st' }, [ty && projOf(x.tree), ty && siteOf(x.tree), ty && ty.name, `${fmtTs(x.at)}に削除・あと${left}日で消えます`].filter(Boolean).join('　'))),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn pri', type: 'button', onclick: async () => { await fromTrash([x.id]); openTrash(); renderList(); toast('戻しました'); } }, '↶ 戻す'),
+        h('button', { class: 'btn danger', type: 'button', onclick: async () => { if (!await ask('この木の記録と写真を完全に削除します。元に戻せません。', '完全に削除', true)) return; await purgeTrash([x.id]); openTrash(); renderList(); } }, '完全に削除'))));
+  }
+  $('#trashEmpty').classList.toggle('hidden', !xs.length);
+  $('#trashEmpty').onclick = async () => { if (!await ask(`ゴミ箱の${trash.length}本を完全に削除します。元に戻せません。`, '完全に削除', true)) return; await purgeTrash(trash.map(y => y.id)); openTrash(); renderList(); };
+  if (!$('#dlgTrash').open) $('#dlgTrash').showModal();
 }
 
 /* =========================================================
@@ -7710,6 +7802,8 @@ function renderList() {
   head.innerHTML = ''; list.innerHTML = ''; more.innerHTML = '';
   const all = trees.map(treeInfo).filter(Boolean);
   const q = LS.q.trim();
+  renderBackupNote();
+  $('#btnTrash').classList.toggle('hidden', !trash.length); $('#btnTrash').textContent = `🗑 ゴミ箱（${trash.length}本）`;
   $('#listSearch').value = LS.q;
   // ---- 案件一覧・案件の中の路線
   if (LS.proj == null && !q) { renderProjects(all, head, list); renderTypes(); return; }
@@ -7736,7 +7830,8 @@ function renderList() {
     LS.select ? h('button', { type: 'button', class: 'btn', onclick: () => { for (const x of shown) selected.delete(x.t.id); renderList(); } }, '選択を外す') : null,
     LS.select && selN ? h('button', { type: 'button', class: 'btn danger', onclick: () => delTrees(shown.filter(x => selected.has(x.t.id)).map(x => x.t)) }, `選んだ${selN}本を削除`) : null,
     LS.select ? h('button', { type: 'button', class: 'btn pri', onclick: () => exportTrees(shown.filter(x => selected.has(x.t.id)).map(x => x.t.id)) }, `選んだ${selN}本をExcelに`) :
-      h('button', { type: 'button', class: 'btn pri', onclick: () => exportTrees(shown.map(x => x.t.id)) }, `${LS.judge || q ? '表示中の' : park ? 'この公園・場所の' : 'この路線の'}${shown.length}本をExcelに`)));
+      h('button', { type: 'button', class: 'btn pri', onclick: () => exportTrees(shown.map(x => x.t.id)) }, `${LS.judge || q ? '表示中の' : park ? 'この公園・場所の' : 'この路線の'}${shown.length}本をExcelに`),
+    shown.length ? h('button', { type: 'button', class: 'btn', onclick: () => reviewTrees(shown.map(x => x.t)) }, '🔍 見直し') : null));
   if (!shown.length) list.append(h('div', { class: 'empty' }, '該当する木がありません。'));
   const page = shown.slice(0, LS.limit);
   const frag = document.createDocumentFragment();
@@ -7835,16 +7930,17 @@ async function delType(ty) {
    ========================================================= */
 // 保存のしかた：'ask' = 毎回保存先を選ぶ（パソコンは保存ダイアログ、iPad は共有メニュー）／'dl' = すぐダウンロードフォルダへ
 const settingsSave = () => { try { return localStorage.getItem('jk_save') || 'ask'; } catch (e) { return 'ask'; } };
-// ボタンを押したその場で共有メニューを出す（押した直後でないと iPad は出させてくれない）。保存・取りやめで true、失敗で false
+// ボタンを押したその場で共有メニューを出す（押した直後でないと iPad は出させてくれない）。保存で 'saved'、取りやめで 'cancel'、失敗で false
 function shareByTap(file) {
   return new Promise(res => {
     const d = $('#dlgAsk'); $('#askMsg').textContent = `Excelができました（${file.name}）。「保存する」を押すと保存のメニューが出ます。`;
     const b = $('#askOk'), n = $('#askNo'); b.textContent = '保存する'; b.className = 'btn pri'; n.textContent = 'やめる'; n.classList.remove('hidden');
-    let v = true; d.onclose = () => res(v);
-    b.onclick = () => { navigator.share({ files: [file], title: file.name }).then(() => d.close(), er => { if (er.name !== 'AbortError') v = false; d.close(); }); };
+    let v = 'cancel'; d.onclose = () => res(v);
+    b.onclick = () => { navigator.share({ files: [file], title: file.name }).then(() => { v = 'saved'; d.close(); }, er => { if (er.name !== 'AbortError') v = false; d.close(); }); };
     n.onclick = () => d.close(); d.showModal();
   });
 }
+// 保存した（と思われる）とき true、取りやめたとき false
 async function shareOrDownload(file) {
   if (settingsSave() === 'ask') {
     const touch = /iPad|iPhone|Android|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document;
@@ -7852,21 +7948,22 @@ async function shareOrDownload(file) {
       try {
         const ext = (file.name.split('.').pop() || '').toLowerCase();
         const hd = await window.showSaveFilePicker({ suggestedName: file.name, id: 'jumoku_karte', types: [{ description: file.name, accept: { [file.type || 'application/octet-stream']: ['.' + ext] } }] });
-        const w = await hd.createWritable(); await w.write(file); await w.close(); toast('保存しました：' + hd.name); return;
-      } catch (e) { if (e.name === 'AbortError') return; }
+        const w = await hd.createWritable(); await w.write(file); await w.close(); toast('保存しました：' + hd.name); return true;
+      } catch (e) { if (e.name === 'AbortError') return false; }
     }
     if (touch && navigator.canShare && navigator.canShare({ files: [file] })) {
       let hinted = false; try { hinted = localStorage.getItem('jk_savehint') === '1'; localStorage.setItem('jk_savehint', '1'); } catch (e) { }
       if (!hinted) await say('このあと出るメニューで「“ファイル”に保存」を選ぶと、保存するフォルダ（iCloud Drive・このiPad内・OneDrive など）を選べます。AirDrop やメールで送ることもできます。');
-      try { await navigator.share({ files: [file], title: file.name }); return; } catch (e) {
-        if (e.name === 'AbortError') return;
+      try { await navigator.share({ files: [file], title: file.name }); return true; } catch (e) {
+        if (e.name === 'AbortError') return false;
         // 作るのに時間がかかると、共有メニューを出す許可が切れる（NotAllowedError）。ボタンを押してもらって、もう一度出す
-        if (e.name === 'NotAllowedError') { const r = await shareByTap(file); if (r) return; }
+        if (e.name === 'NotAllowedError') { const r = await shareByTap(file); if (r) return r === 'saved'; }
       }
     }
   }
   const a = h('a', { href: URL.createObjectURL(file), download: file.name }); document.body.append(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  return true;
 }
 function blobToDataURL(b) { return new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); }
 const SHARED_SETTINGS = ['jk_callouts', 'jk_callouts_ver', 'jk_cst', 'jk_minpt', 'jk_shapes', 'jk_lists', 'jk_map', 'jk_projects', 'jk_routes', 'jk_wavelegend'];
@@ -7880,8 +7977,26 @@ async function backup() {
   const settings = {}; try { for (const k of SHARED_SETTINGS) { const v = localStorage.getItem(k); if (v != null) settings[k] = v; } } catch (e) { }
   const data = JSON.stringify({ app: 'jumoku_karte', version: 2, saved: new Date().toISOString(), trees, photos, types: tys, settings });
   const d = new Date(); const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
-  await shareOrDownload(new File([data], `樹木カルテ_バックアップ_${stamp}.json`, { type: 'application/json' }));
+  if (await shareOrDownload(new File([data], `樹木カルテ_バックアップ_${stamp}.json`, { type: 'application/json' }))) { try { localStorage.setItem('jk_backup_at', String(Date.now())); } catch (e) { } saveFailed(null); renderBackupNote(); }
 }
+/* ---------- バックアップのすすめ：前回のバックアップ（または同期）から日がたった・木が増えたら、一覧の上に出す ---------- */
+function lastSafeAt() {
+  let at = 0; try { at = +(localStorage.getItem('jk_backup_at') || 0); } catch (e) { }
+  if (syncBackends().length) { let last = null; try { last = JSON.parse(localStorage.getItem('jk_sync_last') || 'null'); } catch (e) { } if (last && !last.res.some(r => /できません/.test(r))) at = Math.max(at, last.at); }
+  return at;
+}
+function renderBackupNote() {
+  const el = $('#bkNote'); if (!el) return;
+  const at = lastSafeAt(), changed = trees.filter(t => (t.updated || 0) > at).length, days = at ? Math.floor((Date.now() - at) / 864e5) : 0;
+  const show = changed && (at ? days >= 3 || changed >= 20 : trees.length >= 3);
+  el.classList.toggle('hidden', !show); if (!show) return;
+  const how = syncBackends().length ? '同期' : 'バックアップ';
+  el.innerHTML = '';
+  el.append(h('div', {}, h('b', {}, at ? `💾 前回の${how}から${days ? days + '日' : '今日'}・入力や変更が${changed}本` : `💾 まだバックアップがありません（${trees.length}本）`),
+    h('div', { class: 'hint' }, '記録はこの端末の中だけにあります。端末の故障・紛失や、ブラウザのデータ削除に備えて、ファイルに保存しておきましょう。')),
+    h('button', { type: 'button', class: 'btn pri', onclick: backup }, 'バックアップを保存'));
+}
+
 async function restore(file) {
   try {
     const data = JSON.parse(await file.text());
@@ -8199,10 +8314,45 @@ async function buildWorkbook(ty, list, fileName = '', opt = {}) {
   const blob = await zip.generateAsync({ type: 'blob', mimeType: macro ? 'application/vnd.ms-excel.sheet.macroEnabled.12' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', compression: 'DEFLATE' });
   return { blob, ext: macro ? 'xlsm' : 'xlsx' };
 }
+/* ---------- 見直し：Excel に出す前に、入れ忘れ（No.・樹種・判定・写真・位置、東京都の様式はマニュアルの基準）を木ごとに並べる ---------- */
+function reviewIssues(t) {
+  const ty = typeOf(t); if (!ty) return [];
+  const I = [], blank = r => roleRef(ty, r) && !String(roleVal(t, ty, r) || '').trim();
+  if ((roleRef(ty, 'no') || roleRef(ty, 'treeNo')) && (!roleRef(ty, 'no') || blank('no')) && (!roleRef(ty, 'treeNo') || blank('treeNo'))) I.push({ lv: 'ng', msg: 'No.・樹木番号がありません' });
+  if (blank('species')) I.push({ lv: 'ng', msg: '樹種がありません' });
+  if (!tkIs(ty) && blank('judge')) I.push({ lv: 'ng', msg: '判定が選ばれていません' });
+  if (Object.values(ty.fields).some(f => f.k === 'photo') && !(t.photos || []).some(p => p.slot)) I.push({ lv: 'ng', msg: '写真が1枚も入っていません' });
+  if (OVERVIEW_SLOT[ty.id] && !treeGeo(t)) I.push({ lv: 'warn', msg: '位置がありません（位置図に載りません）' });
+  if (tkIs(ty)) for (const x of tkIssues(t, ty)) if (x.lv === 'ng') I.push({ lv: 'ng', msg: x.msg });
+  return I;
+}
+// exporting：出力の前なら「このまま出力」で true。気になる所がなければ何も出さずに true
+function reviewTrees(list, exporting = false) {
+  const rows = list.map(t => ({ t, is: reviewIssues(t) })).filter(x => x.is.length);
+  if (exporting && !rows.length) return Promise.resolve(true);
+  return new Promise(res => {
+    const d = $('#dlgReview'), b = $('#rvBody'); b.innerHTML = ''; let go = false;
+    const ng = rows.filter(x => x.is.some(i => i.lv === 'ng')).length, pos = rows.filter(x => x.is.some(i => i.lv === 'warn')).length;
+    $('#rvSum').textContent = rows.length ? `${list.length}本のうち、入れ忘れがある木 ${ng}本${pos ? `・位置がない木 ${pos}本` : ''}。「開く」でその木へ。` : `✅ ${list.length}本とも、入れ忘れは見つかりませんでした。`;
+    const IC = { ng: '❗', warn: '📍' };
+    for (const { t, is } of rows.slice(0, 300)) {
+      const ty = typeOf(t);
+      b.append(h('div', { class: 'sibrow rvrow' },
+        h('div', {}, h('div', { class: 'nm' }, `${treeTitle(t, ty)}　`, h('span', { class: 'st' }, [siteOf(t), typeShort(ty)].filter(Boolean).join('・'))),
+          h('ul', { class: 'tklist' }, ...is.map(x => h('li', { class: 'tk-' + x.lv }, `${IC[x.lv]} ${x.msg}`)))),
+        h('button', { type: 'button', class: 'btn', onclick: async () => { d.close(); await openTree(t.id); if (tkIs(curType) && is.some(x => x.lv === 'ng')) openTkCheck(); } }, '開く')));
+    }
+    if (rows.length > 300) b.append(h('p', { class: 'hint' }, `ほか${rows.length - 300}本`));
+    $('#rvGo').classList.toggle('hidden', !exporting); $('#rvGo').onclick = () => { go = true; d.close(); };
+    $('#rvNo').textContent = exporting ? 'やめる' : '閉じる';
+    d.onclose = () => { if (!d.open) res(go); }; d.showModal(); // 前に閉じたときの close が遅れて届いても、開いている間は無視
+  });
+}
 async function exportTrees(ids) {
   await flush();
   const list = ids.map(id => trees.find(t => t.id === id)).filter(Boolean);
   if (!list.length) return toast('出力する木にチェックを入れてください');
+  if (!await reviewTrees(list, true)) return;
   const byType = new Map(); for (const t of list) { const ty = typeOf(t); if (!byType.has(ty)) byType.set(ty, []); byType.get(ty).push(t); }
   toast('Excelを作っています…', 1500);
   { const ch = list.filter(t => tkAutoDevice(t, typeOf(t))); if (ch.length) await saveTrees(ch); } // 様式3 の機器診断欄を最新の様式10・11 に
@@ -8224,7 +8374,6 @@ async function exportTrees(ids) {
       await shareOrDownload(new File([out.blob], base + '.' + out.ext, { type: out.blob.type }));
     } catch (e) { console.error(e); say(`「${job.map(x => x[0].name).join('・')}」のExcelを作れませんでした：` + e.message); }
   }
-  tkAfterExport(list); // 東京都の様式：マニュアルの基準で足りない記入があれば知らせる
 }
 
 /* =========================================================
@@ -8349,7 +8498,7 @@ async function migrateOld() {
   // 電波のない現場でも開けるように、このページを端末に保存しておく
   try { if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('jumoku_sw.js').catch(() => { }); } catch (e) { }
   if (CAM_MODE) { camPhone(CAM_MODE); return; } // iPhone：撮影画面だけを出す
-  try { await DB.open(); [trees, types] = await Promise.all([DB.all('trees'), DB.all('types')]); }
+  try { await DB.open(); [trees, types, trash] = await Promise.all([DB.all('trees'), DB.all('types'), DB.all('trash')]); }
   catch (e) { say('この端末では保存が使えません（プライベートブラウズ中かもしれません）'); }
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { }
   const fromSignIn = await odHandleRedirect().catch(() => false); // OneDrive のサインインから戻ったとき
@@ -8357,6 +8506,7 @@ async function migrateOld() {
   if (builtinSaveErr) toast('この端末に様式を保存できませんでした（' + builtinSaveErr.name + '）。Safari で開き直してください', 6000);
   types.sort((a, b) => (b.builtin ? 1 : 0) - (a.builtin ? 1 : 0) || a.created - b.created);
   try { await migrateOld(); } catch (e) { console.error(e); }
+  try { await purgeTrash(trash.filter(x => Date.now() - x.at > TRASH_DAYS * 864e5).map(x => x.id)); } catch (e) { console.error(e); } // ゴミ箱に30日より長くある木は消す
   for (const ty of types) { try { await loadTpl(ty); } catch (e) { console.error(e); toast(`「${ty.name}」の様式を読めませんでした：${e.message}`, 5000); } } // 1つ壊れていてもほかの様式は使えるように
   $('#btnNew').onclick = async () => {
     // 路線の中から追加するときは、その路線の最後の木の様式・引き継ぎ欄・No.+1 を使う
@@ -8376,6 +8526,7 @@ async function migrateOld() {
   let qTimer = null;
   $('#listSearch').oninput = e => { clearTimeout(qTimer); qTimer = setTimeout(() => { LS.q = e.target.value; LS.limit = 120; renderList(); }, 200); };
   $('#btnBackup').onclick = backup;
+  $('#btnTrash').onclick = openTrash;
   // ダイアログを閉じたら、拡大されていた画面を元の大きさに戻す
   document.addEventListener('close', e => { if (e.target.tagName === 'DIALOG' && !document.querySelector('dialog[open]')) resetZoom(); }, true);
   for (const id of ['#fileInbox', '#mInboxFile']) $(id).onchange = e => { const fs = [...e.target.files]; e.target.value = ''; $('#dlgMore').close(); openInbox(fs); };
@@ -8813,11 +8964,6 @@ function openTkCheck() {
   b.append(h('ul', { class: 'tklist' }, ...is.map(x => h('li', { class: 'tk-' + x.lv }, `${IC[x.lv]} ${x.msg}`, h('span', { class: 'hint' }, `（${x.src}）`)))));
   b.append(h('p', { class: 'hint' }, '出典：東京都建設局「令和3年度 街路樹診断等マニュアル」第Ⅲ章。判定は候補です。最後は診断者が総合的に判断してください。'));
   const d = $('#dlgTk'); if (!d.open) d.showModal();
-}
-// Excel に出したあと：確認が要る所があれば知らせる
-function tkAfterExport(list) {
-  let n = 0; for (const t of list) { const ty = typeOf(t); if (tkIs(ty)) n += tkIssues(t, ty).filter(x => x.lv === 'ng').length; }
-  if (n) setTimeout(() => toast(`マニュアルの基準で、記入が足りない所が${n}件あります（📘 マニュアルのチェック）`, 5000), 1800);
 }
 
 </script>
