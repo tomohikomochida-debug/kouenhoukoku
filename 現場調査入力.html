@@ -1133,7 +1133,7 @@ async function exportExcel(){
    PDF 書き出し：調査マスター → 位置図 → 写真帳 を1つの PDF に
    iPhone の印刷（window.print）は白紙になることがあるので使わない。
    ページ（A4 縦・150dpi）を画像に描き、その画像を並べた PDF を端末の上で作る。
-   白い所を作らないように、項目ごとに改ページせず、空きがあれば続けて詰める。
+   シート（調査マスター・位置図・写真帳）ごとに新しいページから始める。シートの中は空きがあれば続けて詰め、白紙のページは作らない。
    位置図の番号は、アプリと同じ「地図の左から何割・上から何割」で描く（ずれない）
    ========================================================= */
 const PDF_DPI=150, PDF_W=1240, PDF_H=1754, PDF_M=64;
@@ -1151,15 +1151,15 @@ function pdfWrap(x,text,maxW){ const out=[];
 /* 割り付け：ページごとに「描く手順」を並べる。描くのは後でページ1枚ずつ（iPhone のメモリを使いすぎない） */
 function pdfLayout(name,date){
   const ST=window.surveyText, mx=document.createElement("canvas").getContext("2d");
-  const X0=PDF_M, CW=PDF_W-PDF_M*2, TOP=PDF_M+64, BOT=PDF_H-PDF_M-28, FULL=BOT-TOP;
-  const pages=[[]]; let y=TOP;
-  const add=fn=>pages[pages.length-1].push(fn);
-  const newPage=()=>{ pages.push([]); y=TOP; };
+  const X0=PDF_M, TOP=PDF_M+64; let CW, BOT, FULL;
+  const pages=[]; let y=TOP;
+  const add=fn=>pages[pages.length-1].steps.push(fn);
+  const newPage=land=>{ const [W,H]=land?[PDF_H,PDF_W]:[PDF_W,PDF_H]; pages.push({land:!!land,steps:[]}); CW=W-PDF_M*2; BOT=H-PDF_M-28; FULL=BOT-TOP; y=TOP; };
+  newPage(false);
   const room=()=>BOT-y;
   const TH=58; // 見出しの高さ
   const title=(t,sub)=>{ const yy=y; add(x=>{ x.fillStyle="#214A37"; x.fillRect(X0,yy+6,8,34); x.fillStyle="#000"; x.font=pfont(30,true); x.textAlign="left"; x.fillText(t,X0+20,yy+34); const tw=x.measureText(t).width;
       if(sub){ x.font=pfont(19); x.fillStyle="#555"; x.fillText(sub,X0+20+tw+18,yy+34); x.fillStyle="#000"; } }); y+=TH; };
-  const gap=g=>{ if(y>TOP) y+=g; };
 
   /* 1. 調査マスター（Excel の「調査マスター」と同じ列） */
   const trees=state.trees||[], heads=["番号","区分","品名","仕様","数量","単位","摘要"], ws=[6,8,22,22,7,7,16], sum=ws.reduce((a,b)=>a+b,0);
@@ -1182,9 +1182,8 @@ function pdfLayout(name,date){
   /* 2. 位置図：空きが足りなければ次のページ。番号は地図の同じ割合の位置に */
   if(state.mapImage){
     const sz=state.mapSize||[1800,1240], ar=sz[0]/sz[1];
+    newPage(ar>=1); // 横長の地図は横向きのページに
     let w=CW, h=w/ar; if(h>FULL-TH){ h=FULL-TH; w=h*ar; }
-    gap(36);
-    if(TH+h>room()){ const fit=room()-TH, fw=Math.min(CW,fit*ar); if(fw>=w*0.5&&fit>=FULL*0.3){ w=fw; h=w/ar; } else newPage(); } // 半分までの縮小で入るなら、空いた所に詰める
     title("位置図");
     const yy=y, ox=X0+(CW-w)/2, src=state.mapImage, mks=state.trees.map((t,i)=>t.mx!=null&&t.my!=null?[t.mx,t.my,i+1]:null).filter(Boolean);
     add(async x=>{ const im=await loadImgEl(src); x.imageSmoothingQuality="high"; x.drawImage(im,ox,yy,w,h); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,yy,w,h);
@@ -1201,9 +1200,10 @@ function pdfLayout(name,date){
   trees.forEach((t,i)=>{ const ph=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
     ph.forEach((src,k)=>frames.push({src,cap:ST.caption(t,i+1)+(ph.length>1?"\n（"+(k+1)+"/"+ph.length+"）":"")})); });
   if(frames.length){
+    newPage(false); // 写真帳は縦のページから（枠の幅はこのページの幅で決める）
     const G=20, fw=(CW-G*2)/3, fh=fw*330/250, CLH=26, CPAD=12;
     const capLines=fr=>{ const out=[]; fr.cap.split("\n").forEach((ln,li)=>{ mx.font=pfont(li?19:21,!li); pdfWrap(mx,ln,fw-20).forEach(l=>out.push([l,!li])); }); return out; };
-    gap(36); let first=true;
+    let first=true;
     for(let s=0;s<frames.length;s+=3){
       const grp=frames.slice(s,s+3).map(fr=>({...fr,lines:capLines(fr)})), ch=Math.max(...grp.map(f=>f.lines.length))*CLH+CPAD*2-4, rh=fh+ch;
       if((first?TH:0)+rh>room()){ newPage(); }
@@ -1218,20 +1218,21 @@ function pdfLayout(name,date){
       y+=rh+G;
     }
   }
-  if(!pages[pages.length-1].length) pages.pop(); // 最後に何も描かないページは作らない
+  for(let i=pages.length-1;i>=0;i--) if(!pages[i].steps.length) pages.splice(i,1); // 何も描かないページは作らない
   return pages;
 }
 /* 1ページを描いて JPEG に（キャンバスは1枚を使い回す） */
-async function pdfRender(cv,steps,no,total,name,date){
-  const x=cv.getContext("2d"); x.setTransform(1,0,0,1,0,0); x.fillStyle="#fff"; x.fillRect(0,0,PDF_W,PDF_H); x.fillStyle="#000"; x.textBaseline="alphabetic"; x.textAlign="left";
+async function pdfRender(cv,pg,no,total,name,date){
+  const [W,H]=pg.land?[PDF_H,PDF_W]:[PDF_W,PDF_H]; if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
+  const x=cv.getContext("2d"); x.setTransform(1,0,0,1,0,0); x.fillStyle="#fff"; x.fillRect(0,0,W,H); x.fillStyle="#000"; x.textBaseline="alphabetic"; x.textAlign="left";
   // 上：案件名と日付、下：ページ番号
   x.font=pfont(22,true); x.fillText(((state.bookTitle&&state.bookTitle!=="写真帳")?state.bookTitle+"　":"現地調査　")+(name||""),PDF_M,PDF_M+26);
-  x.font=pfont(19); x.fillStyle="#555"; x.textAlign="right"; x.fillText(date||"",PDF_W-PDF_M,PDF_M+26);
-  x.fillStyle="#000"; x.fillRect(PDF_M,PDF_M+40,PDF_W-PDF_M*2,2);
-  x.fillStyle="#555"; x.textAlign="center"; x.font=pfont(18); x.fillText(no+" / "+total,PDF_W/2,PDF_H-PDF_M+8); x.textAlign="left"; x.fillStyle="#000";
-  for(const fn of steps) await fn(x);
+  x.font=pfont(19); x.fillStyle="#555"; x.textAlign="right"; x.fillText(date||"",W-PDF_M,PDF_M+26);
+  x.fillStyle="#000"; x.fillRect(PDF_M,PDF_M+40,W-PDF_M*2,2);
+  x.fillStyle="#555"; x.textAlign="center"; x.font=pfont(18); x.fillText(no+" / "+total,W/2,H-PDF_M+8); x.textAlign="left"; x.fillStyle="#000";
+  for(const fn of pg.steps) await fn(x);
   const b=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85));
-  return { w:PDF_W, h:PDF_H, data:new Uint8Array(await b.arrayBuffer()) };
+  return { w:W, h:H, data:new Uint8Array(await b.arrayBuffer()) };
 }
 /* JPEG のページを並べた PDF（1ページ＝1枚の画像） */
 function makePdf(pages){
