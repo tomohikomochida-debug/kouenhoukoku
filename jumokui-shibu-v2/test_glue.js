@@ -217,7 +217,11 @@ step('会費台帳の直接入力：検査と変更履歴', () => {
   assert.strictEqual(audit.get(audit.getLastRow(), 8), '納入済み');
   assert.strictEqual(audit.get(audit.getLastRow(), 5), 2026, '変更履歴に年度が入る');
   edit(k, '会費台帳_2026', r, '入金額', 18000, 'handleKaikeiEdit');
-  edit(k, '会費台帳_2026', r, '入金日', '2026-09-30', 'handleKaikeiEdit');
+  // 日付セルの編集では通し番号が渡される（46295 = 2026-09-30）
+  const ds = sh(k, '会費台帳_2026'), dc = col(ds, '入金日');
+  ds.set(r, dc, new sandbox.Date(Date.UTC(2026, 8, 30) - 9 * 3600 * 1000));
+  api.handleKaikeiEdit({ range: ds.getRange(r, dc), value: '46295', oldValue: undefined, user: { getEmail: () => 'kaikei@example.invalid' } });
+  assert.strictEqual(audit.get(audit.getLastRow(), 8), '2026-09-30', '日付は日付の形で記録');
   assert.strictEqual(cellOf(k, '会費台帳_2026', r, 'チェック（自動）'), 'OK');
 });
 
@@ -235,6 +239,9 @@ step('送金入力：確認 → 記録 → 二重記録しない → 取消', ()
   const log = sh(k, '送金記録');
   assert.strictEqual(log.getLastRow(), 2);
   assert.strictEqual(log.get(2, 6), 36000);
+  const sumSheet = sh(k, '送金集計');
+  const now26 = sumSheet.getRange(3, 1, sumSheet.getLastRow() - 2, 9).getValues().find(r => r[0] === 2026 && r[1] === '本会');
+  assert.strictEqual(now26[5], 36000, '送金記録の直後に送金集計が更新される');
   tick(k, n, 2, '実行', h);
   assert.strictEqual(log.getLastRow(), 2, '二重に記録しない');
   const id = log.get(2, 1);
@@ -247,7 +254,6 @@ step('送金入力：確認 → 記録 → 二重記録しない → 取消', ()
 });
 
 step('一覧・集計・管理シートの更新', () => {
-  assert.strictEqual(props.get('DIRTY'), '1');
   api.refreshTick();
   assert.ok(!props.has('DIRTY'));
   const m = sh(kaikei(), '会計一覧');

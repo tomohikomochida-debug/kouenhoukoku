@@ -589,6 +589,12 @@ function logError_(bookName, sheetName, row, message) {
 
 function markDirty_() { PropertiesService.getScriptProperties().setProperty('DIRTY', '1'); }
 
+// 操作のすぐ後に一覧・集計を更新する（失敗しても元の操作は取り消さず、次の自動更新に任せる）
+function refreshNow_() {
+  try { PropertiesService.getScriptProperties().deleteProperty('DIRTY'); refreshAll_(); }
+  catch (err) { markDirty_(); logError_('全体', '一覧の更新', '', err.message); }
+}
+
 function protectSheet_(sh, description) {
   const me = Session.getEffectiveUser();
   let p = sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).find(x => x.getDescription() === description);
@@ -882,7 +888,7 @@ function processMove_(sh, H, row) {
     }
     out('完了', '保存しました（途中から再開）：' + plan.id + ' ' + plan.after.name + ' の' + plan.action);
     sh.getRange(row, H['処理日時']).setValue(now_());
-    markDirty_();
+    refreshNow_();
     return;
   }
 
@@ -911,7 +917,7 @@ function processMove_(sh, H, row) {
   }
   out('完了', '保存しました：' + plan.id + ' ' + plan.after.name + ' の' + plan.action + (plan.feeAdds.length + plan.feeUpdates.length ? '（会費 ' + (plan.feeAdds.length + plan.feeUpdates.length) + '件）' : ''));
   sh.getRange(row, H['処理日時']).setValue(now_());
-  markDirty_();
+  refreshNow_();
 }
 
 function journalPlan_(receipt) {
@@ -1057,6 +1063,15 @@ function onRosterEdit_(e, sh) {
 }
 
 /* ---------- 会費台帳 ---------- */
+// 日付のセルは編集時に通し番号（例 46297）で渡されるので、日付の形に直して記録する
+function auditValue_(header, v, blank) {
+  if (v === undefined || v === null || v === '') return blank;
+  const s = String(v);
+  if (['納期限', '入金日'].includes(String(header)) && /^\d+(\.\d+)?$/.test(s)) {
+    return Utilities.formatDate(new Date(Math.round((Number(s) - 25569) * 86400000)), 'UTC', 'yyyy-MM-dd');
+  }
+  return s;
+}
 function onLedgerEdit_(e, sh) {
   const H = headerMap_(sh, LEDGER_HEADERS);
   const rows = editedRows_(e, 500);
@@ -1070,7 +1085,7 @@ function onLedgerEdit_(e, sh) {
   if (single) {
     const r = e.range.getRow();
     audit.appendRow([now_(), user, r, "'" + String(sh.getRange(r, H['登録番号']).getValue()), year, String(head[0]),
-      safe_(e.oldValue === undefined ? '' : String(e.oldValue)), safe_(e.value === undefined ? '（空欄）' : String(e.value))]);
+      safe_(auditValue_(head[0], e.oldValue, '')), safe_(auditValue_(head[0], e.value, '（空欄）'))]);
   } else {
     audit.appendRow([now_(), user, e.range.getA1Notation(), '', year, '複数セル（' + head.join('・') + '）', '（記録できません）', '貼り付けなどで変更']);
   }
@@ -1091,6 +1106,7 @@ function onLedgerEdit_(e, sh) {
       writeCheck_(sh, H, r, f, ctx);
       if (f || String(sh.getRange(r, H['登録番号']).getValue()).trim()) sh.getRange(r, H['最終更新（自動）']).setValue(stamp);
     });
+    refreshNow_();
   });
   markDirty_();
 }
@@ -1155,7 +1171,7 @@ function processNewYear_(sh, H, row) {
   sh.getRange(row, H['状態']).setValue('完了');
   sh.getRange(row, H['結果・確認内容']).setValue(now_() + '：' + year + '年度の会費行を ' + plan.adds.length + '件追加しました（' + Logic.yen(plan.total) + '／納期限 ' + plan.due + '）');
   sh.getRange(row, H['確認キー']).setValue('');
-  markDirty_();
+  refreshNow_();
 }
 
 /* ---------- 送金入力 ---------- */
@@ -1204,7 +1220,7 @@ function processTransfer_(sh, H, row) {
   sh.getRange(row, H['状態']).setValue('完了');
   sh.getRange(row, H['結果・確認内容']).setValue(now_() + '：記録しました（記録ID ' + recId + '）。実際の銀行送金はこのシステムでは行いません');
   sh.getRange(row, H['確認キー']).setValue('');
-  markDirty_();
+  refreshNow_();
 }
 
 /* ======================================================================
@@ -1283,6 +1299,8 @@ function writeTable_(sh, title, table, moneyCols) {
     sh.getRange(3, 1, table.rows.length, width).setValues(table.rows.map(r => r.map(v => (typeof v === 'string' && /^\d+$/.test(v) ? "'" + v : safe_(v)))));
     (moneyCols || []).forEach(h => { const i = table.header.indexOf(h); if (i >= 0) sh.getRange(3, i + 1, table.rows.length, 1).setNumberFormat('#,##0'); });
   }
+  for (let c = 2; c <= width; c++) sh.setColumnWidth(c, 130);
+  sh.setColumnWidth(1, 90);
   sh.setFrozenRows(2);
 }
 
