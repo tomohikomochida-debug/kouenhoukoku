@@ -1217,7 +1217,8 @@ function writeTable_(sh, title, table, moneyCols) {
   sh.getRange(2, 1, 1, width).setValues([table.header]).setFontWeight('bold').setBackground('#173f32').setFontColor('#ffffff');
   if (table.rows.length) {
     ensureRows_(sh, table.rows.length + 2);
-    sh.getRange(3, 1, table.rows.length, width).setValues(table.rows.map(r => r.map(v => safe_(v))));
+    // 「0001」のような番号が数値に変わらないよう、数字だけの文字列は文字として書く
+    sh.getRange(3, 1, table.rows.length, width).setValues(table.rows.map(r => r.map(v => (typeof v === 'string' && /^\d+$/.test(v) ? "'" + v : safe_(v)))));
     (moneyCols || []).forEach(h => { const i = table.header.indexOf(h); if (i >= 0) sh.getRange(3, i + 1, table.rows.length, 1).setNumberFormat('#,##0'); });
   }
   sh.setFrozenRows(2);

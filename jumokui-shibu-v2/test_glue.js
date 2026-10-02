@@ -33,17 +33,18 @@ class Range {
   setValue(v) { this.each((r, c) => this.sh.set(r, c, v)); return this; }
   clearContent() { this.each((r, c) => this.sh.set(r, c, '')); return this; }
   insertCheckboxes() { this.each((r, c) => { this.sh.check.add(r + ':' + c); if (this.sh.get(r, c) === '') this.sh.set(r, c, false); }); return this; }
-  setNumberFormat() { return this; } setDataValidation() { return this; } setBackground() { return this; } setBackgrounds(b) { assert.strictEqual(b.length, this.nr); return this; }
+  setNumberFormat(f) { this.each((r, c) => this.sh.fmt.set(r + ':' + c, f)); return this; } setDataValidation() { return this; } setBackground() { return this; } setBackgrounds(b) { assert.strictEqual(b.length, this.nr); return this; }
   setFontWeight() { return this; } setFontColor() { return this; } setWrap() { return this; }
   protect() { const p = new Protection(this.sh); p.type = 'RANGE'; this.sh.protections.push(p); return p; }
 }
 class Sheet {
-  constructor(ss, name) { Object.assign(this, { ss, name, cells: new Map(), maxRows: 1000, maxCols: 26, protections: [], check: new Set(), hidden: [] }); }
+  constructor(ss, name) { Object.assign(this, { ss, name, cells: new Map(), fmt: new Map(), maxRows: 1000, maxCols: 26, protections: [], check: new Set(), hidden: [] }); }
   getName() { return this.name; }
   get(r, c) { const v = this.cells.get(r + ':' + c); return v === undefined ? '' : v; }
   set(r, c, v) {
     assert.ok(r >= 1 && c >= 1 && r <= this.maxRows && c <= this.maxCols, this.name + ' 範囲外 ' + r + ',' + c);
-    if (typeof v === 'string' && v.startsWith("'")) v = v.slice(1); // 先頭の ' は「文字として保存」の印
+    if (typeof v === 'string' && /^\d+$/.test(v) && this.fmt.get(r + ':' + c) !== '@') v = Number(v); // 本物と同じく、書式が文字でなければ数字は数値になる
+    else if (typeof v === 'string' && v.startsWith("'")) v = v.slice(1); // 先頭の ' は「文字として保存」の印
     else if (typeof v === 'string' && /^[=+]/.test(v)) throw new Error('数式になる文字列を書こうとしました: ' + v);
     if (v === '' || v === null || v === undefined) this.cells.delete(r + ':' + c); else this.cells.set(r + ':' + c, v);
   }
@@ -245,6 +246,7 @@ step('一覧・集計・管理シートの更新', () => {
   assert.ok(!props.has('DIRTY'));
   const m = sh(kaikei(), '会計一覧');
   assert.deepStrictEqual(m.getRange(2, 1, 1, 6).getValues()[0], ['登録番号', '氏名', '登録期', '在籍状況', '2027年度', '2026年度']);
+  assert.strictEqual(m.get(3, 1), '0001', '会計一覧の番号は先頭の0を残す');
   const s = sh(kaikei(), '送金集計');
   const rows = s.getRange(3, 1, s.getLastRow() - 2, 9).getValues();
   const h26 = rows.find(r => r[0] === 2026 && r[1] === '本会');
