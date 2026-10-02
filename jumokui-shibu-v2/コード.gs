@@ -48,6 +48,8 @@ const APP = {
   pref: { code: '14', name: '神奈川県' },
   remitDeadline: '09-30', // 本会への納入期限（取扱要領 第4条）
   mailRecentDays: 7,      // 同じ人・同じ年度への督促は、この日数のあいだ再送しない
+  // 会員照会ページ（ウェブアプリ）の公開用URL。総務ブック「会員照会」の「照会のURL」が空欄のとき、これを入れる
+  lookupUrl: 'https://script.google.com/macros/s/AKfycbymjJ8F1RA-ZwZ-WTdNv3dp9Hm8WeZKHBSmQPH5BxMuaR3xk-fCia-FlBf3CJGdbkBB/exec',
 };
 
 /* ======================================================================
@@ -2497,7 +2499,7 @@ function refreshAll_() {
   rows.push(['研修ブック', 'https://docs.google.com/spreadsheets/d/' + APP.books.kenshu + '/edit']);
   try {
     // URLが空欄で、公開用（/exec）のURLが分かるときだけ入れる。/dev は持ち主専用なので使わない
-    const lsh = sheet_(ctx.soumu, '会員照会'), ur = sendSettingRow_(lsh, '照会のURL'), auto = lookupUrl_();
+    const lsh = sheet_(ctx.soumu, '会員照会'), ur = sendSettingRow_(lsh, '照会のURL'), auto = APP.lookupUrl || lookupUrl_();
     let url = String(lsh.getRange(ur, 2).getValue()).trim();
     if (!url && /\/exec$/.test(auto)) { lsh.getRange(ur, 2).setValue(auto); url = auto; }
     const note = !url ? '照会のURLが未設定（総務ブック「会員照会」に /exec で終わるURLを貼り付けてください）'

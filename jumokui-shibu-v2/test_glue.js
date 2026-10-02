@@ -148,7 +148,7 @@ const sandbox = {
 };
 sandbox.Date = class extends Date { constructor(...a) { if (a.length) super(...a); else super(FIXED_NOW); } static now() { return FIXED_NOW; } };
 vm.createContext(sandbox);
-vm.runInContext(src + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,研修の架空データを入れる,今すぐ一覧を更新,トリガーを止める,memberLookup,doGet,handleSoumuEdit,handleKaikeiEdit,handleKouhouEdit,handleKenshuEdit,refreshTick,headerMap_,APPLY_HEADERS,TRAINING_HEADERS,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
+vm.runInContext(src.replace(/lookupUrl: '[^']*'/, "lookupUrl: ''") + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,研修の架空データを入れる,今すぐ一覧を更新,トリガーを止める,memberLookup,doGet,handleSoumuEdit,handleKaikeiEdit,handleKouhouEdit,handleKenshuEdit,refreshTick,headerMap_,APPLY_HEADERS,TRAINING_HEADERS,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
 const api = sandbox.__api;
 const soumu = () => books[api.APP.books.soumu], kaikei = () => books[api.APP.books.kaikei], kouhou = () => books[api.APP.books.kouhou], kenshu = () => books[api.APP.books.kenshu];
 const sh = (b, n) => b.getSheetByName(n);
