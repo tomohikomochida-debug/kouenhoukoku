@@ -3,6 +3,7 @@
  * 第1段階：総務（正本・会員の異動）＋ 会計（会費台帳・年度追加・送金記録）
  * 第2段階：広報（督促メールの文面・対象・送信）＋ 総務（本番の送信アカウントの登録・送信記録・郵送リスト）
  * 第3段階：研修（申込フォーム・参加資格の照合・出欠）＋ 総務（長期未納の一覧）
+ * 第4段階：会員照会（会員が樹木医番号で年会費の納入状況を見るページ）
  *
  * 【はじめての設定】
  *  1. 新しい Apps Script プロジェクトの「コード.gs」に、このファイルの内容を全部貼り付けて保存する。
@@ -25,13 +26,16 @@
  *    締切・定員・開催日でフォームの受付は自動で閉じます。出欠は申込シートの「出欠」に入力し、
  *    年度ごとの「年度集計_2026」などに出欠の一覧が出ます。年度が変わると前の年度の研修のシートは非表示になります
  *    （シート一覧のボタンからいつでも再表示できます）。
+ *  - 会員照会：「デプロイ」→「新しいデプロイ」→ ウェブアプリ（実行：自分／アクセス：全員）で公開し、
+ *    総務ブック「会員照会」の「照会の公開」を「公開」にする。コードを貼り替えたときは「デプロイを管理」で
+ *    そのデプロイを編集し、バージョンを「新しいバージョン」にして更新する（URLは変わりません）。
  *  - 一覧・集計は操作のたびに自動更新（念のため10分ごとにも確認）。
  *
  * このプロジェクトはウェブアプリとして公開しないでください。
  */
 
 const APP = {
-  version: 'v2-第3段階-20261002',
+  version: 'v2-第4段階-20261003',
   books: {
     soumu: '1EpwGgak2yF5cEbu4YDUKmjwqaKj5-3690rOcnJu-oXs',   // 総務_正本_v2
     kaikei: '1CQv396GIBXz1M4xBi8pHE3J97iKJtsOeBey9n2-roUc',  // 会計_会費台帳_v2
@@ -757,6 +761,40 @@ const Logic = (() => {
     }).filter(x => x.years.length >= 2);
   }
 
+  /* ---------- 会員照会（第4段階） ---------- */
+  // 氏名は各部分の1文字目だけ見せる（「架空 桜子」→「架〇 桜〇」）
+  function maskName(name) {
+    return text(name).split(/[\s　]+/).filter(Boolean).map(p => { const c = [...p]; return c[0] + '〇'.repeat(Math.max(1, c.length - 1)); }).join(' ');
+  }
+
+  // 照会画面に出す内容。在籍・休会の会員だけ。今年度までの会費（対象外は出さない）と、未納があれば振込先
+  function lookupView(id, ctx) {
+    const notFound = { ok: false, message: '番号 ' + id + ' の会員は見つかりませんでした。番号をお確かめください。ご不明な点は支部へお問い合わせください。' };
+    const m = ctx.membersById.get(id);
+    if (!m || !['在籍', '休会'].includes(m.membership)) return notFound;
+    const fy = fiscalYear(ctx.today, ctx.startMonth);
+    const rows = ctx.fees.filter(f => f.id === id && f.year <= fy && f.status !== '対象外').sort((a, b) => b.year - a.year).map(f => {
+      const r = { year: f.year, amount: yen(f.ok ? f.amount : 0), due: f.due || '', status: '', note: '', unpaid: false };
+      if (!f.ok) { r.amount = ''; r.status = '確認中'; r.note = '支部で記録を確認しています'; return r; }
+      switch (f.status) {
+        case '未納': r.status = '未納'; r.unpaid = true; r.note = f.due < ctx.today ? '納期限を過ぎています' : '納期限は ' + f.due + ' です'; break;
+        case '納入済み': r.status = '納入済み'; r.note = f.paidDate ? f.paidDate + ' に入金を確認' : ''; break;
+        case '確認中': r.status = '確認中'; r.note = '入金を確認しています'; break;
+        case '免除': r.status = '免除'; break;
+        case '他支部納入済み': r.status = '他支部で納入'; r.note = '本人の申告による'; break;
+        default: r.status = f.status;
+      }
+      return r;
+    });
+    const pay = [...new Set(rows.filter(r => r.unpaid).map(r => r.year))].map(y => ctx.settings[y]).filter(Boolean)
+      .map(s => ({ year: s.year, bank: s.bank, payer: s.payer, contact: s.contact }));
+    const latest = Object.keys(ctx.settings).map(Number).filter(y => y <= fy).sort((a, b) => b - a)[0];
+    return {
+      ok: true, id, name: maskName(m.name), resting: m.membership === '休会', rows, pay,
+      contact: latest ? ctx.settings[latest].contact : '', asOf: ctx.today,
+    };
+  }
+
   let APP_REMIT_DEADLINE = '09-30';
   function setRemitDeadline(md) { APP_REMIT_DEADLINE = md; }
 
@@ -768,7 +806,7 @@ const Logic = (() => {
     matrix, yearTotals, transferSummary, setRemitDeadline,
     MAIL_KEYS, MAIL_MODES, SEND_STYLES, BCC_MAX, emailList, isEmail, dunningTargets, renderMail, commonTarget, checkTemplate, planSend, sendPreview,
 
-    KUBUN, JUDGES, EXTERNAL, OVERRIDES, ATTEND, FORM_ITEMS, parseTrainings, trainingState, formText, mapAnswers, judgeApplication, longUnpaid, nextTrainingId, yearAttendance,
+    KUBUN, JUDGES, EXTERNAL, OVERRIDES, ATTEND, FORM_ITEMS, parseTrainings, trainingState, formText, mapAnswers, judgeApplication, longUnpaid, nextTrainingId, yearAttendance, maskName, lookupView,
   };
 })();
 if (typeof module !== 'undefined') module.exports = { Logic, APP };
@@ -971,11 +1009,13 @@ function requireAllScopes_() {
 
 function メール送信を許可する() {
   requireAllScopes_();
+  ownerOnly_();
   console.log('メール送信は許可されています（今日あと ' + MailApp.getRemainingDailyQuota() + ' 人まで送れます）');
 }
 
 function 初期設定() {
   requireAllScopes_();
+  ownerOnly_();
   withLock_(() => {
     const soumu = book_('soumu'), kaikei = book_('kaikei');
     [soumu, kaikei].forEach(ss => { ss.setSpreadsheetTimeZone(APP.tz); ss.setSpreadsheetLocale('ja_JP'); });
@@ -1007,6 +1047,7 @@ function 初期設定() {
     if (oldRun) oldRun.setName('旧_送信実行（広報へ移動）');
     protectSheet_(ensureSheet_(soumu, '送信記録', SEND_LOG_HEADERS), '自動記録');
     protectSheet_(ensureSheet_(soumu, '郵送リスト', null), '自動出力');
+    setupLookup_(soumu); // 会員照会（第4段階）
     removeDefaultSheet_(soumu);
 
     // ---- 広報ブック ----
@@ -2167,6 +2208,7 @@ function refreshKenshu_(ctx) {
 
 // 試験用：研修2件と、判定の見本になる申込を手入力の形で入れる
 function 研修の架空データを入れる() {
+  ownerOnly_();
   withLock_(() => {
     const kenshu = book_('kenshu');
     const tl = sheet_(kenshu, '研修一覧'), TH = headerMap_(tl, TRAINING_HEADERS);
@@ -2198,10 +2240,171 @@ function 研修の架空データを入れる() {
 }
 
 /* ======================================================================
+ * 会員照会（第4段階）：会員が樹木医番号を入れると、年会費の納入状況が見られるページ
+ *  公開：Apps Script の「デプロイ」→「新しいデプロイ」→ 種類「ウェブアプリ」
+ *        次のユーザーとして実行「自分」、アクセスできるユーザー「全員」
+ *  総務ブック「会員照会」の「照会の公開」を「公開」にすると使えます（「停止」でいつでも止められます）
+ * ====================================================================== */
+const LOOKUP_ROWS = [
+  ['照会の公開', '停止', '公開：会員が照会できる／停止：照会できない（「現在停止中」と表示）'],
+  ['照会画面のお知らせ', '', '照会画面の上に表示する一言（空欄なら表示しません）'],
+  ['照会のURL（自動）', '', 'ウェブアプリとして公開すると、ここにURLが出ます。QRコードの案内に使ってください'],
+];
+const LOOKUP_LOG_HEADERS = ['日時', '登録番号', '結果'];
+const LOOKUP_PER_MINUTE = 30; // 全体で1分あたりの照会回数の上限（番号を順に試すのを遅くする）
+const LOOKUP_PER_ID_DAY = 20; // 同じ番号の1日あたりの照会回数の上限
+
+// 管理用の関数は、持ち主が Apps Script の画面から実行したときだけ動かす
+// （照会ページから google.script.run で呼ばれても動かないようにする）
+function ownerOnly_() {
+  const me = Session.getEffectiveUser().getEmail(), active = Session.getActiveUser().getEmail();
+  if (!active || active.toLowerCase() !== String(me).toLowerCase()) throw new Error('この操作は、システムを動かしているアカウントで Apps Script の画面から実行してください');
+}
+
+function setupLookup_(soumu) {
+  const sh = ensureSheet_(soumu, '会員照会', ['項目', '値', '説明']);
+  addSettingRows_(sh, LOOKUP_ROWS);
+  sh.getRange(sendSettingRow_(sh, '照会の公開'), 2).setDataValidation(list_(['公開', '停止']));
+  sh.setColumnWidth(1, 200); sh.setColumnWidth(2, 360); sh.setColumnWidth(3, 520);
+  protectRange_(sh.getRange(1, 1, sh.getMaxRows(), 1), '項目名');
+  protectRange_(sh.getRange(sendSettingRow_(sh, '照会のURL（自動）'), 2), '自動（照会のURL）');
+  protectSheet_(ensureSheet_(soumu, '照会記録', LOOKUP_LOG_HEADERS), '自動記録');
+}
+
+function lookupSetting_(soumu, key) {
+  const sh = sheet_(soumu, '会員照会');
+  return String(cell_(sh.getRange(sendSettingRow_(sh, key), 2).getValue())).trim();
+}
+
+function lookupUrl_() {
+  try { return ScriptApp.getService().getUrl() || ''; } catch (ignore) { return ''; }
+}
+
+function doGet() {
+  return HtmlService.createHtmlOutput(LOOKUP_PAGE)
+    .setTitle('年会費の納入状況の確認｜日本樹木医会神奈川県支部')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+// 照会ページから呼ばれる（引数は入力された番号だけ。名簿や台帳は読むだけで書き換えない）
+function memberLookup(input) {
+  const soumu = book_('soumu');
+  try {
+    const status = lookupSetting_(soumu, '照会の公開'), notice = lookupSetting_(soumu, '照会画面のお知らせ');
+    if (status !== '公開') return { ok: false, message: '現在、照会を停止しています。ご不明な点は支部へお問い合わせください。', notice };
+    const raw = String(input === null || input === undefined ? '' : input).slice(0, 20);
+    const id = Logic.normId(raw, APP.idDigits);
+    if (!id) return { ok: false, message: '樹木医番号を数字で入力してください（' + APP.idDigits + '桁まで）。', notice };
+    const cache = CacheService.getScriptCache();
+    const minuteKey = 'LK_M_' + Utilities.formatDate(new Date(), APP.tz, 'yyyyMMddHHmm');
+    const perMinute = Number(cache.get(minuteKey) || 0);
+    if (perMinute >= LOOKUP_PER_MINUTE) return { ok: false, message: '照会が混み合っています。1分ほどしてから、もう一度お試しください。', notice };
+    cache.put(minuteKey, String(perMinute + 1), 120);
+    const dayKey = 'LK_D_' + id + '_' + today_();
+    const perId = Number(cache.get(dayKey) || 0);
+    if (perId >= LOOKUP_PER_ID_DAY) { logLookup_(soumu, id, '上限で停止'); return { ok: false, message: 'この番号の照会は、本日の上限に達しました。明日以降にお試しください。', notice }; }
+    cache.put(dayKey, String(perId + 1), 21600);
+    const ctx = loadContext_();
+    const view = Logic.lookupView(id, ctx);
+    view.notice = notice;
+    logLookup_(soumu, id, view.ok ? '表示' : '該当なし');
+    return view;
+  } catch (err) {
+    logError_('会員照会', '照会', '', err.message);
+    return { ok: false, message: '表示できませんでした。時間をおいて、もう一度お試しください。' };
+  }
+}
+
+function logLookup_(soumu, id, result) {
+  try { sheet_(soumu, '照会記録').appendRow([now_(), "'" + id, result]); } catch (ignore) { /* 記録できなくても照会は続ける */ }
+}
+
+const LOOKUP_PAGE = `<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<style>
+  body { font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 0; background: #f4f6f4; color: #1d2b24; }
+  main { max-width: 560px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 20px; margin: 4px 0 2px; } .org { font-size: 13px; color: #4b5e54; }
+  .card { background: #fff; border-radius: 10px; padding: 16px; margin-top: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  label { display: block; font-size: 14px; margin-bottom: 6px; }
+  .row { display: flex; gap: 8px; } input { flex: 1; font-size: 20px; padding: 10px; border: 1px solid #9fb0a6; border-radius: 8px; min-width: 0; }
+  button { font-size: 17px; padding: 10px 18px; border: 0; border-radius: 8px; background: #1f5c45; color: #fff; }
+  button:disabled { opacity: .5; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 15px; } th, td { text-align: left; padding: 8px 4px; border-bottom: 1px solid #e3e8e5; vertical-align: top; }
+  .st { font-weight: bold; } .unpaid { color: #b3261e; } .paid { color: #1f6b3a; } .small { font-size: 13px; color: #4b5e54; }
+  .notice { background: #fff6dc; border-radius: 8px; padding: 10px; font-size: 14px; } .msg { color: #b3261e; }
+</style></head>
+<body><main>
+  <div class="org">日本樹木医会 神奈川県支部</div>
+  <h1>年会費の納入状況の確認</h1>
+  <div id="notice"></div>
+  <div class="card">
+    <label for="num">樹木医番号</label>
+    <div class="row"><input id="num" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="例：1234"><button id="go">照会</button></div>
+    <p class="small">入金から表示に反映されるまで、数日かかることがあります。</p>
+  </div>
+  <div id="out"></div>
+</main>
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+  function showNotice(n) { var b = $('notice'); b.textContent = ''; if (n) { var d = el('div', 'card notice', n); b.appendChild(d); } }
+  function render(v) {
+    $('go').disabled = false;
+    var out = $('out'); out.textContent = '';
+    showNotice(v && v.notice);
+    var card = el('div', 'card'); out.appendChild(card);
+    if (!v || !v.ok) { card.appendChild(el('p', 'msg', v && v.message ? v.message : '表示できませんでした。')); return; }
+    card.appendChild(el('div', '', '番号 ' + v.id + '　' + v.name + ' 様' + (v.resting ? '（休会中）' : '')));
+    card.appendChild(el('div', 'small', v.asOf + ' 現在の記録'));
+    if (!v.rows.length) { card.appendChild(el('p', '', '表示できる会費の記録がありません。')); }
+    else {
+      var t = el('table'), h = el('tr');
+      ['年度', '会費', '状況'].forEach(function (x) { h.appendChild(el('th', '', x)); });
+      t.appendChild(h);
+      v.rows.forEach(function (r) {
+        var tr = el('tr');
+        tr.appendChild(el('td', '', r.year + '年度'));
+        tr.appendChild(el('td', '', r.amount));
+        var td = el('td');
+        td.appendChild(el('div', 'st ' + (r.unpaid ? 'unpaid' : (r.status === '納入済み' ? 'paid' : '')), r.status));
+        if (r.note) td.appendChild(el('div', 'small', r.note));
+        tr.appendChild(td); t.appendChild(tr);
+      });
+      card.appendChild(t);
+    }
+    if (v.pay && v.pay.length) {
+      var p = el('div', 'card'); out.appendChild(p);
+      p.appendChild(el('div', 'st unpaid', 'お振り込み先'));
+      v.pay.forEach(function (s) {
+        p.appendChild(el('div', 'small', s.year + '年度分'));
+        if (s.bank) p.appendChild(el('div', '', '振込先：' + s.bank));
+        if (s.payer) p.appendChild(el('div', '', '振込名義：' + s.payer));
+      });
+    }
+    if (v.contact) out.appendChild(el('p', 'small', 'お問い合わせ：' + v.contact));
+  }
+  function go() {
+    var n = $('num').value.trim();
+    if (!n) { $('num').focus(); return; }
+    $('go').disabled = true; $('out').textContent = '';
+    $('out').appendChild(el('p', 'small', '照会しています…'));
+    google.script.run.withSuccessHandler(render).withFailureHandler(function () { render({ ok: false, message: '表示できませんでした。時間をおいて、もう一度お試しください。' }); }).memberLookup(n);
+  }
+  $('go').addEventListener('click', go);
+  $('num').addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
+</script>
+</body></html>`;
+
+/* ======================================================================
  * 一覧・集計の更新
  * ====================================================================== */
 function refreshTick() {
   const p = PropertiesService.getScriptProperties();
+  // 10分ごとの自動実行のほかから立て続けに呼ばれても、1分に1回までしか動かさない
+  const last = Number(p.getProperty('LAST_TICK') || 0);
+  if (Date.now() - last < 60000) return;
+  p.setProperty('LAST_TICK', String(Date.now()));
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return; // 次の回に更新する
   try {
@@ -2216,6 +2419,7 @@ function refreshTick() {
 }
 
 function 今すぐ一覧を更新() {
+  ownerOnly_();
   withLock_(() => {
     PropertiesService.getScriptProperties().deleteProperty('DIRTY');
     try { syncForms_(); } catch (err) { logError_('研修', 'フォームの取り込み', '', err.message); }
@@ -2284,6 +2488,12 @@ function refreshAll_() {
   rows.push(['会計ブック', 'https://docs.google.com/spreadsheets/d/' + APP.books.kaikei + '/edit']);
   rows.push(['広報ブック', 'https://docs.google.com/spreadsheets/d/' + APP.books.kouhou + '/edit']);
   rows.push(['研修ブック', 'https://docs.google.com/spreadsheets/d/' + APP.books.kenshu + '/edit']);
+  try {
+    const url = lookupUrl_(), lsh = sheet_(ctx.soumu, '会員照会'), ur = sendSettingRow_(lsh, '照会のURL（自動）');
+    const shown = url || '（まだ公開されていません：デプロイでウェブアプリとして公開してください）';
+    if (String(lsh.getRange(ur, 2).getValue()) !== shown) lsh.getRange(ur, 2).setValue(shown);
+    rows.push(['会員照会', lookupSetting_(ctx.soumu, '照会の公開') + (url ? '／' + url : '／未公開')]);
+  } catch (err) { rows.push(['会員照会', '「初期設定」を実行してください（' + err.message + '）']); }
   const admin = sheet_(ctx.soumu, '管理');
   admin.getRange(2, 1, Math.max(admin.getMaxRows() - 1, 1), 2).clearContent();
   admin.getRange(2, 1, rows.length, 2).setValues(rows.map(r => [r[0], safe_(String(r[1]))])).setWrap(true);
@@ -2352,6 +2562,7 @@ function writeTable_(sh, title, table, moneyCols) {
  * 試験用
  * ====================================================================== */
 function 架空データを入れる() {
+  ownerOnly_();
   withLock_(() => {
     const ctx = loadContext_();
     if (ctx.members.length || ctx.fees.length) throw new Error('正本か会費台帳に既にデータがあるため、架空データは入れません');
@@ -2410,6 +2621,7 @@ function 架空データを入れる() {
 }
 
 function トリガーを止める() {
+  ownerOnly_();
   ScriptApp.getProjectTriggers()
     .filter(t => TRIGGER_FNS.includes(t.getHandlerFunction()))
     .forEach(t => ScriptApp.deleteTrigger(t));

@@ -334,4 +334,30 @@ test('研修IDの自動採番と、年度の出欠の一覧', () => {
   assert.deepStrictEqual(m.rows, [['0001', '桜', K[0], 0, '', '欠席'], ['0004', '梅', K[0], 2, '出席', '出席'], ['', '一般 次郎', K[2], 0, '申込', '']]);
 });
 
+
+// ---- 会員照会（第4段階） ----
+test('会員照会：今年度までの会費、対象外は出さない、未納なら振込先、氏名は一部だけ', () => {
+  assert.strictEqual(Logic.maskName('架空 桜子'), '架〇 桜〇');
+  assert.strictEqual(Logic.maskName('樹木　太郎左衛門'), '樹〇 太〇〇〇〇');
+  const c = ctxOf(KM, KF.concat([
+    { id: '0004', year: 2027, amount: 18000, status: '未納' },
+    { id: '0001', year: 2025, amount: 0, status: '対象外' },
+  ]));
+  c.settings[2026].bank = '架空銀行'; c.settings[2026].payer = '番号＋氏名'; c.settings[2026].contact = '会計部会';
+  const v = Logic.lookupView('0004', c);
+  assert.ok(v.ok);
+  assert.strictEqual(v.name, '架〇 梅〇');
+  assert.deepStrictEqual(v.rows.map(r => [r.year, r.amount, r.status, r.note]), [[2026, '18,000円', '未納', '納期限を過ぎています']], '翌年度（2027）は出さない');
+  assert.deepStrictEqual(v.pay, [{ year: 2026, bank: '架空銀行', payer: '番号＋氏名', contact: '会計部会' }]);
+  assert.strictEqual(v.contact, '会計部会');
+  const p = Logic.lookupView('0001', c);
+  assert.deepStrictEqual(p.rows.map(r => [r.year, r.status, r.note]), [[2026, '納入済み', '2026-07-01 に入金を確認']], '対象外の年度は出さない');
+  assert.deepStrictEqual(p.pay, []);
+  assert.strictEqual(Logic.lookupView('0003', c).rows[0].status, '他支部で納入');
+  assert.ok(Logic.lookupView('0006', c).resting, '休会中も見られる');
+  ['0005', '0007', '0099'].forEach(id => assert.match(Logic.lookupView(id, c).message, /見つかりませんでした/, id + '：退会・転出・名簿にない番号は同じ表示'));
+  const e = Logic.lookupView('0002', c);
+  assert.deepStrictEqual(e.rows.map(r => [r.status, r.note]), [['確認中', '入金を確認しています']]);
+});
+
 console.log('\n全 ' + passed + ' 件のテストに合格しました');

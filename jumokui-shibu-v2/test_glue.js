@@ -83,6 +83,9 @@ const props = new Map();
 const triggers = [];
 function builder() { const b = { requireValueInList: () => b, setAllowInvalid: () => b, requireDate: () => b, build: () => ({}) }; return b; }
 const mails = [];
+let activeUser = 'owner@example.invalid'; // Apps Script の画面から実行している人（照会ページからの呼び出しは空欄）
+const cache = new Map();
+let webAppUrl = null;
 // フォームの模擬
 const forms = new Map();
 class FormItem {
@@ -127,11 +130,14 @@ const sandbox = {
     parseDate: (s, tz, f) => { const [y, m, d] = s.split('-').map(Number); return new sandbox.Date(Date.UTC(y, m - 1, d) - TZ_OFFSET); },
     getUuid: () => require('crypto').randomUUID(),
   },
-  Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@example.invalid' }) },
+  Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@example.invalid' }), getActiveUser: () => ({ getEmail: () => activeUser }) },
+  CacheService: { getScriptCache: () => ({ get: k => (cache.has(k) ? cache.get(k) : null), put: (k, v) => cache.set(k, v) }) },
+  HtmlService: { createHtmlOutput: h => { const o = { html: h, setTitle: t => { o.title = t; return o; }, addMetaTag: () => o }; return o; } },
   LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock: () => {}, releaseLock: () => {} }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => (props.has(k) ? props.get(k) : null), setProperty: (k, v) => props.set(k, v), deleteProperty: k => props.delete(k) }) },
   ScriptApp: {
     getProjectTriggers: () => triggers.slice(),
+    getService: () => ({ getUrl: () => webAppUrl }),
     deleteTrigger: t => { triggers.splice(triggers.indexOf(t), 1); },
     newTrigger: name => {
       const t = { getHandlerFunction: () => name };
@@ -142,7 +148,7 @@ const sandbox = {
 };
 sandbox.Date = class extends Date { constructor(...a) { if (a.length) super(...a); else super(FIXED_NOW); } static now() { return FIXED_NOW; } };
 vm.createContext(sandbox);
-vm.runInContext(src + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,研修の架空データを入れる,今すぐ一覧を更新,handleSoumuEdit,handleKaikeiEdit,handleKouhouEdit,handleKenshuEdit,refreshTick,headerMap_,APPLY_HEADERS,TRAINING_HEADERS,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
+vm.runInContext(src + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,研修の架空データを入れる,今すぐ一覧を更新,トリガーを止める,memberLookup,doGet,handleSoumuEdit,handleKaikeiEdit,handleKouhouEdit,handleKenshuEdit,refreshTick,headerMap_,APPLY_HEADERS,TRAINING_HEADERS,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
 const api = sandbox.__api;
 const soumu = () => books[api.APP.books.soumu], kaikei = () => books[api.APP.books.kaikei], kouhou = () => books[api.APP.books.kouhou], kenshu = () => books[api.APP.books.kenshu];
 const sh = (b, n) => b.getSheetByName(n);
@@ -163,12 +169,14 @@ function ledgerRows() {
   });
   return out.sort((a, b) => a.year - b.year || a.r - b.r);
 }
+// 10分ごとの自動実行（1分以内の連続呼び出しは止まるので、前回の時刻を消してから呼ぶ）
+function runTick() { props.delete('LAST_TICK'); api.refreshTick(); }
 let passed = 0;
 function step(name, fn) { fn(); passed++; console.log('OK  ' + name); }
 
 step('初期設定：シート・トリガーができる', () => {
   api.初期設定();
-  assert.deepStrictEqual(soumu().getSheets().map(s => s.name), ['正本', '異動受付', '会員異動履歴', '管理', 'エラー記録', '送信設定', '送信記録', '郵送リスト', '長期未納']);
+  assert.deepStrictEqual(soumu().getSheets().map(s => s.name), ['正本', '異動受付', '会員異動履歴', '管理', 'エラー記録', '送信設定', '送信記録', '郵送リスト', '会員照会', '照会記録', '長期未納']);
   assert.deepStrictEqual(kenshu().getSheets().map(s => s.name), ['研修一覧', '判定の基準']);
   assert.deepStrictEqual(kaikei().getSheets().map(s => s.name), ['年度設定', '送金入力', '送金記録', '会計一覧', '年度別集計', '送金集計', '台帳変更履歴']);
   assert.deepStrictEqual(triggers.map(t => t.getHandlerFunction()), ['handleSoumuEdit', 'handleKaikeiEdit', 'handleKouhouEdit', 'handleKenshuEdit', 'refreshTick']);
@@ -306,7 +314,7 @@ step('送金入力：確認 → 記録 → 二重記録しない → 取消', ()
 });
 
 step('一覧・集計・管理シートの更新', () => {
-  api.refreshTick();
+  runTick();
   assert.ok(!props.has('DIRTY'));
   const m = sh(kaikei(), '会計一覧');
   assert.deepStrictEqual(m.getRange(2, 1, 1, 6).getValues()[0], ['登録番号', '氏名', '登録期', '在籍状況', '2027年度', '2026年度']);
@@ -451,7 +459,7 @@ step('研修：研修会ごとの申込シートで判定 → フォーム作成
   assert.strictEqual(forms.size, 1, '2回目は作らない');
   // 回答 → 10分ごとの処理で、その研修の申込シートへ取り込む（同じ回答は1回だけ）
   form.respond('r1', 'shin@mail.jp', { '区分': K[0], '樹木医登録番号': '9', '樹木医の登録期': '第36期', '氏名': '新 太郎', '懇親会': '参加' });
-  api.refreshTick(); api.refreshTick();
+  runTick(); runTick();
   assert.strictEqual(ap.getLastRow(), 9);
   assert.deepStrictEqual([A(9, '受付ID'), A(9, '登録番号'), A(9, '登録期'), A(9, 'メール'), A(9, 'その他の回答'), A(9, '判定（自動）')],
     ['F-r1', '9', '第36期', 'shin@mail.jp', '懇親会：参加', '参加不可']);
@@ -472,7 +480,7 @@ step('研修：研修会ごとの申込シートで判定 → フォーム作成
   // 開催日を過ぎると判定は固定。出欠は年度集計へ
   const saved = FIXED_NOW;
   FIXED_NOW = Date.parse('2026-11-20T03:00:00Z');
-  api.refreshTick();
+  runTick();
   assert.deepStrictEqual([T(3, '受付（自動）'), form.accepting], ['終了（開催済み）', false]);
   edit(kaikei(), '会費台帳_2026', r04, '納入状況', '未納', 'handleKaikeiEdit');
   assert.strictEqual(A(4, '判定（自動）'), '要確認', '開催後は変わらない');
@@ -496,7 +504,7 @@ step('研修：研修会ごとの申込シートで判定 → フォーム作成
   // 年度が変わると、前の年度の研修のシートは非表示。手で再表示したものは、そのまま
   assert.ok(b.getSheets().every(x => !x.isSheetHidden()));
   FIXED_NOW = Date.parse('2027-04-02T03:00:00Z');
-  api.refreshTick();
+  runTick();
   assert.deepStrictEqual(b.getSheets().filter(x => x.isSheetHidden()).map(x => x.name).sort(), ['年度集計_2026', '申込_2026-03', '申込_TEST-01', '申込_TEST-02']);
   sh(b, '申込_TEST-02').showSheet();
   api.今すぐ一覧を更新();
@@ -508,6 +516,49 @@ step('研修：研修会ごとの申込シートで判定 → フォーム作成
   FIXED_NOW = saved;
   api.今すぐ一覧を更新();
   assert.deepStrictEqual(sh(soumu(), '長期未納').getRange(2, 1, 1, 5).getValues()[0], ['登録番号', '氏名', '登録期', '未納の年度', '未納額の合計']);
+  assert.deepStrictEqual(sandbox.__errors, [], 'エラー記録なし');
+});
+
+step('会員照会：停止中・公開・番号の入力・上限、管理用の関数は照会ページからは動かない', () => {
+  const look = n => api.memberLookup(n);
+  assert.match(look('4').message, /停止/);
+  const ls = sh(soumu(), '会員照会');
+  const rowOf = key => { for (let r = 2; r <= ls.getLastRow(); r++) if (ls.get(r, 1) === key) return r; };
+  assert.match(String(ls.get(rowOf('照会のURL（自動）'), 2)), /まだ公開されていません/);
+  ls.set(rowOf('照会の公開'), 2, '公開');
+  ls.set(rowOf('照会画面のお知らせ'), 2, '試験中です');
+  const v = look('４');
+  assert.ok(v.ok, JSON.stringify(v));
+  assert.deepStrictEqual([v.id, v.name, v.notice], ['0004', '架〇 梅〇', '試験中です']);
+  assert.strictEqual(JSON.stringify(v.rows.map(r => [r.year, r.status])), '[[2026,"未納"]]', '翌年度（2027）は出さない');
+  assert.match(v.pay[0].bank, /架空銀行/);
+  assert.match(look('0005').message, /見つかりませんでした/, '退会者は出さない');
+  assert.match(look('abc').message, /数字で/);
+  const log = sh(soumu(), '照会記録');
+  assert.deepStrictEqual([log.get(log.getLastRow(), 2), log.get(log.getLastRow(), 3)], ['0005', '該当なし']);
+  for (let i = 0; i < 19; i++) look('0001');
+  assert.ok(look('0001').ok);
+  assert.match(look('0001').message, /本日の上限/, '同じ番号は1日20回まで');
+  cache.clear();
+  // ページの表示と、URLの記録
+  assert.match(api.doGet().html, /年会費の納入状況の確認[\s\S]*memberLookup/);
+  webAppUrl = 'https://script.google.com/macros/s/xxx/exec';
+  api.今すぐ一覧を更新();
+  assert.strictEqual(ls.get(rowOf('照会のURL（自動）'), 2), webAppUrl);
+  // 照会ページ（だれでも開ける）から管理用の関数を呼ばれても動かない
+  activeUser = '';
+  assert.throws(() => api.トリガーを止める(), /Apps Script の画面から/);
+  assert.throws(() => api.初期設定(), /Apps Script の画面から/);
+  assert.throws(() => api.架空データを入れる(), /Apps Script の画面から/);
+  assert.strictEqual(triggers.length, 5, 'トリガーは止まっていない');
+  assert.ok(look('0001').ok, '照会はできる');
+  activeUser = 'owner@example.invalid';
+  // 自動更新は1分以内に何度呼ばれても1回だけ
+  props.set('DIRTY', '1'); runTick(); assert.ok(!props.has('DIRTY'));
+  props.set('DIRTY', '1'); api.refreshTick(); assert.ok(props.has('DIRTY'), '1分以内の2回目は何もしない');
+  props.delete('DIRTY');
+  ls.set(rowOf('照会の公開'), 2, '停止');
+  assert.match(look('0001').message, /停止/);
   assert.deepStrictEqual(sandbox.__errors, [], 'エラー記録なし');
 });
 
