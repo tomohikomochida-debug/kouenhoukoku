@@ -524,7 +524,7 @@ step('会員照会：停止中・公開・番号の入力・上限、管理用�
   assert.match(look('4').message, /停止/);
   const ls = sh(soumu(), '会員照会');
   const rowOf = key => { for (let r = 2; r <= ls.getLastRow(); r++) if (ls.get(r, 1) === key) return r; };
-  assert.match(String(ls.get(rowOf('照会のURL（自動）'), 2)), /まだ公開されていません/);
+  assert.strictEqual(ls.get(rowOf('照会のURL'), 2), '', 'URLは最初は空欄');
   ls.set(rowOf('照会の公開'), 2, '公開');
   ls.set(rowOf('照会画面のお知らせ'), 2, '試験中です');
   const v = look('４');
@@ -542,9 +542,20 @@ step('会員照会：停止中・公開・番号の入力・上限、管理用�
   cache.clear();
   // ページの表示と、URLの記録
   assert.match(api.doGet().html, /年会費の納入状況の確認[\s\S]*memberLookup/);
+  webAppUrl = 'https://script.google.com/macros/s/head/dev';
+  api.今すぐ一覧を更新();
+  assert.strictEqual(ls.get(rowOf('照会のURL'), 2), '', '/dev（持ち主専用）のURLは入れない');
+  assert.ok(sh(soumu(), '管理').getRange(2, 2, 30, 1).getValues().some(r => /照会のURLが未設定/.test(r[0])));
   webAppUrl = 'https://script.google.com/macros/s/xxx/exec';
   api.今すぐ一覧を更新();
-  assert.strictEqual(ls.get(rowOf('照会のURL（自動）'), 2), webAppUrl);
+  assert.strictEqual(ls.get(rowOf('照会のURL'), 2), webAppUrl, '公開用（/exec）が分かれば入れる');
+  ls.set(rowOf('照会のURL'), 2, 'https://script.google.com/macros/s/mine/exec');
+  api.今すぐ一覧を更新();
+  assert.strictEqual(ls.get(rowOf('照会のURL'), 2), 'https://script.google.com/macros/s/mine/exec', '貼り付けたURLは書き換えない');
+  // 前の版の「照会のURL（自動）」（/dev 入り）は、貼り付ける形に変わる
+  ls.set(rowOf('照会のURL'), 1, '照会のURL（自動）'); ls.set(rowOf('照会のURL（自動）'), 2, 'https://script.google.com/macros/s/head/dev');
+  api.初期設定();
+  assert.deepStrictEqual([rowOf('照会のURL（自動）'), ls.get(rowOf('照会のURL'), 2)], [undefined, 'https://script.google.com/macros/s/xxx/exec']);
   // 照会ページ（だれでも開ける）から管理用の関数を呼ばれても動かない
   activeUser = '';
   assert.throws(() => api.トリガーを止める(), /Apps Script の画面から/);

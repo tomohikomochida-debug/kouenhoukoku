@@ -2248,7 +2248,7 @@ function 研修の架空データを入れる() {
 const LOOKUP_ROWS = [
   ['照会の公開', '停止', '公開：会員が照会できる／停止：照会できない（「現在停止中」と表示）'],
   ['照会画面のお知らせ', '', '照会画面の上に表示する一言（空欄なら表示しません）'],
-  ['照会のURL（自動）', '', 'ウェブアプリとして公開すると、ここにURLが出ます。QRコードの案内に使ってください'],
+  ['照会のURL', '', '会員に案内する照会ページのURL（末尾が /exec）。デプロイ画面の「ウェブアプリ」のURLを貼り付けてください。QRコードの案内に使います'],
 ];
 const LOOKUP_LOG_HEADERS = ['日時', '登録番号', '結果'];
 const LOOKUP_PER_MINUTE = 30; // 全体で1分あたりの照会回数の上限（番号を順に試すのを遅くする）
@@ -2263,11 +2263,18 @@ function ownerOnly_() {
 
 function setupLookup_(soumu) {
   const sh = ensureSheet_(soumu, '会員照会', ['項目', '値', '説明']);
+  // 前の版の「照会のURL（自動）」は、/dev（持ち主専用）のURLが入ることがあったため、貼り付ける形に変える
+  for (let r = 2; r <= sh.getLastRow(); r++) {
+    if (String(sh.getRange(r, 1).getValue()).trim() !== '照会のURL（自動）') continue;
+    sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).filter(x => x.getDescription() === '自動（照会のURL）').forEach(x => x.remove());
+    sh.getRange(r, 1).setValue('照会のURL');
+    sh.getRange(r, 3).setValue(LOOKUP_ROWS.find(x => x[0] === '照会のURL')[2]);
+    if (!/\/exec$/.test(String(sh.getRange(r, 2).getValue()).trim())) sh.getRange(r, 2).setValue('');
+  }
   addSettingRows_(sh, LOOKUP_ROWS);
   sh.getRange(sendSettingRow_(sh, '照会の公開'), 2).setDataValidation(list_(['公開', '停止']));
   sh.setColumnWidth(1, 200); sh.setColumnWidth(2, 360); sh.setColumnWidth(3, 520);
   protectRange_(sh.getRange(1, 1, sh.getMaxRows(), 1), '項目名');
-  protectRange_(sh.getRange(sendSettingRow_(sh, '照会のURL（自動）'), 2), '自動（照会のURL）');
   protectSheet_(ensureSheet_(soumu, '照会記録', LOOKUP_LOG_HEADERS), '自動記録');
 }
 
@@ -2489,10 +2496,13 @@ function refreshAll_() {
   rows.push(['広報ブック', 'https://docs.google.com/spreadsheets/d/' + APP.books.kouhou + '/edit']);
   rows.push(['研修ブック', 'https://docs.google.com/spreadsheets/d/' + APP.books.kenshu + '/edit']);
   try {
-    const url = lookupUrl_(), lsh = sheet_(ctx.soumu, '会員照会'), ur = sendSettingRow_(lsh, '照会のURL（自動）');
-    const shown = url || '（まだ公開されていません：デプロイでウェブアプリとして公開してください）';
-    if (String(lsh.getRange(ur, 2).getValue()) !== shown) lsh.getRange(ur, 2).setValue(shown);
-    rows.push(['会員照会', lookupSetting_(ctx.soumu, '照会の公開') + (url ? '／' + url : '／未公開')]);
+    // URLが空欄で、公開用（/exec）のURLが分かるときだけ入れる。/dev は持ち主専用なので使わない
+    const lsh = sheet_(ctx.soumu, '会員照会'), ur = sendSettingRow_(lsh, '照会のURL'), auto = lookupUrl_();
+    let url = String(lsh.getRange(ur, 2).getValue()).trim();
+    if (!url && /\/exec$/.test(auto)) { lsh.getRange(ur, 2).setValue(auto); url = auto; }
+    const note = !url ? '照会のURLが未設定（総務ブック「会員照会」に /exec で終わるURLを貼り付けてください）'
+      : /\/exec$/.test(url) ? url : url + '（末尾が /exec のURLにしてください。/dev は持ち主しか開けません）';
+    rows.push(['会員照会', lookupSetting_(ctx.soumu, '照会の公開') + '／' + note]);
   } catch (err) { rows.push(['会員照会', '「初期設定」を実行してください（' + err.message + '）']); }
   const admin = sheet_(ctx.soumu, '管理');
   admin.getRange(2, 1, Math.max(admin.getMaxRows() - 1, 1), 2).clearContent();
