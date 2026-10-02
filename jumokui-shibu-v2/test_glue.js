@@ -543,6 +543,7 @@ step('旧形式の「会費台帳」1枚を年度ごとのシートへ移す', (
   api.初期設定();
   const TH = api.headerMap_(oldTl, api.TRAINING_HEADERS);
   assert.strictEqual(oldTl.get(2, TH['研修名']), '前の版の研修', '研修一覧に列が入っても値はそのまま');
+  assert.strictEqual(oldTl.fmt.get('2:' + TH['年度（自動）']), '0', '年度は数字の書式（日付の書式を引き継がない）');
   assert.strictEqual(oldTl.get(2, TH['申込シート（自動）']), '申込_2026-07');
   const moved = ke.getSheetByName('申込_2026-07'), MH = api.headerMap_(moved, api.APPLY_HEADERS);
   assert.deepStrictEqual([moved.get(2, MH['受付ID']), moved.get(2, MH['登録番号']), moved.get(2, MH['氏名']), moved.get(2, MH['出欠']), moved.get(3, MH['受付ID'])], ['F-a', '1234', '前の版 の人', '出席', '']);

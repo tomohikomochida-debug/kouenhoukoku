@@ -1826,7 +1826,7 @@ function setupKenshu_(kenshu) {
   addColumnAfter_(old, 'フォームURL（自動）', '申込シート（自動）');
   const tl = ensureSheet_(kenshu, '研修一覧', TRAINING_HEADERS);
   setupInputSheet_(tl, TRAINING_HEADERS, {
-    checkbox: 'フォーム作成', auto: TRAINING_AUTO, hide: ['フォームID'], dates: ['開催日', '申込締切'], numbers: ['定員'], texts: ['研修ID'],
+    checkbox: 'フォーム作成', auto: TRAINING_AUTO, hide: ['フォームID'], dates: ['開催日', '申込締切'], numbers: ['定員', '年度（自動）'], texts: ['研修ID'],
     widths: { '研修名': 220, '案内文': 260, 'フォームURL（自動）': 220, '申込シート（自動）': 140, '結果・確認内容': 360 }, rows: 200,
   });
   const TH = headerMap_(tl, TRAINING_HEADERS);
@@ -1850,6 +1850,8 @@ function setupApplySheet_(sh) {
     widths: { '理由（自動）': 380, '連絡事項': 200, 'その他の回答': 200 }, rows: 300,
   });
   const AH = headerMap_(sh, APPLY_HEADERS);
+  sh.getRange(2, AH['受付日時'], sh.getMaxRows() - 1, 1).setNumberFormat('yyyy-mm-dd hh:mm');
+  sh.getRange(2, AH['判定日（自動）'], sh.getMaxRows() - 1, 1).setNumberFormat('yyyy-mm-dd');
   APPLY_AUTO.forEach(h => protectRange_(sh.getRange(1, AH[h], sh.getMaxRows(), 1), '自動列（' + h + '）'));
 }
 
