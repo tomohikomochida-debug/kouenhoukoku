@@ -478,6 +478,8 @@ const Logic = (() => {
   /* ---------- 督促メール ---------- */
   const MAIL_KEYS = ['氏名', '登録番号', '対象年度', '会費額', '本会分', '支部分', '地区協議会分', '納期限', '振込先', '振込名義', '問い合わせ先'];
   const MAIL_MODES = ['停止', '試験', '本番'];
+  const SEND_STYLES = ['BCCで一斉', '1人ずつ'];
+  const BCC_MAX = 50; // 無料のGmailは1通の宛先が50人まで
 
   function emailList(v) { return text(v).normalize('NFKC').split(/[,、;\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean); }
   function isEmail(x) { return /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(x); }
@@ -501,7 +503,8 @@ const Logic = (() => {
     return out.sort((a, b) => b.year - a.year || a.id.localeCompare(b.id));
   }
 
-  function renderMail(tpl, t, s) {
+  // bcc=true のときは全員に同じ文面なので、個人の項目（氏名・登録番号）は使えない
+  function renderMail(tpl, t, s, bcc) {
     const map = {
       '氏名': t.name, '登録番号': t.id, '対象年度': t.year, '会費額': yen(t.amount), '本会分': yen(s.main), '支部分': yen(s.branch),
       '地区協議会分': yen(s.district), '納期限': t.due, '振込先': s.bank, '振込名義': s.payer, '問い合わせ先': s.contact,
@@ -509,16 +512,20 @@ const Logic = (() => {
     return String(tpl).replace(/\{\{([^}]*)\}\}/g, (_, k) => {
       k = k.trim();
       check(Object.prototype.hasOwnProperty.call(map, k), '文面に使えない差し込み項目があります：{{' + k + '}}（使えるのは ' + MAIL_KEYS.map(x => '{{' + x + '}}').join(' ') + '）');
+      check(!(bcc && ['氏名', '登録番号'].includes(k)), 'BCCで一斉に送るときは、全員に同じ文面が届くため {{' + k + '}} は使えません。文面から外すか、総務ブック「送信設定」の送り方を「1人ずつ」にしてください');
       return String(map[k]);
     });
   }
+
+  // BCC一斉送信の文面に入れる値（年度設定の標準の会費額・納期限）
+  function commonTarget(year, s) { return { id: '', name: '', year, amount: s.total, due: s.due }; }
 
   function checkTemplate(subject, body) {
     check(text(subject) && !/[\r\n]/.test(subject) && text(subject).length <= 150, '広報ブック「文面」の件名を確認してください（改行なし・150文字以内）');
     check(text(body) && String(body).length <= 20000, '広報ブック「文面」の本文を入力してください');
   }
 
-  // v: { year, mode, testTo, account, allowed, limit, subject, body, selected(Map 'id:year'→true/false), history[] }
+  // v: { year, mode, style, testTo, account, allowed, limit, subject, body, selected(Map 'id:year'→true/false), history[] }
   function planSend(v, ctx) {
     const year = toInt(v.year);
     check(year >= 2000 && year <= 2099, '「対象年度」を4桁で入力してください');
@@ -526,6 +533,9 @@ const Logic = (() => {
     check(s, year + '年度の年度設定がありません');
     const mode = text(v.mode);
     check(mode === '試験' || mode === '本番', '総務ブック「送信設定」の送信モードが「' + (mode || '空欄') + '」です。送るときは「試験」か「本番」にしてください');
+    const style = text(v.style) || SEND_STYLES[0];
+    check(SEND_STYLES.includes(style), '総務ブック「送信設定」の送り方は「' + SEND_STYLES.join('」か「') + '」にしてください');
+    const bcc = style === 'BCCで一斉';
     checkTemplate(v.subject, v.body);
     let testTo = '';
     if (mode === '試験') {
@@ -537,10 +547,12 @@ const Logic = (() => {
     }
     const limit = toInt(v.limit);
     check(limit >= 1 && limit <= 100, '送信設定の「1回の送信上限」は1〜100にしてください');
+    // 文面の誤りは、送る相手がいなくても先に知らせる
+    if (bcc) renderMail(v.body, commonTarget(year, s), s, true);
     const all = dunningTargets(ctx.members, ctx.fees, ctx.today).filter(t => t.year === year);
     const skipped = { '郵送': 0, '要確認': 0, '送らない': 0, '最近送信済み': 0 };
     const today = Date.parse(ctx.today + 'T00:00:00Z'), days = v.recentDays || 7;
-    const messages = [];
+    const picked = [];
     all.forEach(t => {
       if (t.route !== 'メール') { skipped[t.route]++; return; }
       if (v.selected && v.selected.get(t.id + ':' + t.year) === false) { skipped['送らない']++; return; }
@@ -548,26 +560,43 @@ const Logic = (() => {
         (['送信中', '結果不明'].includes(h.result) || (['送信済み', '試験送信済み'].includes(h.result) && today - Date.parse(h.day + 'T00:00:00Z') < days * 86400000)));
       if (recent) { skipped['最近送信済み']++; return; }
       if (mode === '本番') check(!t.emails.some(a => /\.(invalid|example|test|localhost)$/.test(a)), t.id + ' の会費案内先が試験用のアドレスです。本番では送れません');
-      messages.push({
-        id: t.id, name: t.name, year: t.year, to: mode === '試験' ? testTo : t.emails.join(','),
-        subject: (mode === '試験' ? '【試験】' : '') + text(v.subject),
-        body: (mode === '試験' ? '（試験送信です。本来の宛先：' + t.id + ' ' + t.name + '）\n\n' : '') + renderMail(v.body, t, s),
-      });
+      picked.push(t);
     });
-    if (all.length) renderMail(v.body, all[0], s); // 文面の誤りは、送る相手がいなくても知らせる
-    return { year, mode, account: v.account, testTo, limit, total: messages.length, messages: messages.slice(0, limit), remaining: Math.max(0, messages.length - limit), skipped, today: ctx.today };
+    if (!bcc && all.length) renderMail(v.body, all[0], s);
+    const now = picked.slice(0, limit);
+    const subject = (mode === '試験' ? '【試験】' : '') + text(v.subject);
+    const member = t => ({ id: t.id, name: t.name, year: t.year, addr: t.emails.join(',') });
+    const messages = [];
+    if (bcc) {
+      const body = renderMail(v.body, commonTarget(year, s), s, true);
+      for (let i = 0; i < now.length; i += BCC_MAX) {
+        const group = now.slice(i, i + BCC_MAX);
+        messages.push({
+          members: group.map(member), to: mode === '試験' ? testTo : text(v.account).toLowerCase(),
+          bcc: mode === '試験' ? '' : [...new Set([].concat(...group.map(t => t.emails)))].join(','), subject,
+          body: (mode === '試験' ? '（試験送信です。本番では次の ' + group.length + '名にBCCで送ります：' + group.map(t => t.id + ' ' + t.name).join('、') + '）\n\n' : '') + body,
+        });
+      }
+    } else {
+      now.forEach(t => messages.push({
+        members: [member(t)], to: mode === '試験' ? testTo : t.emails.join(','), bcc: '', subject,
+        body: (mode === '試験' ? '（試験送信です。本来の宛先：' + t.id + ' ' + t.name + '）\n\n' : '') + renderMail(v.body, t, s),
+      }));
+    }
+    return { year, mode, style, account: v.account, testTo, limit, total: picked.length, people: now.length, messages, remaining: picked.length - now.length, skipped, today: ctx.today };
   }
 
   function sendPreview(p) {
     const lines = [];
-    lines.push('【督促メール・' + p.mode + '】' + p.year + '年度／送信元 ' + p.account);
-    lines.push('今回送る件数：' + p.messages.length + '件' + (p.remaining ? '（上限のため残り ' + p.remaining + '件は次回）' : ''));
-    if (p.mode === '試験') lines.push('宛先：全件を試験送信先 ' + p.testTo + ' に送ります（会員には届きません）');
-    else lines.push('宛先：各会員の会費案内先（本番。会員に届きます）');
+    lines.push('【督促メール・' + p.mode + '・' + p.style + '】' + p.year + '年度／送信元 ' + p.account);
+    lines.push('今回の宛先：' + p.people + '名（メール ' + p.messages.length + '通）' + (p.remaining ? '　上限のため残り ' + p.remaining + '名は次回' : ''));
+    if (p.mode === '試験') lines.push('送り先：試験送信先 ' + p.testTo + ' だけに送ります（会員には届きません）');
+    else if (p.style === 'BCCで一斉') lines.push('送り先：宛先（To）は送信アカウント、未納者は全員BCC（ほかの人のアドレスは見えません）');
+    else lines.push('送り先：各会員の会費案内先に1人ずつ（本番。会員に届きます）');
     lines.push('送らない人：郵送 ' + p.skipped['郵送'] + '名／要確認 ' + p.skipped['要確認'] + '名／「送る」のチェックなし ' + p.skipped['送らない'] + '名／最近送信済み ' + p.skipped['最近送信済み'] + '名');
     if (p.messages.length) {
       const m = p.messages[0];
-      lines.push('―― 1件目の例 ――', '件名：' + m.subject, m.body, '――――');
+      lines.push('―― 送るメール' + (p.messages.length > 1 ? '（1通目）' : '') + ' ――', '件名：' + m.subject, m.body, '――――');
       lines.push('→ この内容でよければ、もう一度「実行」にチェックしてください');
     } else lines.push('送る相手がいません');
     return lines.join('\n');
@@ -582,7 +611,7 @@ const Logic = (() => {
     parseMembers, parseSettings, parseFees, parseTransfers, snapFee,
     planMembership, membershipPreview, planNewYear, newYearPreview, planTransfer, transferPreview,
     matrix, yearTotals, transferSummary, setRemitDeadline,
-    MAIL_KEYS, MAIL_MODES, emailList, isEmail, dunningTargets, renderMail, checkTemplate, planSend, sendPreview,
+    MAIL_KEYS, MAIL_MODES, SEND_STYLES, BCC_MAX, emailList, isEmail, dunningTargets, renderMail, commonTarget, checkTemplate, planSend, sendPreview,
   };
 })();
 if (typeof module !== 'undefined') module.exports = { Logic, APP };
@@ -612,18 +641,26 @@ const SEND_SETTING_ROWS = [
   ['差出人の表示名', '日本樹木医会神奈川県支部', '受け取った人に見える差出人名'],
   ['返信先', '', '空欄なら送信アカウントに返信が届きます'],
   ['本番で使う送信アカウント', '', '本番の送信元。このシステムを動かすアカウントと同じときだけ本番送信できます'],
-  ['1回の送信上限', 30, '1回のチェックで送る最大件数（無料のGmailは1日約100件まで）'],
+  ['1回の送信上限', 30, '1回のチェックで送る最大人数（無料のGmailは1日に約100人まで。BCCの人数も数えます）'],
+  ['送り方', 'BCCで一斉', 'BCCで一斉：未納者全員に同じ文面を1通で（50人ずつ）／1人ずつ：氏名入りの文面を1人ずつ'],
 ];
 const SEND_RUN_HEADERS = ['実行', '状態', '結果・確認内容', '対象年度', 'メモ', '確認キー', '受付ID', '処理日時'];
 const SEND_RUN_INPUTS = ['対象年度', 'メモ'];
 const SEND_LOG_HEADERS = ['日時', '受付ID', '登録番号', '氏名', '年度', '宛先', 'モード', '結果'];
 const TEMPLATE_DEFAULT = {
   subject: '【日本樹木医会神奈川県支部】年会費納入のお願い',
-  body: ['{{氏名}} 様', '', '日本樹木医会神奈川県支部です。',
+  body: ['神奈川県支部 会員各位', '', '日本樹木医会神奈川県支部です。',
     '{{対象年度}}年度の年会費 {{会費額}}（本会分 {{本会分}}・支部分 {{支部分}}・関東甲信地区協議会分 {{地区協議会分}}）について、',
-    '納期限（{{納期限}}）を過ぎましたが、まだ入金を確認できておりません。', 'お手数ですが、下記へお振り込みをお願いいたします。', '',
-    '振込先：{{振込先}}', '振込名義：{{振込名義}}', '', '行き違いでお振り込み済みの場合は、ご容赦ください。', 'お問い合わせ：{{問い合わせ先}}'].join('\n'),
+    '納期限（{{納期限}}）を過ぎましたが、まだ入金を確認できていない方にお送りしています。', 'お手数ですが、下記へお振り込みをお願いいたします。', '',
+    '振込先：{{振込先}}', '振込名義：{{振込名義}}', '',
+    'このメールは、入金を確認できていない会員の皆様にBCCでお送りしています。',
+    '行き違いでお振り込み済みの場合は、ご容赦ください。', 'お問い合わせ：{{問い合わせ先}}'].join('\n'),
 };
+// 前の版の標準文面（{{氏名}} 入り）。手を加えていなければ、初期設定で新しい標準文面に置き換える
+const TEMPLATE_OLD_BODY = ['{{氏名}} 様', '', '日本樹木医会神奈川県支部です。',
+  '{{対象年度}}年度の年会費 {{会費額}}（本会分 {{本会分}}・支部分 {{支部分}}・関東甲信地区協議会分 {{地区協議会分}}）について、',
+  '納期限（{{納期限}}）を過ぎましたが、まだ入金を確認できておりません。', 'お手数ですが、下記へお振り込みをお願いいたします。', '',
+  '振込先：{{振込先}}', '振込名義：{{振込名義}}', '', '行き違いでお振り込み済みの場合は、ご容赦ください。', 'お問い合わせ：{{問い合わせ先}}'].join('\n');
 
 const AUTO_FILL = '#eef2f0';
 const INPUT_ROWS = 500;
@@ -768,8 +805,8 @@ function 初期設定() {
     const sset = ensureSheet_(soumu, '送信設定', ['項目', '値', '説明']);
     const have = sset.getLastRow() >= 2 ? sset.getRange(2, 1, sset.getLastRow() - 1, 1).getValues().map(r => String(r[0])) : [];
     SEND_SETTING_ROWS.filter(r => !have.includes(r[0])).forEach(r => sset.appendRow(r));
-    const modeRow = sendSettingRow_(sset, '送信モード');
-    sset.getRange(modeRow, 2).setDataValidation(list_(Logic.MAIL_MODES));
+    sset.getRange(sendSettingRow_(sset, '送信モード'), 2).setDataValidation(list_(Logic.MAIL_MODES));
+    sset.getRange(sendSettingRow_(sset, '送り方'), 2).setDataValidation(list_(Logic.SEND_STYLES));
     sset.setColumnWidth(1, 200); sset.setColumnWidth(2, 280); sset.setColumnWidth(3, 520);
     const run = ensureSheet_(soumu, '送信実行', SEND_RUN_HEADERS);
     setupInputSheet_(run, SEND_RUN_HEADERS, {
@@ -790,6 +827,8 @@ function 初期設定() {
         ['本文', TEMPLATE_DEFAULT.body, '使える差し込み：' + Logic.MAIL_KEYS.map(k => '{{' + k + '}}').join(' ')],
       ]);
     }
+    if (String(tpl.getRange(3, 2).getValue()) === TEMPLATE_OLD_BODY) tpl.getRange(3, 2).setValue(TEMPLATE_DEFAULT.body);
+    tpl.getRange(3, 3).setValue('使える差し込み：' + Logic.MAIL_KEYS.map(k => '{{' + k + '}}').join(' ') + '（BCCで一斉のときは {{氏名}} {{登録番号}} 以外）');
     tpl.getRange(2, 2, 2, 1).setWrap(true);
     tpl.setColumnWidth(1, 80); tpl.setColumnWidth(2, 560); tpl.setColumnWidth(3, 300);
     protectRange_(tpl.getRange(1, 1, 3, 1), '項目名');
@@ -833,6 +872,9 @@ function 初期設定() {
     PropertiesService.getScriptProperties().setProperty('VERSION', APP.version);
     refreshAll_();
   });
+  // メール送信の許可を確認する（許可画面で「メールの送信」が外れていると、ここで知らせる）
+  try { MailApp.getRemainingDailyQuota(); }
+  catch (err) { throw new Error('初期設定は済みましたが、メール送信が許可されていません。もう一度「初期設定」を実行し、許可画面で「すべて選択」にチェックしてから許可してください（' + err.message + '）'); }
   console.log('初期設定が完了しました（' + APP.version + '）');
 }
 
@@ -1464,7 +1506,7 @@ function processSend_(sh, H, row) {
   const ctx = loadContext_();
   const cfg = sendSettings_(ctx.soumu), tpl = mailTemplate_();
   const plan = Logic.planSend({
-    year: o['対象年度'], mode: cfg['送信モード'], testTo: cfg['試験送信先'], account: Session.getEffectiveUser().getEmail(),
+    year: o['対象年度'], mode: cfg['送信モード'], style: cfg['送り方'], testTo: cfg['試験送信先'], account: Session.getEffectiveUser().getEmail(),
     allowed: cfg['本番で使う送信アカウント'], limit: cfg['1回の送信上限'], subject: tpl.subject, body: tpl.body,
     selected: sendSelection_(), history: sendHistory_(ctx.soumu), recentDays: APP.mailRecentDays,
   }, ctx);
@@ -1476,43 +1518,47 @@ function processSend_(sh, H, row) {
     return;
   }
   const result = sendMessages_(ctx.soumu, plan, receipt, cfg);
-  const left = plan.remaining + (plan.messages.length - result.sent);
+  const left = plan.remaining + (plan.people - result.sent);
   sh.getRange(row, H['状態']).setValue(result.stopped ? '中断' : (left ? '一部完了' : '完了'));
-  sh.getRange(row, H['結果・確認内容']).setValue(now_() + '：' + plan.mode + 'で ' + result.sent + '件送りました' +
-    (left ? '。残り ' + left + '件は、もう一度「実行」にチェックすると確認内容が出ます' : '') + (result.stopped ? '\n中断の理由：' + result.stopped : ''));
+  sh.getRange(row, H['結果・確認内容']).setValue(now_() + '：' + plan.mode + '（' + plan.style + '）で ' + result.sent + '名分を送りました（メール ' + result.mails + '通）' +
+    (left ? '。残り ' + left + '名は、もう一度「実行」にチェックすると確認内容が出ます' : '') + (result.stopped ? '\n中断の理由：' + result.stopped : ''));
   sh.getRange(row, H['確認キー']).setValue('');
   sh.getRange(row, H['処理日時']).setValue(now_());
   refreshNow_();
 }
 
-// 1通ずつ「送信中」と記録してから送る。結果が分からないものは自動で再送しない
+// 送る前に宛先の全員を「送信中」と記録してから送る。結果が分からないものは自動で再送しない
 function sendMessages_(soumu, plan, receipt, cfg) {
-  const log = sheet_(soumu, '送信記録'), started = Date.now();
-  let sent = 0, stopped = '';
+  const log = sheet_(soumu, '送信記録'), started = Date.now(), W = SEND_LOG_HEADERS.length;
+  let sent = 0, mails = 0, stopped = '';
   for (const m of plan.messages) {
     if (Date.now() - started > 240000) { stopped = '時間の上限（4分）'; break; }
-    if (MailApp.getRemainingDailyQuota() < 1) { stopped = 'このアカウントの1日の送信上限に達しました'; break; }
-    const r = log.getLastRow() + 1;
-    log.getRange(r, 1, 1, SEND_LOG_HEADERS.length).setValues([[now_(), receipt, "'" + m.id, safe_(m.name), m.year, plan.mode === '試験' ? m.to + '（試験送信先）' : m.to, plan.mode, '送信中']]);
+    if (MailApp.getRemainingDailyQuota() < m.members.length + 1) { stopped = 'このアカウントの1日の送信上限に近いため止めました（明日以降に続きを送ってください）'; break; }
+    const r = log.getLastRow() + 1, stamp = now_();
+    log.getRange(r, 1, m.members.length, W).setValues(m.members.map(x => [stamp, receipt, "'" + x.id, safe_(x.name), x.year,
+      plan.mode === '試験' ? m.to + '（試験送信先）' : (m.bcc ? 'BCC：' + x.addr : x.addr), plan.mode, '送信中']));
     SpreadsheetApp.flush();
     const msg = { to: m.to, subject: m.subject, body: m.body, name: cfg['差出人の表示名'] || '日本樹木医会神奈川県支部' };
+    if (m.bcc) msg.bcc = m.bcc;
     if (cfg['返信先']) msg.replyTo = cfg['返信先'];
+    const results = r => log.getRange(r, W, m.members.length, 1);
     try { MailApp.sendEmail(msg); }
     catch (err) {
-      log.getRange(r, SEND_LOG_HEADERS.length).setValue(safe_('結果不明：' + err.message));
-      logError_('総務', '送信実行', '', m.id + ' への送信：' + err.message);
-      stopped = m.id + ' への送信でエラー（' + err.message + '）。この人には自動で再送しません。届いたか確認してください';
+      results(r).setValues(m.members.map(() => [safe_('結果不明：' + err.message)]));
+      logError_('総務', '送信実行', '', '督促メールの送信：' + err.message);
+      stopped = 'メールの送信でエラー（' + err.message + '）。この宛先には自動で再送しません。届いたか確認してください';
       break;
     }
-    log.getRange(r, SEND_LOG_HEADERS.length).setValue(plan.mode === '試験' ? '試験送信済み' : '送信済み');
-    sent++;
+    results(r).setValues(m.members.map(() => [plan.mode === '試験' ? '試験送信済み' : '送信済み']));
+    sent += m.members.length; mails++;
   }
-  return { sent, stopped };
+  return { sent, mails, stopped };
 }
 
-// 広報ブックの「文面の確認」に、1人目の対象者で差し込んだ例を出す
+// 広報ブックの「文面の確認」に、送るときの完成文の例を出す
 function writeMailPreview_(ctx) {
   const sh = sheet_(book_('kouhou'), '文面の確認'), tpl = mailTemplate_();
+  const style = sendSettings_(ctx.soumu)['送り方'] || 'BCCで一斉', bcc = style === 'BCCで一斉';
   const t = Logic.dunningTargets(ctx.members, ctx.fees, ctx.today).find(x => x.route === 'メール') ||
     { id: '0000', name: '（見本）樹木 太郎', year: Object.keys(ctx.settings).map(Number).sort().pop() || 2026, amount: 18000, due: ctx.today };
   let text;
@@ -1520,10 +1566,10 @@ function writeMailPreview_(ctx) {
     Logic.checkTemplate(tpl.subject, tpl.body);
     const s = ctx.settings[t.year];
     if (!s) throw new Error(t.year + '年度の年度設定がありません');
-    text = '件名：' + tpl.subject + '\n\n' + Logic.renderMail(tpl.body, t, s);
+    text = '件名：' + tpl.subject + '\n\n' + Logic.renderMail(tpl.body, bcc ? Logic.commonTarget(t.year, s) : t, s, bcc);
   } catch (err) { text = '文面に問題があります：' + err.message; }
   sh.clearContents();
-  sh.getRange(1, 1).setValue('文面の確認（最終更新 ' + now_() + '）　' + t.id + ' ' + t.name + ' さんに送る場合の例です').setFontWeight('bold');
+  sh.getRange(1, 1).setValue('文面の確認（最終更新 ' + now_() + '）　' + (bcc ? '送り方：BCCで一斉（全員に同じ文面）' : '送り方：1人ずつ（' + t.id + ' ' + t.name + ' さんに送る場合の例）')).setFontWeight('bold');
   sh.getRange(3, 1).setValue(safe_(text)).setWrap(true);
   sh.setColumnWidth(1, 700);
 }

@@ -138,7 +138,7 @@ step('初期設定：シート・トリガーができる', () => {
   assert.ok(['送信設定', '送信実行', '送信記録', '郵送リスト'].every(n => soumu().getSheetByName(n)));
   api.初期設定(); // 2回目も壊れない
   assert.strictEqual(triggers.length, 4);
-  assert.strictEqual(sh(soumu(), '送信設定').getLastRow(), 7, '設定行は重複しない');
+  assert.strictEqual(sh(soumu(), '送信設定').getLastRow(), 8, '設定行は重複しない');
 });
 
 step('架空データ：台帳がすべてOKになる', () => {
@@ -157,7 +157,7 @@ step('架空データ：台帳がすべてOKになる', () => {
   assert.deepStrictEqual([t.get(4, 2), t.get(4, 8), t.get(4, 1)], ['0008', '郵送', false]);
   const post = sh(soumu(), '郵送リスト');
   assert.deepStrictEqual([post.get(3, 1), post.get(3, 7)], ['0008', '架空市 見本町']);
-  assert.match(String(sh(kouhou(), '文面の確認').get(3, 1)), /架空 梅二 様[\s\S]*18,000円[\s\S]*架空銀行/);
+  assert.match(String(sh(kouhou(), '文面の確認').get(3, 1)), /会員各位[\s\S]*18,000円[\s\S]*架空銀行/);
 });
 
 step('年度追加：1回目は確認、2回目で追加', () => {
@@ -310,7 +310,7 @@ step('督促メール：停止中は送れない → 試験で確認 → 送信 
   set.set(rowOf('試験送信先'), 2, 'tester@example.invalid');
   tick(b, n, 2, '実行', h);
   assert.strictEqual(cellOf(b, n, 2, '状態'), '確認待ち');
-  assert.match(cellOf(b, n, 2, '結果・確認内容'), /今回送る件数：1件[\s\S]*tester@example.invalid[\s\S]*架空 梅二 様/);
+  assert.match(cellOf(b, n, 2, '結果・確認内容'), /今回の宛先：1名（メール 1通）[\s\S]*tester@example.invalid[\s\S]*本番では次の 1名にBCC[\s\S]*0004 架空 梅二[\s\S]*会員各位/);
   assert.strictEqual(mails.length, 0, '1回目では送らない');
   tick(b, n, 2, '実行', h);
   assert.strictEqual(cellOf(b, n, 2, '状態'), '完了', cellOf(b, n, 2, '結果・確認内容'));
@@ -339,6 +339,17 @@ step('督促メール：「送る」を外す・文面の誤り・本番の安�
   set.set(rowOf('本番で使う送信アカウント'), 2, 'owner@example.invalid');
   tick(b, n, 4, '実行', h);
   assert.match(cellOf(b, n, 4, '結果・確認内容'), /試験用のアドレス/);
+  // 会費案内先を本物らしいアドレスにすると、本番はBCCで送られる
+  const roster = sh(soumu(), '正本'), RH = api.headerMap_(roster, api.ROSTER_HEADERS);
+  for (let r = 2; r <= roster.getLastRow(); r++) if (roster.get(r, RH['登録番号']) === '0004') roster.set(r, RH['会費案内先'], 'ume@mail.jp');
+  tick(b, n, 4, '実行', h);
+  assert.match(cellOf(b, n, 4, '結果・確認内容'), /BCCで一斉[\s\S]*未納者は全員BCC/);
+  tick(b, n, 4, '実行', h);
+  assert.strictEqual(cellOf(b, n, 4, '状態'), '完了', cellOf(b, n, 4, '結果・確認内容'));
+  const last = mails[mails.length - 1];
+  assert.deepStrictEqual([last.to, last.bcc, last.subject], ['owner@example.invalid', 'ume@mail.jp', '【日本樹木医会神奈川県支部】年会費納入のお願い']);
+  const log = sh(b, '送信記録');
+  assert.deepStrictEqual([log.get(log.getLastRow(), 6), log.get(log.getLastRow(), 8)], ['BCC：ume@mail.jp', '送信済み']);
   set.set(rowOf('送信モード'), 2, '試験');
   // 文面に使えない差し込み
   const tpl = sh(kouhou(), '文面');
@@ -348,7 +359,7 @@ step('督促メール：「送る」を外す・文面の誤り・本番の安�
   assert.match(String(sh(kouhou(), '文面の確認').get(3, 1)), /使えない差し込み項目.*住所/);
   tpl.set(3, 2, body);
   api.handleKouhouEdit({ range: tpl.getRange(3, 2) });
-  assert.strictEqual(mails.length, 1, '本番・誤りのときは送っていない');
+  assert.strictEqual(mails.length, 2, '誤りのときは送っていない');
   // 「送る」を外すと対象から外れ、一覧を更新してもチェックは外れたまま
   const t = sh(kouhou(), '督促対象');
   t.set(3, 1, false);

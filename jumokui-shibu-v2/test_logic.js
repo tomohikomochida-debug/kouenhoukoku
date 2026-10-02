@@ -200,4 +200,27 @@ test('会計一覧と年度別集計', () => {
   assert.deepStrictEqual(y26.slice(9), [36000, 23000, 13000]);
 });
 
+// ---- 督促メール ----
+test('督促：BCC一斉は50人ずつ1通、宛先は送信アカウント、氏名は使えない', () => {
+  const many = Array.from({ length: 60 }, (_, i) => ({ id: String(i + 1), name: '会員' + (i + 1), kana: 'カイイン', cohort: '1期', membership: '在籍', emails: 'm' + (i + 1) + '@mail.jp' }));
+  const c = ctxOf(many, many.map(m => ({ id: m.id, year: 2026, amount: 18000, status: '未納' })));
+  const base = { year: 2026, mode: '本番', account: 'shibu@mail.jp', allowed: 'shibu@mail.jp', limit: 100, subject: '年会費のお願い', body: '会員各位 {{対象年度}}年度 {{会費額}} 納期限{{納期限}}' };
+  const p = Logic.planSend(base, c);
+  assert.deepStrictEqual([p.people, p.messages.length, p.messages[0].members.length, p.messages[1].members.length], [60, 2, 50, 10]);
+  assert.strictEqual(p.messages[0].to, 'shibu@mail.jp');
+  assert.ok(p.messages[0].bcc.split(',').length === 50 && p.messages[0].bcc.includes('m1@mail.jp'));
+  assert.strictEqual(p.messages[0].body, '会員各位 2026年度 18,000円 納期限2026-07-31');
+  throws(() => Logic.planSend(Object.assign({}, base, { body: '{{氏名}} 様' }), c), /BCCで一斉.*氏名/);
+  const q = Logic.planSend(Object.assign({}, base, { limit: 30 }), c);
+  assert.deepStrictEqual([q.people, q.remaining, q.messages.length], [30, 30, 1]);
+});
+test('督促：1人ずつなら氏名入り。試験は試験送信先だけ', () => {
+  const c = ctxOf(M.concat([{ id: '0010', name: '宛先 あり', kana: 'アテサキ', cohort: '1期', membership: '在籍', emails: 'atesaki@mail.jp' }]),
+    [{ id: '0010', year: 2026, amount: 18000, status: '未納' }]);
+  const p = Logic.planSend({ year: 2026, mode: '試験', style: '1人ずつ', testTo: 'me@mail.jp', account: 'x@mail.jp', limit: 10, subject: 's', body: '{{氏名}} 様 {{会費額}}' }, c);
+  assert.deepStrictEqual([p.messages.length, p.messages[0].to, p.messages[0].bcc], [1, 'me@mail.jp', '']);
+  assert.match(p.messages[0].body, /宛先 あり 様 18,000円/);
+  throws(() => Logic.planSend({ year: 2026, mode: '本番', account: 'x@mail.jp', allowed: '', limit: 10, subject: 's', body: 'b' }, c), /本番で使う送信アカウント/);
+});
+
 console.log('\n全 ' + passed + ' 件のテストに合格しました');
