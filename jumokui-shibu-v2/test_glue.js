@@ -59,6 +59,10 @@ class Sheet {
   getMaxRows() { return this.maxRows; } getMaxColumns() { return this.maxCols; }
   insertRowsAfter(after, n) { this.maxRows += n; } insertColumnsAfter(after, n) { this.maxCols += n; }
   setFrozenRows() {} setColumnWidth() { return this; } hideColumns(c) { this.hidden.push(c); }
+  insertColumnAfter(col) {
+    const shift = m => { const next = new Map(); for (const [k, v] of m) { const [r, c] = k.split(':').map(Number); next.set(r + ':' + (c > col ? c + 1 : c), v); } return next; };
+    this.cells = shift(this.cells); this.fmt = shift(this.fmt); this.maxCols++;
+  }
   protect() { const p = new Protection(this); p.type = 'SHEET'; this.protections.push(p); return p; }
   getProtections(type) { return this.protections.filter(p => p.type === type); }
   appendRow(row) { const r = this.getLastRow() + 1; row.forEach((v, i) => this.set(r, i + 1, v)); }
@@ -95,6 +99,7 @@ class Form {
   addTextItem() { const i = new FormItem('text'); this.items.push(i); return i; }
   addParagraphTextItem() { const i = new FormItem('paragraph'); this.items.push(i); return i; }
   setAcceptingResponses(b) { this.accepting = b; return this; } isAcceptingResponses() { return this.accepting; }
+  getItems() { return this.items.slice(); } moveItem(from, to) { const [i] = this.items.splice(from, 1); this.items.splice(to, 0, i); }
   respond(id, email, answers) { assert.ok(this.accepting, '受付が終わったフォームに回答'); this.responses.push({ id, email, answers, ts: FIXED_NOW }); }
   getResponses() {
     return this.responses.map(r => ({
@@ -136,7 +141,7 @@ const sandbox = {
 };
 sandbox.Date = class extends Date { constructor(...a) { if (a.length) super(...a); else super(FIXED_NOW); } static now() { return FIXED_NOW; } };
 vm.createContext(sandbox);
-vm.runInContext(src + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,研修の架空データを入れる,今すぐ一覧を更新,handleSoumuEdit,handleKaikeiEdit,handleKouhouEdit,handleKenshuEdit,refreshTick,headerMap_,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
+vm.runInContext(src + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,研修の架空データを入れる,今すぐ一覧を更新,handleSoumuEdit,handleKaikeiEdit,handleKouhouEdit,handleKenshuEdit,refreshTick,headerMap_,APPLY_HEADERS,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
 const api = sandbox.__api;
 const soumu = () => books[api.APP.books.soumu], kaikei = () => books[api.APP.books.kaikei], kouhou = () => books[api.APP.books.kouhou], kenshu = () => books[api.APP.books.kenshu];
 const sh = (b, n) => b.getSheetByName(n);
@@ -424,16 +429,23 @@ step('研修：架空の申込の判定 → フォーム作成 → 回答の取�
   assert.ok(form && form.accepting);
   assert.strictEqual(T(3, 'フォームURL（自動）'), form.getPublishedUrl());
   assert.strictEqual(T(3, '受付（自動）'), '受付中');
-  assert.deepStrictEqual(form.items.map(i => i.title), ['区分', '樹木医登録番号', '氏名', '所属・勤務先', '連絡事項']);
+  assert.deepStrictEqual(form.items.map(i => i.title), ['区分', '樹木医登録番号', '樹木医の登録期', '氏名', '所属・勤務先', '連絡事項']);
+  // 前の版で作ったフォーム（登録期の質問なし）にも、自動で足される
+  form.items.splice(2, 1);
+  form.items.push(new FormItem('text').setTitle('懇親会'));
+  props.set('FORMTXT_' + form.id, '前の版');
+  edit(b, '研修一覧', 3, '会場', '架空公園 管理棟', h);
+  assert.deepStrictEqual(form.items.map(i => i.title), ['区分', '樹木医登録番号', '樹木医の登録期', '氏名', '所属・勤務先', '連絡事項', '懇親会']);
+  assert.match(form.desc, /会場：架空公園 管理棟/);
   assert.match(form.title, /架空・秋の研修.*参加申込/);
   tick(b, '研修一覧', 3, 'フォーム作成', h);
   assert.strictEqual(forms.size, 1, '2回目は作らない');
   // 回答 → 10分ごとの処理で取り込む（同じ回答は1回だけ）
-  form.respond('r1', 'shin@mail.jp', { '区分': K[0], '樹木医登録番号': '9', '氏名': '新 太郎', '懇親会': '参加' });
+  form.respond('r1', 'shin@mail.jp', { '区分': K[0], '樹木医登録番号': '9', '樹木医の登録期': '第36期', '氏名': '新 太郎', '懇親会': '参加' });
   api.refreshTick(); api.refreshTick();
   assert.strictEqual(ap.getLastRow(), 10);
-  assert.deepStrictEqual([A(10, '受付ID'), A(10, '研修ID'), A(10, '登録番号'), A(10, 'メール'), A(10, 'その他の回答'), A(10, '判定（自動）')],
-    ['F-r1', 'TEST-02', '9', 'shin@mail.jp', '懇親会：参加', '参加不可']);
+  assert.deepStrictEqual([A(10, '受付ID'), A(10, '研修ID'), A(10, '登録番号'), A(10, '登録期'), A(10, 'メール'), A(10, 'その他の回答'), A(10, '判定（自動）')],
+    ['F-r1', 'TEST-02', '9', '第36期', 'shin@mail.jp', '懇親会：参加', '参加不可']);
   assert.match(A(10, '理由（自動）'), /納期限 2026-10-31/);
   // 研修担当の判断が「最終」に反映
   edit(b, '申込一覧', 5, '研修担当の判断', '参加可', h);
@@ -488,7 +500,15 @@ step('旧形式の「会費台帳」1枚を年度ごとのシートへ移す', (
   [['項目', '値', '説明'], ['送信モード', '試験', ''], ['試験送信先', 'me@mail.jp', ''], ['差出人の表示名', '日本樹木医会神奈川県支部', ''], ['返信先', '', ''], ['本番で使う送信アカウント', 'shibu@ws.jp', ''], ['1回の送信上限', 30, ''], ['送り方', 'BCCで一斉', '']]
     .forEach((row, i) => row.forEach((v, j) => oldSet.set(i + 1, j + 1, v)));
   so.insertSheet('送信実行').set(1, 1, '実行');
+  // 前の版の申込一覧（「登録期」の列がない）
+  const ke = books[api.APP.books.kenshu] = new Book(api.APP.books.kenshu);
+  const oldAp = ke.insertSheet('申込一覧');
+  const oldHead = api.APPLY_HEADERS.filter(x => x !== '登録期');
+  oldHead.forEach((x, i) => oldAp.set(1, i + 1, x));
+  oldAp.set(2, oldHead.indexOf('氏名') + 1, '前の版 の人');
   api.初期設定();
+  assert.deepStrictEqual(oldAp.getRange(1, 1, 1, api.APPLY_HEADERS.length).getValues()[0], [...api.APPLY_HEADERS], '登録番号の右に登録期が入る');
+  assert.strictEqual(oldAp.get(2, api.APPLY_HEADERS.indexOf('氏名') + 1), '前の版 の人', '入力済みの値も一緒にずれる');
   assert.deepStrictEqual([oldSet.getLastRow(), oldSet.get(2, 1), oldSet.get(2, 2)], [2, '本番で使う送信アカウント', 'shibu@ws.jp'], '総務には本番アカウントだけ残る');
   const ks = sh(kouhou(), '送信設定');
   const val = key => { for (let r = 2; r <= ks.getLastRow(); r++) if (ks.get(r, 1) === key) return ks.get(r, 2); };

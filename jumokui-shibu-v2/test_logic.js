@@ -276,6 +276,10 @@ test('研修：休会は参加不可、名簿にない番号・氏名違いは�
   assert.deepStrictEqual([nm.result], ['要確認']);
   assert.match(nm.reason, /氏名が名簿と違います（名簿：架空 桜子）/);
   assert.deepStrictEqual(j({ kind: K[1], id: '1234', name: '他支部 花子' }), { result: Logic.EXTERNAL, reason: K[1] });
+  // 登録期：「第21期」「２１」「21期」は同じ。違えば要確認、空欄なら見ない
+  ['第21期', '２１', '21', ''].forEach(c => assert.strictEqual(j({ kind: K[0], id: '0001', cohort: c, name: '架空 桜子' }).result, '参加可', c));
+  const wc = j({ kind: K[0], id: '0001', cohort: '12', name: '架空 桜子' });
+  assert.deepStrictEqual([wc.result, wc.reason], ['要確認', '登録期が名簿と違います（名簿：21期）']);
   assert.strictEqual(j({ kind: K[2], id: '', name: '一般 次郎' }).result, Logic.EXTERNAL);
   assert.match(j({ kind: K[1], id: '0001', name: '架空 桜子' }).reason, /区分を確認/);
   assert.strictEqual(j({ kind: K[0], id: '0005', name: '架空 杉子' }).result, '要確認', '退会者が会員として申込');
@@ -308,7 +312,8 @@ test('研修一覧の検査と受付の状態', () => {
 });
 test('フォームの回答の読み取り（追加の質問は「その他の回答」）', () => {
   const a = Logic.mapAnswers([['区分', K[0]], ['樹木医登録番号', ' 12 '], ['氏名', '架空 桜子'], ['懇親会', '参加'], ['資料', ['紙', 'PDF']], ['連絡事項', '']]);
-  assert.deepStrictEqual(a, { kind: K[0], id: '12', name: '架空 桜子', org: '', note: '', other: '懇親会：参加\n資料：紙、PDF' });
+  assert.deepStrictEqual(a, { kind: K[0], id: '12', cohort: '', name: '架空 桜子', org: '', note: '', other: '懇親会：参加\n資料：紙、PDF' });
+  assert.strictEqual(Logic.mapAnswers([['樹木医の登録期', '第21期']]).cohort, '第21期');
 });
 test('長期未納：2年度分以上・納期限経過の在籍会員', () => {
   const c = ctxOf(KM, KF);

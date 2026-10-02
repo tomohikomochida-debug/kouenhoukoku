@@ -615,7 +615,7 @@ const Logic = (() => {
   const OVERRIDES = ['参加可', '参加不可'];
   const ATTEND = ['出席', '欠席', '申込取消'];
   // フォームの標準の質問（題名で読み取る。研修担当が追加した質問は「その他の回答」へ）
-  const FORM_ITEMS = { kind: '区分', id: '樹木医登録番号', name: '氏名', org: '所属・勤務先', note: '連絡事項' };
+  const FORM_ITEMS = { kind: '区分', id: '樹木医登録番号', cohort: '樹木医の登録期', name: '氏名', org: '所属・勤務先', note: '連絡事項' };
 
   function parseTrainings(rows) {
     const list = [], byId = new Map(), errors = [];
@@ -664,7 +664,7 @@ const Logic = (() => {
 
   // フォームの回答（[題名, 回答] の並び）を申込の項目に分ける
   function mapAnswers(pairs) {
-    const out = { kind: '', id: '', name: '', org: '', note: '', other: [] };
+    const out = { kind: '', id: '', cohort: '', name: '', org: '', note: '', other: [] };
     const keys = Object.keys(FORM_ITEMS);
     pairs.forEach(([title, answer]) => {
       const a = Array.isArray(answer) ? answer.join('、') : text(answer);
@@ -674,6 +674,9 @@ const Logic = (() => {
     out.other = out.other.join('\n');
     return out;
   }
+
+  // 「第21期」「２１」「21期」を同じものとして比べる
+  function cohortKey(v) { const d = text(v).normalize('NFKC').match(/\d+/); return d ? String(Number(d[0])) : nameKey(v); }
 
   // 参加判定（支部の運用）
   //  - 会費の年度は開催日で決める（4月始まり）
@@ -697,6 +700,7 @@ const Logic = (() => {
     const reasons = [];
     const bump = (l, r) => { level = Math.max(level, l); reasons.push(r); };
     if (nameKey(m.name) !== nameKey(a.name)) bump(1, '氏名が名簿と違います（名簿：' + m.name + '）');
+    if (text(a.cohort) && text(m.cohort) && cohortKey(a.cohort) !== cohortKey(m.cohort)) bump(1, '登録期が名簿と違います（名簿：' + m.cohort + '）');
     if (m.membership === '休会') bump(2, '休会中です');
     else if (m.membership !== '在籍') bump(1, '名簿では「' + m.membership + '」です');
     const year = fiscalYear(t.date, ctx.startMonth);
@@ -797,8 +801,8 @@ const TEMPLATE_OLD_BODY = ['{{氏名}} 様', '', '日本樹木医会神奈川県
 const TRAINING_HEADERS = ['研修ID', '研修名', '開催日', '会場', '申込締切', '定員', '案内文', 'フォーム作成', '受付（自動）', 'フォームURL（自動）', '申込（自動）', '参加可（自動）', '要確認（自動）', '参加不可（自動）', '外部（自動）', '出席（自動）', '結果・確認内容', 'フォームID'];
 const TRAINING_INPUTS = ['研修ID', '研修名', '開催日', '会場', '申込締切', '定員', '案内文'];
 const TRAINING_AUTO = ['受付（自動）', 'フォームURL（自動）', '申込（自動）', '参加可（自動）', '要確認（自動）', '参加不可（自動）', '外部（自動）', '出席（自動）', '結果・確認内容', 'フォームID'];
-const APPLY_HEADERS = ['受付ID', '受付日時', '研修ID', '区分', '登録番号', '氏名', 'メール', '所属・勤務先', '連絡事項', 'その他の回答', '判定（自動）', '理由（自動）', '研修担当の判断', '最終（自動）', '出欠', 'メモ', '判定日（自動）'];
-const APPLY_INPUTS = ['研修ID', '区分', '登録番号', '氏名', 'メール', '所属・勤務先', '連絡事項'];
+const APPLY_HEADERS = ['受付ID', '受付日時', '研修ID', '区分', '登録番号', '登録期', '氏名', 'メール', '所属・勤務先', '連絡事項', 'その他の回答', '判定（自動）', '理由（自動）', '研修担当の判断', '最終（自動）', '出欠', 'メモ', '判定日（自動）'];
+const APPLY_INPUTS = ['研修ID', '区分', '登録番号', '登録期', '氏名', 'メール', '所属・勤務先', '連絡事項'];
 const APPLY_AUTO = ['受付ID', '受付日時', '判定（自動）', '理由（自動）', '最終（自動）', '判定日（自動）'];
 const JUDGE_RULES = [
   '参加資格の判定の基準（支部の運用）',
@@ -807,7 +811,7 @@ const JUDGE_RULES = [
   '・その年度の会費が未納でも、納期限より前に開催する研修 → 参加可（最初の集金の期限は7月中頃）。',
   '・「確認中」（振込の照合待ちなど）→ 要確認。',
   '・「納入済み」「免除」「他支部納入済み」（本人申告。当支部では確認できません）→ 参加可。',
-  '・休会中 → 参加不可。名簿にない番号、名簿と違う氏名 → 要確認。',
+  '・休会中 → 参加不可。名簿にない番号、名簿と違う氏名・登録期 → 要確認（登録期が空欄なら照合しません）。',
   '・他支部の樹木医・一般の方 → 判定しません（外部）。',
   '・判定は開催日まで自動でやり直します（入金が確認されると参加可に変わります）。開催日を過ぎると固定されます。',
   '・要確認を確かめたら「研修担当の判断」に参加可／参加不可を入れてください。「最終」に反映されます。',
@@ -1788,9 +1792,10 @@ function setupKenshu_(kenshu) {
   });
   const TH = headerMap_(tl, TRAINING_HEADERS);
   TRAINING_AUTO.forEach(h => protectRange_(tl.getRange(1, TH[h], tl.getMaxRows(), 1), '自動列（' + h + '）'));
+  addColumnAfter_(kenshu.getSheetByName('申込一覧'), '登録番号', '登録期'); // 前の版の申込一覧には「登録期」がない
   const ap = ensureSheet_(kenshu, '申込一覧', APPLY_HEADERS);
   setupInputSheet_(ap, APPLY_HEADERS, {
-    auto: APPLY_AUTO, lists: { '区分': Logic.KUBUN, '研修担当の判断': Logic.OVERRIDES, '出欠': Logic.ATTEND }, texts: ['研修ID', '登録番号'],
+    auto: APPLY_AUTO, lists: { '区分': Logic.KUBUN, '研修担当の判断': Logic.OVERRIDES, '出欠': Logic.ATTEND }, texts: ['研修ID', '登録番号', '登録期'],
     widths: { '理由（自動）': 380, '連絡事項': 200, 'その他の回答': 200 }, rows: 1000,
   });
   const AH = headerMap_(ap, APPLY_HEADERS);
@@ -1803,6 +1808,16 @@ function setupKenshu_(kenshu) {
   rule.setColumnWidth(1, 900);
   protectSheet_(rule, '自動出力');
   removeDefaultSheet_(kenshu);
+}
+
+// 見出し after の右に、見出し name の列がなければ差し込む
+function addColumnAfter_(sh, after, name) {
+  if (!sh || sh.getLastColumn() < 1) return;
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(v => String(v).trim());
+  const i = head.indexOf(after);
+  if (i < 0 || head.includes(name)) return;
+  sh.insertColumnAfter(i + 1);
+  sh.getRange(1, i + 2).setValue(name).setFontWeight('bold');
 }
 
 function handleKenshuEdit(e) {
@@ -1857,18 +1872,40 @@ function createForm_(sh, H, row) {
   form.setConfirmationMessage('お申し込みを受け付けました。ありがとうございました。');
   form.setCustomClosedFormMessage('この研修の申込の受付は終了しました（締切または定員）。');
   try { form.setRequireLogin(false); } catch (ignore) { /* 個人のGoogleアカウントでは設定不要（もともとログイン不要） */ }
-  const I = Logic.FORM_ITEMS;
-  form.addMultipleChoiceItem().setTitle(I.kind).setChoiceValues(Logic.KUBUN).setRequired(true);
-  form.addTextItem().setTitle(I.id).setHelpText('神奈川県支部の会員・他支部の樹木医の方は、樹木医の登録番号を入力してください（一般の方は空欄）')
-    .setValidation(FormApp.createTextValidation().setHelpText('数字で入力してください').requireTextMatchesPattern('^\\s*[0-9０-９]{1,6}\\s*$').build());
-  form.addTextItem().setTitle(I.name).setRequired(true);
-  form.addTextItem().setTitle(I.org).setHelpText('他支部の樹木医・一般の方は、所属や勤務先をご記入ください（任意）');
-  form.addParagraphTextItem().setTitle(I.note);
+  ensureFormItems_(form);
   sh.getRange(row, H['フォームID']).setValue(form.getId());
   sh.getRange(row, H['フォームURL（自動）']).setValue(form.getPublishedUrl());
-  PropertiesService.getScriptProperties().setProperty('FORMTXT_' + form.getId(), Logic.hash(JSON.stringify(txt)));
-  sh.getRange(row, H['結果・確認内容']).setValue(now_() + '：フォームを作りました。「フォームURL」を会員に案内してください。質問の追加や文面の調整は編集画面で（標準の5つの質問の題名は変えないでください）：' + form.getEditUrl());
+  PropertiesService.getScriptProperties().setProperty('FORMTXT_' + form.getId(), formHash_(t));
+  sh.getRange(row, H['結果・確認内容']).setValue(now_() + '：フォームを作りました。「フォームURL」を会員に案内してください。質問の追加や文面の調整は編集画面で（標準の質問「' + Object.values(Logic.FORM_ITEMS).join('」「') + '」の題名は変えないでください）：' + form.getEditUrl());
   refreshKenshu_(loadContext_());
+}
+
+// フォームの題名・説明と標準の質問。標準の質問が変わったら（版の更新など）作成済みのフォームにも足す
+function formHash_(t) { return Logic.hash(JSON.stringify([Logic.formText(t), Logic.FORM_ITEMS])); }
+
+function ensureFormItems_(form) {
+  const I = Logic.FORM_ITEMS;
+  const pattern = p => FormApp.createTextValidation().setHelpText('数字で入力してください').requireTextMatchesPattern(p).build();
+  const makers = {
+    kind: () => form.addMultipleChoiceItem().setTitle(I.kind).setChoiceValues(Logic.KUBUN).setRequired(true),
+    id: () => form.addTextItem().setTitle(I.id).setHelpText('神奈川県支部の会員・他支部の樹木医の方は、樹木医の登録番号を入力してください（一般の方は空欄）')
+      .setValidation(pattern('^\\s*[0-9０-９]{1,6}\\s*$')),
+    cohort: () => form.addTextItem().setTitle(I.cohort).setHelpText('樹木医の方は、何期の登録かを入力してください（例：21）。一般の方は空欄')
+      .setValidation(pattern('^\\s*第?\\s*[0-9０-９]{1,3}\\s*期?\\s*$')),
+    name: () => form.addTextItem().setTitle(I.name).setRequired(true),
+    org: () => form.addTextItem().setTitle(I.org).setHelpText('他支部の樹木医・一般の方は、所属や勤務先をご記入ください（任意）'),
+    note: () => form.addParagraphTextItem().setTitle(I.note),
+  };
+  const keys = Object.keys(I);
+  keys.forEach((k, n) => {
+    const titles = () => form.getItems().map(x => x.getTitle());
+    if (titles().includes(I[k])) return;
+    makers[k]();
+    // 直前の標準の質問のすぐ後ろへ移す
+    const prev = n > 0 ? titles().indexOf(I[keys[n - 1]]) : -1;
+    const last = form.getItems().length - 1;
+    if (prev + 1 < last) form.moveItem(last, prev + 1);
+  });
 }
 
 function addDays_(day, n) { return Utilities.formatDate(new Date(toDate_(day).getTime() + n * 86400000), APP.tz, 'yyyy-MM-dd'); }
@@ -1896,7 +1933,7 @@ function syncForms_() {
       const row = new Array(AH._width).fill('');
       const put = (h, v) => { row[AH[h] - 1] = idCell_(v); };
       put('受付ID', rid); put('受付日時', Utilities.formatDate(res.getTimestamp(), APP.tz, 'yyyy-MM-dd HH:mm:ss')); put('研修ID', t.id);
-      put('区分', a.kind); put('登録番号', a.id); put('氏名', a.name); put('メール', String(res.getRespondentEmail() || ''));
+      put('区分', a.kind); put('登録番号', a.id); put('登録期', a.cohort); put('氏名', a.name); put('メール', String(res.getRespondentEmail() || ''));
       put('所属・勤務先', a.org); put('連絡事項', a.note); put('その他の回答', a.other);
       add.push(row);
     });
@@ -1944,7 +1981,7 @@ function refreshKenshu_(ctx) {
     const past = t && t.date && today > t.date;
     const orphan = !t && result && !reason.startsWith('研修IDが研修一覧にありません');
     if (!(result && (past || orphan))) {
-      const j = Logic.judgeApplication({ kind: r['区分'], id: r['登録番号'], name: r['氏名'] }, t, jctx);
+      const j = Logic.judgeApplication({ kind: r['区分'], id: r['登録番号'], cohort: r['登録期'], name: r['氏名'] }, t, jctx);
       result = j.result; reason = j.reason; day = today;
       if (dup) { result = '要確認'; reason = '同じ研修への申込が重複しています（先の受付：' + seen.get(who) + '）／' + reason; }
     }
@@ -1972,12 +2009,12 @@ function refreshKenshu_(ctx) {
     if (!t.ok) p['結果・確認内容'] = '入力を確認：' + t.errors.join('／');
     else if (t.prevMsg.startsWith('入力を確認：')) p['結果・確認内容'] = '';
     if (t.ok && t.formId && state !== '終了（開催済み）') {
-      const txtHash = Logic.hash(JSON.stringify(Logic.formText(t)));
+      const txtHash = formHash_(t);
       if (state !== t.prevState || props.getProperty('FORMTXT_' + t.formId) !== txtHash) {
         try {
           const form = FormApp.openById(t.formId), txt = Logic.formText(t);
           form.setAcceptingResponses(state === '受付中');
-          if (props.getProperty('FORMTXT_' + t.formId) !== txtHash) { form.setTitle(txt.title); form.setDescription(txt.description); props.setProperty('FORMTXT_' + t.formId, txtHash); }
+          if (props.getProperty('FORMTXT_' + t.formId) !== txtHash) { form.setTitle(txt.title); form.setDescription(txt.description); ensureFormItems_(form); props.setProperty('FORMTXT_' + t.formId, txtHash); }
         } catch (err) { logError_('研修', '研修一覧', t.row, 'フォームを更新できません（' + t.id + '）：' + err.message); }
       }
     } else if (t.ok && t.formId && state === '終了（開催済み）' && t.prevState !== state) {
@@ -2009,19 +2046,19 @@ function 研修の架空データを入れる() {
     });
     const K = Logic.KUBUN;
     const apps = [
-      ['TEST-01', K[0], '0004', '架空 梅二'],
-      ['TEST-02', K[0], '0001', '架空 桜子'],
-      ['TEST-02', K[0], '0003', '架空 松美'],
-      ['TEST-02', K[0], '0004', '架空 梅二'],
-      ['TEST-02', K[0], '0006', '架空 楓'],
-      ['TEST-02', K[0], '0001', '架空 さくら'],
-      ['TEST-02', K[1], '1234', '他支部 花子'],
-      ['TEST-02', K[2], '', '一般 次郎'],
+      ['TEST-01', K[0], '0004', '架空 梅二', '28'],
+      ['TEST-02', K[0], '0001', '架空 桜子', '21期'],
+      ['TEST-02', K[0], '0003', '架空 松美', '第27期'],
+      ['TEST-02', K[0], '0004', '架空 梅二', '28'],
+      ['TEST-02', K[0], '0006', '架空 楓', '30'],
+      ['TEST-02', K[0], '0001', '架空 さくら', '21'],
+      ['TEST-02', K[1], '1234', '他支部 花子', '25'],
+      ['TEST-02', K[2], '', '一般 次郎', ''],
     ];
     apps.forEach((v, i) => {
       const r = 2 + i;
       ap.getRange(r, AH['研修ID']).setValue(v[0]); ap.getRange(r, AH['区分']).setValue(v[1]);
-      ap.getRange(r, AH['登録番号']).setValue(idCell_(v[2])); ap.getRange(r, AH['氏名']).setValue(v[3]);
+      ap.getRange(r, AH['登録番号']).setValue(idCell_(v[2])); ap.getRange(r, AH['登録期']).setValue(idCell_(v[4])); ap.getRange(r, AH['氏名']).setValue(v[3]);
     });
     refreshKenshu_(loadContext_());
   });
