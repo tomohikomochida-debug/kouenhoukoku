@@ -2305,6 +2305,9 @@ function memberLookup(input) {
     const id = Logic.normId(raw, APP.idDigits);
     if (!id) return { ok: false, message: '樹木医番号を数字で入力してください（' + APP.idDigits + '桁まで）。', notice };
     const cache = CacheService.getScriptCache();
+    // 同じ番号を1分以内にもう一度照会したときは、前の結果をそのまま返す（記録・回数に数えない）
+    const recentKey = 'LK_R_' + id, recent = cache.get(recentKey);
+    if (recent) { const v = JSON.parse(recent); v.notice = notice; return v; }
     const minuteKey = 'LK_M_' + Utilities.formatDate(new Date(), APP.tz, 'yyyyMMddHHmm');
     const perMinute = Number(cache.get(minuteKey) || 0);
     if (perMinute >= LOOKUP_PER_MINUTE) return { ok: false, message: '照会が混み合っています。1分ほどしてから、もう一度お試しください。', notice };
@@ -2315,6 +2318,7 @@ function memberLookup(input) {
     cache.put(dayKey, String(perId + 1), 21600);
     const ctx = loadContext_();
     const view = Logic.lookupView(id, ctx);
+    cache.put(recentKey, JSON.stringify(view), 60);
     view.notice = notice;
     logLookup_(soumu, id, view.ok ? '表示' : '該当なし');
     return view;
@@ -2393,15 +2397,23 @@ const LOOKUP_PAGE = `<!doctype html>
     }
     if (v.contact) out.appendChild(el('p', 'small', 'お問い合わせ：' + v.contact));
   }
+  // 照会中の重ね押しと、同じ番号の続けての照会は、サーバーへ送らない
+  var busy = false, last = { n: '', v: null, at: 0 };
   function go() {
+    if (busy) return;
     var n = $('num').value.trim();
     if (!n) { $('num').focus(); return; }
-    $('go').disabled = true; $('out').textContent = '';
+    if (n === last.n && last.v && Date.now() - last.at < 60000) { render(last.v); return; }
+    busy = true; $('go').disabled = true; $('out').textContent = '';
     $('out').appendChild(el('p', 'small', '照会しています…'));
-    google.script.run.withSuccessHandler(render).withFailureHandler(function () { render({ ok: false, message: '表示できませんでした。時間をおいて、もう一度お試しください。' }); }).memberLookup(n);
+    google.script.run
+      .withSuccessHandler(function (v) { busy = false; last = { n: n, v: v, at: Date.now() }; render(v); })
+      .withFailureHandler(function () { busy = false; render({ ok: false, message: '表示できませんでした。時間をおいて、もう一度お試しください。' }); })
+      .memberLookup(n);
   }
   $('go').addEventListener('click', go);
-  $('num').addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
+  // 日本語入力の「確定」の Enter では照会しない
+  $('num').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); go(); } });
 </script>
 </body></html>`;
 

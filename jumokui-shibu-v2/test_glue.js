@@ -131,7 +131,7 @@ const sandbox = {
     getUuid: () => require('crypto').randomUUID(),
   },
   Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@example.invalid' }), getActiveUser: () => ({ getEmail: () => activeUser }) },
-  CacheService: { getScriptCache: () => ({ get: k => (cache.has(k) ? cache.get(k) : null), put: (k, v) => cache.set(k, v) }) },
+  CacheService: { getScriptCache: () => ({ get: k => (cache.has(k) ? cache.get(k) : null), put: (k, v) => cache.set(k, v), remove: k => cache.delete(k) }) },
   HtmlService: { createHtmlOutput: h => { const o = { html: h, setTitle: t => { o.title = t; return o; }, addMetaTag: () => o }; return o; } },
   LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock: () => {}, releaseLock: () => {} }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => (props.has(k) ? props.get(k) : null), setProperty: (k, v) => props.set(k, v), deleteProperty: k => props.delete(k) }) },
@@ -536,9 +536,16 @@ step('会員照会：停止中・公開・番号の入力・上限、管理用�
   assert.match(look('abc').message, /数字で/);
   const log = sh(soumu(), '照会記録');
   assert.deepStrictEqual([log.get(log.getLastRow(), 2), log.get(log.getLastRow(), 3)], ['0005', '該当なし']);
-  for (let i = 0; i < 19; i++) look('0001');
-  assert.ok(look('0001').ok);
-  assert.match(look('0001').message, /本日の上限/, '同じ番号は1日20回まで');
+  // 1分以内に同じ番号をもう一度：前の結果を返し、記録も回数も増やさない
+  const rowsBefore = log.getLastRow();
+  assert.ok(look('0004').ok);
+  assert.strictEqual(look('0005').message, look('0005').message);
+  assert.strictEqual(log.getLastRow(), rowsBefore, '続けての照会は記録しない');
+  // 1分たてば、もう一度数える（同じ番号は1日20回まで）
+  const later = () => { for (const k of [...cache.keys()]) if (k.startsWith('LK_R_')) cache.delete(k); };
+  for (let i = 0; i < 19; i++) { later(); look('0001'); }
+  later(); assert.ok(look('0001').ok);
+  later(); assert.match(look('0001').message, /本日の上限/, '同じ番号は1日20回まで');
   cache.clear();
   // ページの表示と、URLの記録
   assert.match(api.doGet().html, /年会費の納入状況の確認[\s\S]*memberLookup/);
@@ -562,7 +569,7 @@ step('会員照会：停止中・公開・番号の入力・上限、管理用�
   assert.throws(() => api.初期設定(), /Apps Script の画面から/);
   assert.throws(() => api.架空データを入れる(), /Apps Script の画面から/);
   assert.strictEqual(triggers.length, 5, 'トリガーは止まっていない');
-  assert.ok(look('0001').ok, '照会はできる');
+  later(); assert.ok(look('0003').ok, '照会はできる');
   activeUser = 'owner@example.invalid';
   // 自動更新は1分以内に何度呼ばれても1回だけ
   props.set('DIRTY', '1'); runTick(); assert.ok(!props.has('DIRTY'));
