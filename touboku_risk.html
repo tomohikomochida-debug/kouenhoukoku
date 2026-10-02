@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>倒木リスク推定 ｜ 庭乃持田園</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="倒木リスク">
+<meta name="theme-color" content="#214A37">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png" type="image/png">
+<style>
+:root{
+  --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7;
+  --ok:#2E7D55; --tape:#C77C30; --bark:#5B5750; --ink:#22231F;
+  --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F; --extreme:#7A1F1F;
+  --s-before:#1F6FA8; --s-after:#C77C30;
+  --radius:14px;
+  --shadow:0 1px 0 rgba(34,35,31,.04), 0 10px 26px -18px rgba(34,35,31,.30);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);
+  font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif;
+  -webkit-font-smoothing:antialiased;font-size:14px;line-height:1.55}
+header{position:sticky;top:0;z-index:30;background:var(--leaf);color:#fff;
+  padding:max(10px,env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;gap:10px;
+  box-shadow:0 2px 12px -6px rgba(0,0,0,.4)}
+header h1{font-size:16px;margin:0;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header a,header button{color:#fff;background:rgba(255,255,255,.14);border:0;border-radius:10px;
+  padding:7px 10px;font-size:13px;text-decoration:none;font-family:inherit;cursor:pointer;white-space:nowrap}
+main{max-width:760px;margin:0 auto;padding:14px 16px calc(40px + env(safe-area-inset-bottom))}
+
+.tabs{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none;position:sticky;top:52px;z-index:20;background:var(--paper)}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:0 0 auto;border:1px solid var(--line);background:var(--card);color:var(--bark);
+  border-radius:999px;padding:7px 13px;font-size:13px;font-family:inherit;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--leaf);border-color:var(--leaf);color:#fff;font-weight:600}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
+.card h2{font-size:15px;margin:0 0 10px;color:var(--leaf)}
+.card h3{font-size:13.5px;margin:14px 0 6px;color:var(--ink)}
+.note{font-size:12px;color:var(--bark)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+@media (max-width:420px){.grid2{grid-template-columns:1fr}.grid3{grid-template-columns:1fr 1fr}}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--bark)}
+label.f b{color:var(--ink);font-weight:600;font-size:13px}
+input[type=text],input[type=number],input[type=date],select,textarea{
+  font:inherit;font-size:15px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;
+  background:var(--field);color:var(--ink);width:100%;min-width:0}
+textarea{min-height:64px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--ok);outline-offset:1px}
+.chk{display:flex;align-items:flex-start;gap:8px;padding:7px 0;font-size:13.5px;cursor:pointer}
+.chk input{width:20px;height:20px;margin:0;flex:0 0 auto;accent-color:var(--leaf)}
+.chk small{display:block;color:var(--bark);font-size:11.5px}
+
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1px solid var(--line);background:var(--field);color:var(--ink);border-radius:10px;
+  padding:8px 11px;font:inherit;font-size:13px;cursor:pointer;text-align:left}
+.seg button[aria-pressed="true"]{background:var(--leaf-soft);border-color:var(--leaf);color:var(--leaf);font-weight:600}
+.seg button small{display:block;font-weight:400;color:var(--bark);font-size:11px}
+.seg.col{flex-direction:column}
+.seg.col button{width:100%}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink);border-radius:10px;padding:9px 13px;font:inherit;font-size:13.5px;cursor:pointer;text-decoration:none}
+.btn.primary{background:var(--leaf);border-color:var(--leaf);color:#fff;font-weight:600}
+.btn.danger{color:var(--danger)}
+.btn.small{padding:6px 10px;font-size:12.5px}
+.btn:disabled{opacity:.45;cursor:default}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+
+.list a{display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:12px;margin-bottom:8px;text-decoration:none;color:inherit;box-shadow:var(--shadow)}
+.list .thumb{width:54px;height:54px;border-radius:9px;background:var(--leaf-soft) center/cover no-repeat;flex:0 0 auto}
+.list .meta{flex:1;min-width:0}
+.list b{display:block;font-size:14.5px}
+.list small{color:var(--bark);font-size:12px}
+
+.badge{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:700;color:#fff;white-space:nowrap}
+.badge.low{background:var(--ok)}.badge.moderate{background:var(--tape)}
+.badge.high{background:var(--danger)}.badge.extreme{background:var(--extreme)}.badge.none{background:#9A968C}
+
+.hero{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.hero div{background:var(--field);border:1px solid var(--line);border-radius:12px;padding:10px}
+.hero small{display:block;color:var(--bark);font-size:11.5px}
+.hero b{font-size:20px;font-variant-numeric:tabular-nums}
+.hero em{font-style:normal;font-size:11.5px;color:var(--bark);display:block}
+@media (max-width:420px){.hero{grid-template-columns:1fr 1fr}}
+
+table.t{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+table.t th,table.t td{border-bottom:1px solid var(--line);padding:6px 6px;text-align:right}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t th{color:var(--bark);font-weight:600;font-size:12px}
+table.t tr.hl td{background:var(--leaf-soft);font-weight:600}
+.tw{overflow-x:auto}
+
+.warn{background:#FBF1E6;border:1px solid #EBCFAE;border-radius:10px;padding:9px 11px;font-size:12.8px;margin:6px 0}
+.warn.red{background:#F8E9E6;border-color:#E3B9AF}
+.info{background:var(--leaf-soft);border-radius:10px;padding:9px 11px;font-size:12.8px;margin:6px 0}
+.kari{display:inline-block;font-size:10.5px;border:1px solid var(--tape);color:var(--tape);border-radius:5px;padding:0 4px;margin-left:4px;vertical-align:1px}
+
+.canvas-wrap{position:relative;border-radius:12px;overflow:hidden;background:#111;margin-top:8px}
+.canvas-wrap canvas{display:block;width:100%;height:auto}
+.canvas-wrap.brush canvas{touch-action:none}
+.tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tools button{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:7px 10px;font:inherit;font-size:12.5px;cursor:pointer}
+.tools button[aria-pressed="true"]{background:var(--leaf);color:#fff;border-color:var(--leaf)}
+.slider{display:grid;grid-template-columns:7.5em 1fr 4.2em;gap:8px;align-items:center;font-size:12.5px;margin-top:6px}
+.slider input{width:100%;accent-color:var(--leaf)}
+.slider output{text-align:right;font-variant-numeric:tabular-nums}
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.stat div{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:7px 9px}
+.stat small{display:block;color:var(--bark);font-size:11px}
+.stat b{font-variant-numeric:tabular-nums}
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:2px dashed var(--line);
+  border-radius:12px;padding:26px 12px;background:var(--field);cursor:pointer;text-align:center;color:var(--bark)}
+.drop b{color:var(--leaf);font-size:15px}
+.thumbs{display:flex;flex-wrap:wrap;gap:8px}
+.thumbs div{position:relative;width:96px;height:96px;border-radius:10px;background:#ddd center/cover no-repeat}
+.thumbs button{position:absolute;top:4px;right:4px;border:0;border-radius:50%;width:24px;height:24px;background:rgba(0,0,0,.6);color:#fff;cursor:pointer}
+
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart .tip{position:absolute;pointer-events:none;background:#fff;border:1px solid var(--line);border-radius:8px;
+  padding:6px 9px;font-size:12px;box-shadow:var(--shadow);display:none;white-space:nowrap;font-variant-numeric:tabular-nums}
+.chart .tip b{font-size:13px}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--bark);margin:4px 0 6px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid}
+.legend i.dash{border-top-style:dashed}
+
+.cmp{display:grid;grid-template-columns:auto 1fr 1fr;gap:0;font-size:13px;font-variant-numeric:tabular-nums}
+.cmp div{padding:7px 6px;border-bottom:1px solid var(--line)}
+.cmp .h{font-weight:600;color:var(--bark);font-size:12px}
+.cmp .r{text-align:right}
+
+.foot{text-align:center;color:var(--bark);font-size:11px;margin-top:20px}
+.only-print{display:none}
+@media print{
+  header,.tabs,.btns,.no-print,.tools,.slider{display:none!important}
+  body{background:#fff}
+  .card{box-shadow:none;break-inside:avoid}
+  .only-print{display:block}
+}
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" id="btnHome" aria-label="アプリ一覧にもどる">🏠</a>
+  <button id="btnBack" type="button" hidden>← 一覧</button>
+  <h1 id="title">倒木リスク推定</h1>
+  <button id="btnSettings" type="button">⚙ 係数</button>
+</header>
+<main id="app"></main>
+<input type="file" id="fileIn" accept="image/*" hidden>
+
+<script>
+'use strict';
+/* =========================================================
+   倒木リスク推定（試作・第1段階）
+   写真から樹冠のシルエット・すき間率を自動で抽出し、
+   SIA方式（Wessolly）の風荷重解析で根元モーメントと安全率を出す。
+   判定は ISA TRAQ の表に当てはめる。
+   ※係数はすべて仮値。「⚙ 係数」から直せる。引っ張り試験の結果で合わせ込む前提。
+   ========================================================= */
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = v => (v === '' || v == null || isNaN(+v)) ? null : +v;
+const fmt = (v, d = 1) => (v == null || !isFinite(v)) ? '—' : v.toFixed(d);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+/* ---------- 係数（仮値） ---------- */
+// Cw：樹冠の抗力係数（SIA方式の慣用値0.25前後）／sigma：生材の圧縮強度 MPa／rho：生材密度 kg/m³
+// root：根の張り方 deep・mid・shallow／ever：常緑／decay：腐朽しやすい
+const SPECIES0 = [
+  { k: 'sakura',   name: 'サクラ類（ソメイヨシノ等）', Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: false, decay: true },
+  { k: 'keyaki',   name: 'ケヤキ',                     Cw: 0.25, sigma: 24, rho: 950,  root: 'deep',    ever: false, decay: false },
+  { k: 'icho',     name: 'イチョウ',                   Cw: 0.20, sigma: 18, rho: 900,  root: 'deep',    ever: false, decay: false },
+  { k: 'kusu',     name: 'クスノキ',                   Cw: 0.30, sigma: 20, rho: 900,  root: 'deep',    ever: true,  decay: false },
+  { k: 'kuromatsu',name: 'クロマツ',                   Cw: 0.20, sigma: 20, rho: 950,  root: 'deep',    ever: true,  decay: false },
+  { k: 'akamatsu', name: 'アカマツ',                   Cw: 0.20, sigma: 20, rho: 950,  root: 'deep',    ever: true,  decay: false },
+  { k: 'platanus', name: 'プラタナス（スズカケノキ類）', Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: false, decay: true },
+  { k: 'yurinoki', name: 'ユリノキ',                   Cw: 0.25, sigma: 16, rho: 850,  root: 'mid',     ever: false, decay: true },
+  { k: 'kashi',    name: 'カシ類（シラカシ等）',       Cw: 0.30, sigma: 26, rho: 1050, root: 'deep',    ever: true,  decay: false },
+  { k: 'shii',     name: 'シイ類（スダジイ等）',       Cw: 0.30, sigma: 22, rho: 1000, root: 'mid',     ever: true,  decay: true },
+  { k: 'mukunoki', name: 'ムクノキ',                   Cw: 0.25, sigma: 22, rho: 950,  root: 'deep',    ever: false, decay: false },
+  { k: 'enoki',    name: 'エノキ',                     Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: false, decay: true },
+  { k: 'himaraya', name: 'ヒマラヤスギ',               Cw: 0.25, sigma: 17, rho: 900,  root: 'shallow', ever: true,  decay: false },
+  { k: 'meta',     name: 'メタセコイア',               Cw: 0.20, sigma: 14, rho: 850,  root: 'mid',     ever: false, decay: false },
+  { k: 'kaede',    name: 'カエデ類（トウカエデ等）',   Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: false, decay: true },
+  { k: 'hanamizu', name: 'ハナミズキ',                 Cw: 0.25, sigma: 22, rho: 1000, root: 'shallow', ever: false, decay: false },
+  { k: 'nara',     name: 'コナラ・クヌギ',             Cw: 0.25, sigma: 22, rho: 1000, root: 'deep',    ever: false, decay: true },
+  { k: 'acacia',   name: 'ニセアカシア',               Cw: 0.25, sigma: 26, rho: 1000, root: 'shallow', ever: false, decay: true },
+  { k: 'tabu',     name: 'タブノキ',                   Cw: 0.30, sigma: 20, rho: 950,  root: 'deep',    ever: true,  decay: false },
+  { k: 'sugi',     name: 'スギ・ヒノキ',               Cw: 0.20, sigma: 14, rho: 850,  root: 'mid',     ever: true,  decay: false },
+  { k: 'o_dec',    name: 'その他の落葉広葉樹',         Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: false, decay: false },
+  { k: 'o_ever',   name: 'その他の常緑広葉樹',         Cw: 0.30, sigma: 20, rho: 950,  root: 'mid',     ever: true,  decay: false },
+  { k: 'o_con',    name: 'その他の針葉樹',             Cw: 0.20, sigma: 18, rho: 900,  root: 'mid',     ever: true,  decay: false },
+];
+// rho：空気密度／creg：根返り抵抗 = creg × 幹重量（N·m/kg）／form：幹の形状係数／cdTrunk：枝下の幹の抗力係数
+// leanMass：傾斜の自重モーメントに使う樹木全体の重さ ÷ 幹重量
+const GLOBAL0 = { rho: 1.25, creg: 130, form: 0.5, cdTrunk: 0.7, leanMass: 1.4 };
+const ROOT_TYPE = { deep: { label: '深根', f: 1.1 }, mid: { label: '中間', f: 1.0 }, shallow: { label: '浅根', f: 0.85 } };
+const SOIL = {
+  normal:  { label: '普通', f: 1.0 },
+  wet:     { label: '湿っている・軟らかい', f: 0.75 },
+  shallow: { label: '浅い・盛土・礫が多い', f: 0.8 },
+};
+const BED = {
+  wide:  { label: '広い（芝生地・植込み）', f: 1.0 },
+  strip: { label: '帯状の植栽帯', f: 0.9 },
+  pit:   { label: '植桝・狭い', f: 0.75 },
+};
+const DEFECTS = [
+  { k: 'rot',   label: '根元の腐朽・キノコ', f: 0.7 },
+  { k: 'cut',   label: '根の切断・工事の跡', f: 0.8 },
+  { k: 'lift',  label: '根上がり・根の露出', f: 0.85 },
+  { k: 'crack', label: '地際の亀裂', f: 0.8 },
+  { k: 'heave', label: '根元の土の盛り上がり・根鉢の浮き（最近）', f: 0.6, imminent: true },
+];
+const EXPO = {
+  protected: { label: '守られている', d: '周りの木や建物より低く、風が遮られる', f: 0.85 },
+  partial:   { label: '一部さらされている', d: '片側だけ開けている・樹冠の上部だけ突き出る', f: 0.95 },
+  full:      { label: '完全にさらされている', d: '孤立木・広場や水辺・列植の端', f: 1.0 },
+  funnel:    { label: '風の通り道', d: 'ビルの間・谷筋・トンネルの出口など風が集まる', f: 1.15 },
+};
+// 地表面粗度区分（建築基準法 告示1454号の考え方）：a＝べき指数、zb＝これより低い所は同じ風速とみなす高さ
+const TERRAIN = {
+  I:   { label: 'I 海・湖・開けた平地', a: 0.10, zb: 5 },
+  II:  { label: 'II 田畑・広い公園', a: 0.15, zb: 5 },
+  III: { label: 'III 住宅地・木の多い所', a: 0.20, zb: 5 },
+  IV:  { label: 'IV 中高層の市街地', a: 0.27, zb: 10 },
+};
+const TOPO = {
+  flat:  { label: '平地', f: 1.0 },
+  slope: { label: '斜面の上部・小高い丘', f: 1.1 },
+  ridge: { label: '尾根・崖の上・海岸の最前列', f: 1.2 },
+};
+const V_SIA = 32.7, V_NILIM = 30, GUST = 1.5;
+const V0_LIST = [30, 32, 34, 36, 38, 40, 42, 44, 46];
+
+/* ---------- ISA TRAQ の表 ---------- */
+const LOF = { improbable: 'ほぼない', possible: 'あり得る', probable: '可能性が高い', imminent: '差し迫っている' };
+const LOI = { verylow: '非常に低い', low: '低い', medium: '中程度', high: '高い' };
+const LOI_D = { verylow: '人や物がほとんど来ない', low: 'たまに通る・使われる', medium: 'よく通る・日中は人がいる', high: '常に人や車がいる・遊具の真上' };
+const CONS = { negligible: '軽微', minor: '小さい', significant: '大きい', severe: '重大' };
+const CONS_D = { negligible: '芝生・植込みに倒れるだけ', minor: '柵・ベンチの軽い損傷', significant: '車両・建物の損傷、けが', severe: '重大な人身事故・道路の遮断' };
+const LIK = { unlikely: 'ほぼない', somewhat: 'ややあり', likely: 'あり', verylikely: '非常に高い' };
+const M1 = {
+  imminent:   { verylow: 'unlikely', low: 'somewhat', medium: 'likely',   high: 'verylikely' },
+  probable:   { verylow: 'unlikely', low: 'unlikely', medium: 'somewhat', high: 'likely' },
+  possible:   { verylow: 'unlikely', low: 'unlikely', medium: 'unlikely', high: 'somewhat' },
+  improbable: { verylow: 'unlikely', low: 'unlikely', medium: 'unlikely', high: 'unlikely' },
+};
+const M2 = {
+  verylikely: { negligible: 'low', minor: 'moderate', significant: 'high',     severe: 'extreme' },
+  likely:     { negligible: 'low', minor: 'moderate', significant: 'high',     severe: 'high' },
+  somewhat:   { negligible: 'low', minor: 'low',      significant: 'moderate', severe: 'moderate' },
+  unlikely:   { negligible: 'low', minor: 'low',      significant: 'low',      severe: 'low' },
+};
+const RISK = { low: '低', moderate: '中', high: '高', extreme: '極めて高い' };
+
+/* ---------- 設定（係数の上書き） ---------- */
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem('tr_settings')) || {}; } catch (e) { return {}; }
+}
+let SETTINGS = loadSettings();
+function saveSettings() { try { localStorage.setItem('tr_settings', JSON.stringify(SETTINGS)); } catch (e) { } }
+const G = () => ({ ...GLOBAL0, ...(SETTINGS.global || {}) });
+const speciesList = () => SPECIES0.map(s => ({ ...s, ...((SETTINGS.species || {})[s.k] || {}) }));
+const species = k => speciesList().find(s => s.k === k) || speciesList()[0];
+
+/* ---------- 保存（IndexedDB） ---------- */
+let dbp = null;
+function db() {
+  if (!dbp) dbp = new Promise((ok, ng) => {
+    const r = indexedDB.open('touboku_risk', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('trees', { keyPath: 'id' });
+    r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error);
+  });
+  return dbp;
+}
+async function dbAll() {
+  const d = await db();
+  return new Promise((ok, ng) => { const q = d.transaction('trees').objectStore('trees').getAll(); q.onsuccess = () => ok(q.result); q.onerror = () => ng(q.error); });
+}
+async function dbPut(rec) {
+  const d = await db();
+  return new Promise((ok, ng) => { const t = d.transaction('trees', 'readwrite'); t.objectStore('trees').put(rec); t.oncomplete = ok; t.onerror = () => ng(t.error); });
+}
+async function dbDel(id) {
+  const d = await db();
+  return new Promise((ok, ng) => { const t = d.transaction('trees', 'readwrite'); t.objectStore('trees').delete(id); t.oncomplete = ok; t.onerror = () => ng(t.error); });
+}
+
+function newRecord() {
+  return {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name: '', place: '', date: today(), species: 'sakura', H: null, C: null,
+    decay: { rate: null, tR: null, open: false },
+    lean: { deg: null, prog: false },
+    root: { soil: 'normal', bed: 'wide', def: {} },
+    expo: { traq: 'full', terrain: 'III', topo: 'flat', change: false, v0: 34 },
+    photos: { A: null, B: null }, surround: [],
+    traq: { target: '', impact: 'medium', cons: 'significant' },
+    prune: { on: false, H2: null, wcut: 0, thin: 0, raise: null },
+    test: { date: '', who: '', device: '', sfRoot: null, sfStem: null, force: null, height: null, tilt: null, memo: '' },
+    updated: Date.now(),
+  };
+}
+const newPhoto = img => ({ img, base: null, top: null, roi: { l: 0.1, r: 0.9, auto: true }, off: 0, strokes: [], cbZ: null, profile: null });
+
+/* ---------- 状態 ---------- */
+const S = { view: 'list', recs: [], rec: null, tab: 'kihon', slot: 'A', mode: 'none', brush: 0.03, fileTarget: null };
+let saveTimer = null;
+function touch() {
+  if (!S.rec) return;
+  S.rec.updated = Date.now();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => dbPut(S.rec).catch(e => alert('保存できませんでした：' + e.message)), 400);
+}
+
+/* =========================================================
+   写真の解析
+   ・空と枝葉を青の明るさで分ける（全天写真のすき間率解析で使われる方法）。しきい値は大津の方法で自動。
+   ・根元の近くからつながっている部分だけを「この木」とみなす。
+   ・各行の左端〜右端を樹冠の外形、その中の枝葉の割合を「埋まり率」とする。
+   ・縮尺は現場で測った樹高 H と、写真上の根元〜梢端のピクセル数で合わせる。
+   ========================================================= */
+const AMAX = 640;
+const imgCache = new Map();   // dataURL → {im, aw, ah, data}
+async function getImg(src) {
+  if (imgCache.has(src)) return imgCache.get(src);
+  const im = new Image(); im.src = src; await im.decode();
+  const s = Math.min(1, AMAX / Math.max(im.naturalWidth, im.naturalHeight));
+  const aw = Math.max(1, Math.round(im.naturalWidth * s)), ah = Math.max(1, Math.round(im.naturalHeight * s));
+  const c = document.createElement('canvas'); c.width = aw; c.height = ah;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0, aw, ah);
+  const v = { im, aw, ah, data: x.getImageData(0, 0, aw, ah) };
+  imgCache.set(src, v);
+  return v;
+}
+
+function otsu(hist, total) {
+  let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let sB = 0, wB = 0, best = 0, th = 128;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t]; if (!wB) continue;
+    const wF = total - wB; if (!wF) break;
+    sB += t * hist[t];
+    const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) * (mB - mF);
+    if (v > best) { best = v; th = t; }
+  }
+  return th;
+}
+
+function analyze(ph, ic, H) {
+  if (!ph || !ph.base || !ph.top) return null;
+  const { aw, ah } = ic, px = ic.data.data;
+  const by = Math.round(ph.base.y * ah), ty = Math.round(ph.top.y * ah), bx = Math.round(ph.base.x * aw);
+  if (by - ty < 20) return { err: '根元と梢端の間が短すぎます。根元は下、梢端は上をタップしてください。' };
+  const L = clamp(Math.round(ph.roi.l * aw), 0, aw - 1), R = clamp(Math.round(ph.roi.r * aw), L + 1, aw - 1);
+  const hist = new Uint32Array(256); let tot = 0;
+  for (let y = ty; y <= by; y++) for (let x = L; x <= R; x++) { hist[px[(y * aw + x) * 4 + 2]]++; tot++; }
+  const T = otsu(hist, tot), thr = T + (ph.off || 0);
+  const mask = new Uint8Array(aw * ah);
+  for (let y = ty; y <= by; y++) for (let x = L; x <= R; x++) { const i = y * aw + x; mask[i] = px[i * 4 + 2] < thr ? 1 : 0; }
+  // 手で直した分（消す・足す）
+  for (const st of ph.strokes || []) {
+    const r = Math.max(1, st.r * aw), val = st.m === 'add' ? 1 : 0, pts = st.p;
+    for (let j = 0; j < pts.length; j++) {
+      const a = pts[Math.max(0, j - 1)], b = pts[j];
+      const ax = a[0] * aw, ay = a[1] * ah, bx2 = b[0] * aw, byy = b[1] * ah;
+      const n = Math.max(1, Math.ceil(Math.hypot(bx2 - ax, byy - ay) / (r / 2)));
+      for (let k = 0; k <= n; k++) {
+        const cx = ax + (bx2 - ax) * k / n, cy = ay + (byy - ay) * k / n;
+        for (let y = Math.max(ty, Math.floor(cy - r)); y <= Math.min(by, Math.ceil(cy + r)); y++)
+          for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(aw - 1, Math.ceil(cx + r)); x++)
+            if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) mask[y * aw + x] = val;
+      }
+    }
+  }
+  // すき間でちぎれた枝葉をつなぐため、2ピクセル太らせてから根元につながる部分を探す
+  let dm = mask;
+  for (let it = 0; it < 2; it++) {
+    const o = new Uint8Array(aw * ah);
+    for (let y = ty; y <= by; y++) for (let x = 0; x < aw; x++) {
+      const i = y * aw + x;
+      if (dm[i] || (x > 0 && dm[i - 1]) || (x < aw - 1 && dm[i + 1]) || (y > ty && dm[i - aw]) || (y < by && dm[i + aw])) o[i] = 1;
+    }
+    dm = o;
+  }
+  let seed = -1, bestD = 1e9;
+  for (let y = Math.max(ty, by - 14); y <= by; y++) for (let x = Math.max(0, bx - 14); x <= Math.min(aw - 1, bx + 14); x++) {
+    const i = y * aw + x; if (dm[i]) { const d = (x - bx) ** 2 + (y - by) ** 2; if (d < bestD) { bestD = d; seed = i; } }
+  }
+  if (seed < 0) return { err: '根元の近くに幹が見つかりません。根元の位置をタップし直すか、しきい値を調整してください。' };
+  const comp = new Uint8Array(aw * ah), stack = [seed]; comp[seed] = 1;
+  while (stack.length) {
+    const i = stack.pop(), x = i % aw, y = (i / aw) | 0;
+    const nb = [x > 0 ? i - 1 : -1, x < aw - 1 ? i + 1 : -1, y > ty ? i - aw : -1, y < by ? i + aw : -1];
+    for (const j of nb) if (j >= 0 && dm[j] && !comp[j]) { comp[j] = 1; stack.push(j); }
+  }
+  const span = by - ty, rows = [];
+  let maxW = 0;
+  for (let y = by; y >= ty; y--) {
+    let l = -1, r = -1, fol = 0;
+    for (let x = 0; x < aw; x++) { const i = y * aw + x; if (mask[i] && comp[i]) { if (l < 0) l = x; r = x; fol++; } }
+    const w = l < 0 ? 0 : r - l + 1;
+    rows.push({ y, l, r, w, fol }); if (w > maxW) maxW = w;
+  }
+  const nb = Math.max(3, Math.round(span * 0.06));
+  const bw = rows.slice(0, nb).map(r => r.w).filter(w => w > 0).sort((a, b) => a - b);
+  const trunkW = bw.length ? bw[(bw.length / 2) | 0] : 1;
+  const thrW = Math.max(2.5 * trunkW, 0.15 * maxW), run = Math.max(3, Math.round(span * 0.02));
+  let cbIdx = 0;
+  for (let i = 0; i < rows.length - run; i++) {
+    let ok = true; for (let j = 0; j < run; j++) if (rows[i + j].w <= thrW) { ok = false; break; }
+    if (ok) { cbIdx = i; break; }
+  }
+  const mpp = H / span, cbAuto = cbIdx * mpp;
+  const cbZ = ph.cbZ != null ? ph.cbZ : cbAuto;
+  let sumW = 0, sumF = 0;
+  const prow = rows.map((r, i) => {
+    const z = (i + 0.5) * mpp, crown = z >= cbZ ? 1 : 0;
+    const ff = r.w ? r.fol / r.w : 0;
+    if (crown) { sumW += r.w; sumF += r.fol; }
+    return [+(z).toFixed(3), +(r.w * mpp).toFixed(3), +ff.toFixed(3), crown, r.w ? +(((r.l + r.r + 1) / 2) / aw).toFixed(4) : 0, +(r.w / aw).toFixed(4), +(r.y / ah).toFixed(4)];
+  });
+  const profile = { H, dz: mpp, cbZ, cbAuto, trunkW: trunkW * mpp, rows: prow, phi: sumW ? 1 - sumF / sumW : 0, T };
+  return { aw, ah, ty, by, L, R, T, mask, comp, rows, profile };
+}
+
+/* =========================================================
+   風荷重と抵抗力
+   ========================================================= */
+const densityK = phi => clamp((1 - phi) / 0.75, 0.8, 1.2);
+const densityClass = phi => phi > 0.4 ? '疎' : phi >= 0.15 ? '普通' : '密';
+
+// 樹冠の行データ（高さ順）を、剪定のパラメータで組み替える
+// 切り下げは樹冠の形を保ったまま上下に縮める（樹冠縮小剪定）。枝張りの縮小・透かしは幅・埋まり率を減らす。
+function pruneRows(p, pr, H) {
+  const s = H / p.H, dz0 = p.dz * s;
+  let rows = p.rows.map(r => ({ z: r[0] * s, w: r[1] * s, ff: r[2], c: r[3], cx: r[4], wn: r[5], yn: r[6], dz: dz0 }));
+  if (!pr) return rows;
+  const cb = (rows.find(r => r.c) || { z: H }).z;
+  const H2 = clamp(pr.H2 != null ? pr.H2 : H, cb + dz0, H), wc = (pr.wcut || 0) / 100, th = (pr.thin || 0) / 100;
+  const raise = pr.raise != null ? pr.raise : 0, tw = p.trunkW * s;
+  const k = (H2 - cb) / Math.max(H - cb, 1e-6), y0 = rows[0].yn;
+  rows = rows.filter(r => r.c || r.z <= H2).map(r => {
+    if (!r.c) return r;
+    const z = cb + (r.z - cb) * k, yn = y0 - (y0 - r.yn) * (r.z ? z / r.z : 1);
+    return { ...r, z, yn, dz: r.dz * k, w: r.w * (1 - wc), wn: r.wn * (1 - wc), ff: r.ff * (1 - th) };
+  }).map(r => (r.c && r.z < raise) ? { ...r, c: 0, w: Math.min(r.w, tw), ff: 1, wn: r.wn * (r.w ? Math.min(r.w, tw) / r.w : 0) } : r);
+  return rows;
+}
+
+// 1つの方向（写真）について、想定風速 V=1 m/s のときの荷重（あとで V² 倍する）
+function loadOf(p, rec, pr) {
+  const sp = species(rec.species), g = G();
+  const ex = EXPO[rec.expo.traq] || EXPO.full, te = TERRAIN[rec.expo.terrain] || TERRAIN.III, to = TOPO[rec.expo.topo] || TOPO.flat;
+  const rows = pruneRows(p, pr, rec.H);
+  let sw = 0, sf = 0, A = 0, Wmax = 0, hTop = 0;
+  for (const r of rows) if (r.c) { sw += r.w * r.dz; sf += r.w * r.ff * r.dz; A += r.w * r.dz; if (r.w > Wmax) Wmax = r.w; }
+  for (const r of rows) if (r.w > 0) hTop = Math.max(hTop, r.z + r.dz / 2);
+  const phi = sw ? 1 - sf / sw : 0, k = densityK(phi);
+  let F = 0, M = 0;
+  for (const r of rows) {
+    if (!r.w) continue;
+    const v = ex.f * to.f * Math.pow(Math.max(r.z, te.zb) / 10, te.a);
+    const cd = r.c ? sp.Cw * k : g.cdTrunk;
+    const dF = 0.5 * g.rho * v * v * cd * r.w * r.dz;
+    F += dF; M += dF * r.z;
+  }
+  return { F: F / 1000, M: M / 1000, A, phi, k, Wmax, zc: F ? M / F : 0, hTop, foliage: sf, rows };
+}
+
+function resistOf(rec) {
+  const sp = species(rec.species), g = G();
+  const H = rec.H, D = rec.C / 100 / Math.PI;
+  let dD = 0; const notes = [];
+  if (rec.decay.rate != null && rec.decay.rate > 0) dD = Math.max(dD, Math.sqrt(clamp(rec.decay.rate, 0, 99) / 100));
+  if (rec.decay.tR != null && rec.decay.tR < 1) dD = Math.max(dD, 1 - clamp(rec.decay.tR, 0.01, 1));
+  dD = Math.min(dD, 0.97);
+  const Wsec = Math.PI * (D ** 4 - (dD * D) ** 4) / (32 * D);
+  let pen = 1;
+  if (dD > 0.7) { pen *= 0.8; notes.push('t/R が0.3未満（殻の座屈に注意）→ 幹の強さ ×0.8'); }
+  if (rec.decay.open) { pen *= 0.8; notes.push('開口のある空洞 → 幹の強さ ×0.8'); }
+  const Mstem = sp.sigma * 1e6 * Wsec * pen / 1000;
+  const mass = Math.PI / 4 * D * D * H * g.form * sp.rho;
+  let rf = ROOT_TYPE[sp.root].f;
+  const rnotes = [`根の張り方（${ROOT_TYPE[sp.root].label}）×${ROOT_TYPE[sp.root].f}`];
+  const so = SOIL[rec.root.soil] || SOIL.normal, be = BED[rec.root.bed] || BED.wide;
+  rf *= so.f; if (so.f !== 1) rnotes.push(`土壌（${so.label}）×${so.f}`);
+  rf *= be.f; if (be.f !== 1) rnotes.push(`植栽基盤（${be.label}）×${be.f}`);
+  for (const d of DEFECTS) if (rec.root.def[d.k]) { rf *= d.f; rnotes.push(`${d.label} ×${d.f}`); }
+  rf = Math.max(rf, 0.3);
+  const Mroot = g.creg * mass * rf / 1000;
+  const lean = rec.lean.deg ? clamp(rec.lean.deg, 0, 45) : 0;
+  const Mlean = mass * g.leanMass * 9.81 * (0.5 * H * Math.sin(lean * Math.PI / 180)) / 1000;
+  return { D, dD, Wsec, Mstem, mass, Mroot, rf, Mlean, notes, rnotes };
+}
+
+function lofOf(sf, rec) {
+  if (rec.lean.prog || rec.root.def.heave) return 'imminent';
+  return sf >= 1.5 ? 'improbable' : sf >= 1.0 ? 'possible' : sf >= 0.6 ? 'probable' : 'imminent';
+}
+
+function compute(rec, withPrune) {
+  if (!rec.H || !rec.C) return { err: '「基本」で樹高と幹周を入力してください。' };
+  const dirs = ['A', 'B'].filter(s => rec.photos[s] && rec.photos[s].profile).map(s => ({ s, p: rec.photos[s].profile }));
+  if (!dirs.length) return { err: '「写真」で根元と梢端をタップして、樹冠を解析してください。' };
+  const pr = withPrune ? rec.prune : null;
+  const loads = dirs.map(d => ({ s: d.s, ...loadOf(d.p, rec, pr) }));
+  const L = loads.reduce((a, b) => b.M > a.M ? b : a);
+  const res = resistOf(rec);
+  const Mc = Math.min(res.Mstem, res.Mroot), mode = res.Mstem <= res.Mroot ? 'stem' : 'root';
+  const M = V => L.M * V * V + res.Mlean;
+  const sf = V => Mc / M(V);
+  const vcrit = (mc, lf) => Math.sqrt(Math.max(0, mc - res.Mlean) / (L.M * lf));
+  // 幅：荷重 ±25%（Cw・面積・風当たり）、幹の強さ ±15%、根返り ±35%
+  const lo = Math.min(vcrit(res.Mstem * 0.85, 1.3), vcrit(res.Mroot * 0.65, 1.3));
+  const hi = Math.min(vcrit(res.Mstem * 1.15, 0.75), vcrit(res.Mroot * 1.35, 0.75));
+  const SF = sf(V_SIA), lof = lofOf(SF, rec);
+  const lik = M1[lof][rec.traq.impact], risk = M2[lik][rec.traq.cons];
+  return {
+    loads, L, res, Mc, mode, M, sf, SF, vc: vcrit(Mc, 1), lo, hi, lof, lik, risk,
+    sfStem: res.Mstem / M(V_SIA), sfRoot: res.Mroot / M(V_SIA),
+  };
+}
+
+/* =========================================================
+   画面
+   ========================================================= */
+const app = $('#app');
+const TABS = [['kihon', '基本'], ['shashin', '写真'], ['kaze', '風当たり'], ['kekka', '結果'], ['sentei', '剪定'], ['shiken', '試験']];
+
+function riskBadge(r) { return r ? `<span class="badge ${r}">リスク ${RISK[r]}</span>` : '<span class="badge none">未判定</span>'; }
+
+async function render() {
+  $('#title').textContent = S.view === 'edit' ? (S.rec.name || '名前なしの木') : S.view === 'settings' ? '係数と設定' : '倒木リスク推定';
+  $('#btnSettings').hidden = S.view === 'settings';
+  $('#btnBack').hidden = S.view === 'list'; $('#btnHome').hidden = S.view !== 'list';
+  if (S.view === 'list') return renderList();
+  if (S.view === 'settings') return renderSettings();
+  return renderEdit();
+}
+
+async function renderList() {
+  S.recs = (await dbAll()).sort((a, b) => b.updated - a.updated);
+  const items = S.recs.map(r => {
+    const c = compute(r, false);
+    const th = r.photos.A?.img || r.photos.B?.img || '';
+    const sub = [species(r.species).name, r.H ? `H${r.H}m` : '', r.C ? `C${r.C}cm` : '', r.date].filter(Boolean).join('・');
+    const v = c.err ? '' : `限界風速 ${fmt(c.vc)}m/s・安全率 ${fmt(c.SF, 2)}`;
+    return `<a href="#" data-open="${esc(r.id)}"><span class="thumb" style="${th ? `background-image:url('${th}')` : ''}"></span>
+      <span class="meta"><b>${esc(r.name || '名前なしの木')}</b><small>${esc(sub)}</small><br><small>${esc(v || c.err)}</small></span>
+      ${c.err ? riskBadge(null) : riskBadge(c.risk)}</a>`;
+  }).join('');
+  app.innerHTML = `
+    <div class="card">
+      <h2>写真で倒木リスクを推定する</h2>
+      <p class="note" style="margin:0">写真から樹冠の面積と枝葉の密度を自動で出し、風速ごとに根元にかかる力（kN・kN·m）を計算します。
+      引っ張り試験（PiCUS・Fakopp）と同じSIA方式の考え方で安全率を出し、ISA TRAQの表でリスクを判定します。
+      係数はまだ仮の値です。<b>1次スクリーニング用</b>として使ってください。</p>
+      <div class="btns"><button class="btn primary" id="btnNew">＋ 新しい木を追加</button></div>
+    </div>
+    <div class="list">${items || '<p class="note">まだ記録がありません。</p>'}</div>
+    <p class="foot">庭乃持田園 ｜ 倒木リスク推定（試作）</p>`;
+  $('#btnNew').onclick = async () => { S.rec = newRecord(); await dbPut(S.rec); S.view = 'edit'; S.tab = 'kihon'; S.slot = 'A'; render(); };
+  $$('[data-open]').forEach(a => a.onclick = e => {
+    e.preventDefault(); S.rec = S.recs.find(r => r.id === a.dataset.open); S.view = 'edit'; S.tab = 'kihon'; S.slot = 'A'; render();
+  });
+}
+
+function tabsHtml() {
+  return `<div class="tabs" role="tablist">${TABS.map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${S.tab === k}">${l}</button>`).join('')}</div>`;
+}
+
+function renderEdit() {
+  app.innerHTML = tabsHtml() + '<div id="pane"></div>';
+  $$('[data-tab]').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.mode = 'none'; renderEdit(); window.scrollTo(0, 0); });
+  const f = { kihon: paneKihon, shashin: paneShashin, kaze: paneKaze, kekka: paneKekka, sentei: paneSentei, shiken: paneShiken }[S.tab];
+  f($('#pane'));
+}
+
+// data-k="a.b.c" の入力を S.rec に書き戻す
+function getPath(o, p) { return p.split('.').reduce((a, k) => a == null ? a : a[k], o); }
+function setPath(o, p, v) { const ks = p.split('.'), last = ks.pop(); const t = ks.reduce((a, k) => (a[k] ??= {}), o); t[last] = v; }
+function bindInputs(root, after) {
+  $$('[data-k]', root).forEach(el => {
+    const p = el.dataset.k, v = getPath(S.rec, p);
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v ?? '';
+    const ev = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+    el.addEventListener(ev, () => {
+      const val = el.type === 'checkbox' ? el.checked : el.type === 'number' ? num(el.value) : el.value;
+      setPath(S.rec, p, val); touch(); if (after) after(p);
+    });
+  });
+  $$('[data-seg]', root).forEach(box => {
+    const p = box.dataset.seg;
+    const sync = () => $$('button', box).forEach(b => b.setAttribute('aria-pressed', String(getPath(S.rec, p) === b.dataset.v)));
+    sync();
+    $$('button', box).forEach(b => b.onclick = () => { setPath(S.rec, p, b.dataset.v); touch(); sync(); if (after) after(p); });
+  });
+}
+const segHtml = (path, obj, col, descKey) => `<div class="seg${col ? ' col' : ''}" data-seg="${path}">${Object.entries(obj).map(([k, o]) =>
+  `<button type="button" data-v="${k}">${esc(typeof o === 'string' ? o : o.label)}${descKey && descKey[k] ? `<small>${esc(descKey[k])}</small>` : (o.d ? `<small>${esc(o.d)}</small>` : '')}</button>`).join('')}</div>`;
+
+/* ---------- 基本 ---------- */
+function paneKihon(el) {
+  const sp = speciesList();
+  el.innerHTML = `
+  <div class="card"><h2>樹木</h2>
+    <div class="grid2">
+      <label class="f"><b>名前・番号</b><input type="text" data-k="name" placeholder="例：○○公園 No.12"></label>
+      <label class="f"><b>場所</b><input type="text" data-k="place" placeholder="例：北側園路沿い"></label>
+      <label class="f"><b>調査日</b><input type="date" data-k="date"></label>
+      <label class="f"><b>樹種</b><select data-k="species">${sp.map(s => `<option value="${s.k}">${esc(s.name)}</option>`).join('')}</select></label>
+      <label class="f"><b>樹高 H（m）</b><input type="number" inputmode="decimal" step="0.1" min="1" data-k="H" placeholder="現場で測った値"></label>
+      <label class="f"><b>幹周 C（cm）</b><input type="number" inputmode="decimal" step="1" min="5" data-k="C" placeholder="地上1.2m"></label>
+    </div>
+    <p class="note" id="spInfo"></p>
+  </div>
+  <div class="card"><h2>幹の腐朽・空洞</h2>
+    <div class="grid2">
+      <label class="f"><b>腐朽空洞率（%）</b><input type="number" inputmode="decimal" min="0" max="99" data-k="decay.rate" placeholder="なしなら空欄">
+        <span>樹木診断カルテと同じ定義 {(A+B)÷(a+b)}²</span></label>
+      <label class="f"><b>t/R（最小値）</b><input type="number" inputmode="decimal" step="0.01" min="0" max="1" data-k="decay.tR" placeholder="例：0.35"></label>
+    </div>
+    <label class="chk"><input type="checkbox" data-k="decay.open"><span>空洞に開口がある<small>外から見える開口・裂け目</small></span></label>
+  </div>
+  <div class="card"><h2>傾き</h2>
+    <div class="grid2">
+      <label class="f"><b>幹の傾き（度）</b><input type="number" inputmode="decimal" min="0" max="45" data-k="lean.deg" placeholder="なしなら空欄"></label>
+    </div>
+    <label class="chk"><input type="checkbox" data-k="lean.prog"><span>傾きが最近大きくなった<small>チェックすると「倒れる可能性：差し迫っている」になります</small></span></label>
+  </div>
+  <div class="card"><h2>根株・植栽基盤</h2>
+    <h3>土壌</h3>${segHtml('root.soil', SOIL)}
+    <h3>植栽基盤</h3>${segHtml('root.bed', BED)}
+    <h3>根株の状態</h3>
+    ${DEFECTS.map(d => `<label class="chk"><input type="checkbox" data-k="root.def.${d.k}"><span>${esc(d.label)}<small>根返りの限界 ×${d.f}${d.imminent ? '・「差し迫っている」扱い' : ''}<span class="kari">仮</span></small></span></label>`).join('')}
+  </div>
+  <div class="btns no-print"><button class="btn danger" id="btnDel">この木を削除</button></div>`;
+  const info = () => {
+    const s = species(S.rec.species);
+    $('#spInfo').innerHTML = `係数：Cw ${s.Cw}・生材強度 ${s.sigma}MPa・${ROOT_TYPE[s.root].label}・${s.ever ? '常緑' : '落葉'}${s.decay ? '・腐朽しやすい' : ''} <span class="kari">仮</span>`;
+  };
+  bindInputs(el, p => { if (p === 'species') info(); if (p === 'name') $('#title').textContent = S.rec.name || '名前なしの木'; });
+  info();
+  $('#btnDel').onclick = async () => {
+    if (!confirm('この木の記録を削除します。元に戻せません。よろしいですか？')) return;
+    clearTimeout(saveTimer); await dbDel(S.rec.id); S.rec = null; S.view = 'list'; render();
+  };
+}
+
+/* ---------- 写真 ---------- */
+let cur = null; // 解析中の写真の結果
+async function paneShashin(el) {
+  const ph = S.rec.photos[S.slot];
+  el.innerHTML = `
+  <div class="card">
+    <h2>樹冠の写真</h2>
+    <div class="seg" id="slotSeg"><button type="button" data-v="A">方向A（主な風向き）${S.rec.photos.A ? ' ✓' : ''}</button><button type="button" data-v="B">方向B（Aと直交・任意）${S.rec.photos.B ? ' ✓' : ''}</button></div>
+    <div id="phBody"></div>
+  </div>`;
+  $$('#slotSeg button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.v === S.slot)); b.onclick = () => { S.slot = b.dataset.v; S.mode = 'none'; paneShashin(el); }; });
+  const body = $('#phBody');
+  if (!ph) {
+    body.innerHTML = `<div class="drop" id="drop" style="margin-top:10px"><b>📷 写真を撮る・選ぶ</b><span class="note">木の全体（根元〜梢の先端）が入るように</span></div>
+    <div class="info"><b>撮り方</b><br>・樹高の1.5〜2倍以上離れて、木を画面の真ん中に<br>・根元と梢の先端が両方写るように<br>・空を背景にすると自動抽出がうまくいきます（曇りの日・逆光でもOK）<br>・葉がある時期に（台風期の状態で評価するため）<br>・隣の木や建物が重なったら、あとで「消す」で直せます</div>`;
+    $('#drop').onclick = () => pickFile('photo');
+    return;
+  }
+  body.innerHTML = `
+    <div class="tools" id="tools">
+      <button type="button" data-m="base">① 根元をタップ</button>
+      <button type="button" data-m="top">② 梢端をタップ</button>
+      <button type="button" data-m="erase">消す</button>
+      <button type="button" data-m="add">足す</button>
+      <button type="button" data-m="none">スクロール</button>
+      <button type="button" id="undo">↶ 1つ戻す</button>
+    </div>
+    <p class="note" id="hint" style="margin:6px 0 0"></p>
+    <div class="canvas-wrap" id="cw"><canvas id="cv"></canvas></div>
+    <div id="sl"></div>
+    <div id="phStat"></div>
+    <div class="btns">
+      <button class="btn small" id="reshoot">写真を入れ替える</button>
+      <button class="btn small danger" id="rmPhoto">この写真を削除</button>
+    </div>`;
+  const ic = await getImg(ph.img);
+  const cv = $('#cv'), cw = $('#cw');
+  const dispW = Math.min(cw.clientWidth || 600, 900) * (window.devicePixelRatio || 1);
+  cv.width = Math.round(dispW); cv.height = Math.round(dispW * ic.ah / ic.aw);
+  const ovl = document.createElement('canvas'); ovl.width = ic.aw; ovl.height = ic.ah;
+
+  const hint = () => {
+    const m = S.mode, t = {
+      base: '根元（地面と幹の境目）をタップしてください。',
+      top: '梢の先端（いちばん高い所）をタップしてください。',
+      erase: '隣の木・建物・電線など、この木でない部分をなぞって消します。',
+      add: '抜けてしまった枝葉をなぞって足します。',
+      none: ph.base && ph.top ? '緑＝この木と判定した枝葉、黄色の線＝樹冠の外形、橙の点線＝枝下高。おかしい所は「消す」「足す」で直してください。' : '「① 根元をタップ」から始めてください。',
+    }[m];
+    $('#hint').textContent = t;
+    $$('#tools [data-m]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === m)));
+    cw.classList.toggle('brush', m !== 'none');
+  };
+  if (S.mode === 'none' && !ph.base) S.mode = 'base';
+  else if (S.mode === 'none' && !ph.top) S.mode = 'top';
+
+  const draw = () => {
+    const x = cv.getContext('2d'), W = cv.width, Hh = cv.height, sx = W / ic.aw, sy = Hh / ic.ah;
+    x.clearRect(0, 0, W, Hh); x.drawImage(ic.im, 0, 0, W, Hh);
+    if (cur && !cur.err) {
+      const o = ovl.getContext('2d'), id = o.createImageData(ic.aw, ic.ah), d = id.data;
+      for (let y = cur.ty; y <= cur.by; y++) for (let xx = 0; xx < ic.aw; xx++) {
+        const i = y * ic.aw + xx;
+        if (cur.mask[i]) { const k = i * 4; if (cur.comp[i]) { d[k] = 40; d[k + 1] = 220; d[k + 2] = 90; d[k + 3] = 110; } else { d[k] = 160; d[k + 1] = 160; d[k + 2] = 160; d[k + 3] = 70; } }
+      }
+      o.putImageData(id, 0, 0);
+      x.imageSmoothingEnabled = false; x.drawImage(ovl, 0, 0, W, Hh); x.imageSmoothingEnabled = true;
+      // 外形
+      x.lineWidth = Math.max(2, W / 400); x.strokeStyle = '#FFD84A';
+      x.beginPath(); let st = false;
+      for (const r of cur.rows) if (r.w) { const X = r.l * sx, Y = r.y * sy; if (!st) { x.moveTo(X, Y); st = true; } else x.lineTo(X, Y); }
+      for (let i = cur.rows.length - 1; i >= 0; i--) { const r = cur.rows[i]; if (r.w) x.lineTo((r.r + 1) * sx, r.y * sy); }
+      x.closePath(); x.stroke();
+      // 枝下高
+      const cbY = (cur.by - cur.profile.cbZ / cur.profile.dz) * sy;
+      x.setLineDash([10, 7]); x.strokeStyle = '#FF9F43'; x.beginPath(); x.moveTo(0, cbY); x.lineTo(W, cbY); x.stroke();
+      // 解析範囲
+      x.strokeStyle = 'rgba(255,255,255,.75)';
+      for (const xx of [cur.L * sx, (cur.R + 1) * sx]) { x.beginPath(); x.moveTo(xx, cur.ty * sy); x.lineTo(xx, cur.by * sy); x.stroke(); }
+      x.setLineDash([]);
+    }
+    const dot = (p, c, t) => {
+      if (!p) return; const X = p.x * W, Y = p.y * Hh, r = Math.max(7, W / 70);
+      x.fillStyle = c; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.arc(X, Y, r, 0, 7); x.fill(); x.stroke();
+      x.fillStyle = '#fff'; x.font = `bold ${Math.round(r * 1.5)}px sans-serif`; x.fillText(t, X + r * 1.3, Y + r * 0.5);
+    };
+    dot(ph.base, '#D9483B', '根元'); dot(ph.top, '#2B7BD6', '梢端');
+  };
+
+  const run = () => {
+    cur = S.rec.H ? analyze(ph, ic, S.rec.H) : (ph.base && ph.top ? { err: '「基本」で樹高 H を入力すると縮尺が決まり、解析できます。' } : null);
+    ph.profile = cur && !cur.err ? cur.profile : null;
+    draw(); stat(); touch();
+  };
+  const stat = () => {
+    const box = $('#phStat');
+    if (!cur) { box.innerHTML = ''; return; }
+    if (cur.err) { box.innerHTML = `<div class="warn">${esc(cur.err)}</div>`; return; }
+    const l = loadOf(cur.profile, S.rec, null);
+    const p = cur.profile;
+    box.innerHTML = `<div class="stat">
+      <div><small>樹冠の面積</small><b>${fmt(l.A, 1)} m²</b></div>
+      <div><small>枝張り（最大幅）</small><b>${fmt(l.Wmax, 1)} m</b></div>
+      <div><small>枝下高${ph.cbZ != null ? '（手入力）' : '（自動）'}</small><b>${fmt(p.cbZ, 1)} m</b></div>
+      <div><small>すき間率</small><b>${fmt(p.phi * 100, 0)} %</b></div>
+      <div><small>枝葉の密度（TRAQ）</small><b>${densityClass(p.phi)}</b></div>
+      <div><small>荷重の中心の高さ</small><b>${fmt(l.zc, 1)} m</b></div>
+    </div>
+    <p class="note">密度による Cw の補正 ×${fmt(l.k, 2)} <span class="kari">仮</span>　縮尺 1px＝${fmt(p.dz * 100, 1)}cm（樹高 ${S.rec.H}m から）</p>`;
+  };
+  const sliders = () => {
+    const box = $('#sl');
+    if (!ph.base || !ph.top) { box.innerHTML = ''; return; }
+    const cbMax = Math.max(1, (S.rec.H || 10) * 0.8);
+    box.innerHTML = `
+      <div class="slider"><span>解析範囲 左</span><input type="range" min="0" max="0.95" step="0.005" id="rl"><output id="ol"></output></div>
+      <div class="slider"><span>解析範囲 右</span><input type="range" min="0.05" max="1" step="0.005" id="rr"><output id="or"></output></div>
+      <div class="slider"><span>空と葉の境目</span><input type="range" min="-60" max="60" step="1" id="ro"><output id="oo"></output></div>
+      <div class="slider"><span>枝下高</span><input type="range" min="0" max="${cbMax.toFixed(1)}" step="0.1" id="rc"><output id="oc"></output></div>
+      <div class="btns" style="margin-top:4px"><button class="btn small" id="cbAuto">枝下高を自動に戻す</button><button class="btn small" id="roiAuto">解析範囲・境目を元に戻す</button></div>`;
+    const rl = $('#rl'), rr = $('#rr'), ro = $('#ro'), rc = $('#rc');
+    const out = () => {
+      $('#ol').textContent = Math.round(ph.roi.l * 100) + '%'; $('#or').textContent = Math.round(ph.roi.r * 100) + '%';
+      $('#oo').textContent = (ph.off > 0 ? '+' : '') + ph.off;
+      $('#oc').textContent = (ph.cbZ != null ? ph.cbZ : (cur?.profile?.cbZ ?? 0)).toFixed(1) + 'm';
+    };
+    rl.value = ph.roi.l; rr.value = ph.roi.r; ro.value = ph.off; rc.value = ph.cbZ != null ? ph.cbZ : (cur?.profile?.cbZ ?? 0);
+    let raf = 0; const later = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { run(); out(); }); };
+    rl.oninput = () => { ph.roi.l = Math.min(+rl.value, ph.roi.r - 0.05); ph.roi.auto = false; later(); };
+    rr.oninput = () => { ph.roi.r = Math.max(+rr.value, ph.roi.l + 0.05); ph.roi.auto = false; later(); };
+    ro.oninput = () => { ph.off = +ro.value; later(); };
+    rc.oninput = () => { ph.cbZ = +rc.value; later(); };
+    $('#cbAuto').onclick = () => { ph.cbZ = null; run(); sliders(); };
+    $('#roiAuto').onclick = () => { ph.off = 0; autoRoi(); run(); sliders(); };
+    out();
+  };
+  const autoRoi = () => {
+    if (!ph.base || !ph.top) return;
+    const half = 0.6 * (ph.base.y - ph.top.y) * ic.ah / ic.aw;
+    ph.roi = { l: clamp(ph.base.x - half, 0, 0.9), r: clamp(ph.base.x + half, 0.1, 1), auto: true };
+  };
+
+  // 操作
+  const pos = e => { const b = cv.getBoundingClientRect(); return [clamp((e.clientX - b.left) / b.width, 0, 1), clamp((e.clientY - b.top) / b.height, 0, 1)]; };
+  let stroke = null;
+  cv.onpointerdown = e => {
+    const [x, y] = pos(e);
+    if (S.mode === 'base' || S.mode === 'top') {
+      ph[S.mode] = { x, y };
+      if (ph.roi.auto) autoRoi();
+      S.mode = S.mode === 'base' ? (ph.top ? 'none' : 'top') : 'none';
+      hint(); run(); sliders(); return;
+    }
+    if (S.mode === 'erase' || S.mode === 'add') {
+      cv.setPointerCapture(e.pointerId);
+      stroke = { m: S.mode, r: S.brush, p: [[+x.toFixed(4), +y.toFixed(4)]] };
+      ph.strokes.push(stroke); run();
+    }
+  };
+  cv.onpointermove = e => {
+    if (!stroke) return; const [x, y] = pos(e);
+    const l = stroke.p[stroke.p.length - 1];
+    if (Math.hypot(x - l[0], y - l[1]) > 0.006) { stroke.p.push([+x.toFixed(4), +y.toFixed(4)]); run(); }
+  };
+  cv.onpointerup = cv.onpointercancel = () => { stroke = null; };
+  $$('#tools [data-m]').forEach(b => b.onclick = () => { S.mode = b.dataset.m; hint(); });
+  $('#undo').onclick = () => {
+    if (ph.strokes.length) ph.strokes.pop();
+    else if (ph.top) { ph.top = null; S.mode = 'top'; }
+    else if (ph.base) { ph.base = null; S.mode = 'base'; }
+    hint(); run(); sliders();
+  };
+  $('#reshoot').onclick = () => pickFile('photo');
+  $('#rmPhoto').onclick = () => { if (confirm('この方向の写真と解析を削除しますか？')) { S.rec.photos[S.slot] = null; cur = null; touch(); paneShashin(el); } };
+  hint(); run(); sliders();
+}
+
+/* ---------- ファイル読み込み ---------- */
+function pickFile(target) { S.fileTarget = target; const f = $('#fileIn'); f.value = ''; f.click(); }
+$('#fileIn').onchange = async e => {
+  const file = e.target.files[0]; if (!file || !S.rec) return;
+  const url = URL.createObjectURL(file);
+  try {
+    const im = new Image(); im.src = url; await im.decode();
+    const max = S.fileTarget === 'photo' ? 1400 : 900, s = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
+    const c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * s); c.height = Math.round(im.naturalHeight * s);
+    c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+    const data = c.toDataURL('image/jpeg', 0.85);
+    if (S.fileTarget === 'photo') { S.rec.photos[S.slot] = newPhoto(data); S.mode = 'base'; }
+    else S.rec.surround.push(data);
+    touch(); renderEdit();
+  } catch (err) { alert('写真を読み込めませんでした：' + err.message); }
+  finally { URL.revokeObjectURL(url); }
+};
+
+/* ---------- 風当たり ---------- */
+function paneKaze(el) {
+  el.innerHTML = `
+  <div class="card"><h2>風当たり（TRAQ の荷重要因）</h2>
+    ${segHtml('expo.traq', EXPO, true)}
+    <p class="note">樹冠の高さでの風速に ×${Object.values(EXPO).map(o => o.f).join('／×')} を掛けます <span class="kari">仮</span></p>
+    <label class="chk"><input type="checkbox" data-k="expo.change"><span>最近、風当たりが変わった<small>隣の木の伐採・建物の解体など。根や樹形が新しい風に慣れていないため注意を表示します</small></span></label>
+  </div>
+  <div class="card"><h2>周囲の地表面の粗さ</h2>
+    ${segHtml('expo.terrain', TERRAIN, true)}
+    <p class="note">高さによる風速の変わり方（建築基準法の地表面粗度区分の考え方）。</p>
+  </div>
+  <div class="card"><h2>地形</h2>
+    ${segHtml('expo.topo', TOPO)}
+    <p class="note">風速に ×1.0／×1.1／×1.2 を掛けます <span class="kari">仮</span></p>
+  </div>
+  <div class="card"><h2>地域の基準風速（参考値の計算用）</h2>
+    <label class="f"><b>基準風速 V0（m/s）</b><select data-k="expo.v0" id="v0sel">${V0_LIST.map(v => `<option value="${v}">${v}</option>`).join('')}</select>
+    <span>建築基準法 告示1454号の値（市区町村ごと）。判定は SIA方式の32.7m/s で行い、これは参考として並べます。</span></label>
+  </div>
+  <div class="card"><h2>周囲の写真</h2>
+    <p class="note" style="margin-top:0">記録用です（将来、AIによる風当たりの判定に使えるように保存しておきます）。4方向まで。</p>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="btns"><button class="btn small" id="addSur">＋ 周囲の写真を追加</button></div>
+  </div>`;
+  bindInputs(el);
+  const sel = $('#v0sel'); sel.value = String(S.rec.expo.v0); sel.onchange = () => { S.rec.expo.v0 = +sel.value; touch(); };
+  const th = () => {
+    $('#thumbs').innerHTML = S.rec.surround.map((s, i) => `<div style="background-image:url('${s}')"><button data-rm="${i}" aria-label="削除">×</button></div>`).join('');
+    $$('[data-rm]').forEach(b => b.onclick = () => { S.rec.surround.splice(+b.dataset.rm, 1); touch(); th(); });
+    $('#addSur').disabled = S.rec.surround.length >= 4;
+  };
+  th();
+  $('#addSur').onclick = () => pickFile('surround');
+}
+
+/* ---------- グラフ（風速 → 根元モーメント） ---------- */
+function chartHtml(c, cp) {
+  const W = 440, Hh = 290, ml = 44, mr = 84, mt = 14, mb = 40, vmax = 45;
+  const ymaxRaw = Math.max(c.res.Mstem, c.res.Mroot, c.M(40)) * 1.12;
+  const step = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find(s => ymaxRaw / s <= 6) || 1000;
+  const ymax = Math.ceil(ymaxRaw / step) * step;
+  const X = v => ml + (W - ml - mr) * v / vmax, Y = m => mt + (Hh - mt - mb) * (1 - Math.min(m, ymax * 1.05) / ymax);
+  const path = f => { let d = ''; for (let v = 0; v <= vmax; v += 0.5) d += (d ? 'L' : 'M') + X(v).toFixed(1) + ',' + Y(f(v)).toFixed(1); return d; };
+  let g = '';
+  for (let m = 0; m <= ymax; m += step) g += `<line x1="${ml}" x2="${W - mr}" y1="${Y(m)}" y2="${Y(m)}" stroke="#ECEAE3"/><text x="${ml - 6}" y="${Y(m) + 4}" text-anchor="end" font-size="11" fill="#5B5750">${m}</text>`;
+  for (let v = 0; v <= vmax; v += 5) g += `<text x="${X(v)}" y="${Hh - mb + 16}" text-anchor="middle" font-size="11" fill="#5B5750">${v}</text>`;
+  g += `<text x="${(ml + W - mr) / 2}" y="${Hh - 4}" text-anchor="middle" font-size="11.5" fill="#5B5750">想定風速（m/s・高さ10mの瞬間風速）</text>`;
+  g += `<text x="12" y="${mt + (Hh - mt - mb) / 2}" text-anchor="middle" font-size="11.5" fill="#5B5750" transform="rotate(-90 12 ${mt + (Hh - mt - mb) / 2})">根元モーメント kN·m</text>`;
+  for (const [v, t] of [[V_NILIM, '30'], [V_SIA, '32.7']]) g += `<line x1="${X(v)}" x2="${X(v)}" y1="${mt}" y2="${Hh - mb}" stroke="#B9B5AA" stroke-dasharray="2 3"/><text x="${X(v) + (v === V_SIA ? 3 : -3)}" y="${mt + 10}" font-size="10.5" fill="#5B5750" text-anchor="${v === V_SIA ? 'start' : 'end'}">${t}</text>`;
+  const labs = [[c.res.Mstem, '幹折れ限界', '6 4'], [c.res.Mroot, '根返り限界', '2 3']]
+    .map(([m, t, dash]) => ({ m, t, dash, y: Y(m) })).sort((a, b) => a.y - b.y);
+  labs[0].ty = labs[0].y; labs[1].ty = Math.max(labs[1].y, labs[0].y + 14);
+  for (const l of labs) g += `<line x1="${ml}" x2="${W - mr}" y1="${l.y}" y2="${l.y}" stroke="#22231F" stroke-width="1.5" stroke-dasharray="${l.dash}"/><text x="${W - mr + 6}" y="${l.ty + 4}" font-size="11" fill="#22231F">${l.t} ${fmt(l.m, 0)}</text>`;
+  g += `<path d="${path(c.M)}" fill="none" stroke="var(--s-before)" stroke-width="2.2"/>`;
+  if (cp) g += `<path d="${path(cp.M)}" fill="none" stroke="var(--s-after)" stroke-width="2.2"/>`;
+  g += `<line id="xh" y1="${mt}" y2="${Hh - mb}" stroke="#22231F" stroke-width="1" visibility="hidden"/>`;
+  g += `<circle id="d1" r="4" fill="var(--s-before)" stroke="#fff" stroke-width="2" visibility="hidden"/>${cp ? '<circle id="d2" r="4" fill="var(--s-after)" stroke="#fff" stroke-width="2" visibility="hidden"/>' : ''}`;
+  g += `<rect id="hit" x="${ml}" y="${mt}" width="${W - ml - mr}" height="${Hh - mt - mb}" fill="transparent"/>`;
+  return {
+    html: `<div class="legend"><span><i style="border-color:var(--s-before)"></i>${cp ? '剪定前' : '根元モーメント'}</span>${cp ? '<span><i style="border-color:var(--s-after)"></i>剪定後</span>' : ''}<span><i class="dash" style="border-color:#22231F"></i>限界（小さい方で倒れる）</span></div>
+      <div class="chart" id="chart"><svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="風速と根元モーメントのグラフ">${g}</svg><div class="tip" id="tip"></div></div>`,
+    bind: () => {
+      const svg = $('#chart svg'), tip = $('#tip'), hit = $('#hit');
+      const move = e => {
+        const b = svg.getBoundingClientRect(), sx = W / b.width;
+        const vx = ((e.clientX - b.left) * sx - ml) / (W - ml - mr) * vmax, v = clamp(Math.round(vx * 2) / 2, 0, vmax);
+        $('#xh').setAttribute('x1', X(v)); $('#xh').setAttribute('x2', X(v)); $('#xh').setAttribute('visibility', 'visible');
+        $('#d1').setAttribute('cx', X(v)); $('#d1').setAttribute('cy', Y(c.M(v))); $('#d1').setAttribute('visibility', 'visible');
+        if (cp) { $('#d2').setAttribute('cx', X(v)); $('#d2').setAttribute('cy', Y(cp.M(v))); $('#d2').setAttribute('visibility', 'visible'); }
+        tip.innerHTML = `${v} m/s<br><b>${fmt(c.M(v), 0)}</b> kN·m <span style="color:var(--bark)">${cp ? '剪定前' : ''}</span>${cp ? `<br><b>${fmt(cp.M(v), 0)}</b> kN·m <span style="color:var(--bark)">剪定後</span>` : ''}`;
+        tip.style.display = 'block';
+        const px = X(v) / sx, left = px > b.width * 0.6 ? px - tip.offsetWidth - 10 : px + 10;
+        tip.style.left = left + 'px'; tip.style.top = '8px';
+      };
+      hit.addEventListener('pointermove', move); hit.addEventListener('pointerdown', move);
+      hit.addEventListener('pointerleave', () => { tip.style.display = 'none'; ['xh', 'd1', 'd2'].forEach(i => $('#' + i)?.setAttribute('visibility', 'hidden')); });
+    },
+  };
+}
+
+/* ---------- 結果 ---------- */
+function warningsOf(rec, c) {
+  const w = [];
+  if (rec.expo.change) w.push('最近風当たりが変わっています。根や樹形が新しい風に適応していないため、計算より弱い風で倒れるおそれがあります。');
+  if (rec.lean.prog) w.push('傾きが進行しています。計算結果にかかわらず「差し迫っている」として扱います。');
+  if (rec.root.def.heave) w.push('根元の土の盛り上がり・根鉢の浮きがあります。根返りが始まっている可能性があります。');
+  if (c && c.res.notes.length) w.push(...c.res.notes);
+  if (c && c.loads.length < 2) w.push('写真は1方向だけです。直交方向（方向B）も撮ると、風を受ける面積が大きい方向で判定できます。');
+  if (c && c.res.Mlean > 0) w.push(`傾きによる自重のモーメント ${fmt(c.res.Mlean, 1)} kN·m を、傾いた方向から風が吹く前提で足しています。`);
+  return w;
+}
+
+function paneKekka(el) {
+  const rec = S.rec, c = compute(rec, false);
+  if (c.err) { el.innerHTML = `<div class="card"><div class="warn">${esc(c.err)}</div></div>`; return; }
+  const cp = rec.prune.on ? compute(rec, true) : null;
+  const vRef = [[`SIA方式 ${V_SIA}m/s（判定に使用）`, V_SIA, true], [`国総研の経験値 瞬間${V_NILIM}m/s`, V_NILIM], [`地域 V0=${rec.expo.v0}m/s × 突風率${GUST}（簡易換算）`, rec.expo.v0 * GUST]];
+  const ch = chartHtml(c, cp);
+  const speeds = [20, 25, 30, V_SIA, 35, 40];
+  const sp = species(rec.species);
+  const modeTxt = c.mode === 'root' ? '根返り' : '幹折れ';
+  const hDef = Math.round((rec.H || 10) * 0.5 * 10) / 10;
+  el.innerHTML = `
+  <div class="only-print"><h2 style="margin:0 0 4px">${esc(rec.name || '名前なしの木')}　${esc(sp.name)}　H${rec.H}m・C${rec.C}cm</h2><p class="note">${esc(rec.place)}　${esc(rec.date)}</p></div>
+  <div class="card">
+    <h2>判定 ${riskBadge(c.risk)}</h2>
+    <div class="hero">
+      <div><small>限界風速（${modeTxt}）</small><b>${fmt(c.vc, 1)}</b> m/s<em>幅 ${fmt(c.lo, 0)}〜${fmt(c.hi, 0)} m/s</em></div>
+      <div><small>安全率（${V_SIA}m/s）</small><b>${fmt(c.SF, 2)}</b><em>幹折れ ${fmt(c.sfStem, 2)}・根返り ${fmt(c.sfRoot, 2)}</em></div>
+      <div><small>倒れる可能性（TRAQ）</small><b style="font-size:16px">${LOF[c.lof]}</b><em>1.5以上 ほぼない／1〜1.5 あり得る</em></div>
+    </div>
+    <p class="note" style="margin-bottom:0">${V_SIA}m/s で根元に <b>水平力 ${fmt(c.L.F * V_SIA * V_SIA, 1)} kN</b>・<b>モーメント ${fmt(c.M(V_SIA), 0)} kN·m</b>（方向${c.L.s}）。
+    安全率 1.5以上で安全、1〜1.5 で中程度、1未満で高リスク（SIA方式・Fakopp の区分）。</p>
+  </div>
+  <div class="card">
+    <h2>風速と根元モーメント</h2>
+    ${ch.html}
+    <div class="tw"><table class="t">
+      <tr><th>風速 m/s</th><th>水平力 kN</th><th>モーメント kN·m</th>${cp ? '<th>剪定後 kN·m</th>' : ''}<th>安全率</th></tr>
+      ${speeds.map(v => `<tr class="${v === V_SIA ? 'hl' : ''}"><td>${v}</td><td>${fmt(c.L.F * v * v, 1)}</td><td>${fmt(c.M(v), 0)}</td>${cp ? `<td>${fmt(cp.M(v), 0)}</td>` : ''}<td>${fmt(c.sf(v), 2)}</td></tr>`).join('')}
+    </table></div>
+  </div>
+  <div class="card">
+    <h2>想定風速ごとの安全率</h2>
+    <div class="tw"><table class="t"><tr><th>想定</th><th>風速</th><th>モーメント</th><th>安全率</th></tr>
+      ${vRef.map(([t, v, b]) => `<tr class="${b ? 'hl' : ''}"><td>${esc(t)}</td><td>${fmt(v, 1)}</td><td>${fmt(c.M(v), 0)}</td><td>${fmt(c.sf(v), 2)}</td></tr>`).join('')}
+    </table></div>
+  </div>
+  <div class="card">
+    <h2>荷重と抵抗の内訳</h2>
+    <div class="tw"><table class="t">
+      ${c.loads.map(l => `<tr><td>方向${l.s}：樹冠面積・すき間率</td><td>${fmt(l.A, 1)} m²・${fmt(l.phi * 100, 0)}%（${densityClass(l.phi)}）</td></tr>
+        <tr><td>方向${l.s}：荷重の中心の高さ</td><td>${fmt(l.zc, 1)} m</td></tr>`).join('')}
+      <tr><td>Cw（${esc(sp.name)}）× 密度補正</td><td>${sp.Cw} × ${fmt(c.L.k, 2)} <span class="kari">仮</span></td></tr>
+      <tr><td>風速の係数（風当たり×地形）</td><td>×${fmt(EXPO[rec.expo.traq].f * TOPO[rec.expo.topo].f, 2)}・粗度${rec.expo.terrain}</td></tr>
+      <tr><td>幹折れ限界</td><td><b>${fmt(c.res.Mstem, 0)} kN·m</b></td></tr>
+      <tr><td class="note">　直径・空洞の比 d/D</td><td>${fmt(c.res.D * 100, 1)} cm・${fmt(c.res.dD, 2)}</td></tr>
+      <tr><td class="note">　生材強度</td><td>${sp.sigma} MPa <span class="kari">仮</span></td></tr>
+      <tr><td>根返り限界</td><td><b>${fmt(c.res.Mroot, 0)} kN·m</b></td></tr>
+      <tr><td class="note">　幹重量 × 係数</td><td>${fmt(c.res.mass, 0)} kg × ${G().creg} × ${fmt(c.res.rf, 2)} <span class="kari">仮</span></td></tr>
+    </table></div>
+    <p class="note">${c.res.rnotes.map(esc).join('・')}</p>
+  </div>
+  <div class="card">
+    <h2>ISA TRAQ によるリスク判定</h2>
+    <label class="f"><b>当たる対象</b><input type="text" data-k="traq.target" placeholder="例：園路・ベンチ・駐車場"></label>
+    <h3>当たる可能性</h3>${segHtml('traq.impact', LOI, false, LOI_D)}
+    <h3>被害の大きさ</h3>${segHtml('traq.cons', CONS, false, CONS_D)}
+    <div class="info" id="traqOut"></div>
+  </div>
+  <div class="card">
+    <h2>引っ張り試験の荷重の目安</h2>
+    <div class="grid2"><label class="f"><b>ワイヤーをかける高さ（m）</b><input type="number" inputmode="decimal" step="0.1" id="pullH" value="${hDef}"></label><div id="pullOut" class="info"></div></div>
+  </div>
+  ${(() => { const w = warningsOf(rec, c); return w.length ? `<div class="card"><h2>注意</h2>${w.map(t => `<div class="warn">${esc(t)}</div>`).join('')}</div>` : ''; })()}
+  <div class="card"><p class="note" style="margin:0">この結果は写真と仮の係数による<b>1次スクリーニング</b>です。安全率が1〜1.5前後の木や、根株・腐朽に不安がある木は、引っ張り試験（PiCUS・Fakopp）で確かめてください。
+  風は動的な荷重のため、静的な計算より弱い風で倒れることがあります。</p></div>
+  <div class="btns"><button class="btn" id="btnPrint">🖨 印刷・PDF保存</button></div>`;
+  ch.bind();
+  const traq = () => {
+    const lik = M1[c.lof][rec.traq.impact], r = M2[lik][rec.traq.cons];
+    $('#traqOut').innerHTML = `倒れる可能性「${LOF[c.lof]}」× 当たる可能性「${LOI[rec.traq.impact]}」→ 倒れて当たる可能性「${LIK[lik]}」<br>× 被害の大きさ「${CONS[rec.traq.cons]}」→ ${riskBadge(r)}`;
+    $('.card h2 .badge').outerHTML = riskBadge(r);
+  };
+  bindInputs(el, traq); traq();
+  const pull = () => { const h = num($('#pullH').value); $('#pullOut').innerHTML = h ? `${V_SIA}m/s の風と同じモーメントになる引張力<br><b>${fmt(c.M(V_SIA) / h, 1)} kN</b>（約 ${fmt(c.M(V_SIA) / h / 9.81, 2)} t）` : ''; };
+  $('#pullH').oninput = pull; pull();
+  $('#btnPrint').onclick = () => window.print();
+}
+
+/* ---------- 剪定 ---------- */
+async function paneSentei(el) {
+  const rec = S.rec, c = compute(rec, false);
+  if (c.err) { el.innerHTML = `<div class="card"><div class="warn">${esc(c.err)}</div></div>`; return; }
+  const pr = rec.prune;
+  if (pr.H2 == null || pr.H2 > rec.H) pr.H2 = rec.H;
+  const cbz = Math.max(0, (c.L.rows.find(r => r.c)?.z ?? 0) - (c.L.rows[0]?.dz ?? 0) / 2);
+  if (pr.raise == null || pr.raise < cbz) pr.raise = +cbz.toFixed(1);
+  el.innerHTML = `
+  <div class="card"><h2>剪定シミュレーション</h2>
+    <div class="slider"><span>切り下げ後の樹高</span><input type="range" id="pH" min="${(rec.H * 0.5).toFixed(1)}" max="${rec.H}" step="0.1"><output id="oH"></output></div>
+    <div class="slider"><span>枝張りの縮小</span><input type="range" id="pW" min="0" max="50" step="1"><output id="oW"></output></div>
+    <div class="slider"><span>透かし（枝葉を抜く）</span><input type="range" id="pT" min="0" max="40" step="1"><output id="oT"></output></div>
+    <div class="slider"><span>枝おろし（枝下高）</span><input type="range" id="pR" min="${cbz.toFixed(1)}" max="${(rec.H * 0.7).toFixed(1)}" step="0.1"><output id="oR"></output></div>
+    <label class="chk"><input type="checkbox" data-k="prune.on"><span>「結果」のグラフにも剪定後を表示する</span></label>
+    <div class="canvas-wrap" id="pcw"><canvas id="pcv"></canvas></div>
+    <p class="note">青＝剪定前の外形、橙＝剪定後の外形（方向${c.L.s}）</p>
+  </div>
+  <div class="card"><h2>剪定前と剪定後</h2><div id="cmp"></div><div id="pw"></div></div>`;
+  bindInputs(el);
+  const ph = rec.photos[c.L.s], ic = await getImg(ph.img), cv = $('#pcv');
+  const dispW = Math.min($('#pcw').clientWidth || 600, 900) * (window.devicePixelRatio || 1);
+  cv.width = Math.round(dispW); cv.height = Math.round(dispW * ic.ah / ic.aw);
+  const set = (id, v, t) => { $('#' + id).value = v; };
+  set('pH', pr.H2); set('pW', pr.wcut); set('pT', pr.thin); set('pR', pr.raise);
+  const update = () => {
+    $('#oH').textContent = fmt(pr.H2, 1) + 'm'; $('#oW').textContent = pr.wcut + '%'; $('#oT').textContent = pr.thin + '%'; $('#oR').textContent = fmt(pr.raise, 1) + 'm';
+    const a = compute(rec, true);
+    const lb = c.L, la = a.loads.find(l => l.s === c.L.s) || a.L;
+    // 描画
+    const x = cv.getContext('2d'), W = cv.width, Hh = cv.height;
+    x.clearRect(0, 0, W, Hh); x.globalAlpha = 0.55; x.drawImage(ic.im, 0, 0, W, Hh); x.globalAlpha = 1;
+    const outline = (rows, col) => {
+      const rs = rows.filter(r => r.wn > 0); if (!rs.length) return;
+      x.strokeStyle = col; x.lineWidth = Math.max(2.5, W / 300); x.beginPath();
+      rs.forEach((r, i) => { const X = (r.cx - r.wn / 2) * W, Y = r.yn * Hh; i ? x.lineTo(X, Y) : x.moveTo(X, Y); });
+      for (let i = rs.length - 1; i >= 0; i--) { const r = rs[i]; x.lineTo((r.cx + r.wn / 2) * W, r.yn * Hh); }
+      x.closePath(); x.stroke();
+    };
+    outline(lb.rows, '#1F6FA8'); outline(la.rows, '#E08A2E');
+    // 比較
+    const rm = lb.foliage ? 1 - la.foliage / lb.foliage : 0;
+    const row = (t, b, af, d = 1, u = '') => `<div>${t}</div><div class="r">${fmt(b, d)}${u}</div><div class="r"><b>${fmt(af, d)}${u}</b></div>`;
+    $('#cmp').innerHTML = `<div class="cmp">
+      <div class="h"></div><div class="h r">剪定前</div><div class="h r">剪定後</div>
+      ${row('樹冠面積', lb.A, la.A, 1, ' m²')}
+      ${row('荷重の中心の高さ', lb.zc, la.zc, 1, ' m')}
+      ${row('すき間率', lb.phi * 100, la.phi * 100, 0, ' %')}
+      ${row(`水平力（${V_SIA}m/s）`, lb.F * V_SIA * V_SIA, la.F * V_SIA * V_SIA, 1, ' kN')}
+      ${row(`根元モーメント（${V_SIA}m/s）`, c.M(V_SIA), a.M(V_SIA), 0, ' kN·m')}
+      ${row('安全率', c.SF, a.SF, 2)}
+      ${row('限界風速', c.vc, a.vc, 1, ' m/s')}
+      <div>リスク（TRAQ）</div><div class="r">${riskBadge(c.risk)}</div><div class="r">${riskBadge(a.risk)}</div>
+      <div>葉量の除去</div><div></div><div class="r"><b>${fmt(rm * 100, 0)} %</b></div>
+    </div>
+    <p class="note">モーメントの減少 ${fmt((1 - a.M(V_SIA) / c.M(V_SIA)) * 100, 0)}%。剪定しても根や幹の強さは変わらないため、限界は剪定前と同じ値を使っています。</p>`;
+    const w = [];
+    if (rm > 0.25) w.push(`1回の剪定で葉量の${fmt(rm * 100, 0)}%を除去します。一般的な目安（25%以内）を超えています。樹勢の衰退に注意してください。`);
+    if (pr.H2 < rec.H * 0.8) w.push('強い切り下げです。数年で胴吹き枝が伸びて樹冠が再び大きくなり、付け根が弱い枝になりやすいので、継続的な管理が必要です。');
+    if (species(rec.species).decay && (pr.H2 < rec.H * 0.9 || pr.wcut >= 20)) w.push(`${species(rec.species).name}は腐朽しやすい樹種です。太い切り口が腐朽の入口になるため、できるだけ細い枝で切り戻してください。`);
+    if (pr.raise > cbz + 0.05 && la.M > lb.M * 0.95) w.push('枝おろし（下枝を上げる）は荷重の中心が上がるため、モーメントを減らす効果が小さい方法です（Pavlis ほか 2008）。');
+    $('#pw').innerHTML = w.map(t => `<div class="warn">${esc(t)}</div>`).join('');
+  };
+  const on = (id, k) => { $('#' + id).oninput = e => { pr[k] = +e.target.value; touch(); update(); }; };
+  on('pH', 'H2'); on('pW', 'wcut'); on('pT', 'thin'); on('pR', 'raise');
+  update();
+}
+
+/* ---------- 試験 ---------- */
+function paneShiken(el) {
+  const rec = S.rec, c = compute(rec, false);
+  el.innerHTML = `
+  <div class="card"><h2>引っ張り試験の結果</h2>
+    <p class="note" style="margin-top:0">同じ木で引っ張り試験をしたら結果を入れてください。アプリの推定と比べて、係数を合わせ込むのに使います。</p>
+    <div class="grid2">
+      <label class="f"><b>試験日</b><input type="date" data-k="test.date"></label>
+      <label class="f"><b>試験者</b><input type="text" data-k="test.who"></label>
+      <label class="f"><b>機器</b><select data-k="test.device"><option value="">—</option><option>PiCUS TreeQinetic</option><option>Fakopp Pulling Test</option><option>その他</option></select></label>
+      <label class="f"><b>最大荷重（kN）</b><input type="number" inputmode="decimal" step="0.1" data-k="test.force"></label>
+      <label class="f"><b>荷重をかけた高さ（m）</b><input type="number" inputmode="decimal" step="0.1" data-k="test.height"></label>
+      <label class="f"><b>根元の最大傾き（度）</b><input type="number" inputmode="decimal" step="0.01" data-k="test.tilt"></label>
+      <label class="f"><b>根返りの安全率（試験）</b><input type="number" inputmode="decimal" step="0.01" data-k="test.sfRoot"></label>
+      <label class="f"><b>幹折れの安全率（試験）</b><input type="number" inputmode="decimal" step="0.01" data-k="test.sfStem"></label>
+    </div>
+    <label class="f" style="margin-top:10px"><b>メモ</b><textarea data-k="test.memo" placeholder="試験報告書の番号、想定した風速など"></textarea></label>
+  </div>
+  <div class="card"><h2>アプリの推定との比較</h2><div id="tcmp"></div></div>`;
+  const cmp = () => {
+    if (c.err) { $('#tcmp').innerHTML = `<div class="warn">${esc(c.err)}</div>`; return; }
+    const t = rec.test, r = (a, b) => (a != null && b) ? `${fmt(a / b, 2)} 倍` : '—';
+    $('#tcmp').innerHTML = `<div class="cmp">
+      <div class="h"></div><div class="h r">アプリ推定</div><div class="h r">試験</div>
+      <div>根返りの安全率</div><div class="r">${fmt(c.sfRoot, 2)}</div><div class="r"><b>${fmt(t.sfRoot, 2)}</b></div>
+      <div>幹折れの安全率</div><div class="r">${fmt(c.sfStem, 2)}</div><div class="r"><b>${fmt(t.sfStem, 2)}</b></div>
+      <div>試験荷重のモーメント</div><div class="r"></div><div class="r">${t.force && t.height ? fmt(t.force * t.height, 1) + ' kN·m' : '—'}</div>
+    </div>
+    <p class="note">試験 ÷ 推定：根返り ${r(t.sfRoot, c.sfRoot)}・幹折れ ${r(t.sfStem, c.sfStem)}。全部の木の集計は「⚙ 係数」画面に出ます。</p>`;
+  };
+  bindInputs(el, cmp); cmp();
+}
+
+/* ---------- 係数と設定 ---------- */
+async function renderSettings() {
+  const g = G(), sp = speciesList(), recs = await dbAll();
+  const pairs = recs.map(r => ({ r, c: compute(r, false) })).filter(x => !x.c.err);
+  const rr = pairs.filter(x => x.r.test.sfRoot).map(x => x.r.test.sfRoot / x.c.sfRoot);
+  const rs = pairs.filter(x => x.r.test.sfStem).map(x => x.r.test.sfStem / x.c.sfStem);
+  const gm = a => a.length ? Math.exp(a.reduce((s, v) => s + Math.log(v), 0) / a.length) : null;
+  const gr = gm(rr), gs = gm(rs);
+  app.innerHTML = `
+  <div class="card"><h2>試験データとの合わせ込み</h2>
+    <p class="note" style="margin-top:0">引っ張り試験の結果が入っている木：根返り ${rr.length}本・幹折れ ${rs.length}本</p>
+    ${gr ? `<div class="info">根返り：試験 ÷ 推定 の平均 <b>${fmt(gr, 2)} 倍</b>。根返り係数を ${fmt(g.creg, 0)} → <b>${fmt(g.creg * gr, 0)}</b> にすると平均が合います。
+      ${rr.length < 5 ? '<br>※まだ本数が少ないので、5〜10本たまってから変えるのがおすすめです。' : ''}
+      <div class="btns"><button class="btn small" id="applyR">根返り係数を ${fmt(g.creg * gr, 0)} にする</button></div></div>` : ''}
+    ${gs ? `<div class="info">幹折れ：試験 ÷ 推定 の平均 <b>${fmt(gs, 2)} 倍</b>（樹種ごとの生材強度の見直しの参考に）</div>` : ''}
+  </div>
+  <div class="card"><h2>全体の係数 <span class="kari">仮</span></h2>
+    <div class="grid2">
+      <label class="f"><b>空気密度（kg/m³）</b><input type="number" step="0.01" data-g="rho" value="${g.rho}"></label>
+      <label class="f"><b>根返り係数（N·m/kg）</b><input type="number" step="1" data-g="creg" value="${g.creg}"><span>根返り限界 ＝ 係数 × 幹重量 × 根株の補正</span></label>
+      <label class="f"><b>幹の形状係数</b><input type="number" step="0.01" data-g="form" value="${g.form}"><span>幹重量 ＝ 断面積 × 樹高 × これ × 生材密度</span></label>
+      <label class="f"><b>幹の抗力係数</b><input type="number" step="0.05" data-g="cdTrunk" value="${g.cdTrunk}"></label>
+    </div>
+  </div>
+  <div class="card"><h2>樹種ごとの係数 <span class="kari">仮</span></h2>
+    <p class="note" style="margin-top:0">出典（Wessolly &amp; Erb『Handbuch der Baumstatik』、Stuttgart Strength Catalogue、国内の木材強度データ等）で確認した値に直してください。</p>
+    <div class="tw"><table class="t" id="spt"><tr><th>樹種</th><th>Cw</th><th>強度 MPa</th><th>密度</th><th>根</th></tr>
+    ${sp.map(s => `<tr data-s="${s.k}"><td style="min-width:9em">${esc(s.name)}</td>
+      <td><input type="number" step="0.01" data-f="Cw" value="${s.Cw}" style="width:4.6em"></td>
+      <td><input type="number" step="1" data-f="sigma" value="${s.sigma}" style="width:4.6em"></td>
+      <td><input type="number" step="10" data-f="rho" value="${s.rho}" style="width:5.4em"></td>
+      <td><select data-f="root" style="width:5.4em">${Object.entries(ROOT_TYPE).map(([k, o]) => `<option value="${k}"${k === s.root ? ' selected' : ''}>${o.label}</option>`).join('')}</select></td></tr>`).join('')}
+    </table></div>
+    <div class="btns"><button class="btn small danger" id="resetSp">係数を最初の値に戻す</button></div>
+  </div>
+  <div class="card"><h2>データ</h2>
+    <p class="note" style="margin-top:0">記録は端末の中だけに保存されています。ときどき書き出して保管してください。</p>
+    <div class="btns"><button class="btn" id="expJ">全データを書き出す（JSON）</button><button class="btn" id="expC">一覧をCSVで書き出す</button><button class="btn" id="impJ">JSONを読み込む</button></div>
+    <input type="file" id="impF" accept="application/json,.json" hidden>
+  </div>
+  <div class="card"><h2>計算の考え方</h2><div class="note" style="line-height:1.75">
+    ・風荷重：写真の樹冠を高さごとの帯に分け、F＝½ρv²·Cw·（密度補正）·面積 を合計。根元モーメント＝Σ F×高さ。<br>
+    ・風速の高さ分布：v(z)＝V×風当たり×地形×(z/10)^α（αは地表面粗度区分）。V は高さ10mの瞬間風速。<br>
+    ・密度補正：すき間率φから (1−φ)/0.75 を0.8〜1.2の範囲で（φ＝25%で1.0）。<br>
+    ・幹折れ限界：生材強度 × 断面係数 π(D⁴−d⁴)/(32D)。<br>
+    ・根返り限界：根返り係数 × 幹重量 × 根株の補正（樹種の根の張り方・土壌・植栽基盤・根株の状態）。<br>
+    ・安全率＝限界 ÷ 32.7m/s のモーメント（SIA方式）。1.5以上 安全／1〜1.5 中程度／1未満 高リスク。<br>
+    ・TRAQ：安全率 1.5以上「ほぼない」、1〜1.5「あり得る」、0.6〜1「可能性が高い」、0.6未満「差し迫っている」として、ISA の2つの表に当てはめる。<br>
+    ・参考：Wessolly SIA方式／PiCUS TreeQinetic（IML）／Fakopp Pulling Test／Arbostat・TreeCalc・ArWiLo／ANSI A300 Part 9・ISA TRAQ／Pavlis ほか 2008（AUF 34(4)）／国総研「街路樹の倒伏対策の手引き 第2版」／建築基準法 告示1454号／EN 1991-1-4。
+  </div></div>`;
+  $$('[data-g]').forEach(i => i.onchange = () => { SETTINGS.global = { ...(SETTINGS.global || {}), [i.dataset.g]: num(i.value) ?? GLOBAL0[i.dataset.g] }; saveSettings(); });
+  $$('#spt [data-f]').forEach(i => i.onchange = () => {
+    const k = i.closest('tr').dataset.s, f = i.dataset.f;
+    SETTINGS.species = SETTINGS.species || {}; SETTINGS.species[k] = { ...(SETTINGS.species[k] || {}), [f]: f === 'root' ? i.value : (num(i.value) ?? SPECIES0.find(s => s.k === k)[f]) };
+    saveSettings();
+  });
+  $('#resetSp').onclick = () => { if (confirm('樹種と全体の係数を最初の値に戻しますか？')) { SETTINGS = {}; saveSettings(); renderSettings(); } };
+  if ($('#applyR')) $('#applyR').onclick = () => { SETTINGS.global = { ...(SETTINGS.global || {}), creg: Math.round(g.creg * gr) }; saveSettings(); renderSettings(); };
+  const dl = (name, text, type) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
+  $('#expJ').onclick = () => dl(`touboku_risk_${today()}.json`, JSON.stringify({ app: 'touboku_risk', v: 1, settings: SETTINGS, trees: recs }), 'application/json');
+  $('#expC').onclick = () => {
+    const head = ['名前', '場所', '調査日', '樹種', '樹高m', '幹周cm', '風当たり', '樹冠面積m2', 'すき間率%', 'M32.7kNm', '幹折れ限界kNm', '根返り限界kNm', '安全率', '幹折れ安全率', '根返り安全率', '限界風速m/s', '倒れる可能性', 'リスク', '試験_根返り安全率', '試験_幹折れ安全率'];
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = recs.map(r => {
+      const c = compute(r, false), e = !!c.err;
+      return [r.name, r.place, r.date, species(r.species).name, r.H, r.C, EXPO[r.expo.traq].label, e ? '' : fmt(c.L.A, 1), e ? '' : fmt(c.L.phi * 100, 0), e ? '' : fmt(c.M(V_SIA), 1), e ? '' : fmt(c.res.Mstem, 1), e ? '' : fmt(c.res.Mroot, 1), e ? '' : fmt(c.SF, 2), e ? '' : fmt(c.sfStem, 2), e ? '' : fmt(c.sfRoot, 2), e ? '' : fmt(c.vc, 1), e ? '' : LOF[c.lof], e ? '' : RISK[c.risk], r.test.sfRoot, r.test.sfStem].map(q).join(',');
+    });
+    dl(`touboku_risk_${today()}.csv`, '﻿' + [head.map(q).join(','), ...lines].join('\r\n'), 'text/csv');
+  };
+  $('#impJ').onclick = () => $('#impF').click();
+  $('#impF').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const j = JSON.parse(await f.text());
+      if (j.app !== 'touboku_risk' || !Array.isArray(j.trees)) throw new Error('このアプリの書き出しファイルではありません');
+      if (!confirm(`${j.trees.length}本の記録を読み込みます。同じ記録は上書きされます。よろしいですか？`)) return;
+      if (j.settings && confirm('書き出したときの係数の設定も読み込みますか？（今の係数は置き換わります）')) { SETTINGS = j.settings; saveSettings(); }
+      for (const t of j.trees) await dbPut(t);
+      alert('読み込みました。'); renderSettings();
+    } catch (err) { alert('読み込めませんでした：' + err.message); }
+  };
+}
+
+$('#btnSettings').onclick = () => { S.view = 'settings'; render(); };
+$('#btnBack').onclick = async () => { clearTimeout(saveTimer); if (S.rec) await dbPut(S.rec); S.rec = null; S.view = 'list'; render(); window.scrollTo(0, 0); };
+if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('touboku_sw.js').catch(() => { });
+render();
+</script>
+</body>
+</html>
