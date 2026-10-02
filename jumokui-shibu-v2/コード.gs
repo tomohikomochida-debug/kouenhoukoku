@@ -19,9 +19,11 @@
  *    広報ブックの「送信設定」で送信モード（停止・試験・本番）を選び、「送信実行」に対象年度を入れて
  *    「実行」にチェック → 確認内容が出る → もう一度チェックで送信。
  *    本番送信には、総務ブック「送信設定」への「本番で使う送信アカウント」の登録が必要（総務の安全装置）。
- *  - 研修：研修ブックの「研修一覧」に1行入力し、「フォーム作成」にチェック → 申込フォームができる。
- *    回答は10分ごとに「申込一覧」へ取り込まれ、参加資格を自動で判定（基準は「判定の基準」シート）。
- *    締切・定員・開催日でフォームの受付は自動で閉じます。出欠は「申込一覧」の「出欠」に入力。
+ *  - 研修：研修ブックの「研修一覧」に1行入力（研修IDは空欄なら「2026-01」の形で自動）すると、
+ *    研修会ごとの「申込_研修ID」シートができる。「フォーム作成」にチェック → 申込フォームができる。
+ *    回答は10分ごとにその研修の申込シートへ取り込まれ、参加資格を自動で判定（基準は「判定の基準」シート）。
+ *    締切・定員・開催日でフォームの受付は自動で閉じます。出欠は申込シートの「出欠」に入力し、
+ *    年度ごとの「年度集計_2026」などに出欠の一覧が出ます。
  *  - 一覧・集計は操作のたびに自動更新（念のため10分ごとにも確認）。
  *
  * このプロジェクトはウェブアプリとして公開しないでください。
@@ -722,6 +724,30 @@ const Logic = (() => {
     return { result: JUDGES[level], reason: reasons.join('／'), memberName: m.name };
   }
 
+  // 研修IDの自動採番：その年度の「2026-01」「2026-02」…の次
+  function nextTrainingId(ids, year) {
+    const re = new RegExp('^' + year + '-(\\d+)$');
+    const n = ids.map(x => (text(x).match(re) || [])[1]).filter(Boolean).map(Number);
+    return year + '-' + String((n.length ? Math.max(...n) : 0) + 1).padStart(2, '0');
+  }
+
+  // 年度の出欠の一覧。list：[{ t: 研修, apps: [{ kind, id, name, att, dup }] }]（開催日順）
+  function yearAttendance(list) {
+    const people = new Map();
+    list.forEach(({ apps }, i) => apps.forEach(a => {
+      if (a.dup || (!a.id && !nameKey(a.name))) return;
+      const key = a.id ? 'id:' + a.id : 'n:' + nameKey(a.name);
+      if (!people.has(key)) people.set(key, { id: a.id, name: a.name, kind: a.kind, cells: list.map(() => ''), count: 0 });
+      const p = people.get(key);
+      if (a.att === '申込取消') { if (!p.cells[i]) p.cells[i] = '取消'; } else p.cells[i] = a.att || '申込';
+      if (a.att === '出席') p.count++;
+    }));
+    const rows = [...people.values()]
+      .sort((x, y) => (x.id ? 0 : 1) - (y.id ? 0 : 1) || x.id.localeCompare(y.id) || x.name.localeCompare(y.name, 'ja'))
+      .map(p => [p.id, p.name, p.kind, p.count].concat(p.cells));
+    return { header: ['登録番号', '氏名', '区分', '出席回数'].concat(list.map(({ t }) => t.id + '（' + t.date.slice(5).replace('-', '/') + '）')), rows };
+  }
+
   // 2年度分以上の会費が未納（納期限経過）の在籍会員（規約により退会の扱い）
   function longUnpaid(members, fees, today) {
     return members.filter(m => m.membership === '在籍').map(m => {
@@ -741,7 +767,7 @@ const Logic = (() => {
     matrix, yearTotals, transferSummary, setRemitDeadline,
     MAIL_KEYS, MAIL_MODES, SEND_STYLES, BCC_MAX, emailList, isEmail, dunningTargets, renderMail, commonTarget, checkTemplate, planSend, sendPreview,
 
-    KUBUN, JUDGES, EXTERNAL, OVERRIDES, ATTEND, FORM_ITEMS, parseTrainings, trainingState, formText, mapAnswers, judgeApplication, longUnpaid,
+    KUBUN, JUDGES, EXTERNAL, OVERRIDES, ATTEND, FORM_ITEMS, parseTrainings, trainingState, formText, mapAnswers, judgeApplication, longUnpaid, nextTrainingId, yearAttendance,
   };
 })();
 if (typeof module !== 'undefined') module.exports = { Logic, APP };
@@ -798,11 +824,12 @@ const TEMPLATE_OLD_BODY = ['{{氏名}} 様', '', '日本樹木医会神奈川県
   '振込先：{{振込先}}', '振込名義：{{振込名義}}', '', '行き違いでお振り込み済みの場合は、ご容赦ください。', 'お問い合わせ：{{問い合わせ先}}'].join('\n');
 
 // 研修ブック（第3段階）
-const TRAINING_HEADERS = ['研修ID', '研修名', '開催日', '会場', '申込締切', '定員', '案内文', 'フォーム作成', '受付（自動）', 'フォームURL（自動）', '申込（自動）', '参加可（自動）', '要確認（自動）', '参加不可（自動）', '外部（自動）', '出席（自動）', '結果・確認内容', 'フォームID'];
+const TRAINING_HEADERS = ['研修ID', '研修名', '開催日', '年度（自動）', '会場', '申込締切', '定員', '案内文', 'フォーム作成', '受付（自動）', 'フォームURL（自動）', '申込シート（自動）', '申込（自動）', '参加可（自動）', '要確認（自動）', '参加不可（自動）', '外部（自動）', '出席（自動）', '結果・確認内容', 'フォームID'];
 const TRAINING_INPUTS = ['研修ID', '研修名', '開催日', '会場', '申込締切', '定員', '案内文'];
-const TRAINING_AUTO = ['受付（自動）', 'フォームURL（自動）', '申込（自動）', '参加可（自動）', '要確認（自動）', '参加不可（自動）', '外部（自動）', '出席（自動）', '結果・確認内容', 'フォームID'];
-const APPLY_HEADERS = ['受付ID', '受付日時', '研修ID', '区分', '登録番号', '登録期', '氏名', 'メール', '所属・勤務先', '連絡事項', 'その他の回答', '判定（自動）', '理由（自動）', '研修担当の判断', '最終（自動）', '出欠', 'メモ', '判定日（自動）'];
-const APPLY_INPUTS = ['研修ID', '区分', '登録番号', '登録期', '氏名', 'メール', '所属・勤務先', '連絡事項'];
+const TRAINING_AUTO = ['年度（自動）', '受付（自動）', 'フォームURL（自動）', '申込シート（自動）', '申込（自動）', '参加可（自動）', '要確認（自動）', '参加不可（自動）', '外部（自動）', '出席（自動）', '結果・確認内容', 'フォームID'];
+// 研修会ごとの申込シート「申込_研修ID」
+const APPLY_HEADERS = ['受付ID', '受付日時', '区分', '登録番号', '登録期', '氏名', 'メール', '所属・勤務先', '連絡事項', 'その他の回答', '判定（自動）', '理由（自動）', '研修担当の判断', '最終（自動）', '出欠', 'メモ', '判定日（自動）'];
+const APPLY_INPUTS = ['区分', '登録番号', '登録期', '氏名', 'メール', '所属・勤務先', '連絡事項'];
 const APPLY_AUTO = ['受付ID', '受付日時', '判定（自動）', '理由（自動）', '最終（自動）', '判定日（自動）'];
 const JUDGE_RULES = [
   '参加資格の判定の基準（支部の運用）',
@@ -1014,6 +1041,7 @@ function 初期設定() {
     // ---- 研修ブック ----
     const kenshu = book_('kenshu');
     setupKenshu_(kenshu);
+    migrateApplyList_(kenshu);
     protectSheet_(ensureSheet_(soumu, '長期未納', null), '自動出力');
 
     // ---- 会計ブック ----
@@ -1782,25 +1810,28 @@ function writeMailPreview_(ctx) {
 
 /* ======================================================================
  * 研修の申込と参加資格の照合（第3段階）
+ *  - 研修一覧：研修を1行ずつ登録（研修IDは空欄なら「2026-01」の形で自動採番）
+ *  - 申込_研修ID：研修会ごとの申込・判定・出欠（フォームの回答もここへ入る）
+ *  - 年度集計_2026：年度ごとの出欠の一覧（だれがどの研修に出たか）
  * ====================================================================== */
+function applySheetName_(id) { return '申込_' + id; }
+
 function setupKenshu_(kenshu) {
   kenshu.setSpreadsheetTimeZone(APP.tz); kenshu.setSpreadsheetLocale('ja_JP');
+  // 前の版の研修一覧には「年度」「申込シート」の列がない
+  const old = kenshu.getSheetByName('研修一覧');
+  addColumnAfter_(old, '開催日', '年度（自動）');
+  addColumnAfter_(old, 'フォームURL（自動）', '申込シート（自動）');
   const tl = ensureSheet_(kenshu, '研修一覧', TRAINING_HEADERS);
   setupInputSheet_(tl, TRAINING_HEADERS, {
     checkbox: 'フォーム作成', auto: TRAINING_AUTO, hide: ['フォームID'], dates: ['開催日', '申込締切'], numbers: ['定員'], texts: ['研修ID'],
-    widths: { '研修名': 220, '案内文': 260, 'フォームURL（自動）': 220, '結果・確認内容': 360 }, rows: 200,
+    widths: { '研修名': 220, '案内文': 260, 'フォームURL（自動）': 220, '申込シート（自動）': 140, '結果・確認内容': 360 }, rows: 200,
   });
   const TH = headerMap_(tl, TRAINING_HEADERS);
   TRAINING_AUTO.forEach(h => protectRange_(tl.getRange(1, TH[h], tl.getMaxRows(), 1), '自動列（' + h + '）'));
-  addColumnAfter_(kenshu.getSheetByName('申込一覧'), '登録番号', '登録期'); // 前の版の申込一覧には「登録期」がない
-  const ap = ensureSheet_(kenshu, '申込一覧', APPLY_HEADERS);
-  setupInputSheet_(ap, APPLY_HEADERS, {
-    auto: APPLY_AUTO, lists: { '区分': Logic.KUBUN, '研修担当の判断': Logic.OVERRIDES, '出欠': Logic.ATTEND }, texts: ['研修ID', '登録番号', '登録期'],
-    widths: { '理由（自動）': 380, '連絡事項': 200, 'その他の回答': 200 }, rows: 1000,
-  });
-  const AH = headerMap_(ap, APPLY_HEADERS);
-  APPLY_AUTO.forEach(h => protectRange_(ap.getRange(1, AH[h], ap.getMaxRows(), 1), '自動列（' + h + '）'));
-  protectSheet_(ensureSheet_(kenshu, '参加履歴', null), '自動出力');
+  kenshu.getSheets().filter(sh => sh.getName().startsWith('申込_')).forEach(setupApplySheet_);
+  const hist = kenshu.getSheetByName('参加履歴'); // 前の版の自動出力（年度集計に置き換え）
+  if (hist && kenshu.getSheets().length > 1) kenshu.deleteSheet(hist);
   const rule = ensureSheet_(kenshu, '判定の基準', null);
   rule.clearContents();
   rule.getRange(1, 1, JUDGE_RULES.length, 1).setValues(JUDGE_RULES.map(x => [x]));
@@ -1808,6 +1839,16 @@ function setupKenshu_(kenshu) {
   rule.setColumnWidth(1, 900);
   protectSheet_(rule, '自動出力');
   removeDefaultSheet_(kenshu);
+}
+
+function setupApplySheet_(sh) {
+  ensureSheet_(sh.getParent(), sh.getName(), APPLY_HEADERS);
+  setupInputSheet_(sh, APPLY_HEADERS, {
+    auto: APPLY_AUTO, lists: { '区分': Logic.KUBUN, '研修担当の判断': Logic.OVERRIDES, '出欠': Logic.ATTEND }, texts: ['登録番号', '登録期'],
+    widths: { '理由（自動）': 380, '連絡事項': 200, 'その他の回答': 200 }, rows: 300,
+  });
+  const AH = headerMap_(sh, APPLY_HEADERS);
+  APPLY_AUTO.forEach(h => protectRange_(sh.getRange(1, AH[h], sh.getMaxRows(), 1), '自動列（' + h + '）'));
 }
 
 // 見出し after の右に、見出し name の列がなければ差し込む
@@ -1825,7 +1866,7 @@ function handleKenshuEdit(e) {
   const sh = e.range.getSheet(), name = sh.getName();
   try {
     if (name === '研修一覧') onTrainingEdit_(e, sh);
-    else if (name === '申込一覧') withLock_(() => refreshKenshu_(loadContext_()));
+    else if (name.startsWith('申込_')) withLock_(() => refreshKenshu_(loadContext_()));
   } catch (err) {
     logError_('研修', name, e.range.getRow(), err.message);
   }
@@ -1850,11 +1891,80 @@ function readTrainings_(kenshu) {
     row: r._row, id: r['研修ID'], name: r['研修名'], date: r['開催日'], venue: r['会場'], deadline: r['申込締切'], capacity: r['定員'], guide: r['案内文'], formId: r['フォームID'],
   })));
   const prev = new Map(rows.map(r => [r._row, r]));
-  parsed.list.forEach(t => { const r = prev.get(t.row) || {}; t.prevState = String(r['受付（自動）'] || ''); t.prevMsg = String(r['結果・確認内容'] || ''); });
+  parsed.list.forEach(t => {
+    const r = prev.get(t.row) || {};
+    t.prevState = String(r['受付（自動）'] || ''); t.prevMsg = String(r['結果・確認内容'] || ''); t.sheetName = String(r['申込シート（自動）'] || '');
+    t.year = t.date ? Logic.fiscalYear(t.date, APP.fiscalStartMonth) : '';
+    t.idOk = /^[0-9A-Za-z_-]{1,30}$/.test(t.id) && parsed.byId.get(t.id) === t;
+  });
   return { sh, H, parsed };
 }
 
-// 研修ごとに申込フォームを1つ作る。回答はフォームに貯まり、このシステムが「申込一覧」へ取り込む（回答用のシートは作らない）
+// 研修IDが空欄で、研修名と開催日がある行に「2026-01」の形のIDを付ける
+function assignTrainingIds_(kenshu) {
+  const sh = sheet_(kenshu, '研修一覧');
+  const { H, rows } = readRows_(sh, TRAINING_HEADERS, TRAINING_INPUTS);
+  const ids = rows.map(r => Logic.text(r['研修ID']).normalize('NFKC')).filter(Boolean);
+  rows.forEach(r => {
+    const date = Logic.normDate(r['開催日']);
+    if (Logic.text(r['研修ID']) || !Logic.text(r['研修名']) || !date) return;
+    const id = Logic.nextTrainingId(ids, Logic.fiscalYear(date, APP.fiscalStartMonth));
+    ids.push(id);
+    sh.getRange(r._row, H['研修ID']).setValue(id);
+  });
+}
+
+// 研修会ごとの申込シートを用意する（研修IDを変えたらシート名も合わせる）
+function ensureApplySheets_(kenshu, tr) {
+  tr.parsed.list.forEach(t => {
+    if (!t.idOk) { t.sheet = t.sheetName ? kenshu.getSheetByName(t.sheetName) : null; return; }
+    const want = applySheetName_(t.id);
+    let sh = kenshu.getSheetByName(want);
+    const prev = t.sheetName && t.sheetName !== want ? kenshu.getSheetByName(t.sheetName) : null;
+    if (!sh && prev) { prev.setName(want); sh = prev; }
+    if (!sh) { sh = kenshu.insertSheet(want, 1); setupApplySheet_(sh); }
+    t.sheet = sh;
+    if (t.sheetName !== want) { tr.sh.getRange(t.row, tr.H['申込シート（自動）']).setValue(want); t.sheetName = want; }
+  });
+}
+
+// 前の版の「申込一覧」（全研修を1枚）を、研修会ごとのシートへ移す（1回だけ。元のシートは名前を変えて残す）
+function migrateApplyList_(kenshu) {
+  const old = kenshu.getSheetByName('申込一覧');
+  if (!old) return;
+  const tr = readTrainings_(kenshu);
+  ensureApplySheets_(kenshu, tr);
+  const width = old.getLastColumn(), last = old.getLastRow();
+  const head = width ? old.getRange(1, 1, 1, width).getValues()[0].map(v => String(v).trim()) : [];
+  const ti = head.indexOf('研修ID'), left = [], out = new Map();
+  if (last >= 2 && ti >= 0) {
+    old.getRange(2, 1, last - 1, width).getValues().forEach((r, i) => {
+      if (r.every(v => String(cell_(v)).trim() === '')) return;
+      const t = tr.parsed.byId.get(Logic.text(r[ti]).normalize('NFKC'));
+      if (!t || !t.sheet) { left.push(i + 2); return; }
+      if (!out.has(t.sheet)) out.set(t.sheet, []);
+      out.get(t.sheet).push(r);
+    });
+  }
+  out.forEach((list, sh) => {
+    const AH = headerMap_(sh, APPLY_HEADERS);
+    const have = new Set(), l = lastDataRow_(sh, AH['受付ID']);
+    if (l >= 2) sh.getRange(2, AH['受付ID'], l - 1, 1).getValues().forEach(x => have.add(String(x[0])));
+    const rows = list.filter(r => { const rid = String(r[head.indexOf('受付ID')] || ''); return !rid || !have.has(rid); }).map(r => {
+      const row = new Array(AH._width).fill('');
+      APPLY_HEADERS.forEach(h => { const j = head.indexOf(h); if (j >= 0) row[AH[h] - 1] = idCell_(r[j]); });
+      return row;
+    });
+    if (!rows.length) return;
+    const start = sh.getLastRow() + 1;
+    ensureRows_(sh, start + rows.length);
+    sh.getRange(start, 1, rows.length, AH._width).setValues(rows);
+  });
+  old.setName(left.length ? '旧_申込一覧（' + left.length + '行は移せませんでした）' : '旧_申込一覧（移行済み）');
+  if (left.length) logError_('研修', '申込一覧', '', '研修IDが研修一覧にないため、研修会ごとのシートへ移せなかった行：' + left.join('、') + '行目');
+}
+
+// 研修ごとに申込フォームを1つ作る。回答はフォームに貯まり、このシステムがその研修の申込シートへ取り込む（回答用のシートは作らない）
 function createForm_(sh, H, row) {
   const t = readTrainings_(sh.getParent()).parsed.list.find(x => x.row === row);
   if (!t) throw new Error('研修ID・研修名・開催日を入力してください');
@@ -1911,20 +2021,23 @@ function ensureFormItems_(form) {
 function addDays_(day, n) { return Utilities.formatDate(new Date(toDate_(day).getTime() + n * 86400000), APP.tz, 'yyyy-MM-dd'); }
 function idCell_(v) { return typeof v === 'string' && /^\d+$/.test(v) ? "'" + v : safe_(v); }
 
-// フォームの新しい回答を「申込一覧」へ取り込む（何度実行しても同じ回答は1回だけ）
+// フォームの新しい回答を、その研修の申込シートへ取り込む（何度実行しても同じ回答は1回だけ）
 function syncForms_() {
   const kenshu = book_('kenshu'), today = today_();
-  const { parsed } = readTrainings_(kenshu);
-  const active = parsed.list.filter(t => t.ok && t.formId && today <= addDays_(t.date, 7));
+  const tr = readTrainings_(kenshu);
+  const active = tr.parsed.list.filter(t => t.ok && t.formId && today <= addDays_(t.date, 7));
   if (!active.length) return 0;
-  const ap = sheet_(kenshu, '申込一覧'), AH = headerMap_(ap, APPLY_HEADERS);
-  const have = new Set(), last = lastDataRow_(ap, AH['受付ID']);
-  if (last >= 2) ap.getRange(2, AH['受付ID'], last - 1, 1).getValues().forEach(r => have.add(String(r[0])));
-  const add = [];
+  ensureApplySheets_(kenshu, tr);
+  let added = 0;
   active.forEach(t => {
+    if (!t.sheet) return;
     let form;
     try { form = FormApp.openById(t.formId); }
     catch (err) { logError_('研修', '研修一覧', t.row, 'フォームを開けません（' + t.id + '）：' + err.message); return; }
+    const ap = t.sheet, AH = headerMap_(ap, APPLY_HEADERS);
+    const have = new Set(), last = lastDataRow_(ap, AH['受付ID']);
+    if (last >= 2) ap.getRange(2, AH['受付ID'], last - 1, 1).getValues().forEach(r => have.add(String(r[0])));
+    const add = [];
     form.getResponses().forEach(res => {
       const rid = 'F-' + res.getId();
       if (have.has(rid)) return;
@@ -1932,18 +2045,18 @@ function syncForms_() {
       const a = Logic.mapAnswers(res.getItemResponses().map(ir => [ir.getItem().getTitle(), ir.getResponse()]));
       const row = new Array(AH._width).fill('');
       const put = (h, v) => { row[AH[h] - 1] = idCell_(v); };
-      put('受付ID', rid); put('受付日時', Utilities.formatDate(res.getTimestamp(), APP.tz, 'yyyy-MM-dd HH:mm:ss')); put('研修ID', t.id);
+      put('受付ID', rid); put('受付日時', Utilities.formatDate(res.getTimestamp(), APP.tz, 'yyyy-MM-dd HH:mm:ss'));
       put('区分', a.kind); put('登録番号', a.id); put('登録期', a.cohort); put('氏名', a.name); put('メール', String(res.getRespondentEmail() || ''));
       put('所属・勤務先', a.org); put('連絡事項', a.note); put('その他の回答', a.other);
       add.push(row);
     });
-  });
-  if (add.length) {
+    if (!add.length) return;
     const start = ap.getLastRow() + 1;
     ensureRows_(ap, start + add.length);
     ap.getRange(start, 1, add.length, AH._width).setValues(add);
-  }
-  return add.length;
+    added += add.length;
+  });
+  return added;
 }
 
 // 指定した列だけを書き換える（研修担当が入力するほかの列には触れない）
@@ -1961,51 +2074,50 @@ function patchColumns_(sh, H, last, patches) {
   });
 }
 
-function refreshKenshu_(ctx) {
-  const kenshu = book_('kenshu'), today = ctx.today, stamp = now_();
-  const tr = readTrainings_(kenshu);
-  const ap = sheet_(kenshu, '申込一覧');
-  const { H: AH, rows } = readRows_(ap, APPLY_HEADERS, APPLY_INPUTS.concat(['受付ID']));
-  const jctx = { digits: APP.idDigits, membersById: ctx.membersById, fees: ctx.fees, settings: ctx.settings, startMonth: APP.fiscalStartMonth };
-  const seen = new Map(), stats = new Map(), patches = new Map(), history = [];
+// 1つの研修の申込シートを判定し、集計を返す
+function judgeTrainingSheet_(t, jctx, today, stamp) {
+  const s = { apply: 0, '参加可': 0, '要確認': 0, '参加不可': 0, [Logic.EXTERNAL]: 0, attend: 0, apps: [] };
+  if (!t.sheet) return s;
+  const { H: AH, rows } = readRows_(t.sheet, APPLY_HEADERS, APPLY_INPUTS.concat(['受付ID']));
+  const seen = new Map(), patches = new Map();
   rows.forEach(r => {
-    const tid = Logic.text(r['研修ID']).normalize('NFKC'), t = tr.parsed.byId.get(tid);
     const rid = String(r['受付ID']) || 'M-' + Utilities.getUuid().slice(0, 8);
     const att = String(r['出欠']);
     let result = String(r['判定（自動）']), reason = String(r['理由（自動）']), day = String(r['判定日（自動）']);
     const id = Logic.normId(r['登録番号'], APP.idDigits);
-    const who = tid + ':' + (id || Logic.nameKey(r['氏名']));
+    const who = id || Logic.nameKey(r['氏名']);
     const dup = att !== '申込取消' && seen.has(who);
     if (att !== '申込取消' && !dup) seen.set(who, rid);
-    // 開催日を過ぎた判定は固定（研修一覧の行が消えた・崩れたときも、前の判定を残す）
-    const past = t && t.date && today > t.date;
-    const orphan = !t && result && !reason.startsWith('研修IDが研修一覧にありません');
-    if (!(result && (past || orphan))) {
+    // 研修一覧のこの行に誤りがある間と、開催日を過ぎた後は、判定を変えない
+    if (t.ok && !(result && today > t.date)) {
       const j = Logic.judgeApplication({ kind: r['区分'], id: r['登録番号'], cohort: r['登録期'], name: r['氏名'] }, t, jctx);
       result = j.result; reason = j.reason; day = today;
       if (dup) { result = '要確認'; reason = '同じ研修への申込が重複しています（先の受付：' + seen.get(who) + '）／' + reason; }
     }
     const final = String(r['研修担当の判断']) || result;
-    patches.set(r._row, {
-      '受付ID': rid, '受付日時': String(r['受付日時']) || stamp,
-      '判定（自動）': result, '理由（自動）': reason, '最終（自動）': final, '判定日（自動）': day,
-    });
-    if (!stats.has(tid)) stats.set(tid, { apply: 0, '参加可': 0, '要確認': 0, '参加不可': 0, [Logic.EXTERNAL]: 0, attend: 0 });
-    const s = stats.get(tid);
+    patches.set(r._row, { '受付ID': rid, '受付日時': String(r['受付日時']) || stamp, '判定（自動）': result, '理由（自動）': reason, '最終（自動）': final, '判定日（自動）': day });
     if (att !== '申込取消' && !dup) { s.apply++; if (final in s) s[final]++; }
-    if (att === '出席') {
-      s.attend++;
-      if (t) history.push([t.date, Logic.fiscalYear(t.date, APP.fiscalStartMonth), t.id, t.name, String(r['区分']), id || '', String(r['氏名'])]);
-    }
+    if (att === '出席') s.attend++;
+    s.apps.push({ kind: String(r['区分']), id: id || '', name: String(r['氏名']), att, dup });
   });
-  patchColumns_(ap, AH, rows.length ? Math.max(...rows.map(r => r._row)) : 1, patches);
+  patchColumns_(t.sheet, AH, rows.length ? Math.max(...rows.map(r => r._row)) : 1, patches);
+  return s;
+}
 
-  // 研修一覧：受付の状態と集計。フォームの受付の開け閉めと題名・説明の更新
-  const props = PropertiesService.getScriptProperties(), tp = new Map();
+function refreshKenshu_(ctx) {
+  const kenshu = book_('kenshu'), today = ctx.today, stamp = now_();
+  assignTrainingIds_(kenshu);
+  const tr = readTrainings_(kenshu);
+  ensureApplySheets_(kenshu, tr);
+  const jctx = { digits: APP.idDigits, membersById: ctx.membersById, fees: ctx.fees, settings: ctx.settings, startMonth: APP.fiscalStartMonth };
+  const props = PropertiesService.getScriptProperties(), tp = new Map(), byYear = new Map();
   tr.parsed.list.forEach(t => {
-    const s = stats.get(t.id) || { apply: 0, '参加可': 0, '要確認': 0, '参加不可': 0, [Logic.EXTERNAL]: 0, attend: 0 };
+    const s = judgeTrainingSheet_(t, jctx, today, stamp);
     const state = Logic.trainingState(t, s.apply, today);
-    const p = { '受付（自動）': state, '申込（自動）': s.apply, '参加可（自動）': s['参加可'], '要確認（自動）': s['要確認'], '参加不可（自動）': s['参加不可'], '外部（自動）': s[Logic.EXTERNAL], '出席（自動）': s.attend };
+    const p = {
+      '年度（自動）': t.year, '受付（自動）': state, '申込（自動）': s.apply, '参加可（自動）': s['参加可'], '要確認（自動）': s['要確認'],
+      '参加不可（自動）': s['参加不可'], '外部（自動）': s[Logic.EXTERNAL], '出席（自動）': s.attend,
+    };
     if (!t.ok) p['結果・確認内容'] = '入力を確認：' + t.errors.join('／');
     else if (t.prevMsg.startsWith('入力を確認：')) p['結果・確認内容'] = '';
     if (t.ok && t.formId && state !== '終了（開催済み）') {
@@ -2021,12 +2133,17 @@ function refreshKenshu_(ctx) {
       try { FormApp.openById(t.formId).setAcceptingResponses(false); } catch (err) { logError_('研修', '研修一覧', t.row, 'フォームを閉じられません：' + err.message); }
     }
     tp.set(t.row, p);
+    if (t.ok) { if (!byYear.has(t.year)) byYear.set(t.year, []); byYear.get(t.year).push({ t, apps: s.apps }); }
   });
   patchColumns_(tr.sh, tr.H, tr.parsed.list.length ? Math.max(...tr.parsed.list.map(t => t.row)) : 1, tp);
 
-  history.sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0));
-  writeTable_(sheet_(kenshu, '参加履歴'), '参加履歴（最終更新 ' + stamp + '）　「申込一覧」で出欠が「出席」の人', {
-    header: ['開催日', '年度', '研修ID', '研修名', '区分', '登録番号', '氏名'], rows: history,
+  // 年度ごとの出欠の一覧
+  byYear.forEach((list, year) => {
+    const name = '年度集計_' + year;
+    let sh = kenshu.getSheetByName(name);
+    if (!sh) { sh = kenshu.insertSheet(name); protectSheet_(sh, '自動出力'); }
+    list.sort((a, b) => (a.t.date < b.t.date ? -1 : a.t.date > b.t.date ? 1 : 0));
+    writeTable_(sh, year + '年度の研修の出欠（最終更新 ' + stamp + '）　出席・欠席・取消は各研修の申込シートの「出欠」から。「申込」は出欠が未入力', Logic.yearAttendance(list));
   });
   props.setProperty('KENSHU_DAY', today);
 }
@@ -2035,34 +2152,32 @@ function refreshKenshu_(ctx) {
 function 研修の架空データを入れる() {
   withLock_(() => {
     const kenshu = book_('kenshu');
-    const tl = sheet_(kenshu, '研修一覧'), ap = sheet_(kenshu, '申込一覧');
-    const TH = headerMap_(tl, TRAINING_HEADERS), AH = headerMap_(ap, APPLY_HEADERS);
-    if (lastDataRow_(tl, TH['研修ID']) > 1 || ap.getLastRow() > 1) throw new Error('研修一覧か申込一覧に既にデータがあるため、架空データは入れません');
+    const tl = sheet_(kenshu, '研修一覧'), TH = headerMap_(tl, TRAINING_HEADERS);
+    if (lastDataRow_(tl, TH['研修ID']) > 1 || lastDataRow_(tl, TH['研修名']) > 1) throw new Error('研修一覧に既にデータがあるため、架空データは入れません');
     [['TEST-01', '架空・夏の研修（納期限前）', '2026-07-20', '架空会館', '2026-07-10', '', '動作確認用の架空の研修です。'],
       ['TEST-02', '架空・秋の研修（納期限後）', '2026-11-15', '架空公園', '2026-11-01', 30, '動作確認用の架空の研修です。']].forEach((v, i) => {
       const r = 2 + i;
       tl.getRange(r, TH['研修ID']).setValue(v[0]); tl.getRange(r, TH['研修名']).setValue(v[1]); tl.getRange(r, TH['開催日']).setValue(toDate_(v[2]));
       tl.getRange(r, TH['会場']).setValue(v[3]); tl.getRange(r, TH['申込締切']).setValue(toDate_(v[4])); tl.getRange(r, TH['定員']).setValue(v[5]); tl.getRange(r, TH['案内文']).setValue(v[6]);
     });
+    ensureApplySheets_(kenshu, readTrainings_(kenshu));
     const K = Logic.KUBUN;
-    const apps = [
-      ['TEST-01', K[0], '0004', '架空 梅二', '28'],
-      ['TEST-02', K[0], '0001', '架空 桜子', '21期'],
-      ['TEST-02', K[0], '0003', '架空 松美', '第27期'],
-      ['TEST-02', K[0], '0004', '架空 梅二', '28'],
-      ['TEST-02', K[0], '0006', '架空 楓', '30'],
-      ['TEST-02', K[0], '0001', '架空 さくら', '21'],
-      ['TEST-02', K[1], '1234', '他支部 花子', '25'],
-      ['TEST-02', K[2], '', '一般 次郎', ''],
-    ];
-    apps.forEach((v, i) => {
-      const r = 2 + i;
-      ap.getRange(r, AH['研修ID']).setValue(v[0]); ap.getRange(r, AH['区分']).setValue(v[1]);
-      ap.getRange(r, AH['登録番号']).setValue(idCell_(v[2])); ap.getRange(r, AH['登録期']).setValue(idCell_(v[4])); ap.getRange(r, AH['氏名']).setValue(v[3]);
+    const apps = {
+      'TEST-01': [[K[0], '0004', '架空 梅二', '28']],
+      'TEST-02': [[K[0], '0001', '架空 桜子', '21期'], [K[0], '0003', '架空 松美', '第27期'], [K[0], '0004', '架空 梅二', '28'], [K[0], '0006', '架空 楓', '30'],
+        [K[0], '0001', '架空 さくら', '21'], [K[1], '1234', '他支部 花子', '25'], [K[2], '', '一般 次郎', '']],
+    };
+    Object.keys(apps).forEach(id => {
+      const ap = sheet_(kenshu, applySheetName_(id)), AH = headerMap_(ap, APPLY_HEADERS);
+      apps[id].forEach((v, i) => {
+        const r = 2 + i;
+        ap.getRange(r, AH['区分']).setValue(v[0]); ap.getRange(r, AH['登録番号']).setValue(idCell_(v[1]));
+        ap.getRange(r, AH['氏名']).setValue(v[2]); ap.getRange(r, AH['登録期']).setValue(idCell_(v[3]));
+      });
     });
     refreshKenshu_(loadContext_());
   });
-  console.log('研修の架空データを入れました。研修ブックの「申込一覧」で判定を確認してください');
+  console.log('研修の架空データを入れました。研修ブックの「申込_TEST-02」などで判定を確認してください');
 }
 
 /* ======================================================================
@@ -2122,7 +2237,7 @@ function refreshAll_() {
   refreshDunning_(ctx, stamp);
 
   // 研修（第3段階）：申込の判定（失敗してもほかの一覧の更新は続ける）
-  try { refreshKenshu_(ctx); } catch (err) { logError_('研修', '申込一覧', '', err.message); }
+  try { refreshKenshu_(ctx); } catch (err) { logError_('研修', '研修一覧', '', err.message); }
 
   // 長期未納（2年度分以上・納期限経過）の在籍会員
   const longs = Logic.longUnpaid(ctx.members, ctx.fees, ctx.today);

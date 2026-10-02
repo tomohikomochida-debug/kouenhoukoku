@@ -141,7 +141,7 @@ const sandbox = {
 };
 sandbox.Date = class extends Date { constructor(...a) { if (a.length) super(...a); else super(FIXED_NOW); } static now() { return FIXED_NOW; } };
 vm.createContext(sandbox);
-vm.runInContext(src + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,研修の架空データを入れる,今すぐ一覧を更新,handleSoumuEdit,handleKaikeiEdit,handleKouhouEdit,handleKenshuEdit,refreshTick,headerMap_,APPLY_HEADERS,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
+vm.runInContext(src + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,研修の架空データを入れる,今すぐ一覧を更新,handleSoumuEdit,handleKaikeiEdit,handleKouhouEdit,handleKenshuEdit,refreshTick,headerMap_,APPLY_HEADERS,TRAINING_HEADERS,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
 const api = sandbox.__api;
 const soumu = () => books[api.APP.books.soumu], kaikei = () => books[api.APP.books.kaikei], kouhou = () => books[api.APP.books.kouhou], kenshu = () => books[api.APP.books.kenshu];
 const sh = (b, n) => b.getSheetByName(n);
@@ -168,7 +168,7 @@ function step(name, fn) { fn(); passed++; console.log('OK  ' + name); }
 step('初期設定：シート・トリガーができる', () => {
   api.初期設定();
   assert.deepStrictEqual(soumu().getSheets().map(s => s.name), ['正本', '異動受付', '会員異動履歴', '管理', 'エラー記録', '送信設定', '送信記録', '郵送リスト', '長期未納']);
-  assert.deepStrictEqual(kenshu().getSheets().map(s => s.name), ['研修一覧', '申込一覧', '参加履歴', '判定の基準']);
+  assert.deepStrictEqual(kenshu().getSheets().map(s => s.name), ['研修一覧', '判定の基準']);
   assert.deepStrictEqual(kaikei().getSheets().map(s => s.name), ['年度設定', '送金入力', '送金記録', '会計一覧', '年度別集計', '送金集計', '台帳変更履歴']);
   assert.deepStrictEqual(triggers.map(t => t.getHandlerFunction()), ['handleSoumuEdit', 'handleKaikeiEdit', 'handleKouhouEdit', 'handleKenshuEdit', 'refreshTick']);
   assert.deepStrictEqual(kouhou().getSheets().map(s => s.name), ['文面', '督促対象', '文面の確認', '送信結果', '送信設定', '送信実行']);
@@ -409,19 +409,27 @@ step('督促メール：「送る」を外す・文面の誤り・本番の安�
   assert.match(cellOf(b, n, 5, '結果・確認内容'), /チェックなし 1名/);
 });
 
-step('研修：架空の申込の判定 → フォーム作成 → 回答の取り込み → 研修担当の判断 → 入金状況の反映', () => {
+step('研修：研修会ごとの申込シートで判定 → フォーム作成 → 回答の取り込み → 研修担当の判断 → 入金状況の反映', () => {
   const K = api.Logic.KUBUN, b = kenshu(), h = 'handleKenshuEdit';
   api.研修の架空データを入れる();
-  const ap = sh(b, '申込一覧'), tl = sh(b, '研修一覧');
-  const A = (r, hd) => cellOf(b, '申込一覧', r, hd), T = (r, hd) => cellOf(b, '研修一覧', r, hd);
-  const judged = r => [A(r, '登録番号'), A(r, '判定（自動）')];
-  assert.deepStrictEqual([2, 3, 4, 5, 6, 7, 8, 9].map(judged), [
-    ['0004', '参加可'], ['0001', '参加可'], ['0003', '参加可'], ['0004', '参加不可'], ['0006', '参加不可'], ['0001', '要確認'], ['1234', api.Logic.EXTERNAL], ['', api.Logic.EXTERNAL]]);
-  assert.match(A(2, '理由（自動）'), /納期限（2026-07-31）前/);
-  assert.match(A(5, '理由（自動）'), /2026年度の会費が未納/);
-  assert.match(A(7, '理由（自動）'), /重複[\s\S]*氏名が名簿と違います/);
+  assert.deepStrictEqual(b.getSheets().map(x => x.name), ['研修一覧', '申込_TEST-02', '申込_TEST-01', '判定の基準', '年度集計_2026']);
+  const S2 = '申込_TEST-02', ap = sh(b, S2);
+  const A = (r, hd) => cellOf(b, S2, r, hd), T = (r, hd) => cellOf(b, '研修一覧', r, hd);
+  assert.deepStrictEqual([cellOf(b, '申込_TEST-01', 2, '登録番号'), cellOf(b, '申込_TEST-01', 2, '判定（自動）')], ['0004', '参加可']);
+  assert.match(cellOf(b, '申込_TEST-01', 2, '理由（自動）'), /納期限（2026-07-31）前/);
+  assert.deepStrictEqual([2, 3, 4, 5, 6, 7, 8].map(r => [A(r, '登録番号'), A(r, '判定（自動）')]), [
+    ['0001', '参加可'], ['0003', '参加可'], ['0004', '参加不可'], ['0006', '参加不可'], ['0001', '要確認'], ['1234', api.Logic.EXTERNAL], ['', api.Logic.EXTERNAL]]);
+  assert.match(A(4, '理由（自動）'), /2026年度の会費が未納/);
+  assert.match(A(6, '理由（自動）'), /重複[\s\S]*氏名が名簿と違います/);
   assert.match(String(A(2, '受付ID')), /^M-/);
-  assert.deepStrictEqual([T(2, '受付（自動）'), T(3, '受付（自動）'), T(3, '申込（自動）'), T(3, '参加可（自動）'), T(3, '外部（自動）')], ['終了（開催済み）', 'フォーム未作成', 6, 2, 2]);
+  assert.deepStrictEqual([T(2, '年度（自動）'), T(2, '申込シート（自動）'), T(2, '受付（自動）'), T(3, '受付（自動）'), T(3, '申込（自動）'), T(3, '参加可（自動）'), T(3, '外部（自動）')],
+    [2026, '申込_TEST-01', '終了（開催済み）', 'フォーム未作成', 6, 2, 2]);
+  // 研修IDは空欄なら年度の連番。IDを変えるとシート名も変わる
+  edit(b, '研修一覧', 4, '研修名', '架空・冬の研修', h);
+  edit(b, '研修一覧', 4, '開催日', new sandbox.Date(Date.UTC(2027, 1, 10) - 9 * 3600 * 1000), h);
+  assert.deepStrictEqual([T(4, '研修ID'), T(4, '年度（自動）'), T(4, '申込シート（自動）')], ['2026-01', 2026, '申込_2026-01']);
+  edit(b, '研修一覧', 4, '研修ID', '2026-03', h);
+  assert.ok(sh(b, '申込_2026-03') && !sh(b, '申込_2026-01'), 'シート名が変わる');
   // フォームを作る（個人のアカウントでは setRequireLogin が使えなくても止まらない）
   tick(b, '研修一覧', 3, 'フォーム作成', h);
   assert.match(String(T(3, '結果・確認内容')), /フォームを作りました/);
@@ -440,43 +448,50 @@ step('研修：架空の申込の判定 → フォーム作成 → 回答の取�
   assert.match(form.title, /架空・秋の研修.*参加申込/);
   tick(b, '研修一覧', 3, 'フォーム作成', h);
   assert.strictEqual(forms.size, 1, '2回目は作らない');
-  // 回答 → 10分ごとの処理で取り込む（同じ回答は1回だけ）
+  // 回答 → 10分ごとの処理で、その研修の申込シートへ取り込む（同じ回答は1回だけ）
   form.respond('r1', 'shin@mail.jp', { '区分': K[0], '樹木医登録番号': '9', '樹木医の登録期': '第36期', '氏名': '新 太郎', '懇親会': '参加' });
   api.refreshTick(); api.refreshTick();
-  assert.strictEqual(ap.getLastRow(), 10);
-  assert.deepStrictEqual([A(10, '受付ID'), A(10, '研修ID'), A(10, '登録番号'), A(10, '登録期'), A(10, 'メール'), A(10, 'その他の回答'), A(10, '判定（自動）')],
-    ['F-r1', 'TEST-02', '9', '第36期', 'shin@mail.jp', '懇親会：参加', '参加不可']);
-  assert.match(A(10, '理由（自動）'), /納期限 2026-10-31/);
+  assert.strictEqual(ap.getLastRow(), 9);
+  assert.deepStrictEqual([A(9, '受付ID'), A(9, '登録番号'), A(9, '登録期'), A(9, 'メール'), A(9, 'その他の回答'), A(9, '判定（自動）')],
+    ['F-r1', '9', '第36期', 'shin@mail.jp', '懇親会：参加', '参加不可']);
+  assert.match(A(9, '理由（自動）'), /納期限 2026-10-31/);
   // 研修担当の判断が「最終」に反映
-  edit(b, '申込一覧', 5, '研修担当の判断', '参加可', h);
-  assert.deepStrictEqual([A(5, '判定（自動）'), A(5, '最終（自動）')], ['参加不可', '参加可']);
-  edit(b, '申込一覧', 5, '研修担当の判断', '', h);
+  edit(b, S2, 4, '研修担当の判断', '参加可', h);
+  assert.deepStrictEqual([A(4, '判定（自動）'), A(4, '最終（自動）')], ['参加不可', '参加可']);
+  edit(b, S2, 4, '研修担当の判断', '', h);
   // 会計で「確認中」にすると、判定が自動で変わる
   const r04 = ledgerRows().find(x => x.id === '0004' && x.year === 2026).r;
   edit(kaikei(), '会費台帳_2026', r04, '納入状況', '確認中', 'handleKaikeiEdit');
-  assert.deepStrictEqual([A(5, '判定（自動）'), A(5, '理由（自動）')], ['要確認', '2026年度の会費が確認中です']);
+  assert.deepStrictEqual([A(4, '判定（自動）'), A(4, '理由（自動）')], ['要確認', '2026年度の会費が確認中です']);
   // 定員に達するとフォームを閉じる
   edit(b, '研修一覧', 3, '定員', 7, h);
   assert.deepStrictEqual([T(3, '申込（自動）'), T(3, '受付（自動）'), form.accepting], [7, '定員到達', false]);
   edit(b, '研修一覧', 3, '定員', 30, h);
   assert.deepStrictEqual([T(3, '受付（自動）'), form.accepting], ['受付中', true]);
-  // 開催日を過ぎると判定は固定。出欠は参加履歴へ
+  // 開催日を過ぎると判定は固定。出欠は年度集計へ
   const saved = FIXED_NOW;
   FIXED_NOW = Date.parse('2026-11-20T03:00:00Z');
   api.refreshTick();
   assert.deepStrictEqual([T(3, '受付（自動）'), form.accepting], ['終了（開催済み）', false]);
   edit(kaikei(), '会費台帳_2026', r04, '納入状況', '未納', 'handleKaikeiEdit');
-  assert.strictEqual(A(5, '判定（自動）'), '要確認', '開催後は変わらない');
+  assert.strictEqual(A(4, '判定（自動）'), '要確認', '開催後は変わらない');
   edit(b, '研修一覧', 3, '研修名', '', h);
   assert.match(String(T(3, '結果・確認内容')), /^入力を確認：研修名/);
-  assert.strictEqual(A(5, '判定（自動）'), '要確認', '研修一覧の入力が崩れても、開催後の判定は残る');
+  assert.strictEqual(A(4, '判定（自動）'), '要確認', '研修一覧の入力が崩れても、判定は残る');
   edit(b, '研修一覧', 3, '研修名', '架空・秋の研修（納期限後）', h);
   assert.strictEqual(T(3, '結果・確認内容'), '', '直したら注意書きは消える');
-  edit(b, '申込一覧', 3, '出欠', '出席', h);
-  edit(b, '申込一覧', 8, '出欠', '出席', h);
-  const hist = sh(b, '参加履歴');
-  assert.deepStrictEqual(hist.getRange(3, 1, 2, 7).getValues().map(r => [r[2], r[5], r[6]]), [['TEST-02', '0001', '架空 桜子'], ['TEST-02', '1234', '他支部 花子']]);
+  edit(b, S2, 2, '出欠', '出席', h);
+  edit(b, S2, 7, '出欠', '出席', h);
+  edit(b, S2, 5, '出欠', '申込取消', h);
+  edit(b, '申込_TEST-01', 2, '出欠', '出席', h);
   assert.strictEqual(T(3, '出席（自動）'), 2);
+  const y = sh(b, '年度集計_2026');
+  assert.deepStrictEqual(y.getRange(2, 1, 1, 7).getValues()[0], ['登録番号', '氏名', '区分', '出席回数', 'TEST-01（07/20）', 'TEST-02（11/15）', '2026-03（02/10）']);
+  const grid = y.getRange(3, 1, y.getLastRow() - 2, 7).getValues().map(r => r.join('|'));
+  assert.ok(grid.includes('0001|架空 桜子|' + K[0] + '|1||出席|'), grid.join('\n'));
+  assert.ok(grid.includes('0004|架空 梅二|' + K[0] + '|1|出席|申込|'), grid.join('\n'));
+  assert.ok(grid.includes('0006|架空 楓|' + K[0] + '|0||取消|'), grid.join('\n'));
+  assert.ok(grid.includes('|一般 次郎|' + K[2] + '|0||申込|'), grid.join('\n'));
   FIXED_NOW = saved;
   api.今すぐ一覧を更新();
   assert.deepStrictEqual(sh(soumu(), '長期未納').getRange(2, 1, 1, 5).getValues()[0], ['登録番号', '氏名', '登録期', '未納の年度', '未納額の合計']);
@@ -500,15 +515,27 @@ step('旧形式の「会費台帳」1枚を年度ごとのシートへ移す', (
   [['項目', '値', '説明'], ['送信モード', '試験', ''], ['試験送信先', 'me@mail.jp', ''], ['差出人の表示名', '日本樹木医会神奈川県支部', ''], ['返信先', '', ''], ['本番で使う送信アカウント', 'shibu@ws.jp', ''], ['1回の送信上限', 30, ''], ['送り方', 'BCCで一斉', '']]
     .forEach((row, i) => row.forEach((v, j) => oldSet.set(i + 1, j + 1, v)));
   so.insertSheet('送信実行').set(1, 1, '実行');
-  // 前の版の申込一覧（「登録期」の列がない）
+  // 前の版の研修ブック：研修一覧（年度・申込シートの列なし）と、全研修を1枚にした申込一覧（登録期なし）
   const ke = books[api.APP.books.kenshu] = new Book(api.APP.books.kenshu);
+  const oldTl = ke.insertSheet('研修一覧');
+  const oldTh = api.TRAINING_HEADERS.filter(x => !['年度（自動）', '申込シート（自動）'].includes(x));
+  oldTh.forEach((x, i) => oldTl.set(1, i + 1, x));
+  oldTl.fmt.set('2:1', '@');
+  [['研修ID', '2026-07'], ['研修名', '前の版の研修'], ['開催日', '2026-12-01'], ['フォームID', 'oldform']].forEach(([k, v]) => oldTl.set(2, oldTh.indexOf(k) + 1, v));
   const oldAp = ke.insertSheet('申込一覧');
-  const oldHead = api.APPLY_HEADERS.filter(x => x !== '登録期');
+  const oldHead = ['受付ID', '受付日時', '研修ID', '区分', '登録番号', '氏名', '判定（自動）', '出欠'];
   oldHead.forEach((x, i) => oldAp.set(1, i + 1, x));
-  oldAp.set(2, oldHead.indexOf('氏名') + 1, '前の版 の人');
+  [['F-a', '2026-10-01 10:00:00', '2026-07', api.Logic.KUBUN[1], '1234', '前の版 の人', '外部（判定なし）', '出席'],
+    ['F-b', '2026-10-01 11:00:00', 'NOPE', api.Logic.KUBUN[2], '', '行き先なし', '', '']].forEach((r, i) => r.forEach((v, j) => { oldAp.fmt.set((i + 2) + ':' + (j + 1), '@'); oldAp.set(i + 2, j + 1, v); }));
   api.初期設定();
-  assert.deepStrictEqual(oldAp.getRange(1, 1, 1, api.APPLY_HEADERS.length).getValues()[0], [...api.APPLY_HEADERS], '登録番号の右に登録期が入る');
-  assert.strictEqual(oldAp.get(2, api.APPLY_HEADERS.indexOf('氏名') + 1), '前の版 の人', '入力済みの値も一緒にずれる');
+  const TH = api.headerMap_(oldTl, api.TRAINING_HEADERS);
+  assert.strictEqual(oldTl.get(2, TH['研修名']), '前の版の研修', '研修一覧に列が入っても値はそのまま');
+  assert.strictEqual(oldTl.get(2, TH['申込シート（自動）']), '申込_2026-07');
+  const moved = ke.getSheetByName('申込_2026-07'), MH = api.headerMap_(moved, api.APPLY_HEADERS);
+  assert.deepStrictEqual([moved.get(2, MH['受付ID']), moved.get(2, MH['登録番号']), moved.get(2, MH['氏名']), moved.get(2, MH['出欠']), moved.get(3, MH['受付ID'])], ['F-a', '1234', '前の版 の人', '出席', '']);
+  assert.ok(ke.getSheetByName('旧_申込一覧（1行は移せませんでした）'), '移せない行があれば元のシートに残す');
+  api.初期設定();
+  assert.strictEqual(moved.getLastRow(), 2, '2回目は移さない');
   assert.deepStrictEqual([oldSet.getLastRow(), oldSet.get(2, 1), oldSet.get(2, 2)], [2, '本番で使う送信アカウント', 'shibu@ws.jp'], '総務には本番アカウントだけ残る');
   const ks = sh(kouhou(), '送信設定');
   const val = key => { for (let r = 2; r <= ks.getLastRow(); r++) if (ks.get(r, 1) === key) return ks.get(r, 2); };

@@ -322,4 +322,16 @@ test('長期未納：2年度分以上・納期限経過の在籍会員', () => {
   assert.deepStrictEqual(Logic.longUnpaid(c.members, c.fees, '2026-07-31'), [], '2026年度の納期限当日まではまだ1年度分');
 });
 
+test('研修IDの自動採番と、年度の出欠の一覧', () => {
+  assert.strictEqual(Logic.nextTrainingId([], 2026), '2026-01');
+  assert.strictEqual(Logic.nextTrainingId(['2026-01', '2026-03', '2025-09', 'TEST-01'], 2026), '2026-04');
+  const t1 = { id: '2026-01', date: '2026-07-20' }, t2 = { id: '2026-02', date: '2026-11-15' };
+  const m = Logic.yearAttendance([
+    { t: t1, apps: [{ kind: K[0], id: '0004', name: '梅', att: '出席' }, { kind: K[2], id: '', name: '一般 次郎', att: '' }] },
+    { t: t2, apps: [{ kind: K[0], id: '0004', name: '梅', att: '出席' }, { kind: K[0], id: '0001', name: '桜', att: '申込取消' }, { kind: K[0], id: '0001', name: '桜', att: '欠席' }, { kind: K[0], id: '0004', name: '梅', att: '', dup: true }] },
+  ]);
+  assert.deepStrictEqual(m.header, ['登録番号', '氏名', '区分', '出席回数', '2026-01（07/20）', '2026-02（11/15）']);
+  assert.deepStrictEqual(m.rows, [['0001', '桜', K[0], 0, '', '欠席'], ['0004', '梅', K[0], 2, '出席', '出席'], ['', '一般 次郎', K[2], 0, '申込', '']]);
+});
+
 console.log('\n全 ' + passed + ' 件のテストに合格しました');
