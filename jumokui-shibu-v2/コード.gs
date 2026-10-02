@@ -1,6 +1,7 @@
 /**
  * 日本樹木医会 神奈川県支部 支部管理システム v2
  * 第1段階：総務（正本・会員の異動）＋ 会計（会費台帳・年度追加・送金記録）
+ * 第2段階：広報（督促メールの文面・対象）＋ 総務（督促メールの送信・郵送リスト）
  *
  * 【はじめての設定】
  *  1. 新しい Apps Script プロジェクトの「コード.gs」に、このファイルの内容を全部貼り付けて保存する。
@@ -13,22 +14,27 @@
  *  - 会費：会計ブックの「会費台帳_2026」など年度ごとのシートに直接入力（入力ルールと自動チェックあり）。
  *  - 年度追加：会計ブックの「年度設定」の「年度追加」にチェック（2回チェックで実行）。その年度のシートができます。
  *  - 送金記録：会計ブックの「送金入力」に1行入力し、「実行」にチェック（2回チェックで保存）。
- *  - 一覧・集計は10分以内に自動更新。すぐ更新したいときは「今すぐ一覧を更新」を実行。
+ *  - 督促メール：広報ブックの「文面」を整え、「督促対象」で送らない人のチェックを外す。
+ *    総務ブックの「送信設定」で送信モード（停止・試験・本番）を選び、「送信実行」に対象年度を入れて
+ *    「実行」にチェック → 確認内容が出る → もう一度チェックで送信。
+ *  - 一覧・集計は操作のたびに自動更新（念のため10分ごとにも確認）。
  *
  * このプロジェクトはウェブアプリとして公開しないでください。
  */
 
 const APP = {
-  version: 'v2-第1段階-20261002',
+  version: 'v2-第2段階-20261002',
   books: {
     soumu: '1EpwGgak2yF5cEbu4YDUKmjwqaKj5-3690rOcnJu-oXs',   // 総務_正本_v2
     kaikei: '1CQv396GIBXz1M4xBi8pHE3J97iKJtsOeBey9n2-roUc',  // 会計_会費台帳_v2
+    kouhou: '1dGWIZNiDjo1YrsXKgz3yWG6DMGA-1-pKKEbLGwn6xGQ',  // 広報_督促_v2
   },
   tz: 'Asia/Tokyo',
   fiscalStartMonth: 4,  // 会費の年度は4月始まり
   idDigits: 4,          // 登録番号（＝樹木医番号）の桁数
   pref: { code: '14', name: '神奈川県' },
   remitDeadline: '09-30', // 本会への納入期限（取扱要領 第4条）
+  mailRecentDays: 7,      // 同じ人・同じ年度への督促は、この日数のあいだ再送しない
 };
 
 /* ======================================================================
@@ -469,6 +475,104 @@ const Logic = (() => {
     return { header, rows };
   }
 
+  /* ---------- 督促メール ---------- */
+  const MAIL_KEYS = ['氏名', '登録番号', '対象年度', '会費額', '本会分', '支部分', '地区協議会分', '納期限', '振込先', '振込名義', '問い合わせ先'];
+  const MAIL_MODES = ['停止', '試験', '本番'];
+
+  function emailList(v) { return text(v).normalize('NFKC').split(/[,、;\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean); }
+  function isEmail(x) { return /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(x); }
+
+  // 督促の対象：在籍者で、納期限を過ぎた「未納」。メール・郵送・要確認に分ける
+  function dunningTargets(members, fees, today) {
+    const byId = new Map(members.map(m => [m.id, m]));
+    const used = new Map();
+    members.forEach(m => emailList(m.emails).forEach(a => used.set(a, (used.get(a) || 0) + 1)));
+    const out = [];
+    fees.filter(f => f.ok && f.status === '未納' && f.due && f.due < today).forEach(f => {
+      const m = byId.get(f.id);
+      if (!m || m.membership !== '在籍') return;
+      const emails = emailList(m.emails);
+      let route = 'メール', note = '';
+      if (!emails.length) route = '郵送';
+      else if (emails.some(a => !isEmail(a))) { route = '要確認'; note = '会費案内先のメールアドレスの形を確認してください'; }
+      else if (emails.some(a => used.get(a) > 1)) { route = '要確認'; note = 'ほかの会員と同じメールアドレスです'; }
+      out.push({ id: f.id, name: m.name, cohort: m.cohort, year: f.year, amount: f.amount, due: f.due, route, note, emails });
+    });
+    return out.sort((a, b) => b.year - a.year || a.id.localeCompare(b.id));
+  }
+
+  function renderMail(tpl, t, s) {
+    const map = {
+      '氏名': t.name, '登録番号': t.id, '対象年度': t.year, '会費額': yen(t.amount), '本会分': yen(s.main), '支部分': yen(s.branch),
+      '地区協議会分': yen(s.district), '納期限': t.due, '振込先': s.bank, '振込名義': s.payer, '問い合わせ先': s.contact,
+    };
+    return String(tpl).replace(/\{\{([^}]*)\}\}/g, (_, k) => {
+      k = k.trim();
+      check(Object.prototype.hasOwnProperty.call(map, k), '文面に使えない差し込み項目があります：{{' + k + '}}（使えるのは ' + MAIL_KEYS.map(x => '{{' + x + '}}').join(' ') + '）');
+      return String(map[k]);
+    });
+  }
+
+  function checkTemplate(subject, body) {
+    check(text(subject) && !/[\r\n]/.test(subject) && text(subject).length <= 150, '広報ブック「文面」の件名を確認してください（改行なし・150文字以内）');
+    check(text(body) && String(body).length <= 20000, '広報ブック「文面」の本文を入力してください');
+  }
+
+  // v: { year, mode, testTo, account, allowed, limit, subject, body, selected(Map 'id:year'→true/false), history[] }
+  function planSend(v, ctx) {
+    const year = toInt(v.year);
+    check(year >= 2000 && year <= 2099, '「対象年度」を4桁で入力してください');
+    const s = ctx.settings[year];
+    check(s, year + '年度の年度設定がありません');
+    const mode = text(v.mode);
+    check(mode === '試験' || mode === '本番', '総務ブック「送信設定」の送信モードが「' + (mode || '空欄') + '」です。送るときは「試験」か「本番」にしてください');
+    checkTemplate(v.subject, v.body);
+    let testTo = '';
+    if (mode === '試験') {
+      testTo = text(v.testTo).toLowerCase();
+      check(isEmail(testTo), '総務ブック「送信設定」の「試験送信先」にメールアドレスを1つ入れてください');
+    } else {
+      check(text(v.allowed) && text(v.allowed).toLowerCase() === text(v.account).toLowerCase(),
+        '本番送信は、送信設定の「本番で使う送信アカウント」と、このシステムを動かしているアカウント（' + v.account + '）が同じときだけできます');
+    }
+    const limit = toInt(v.limit);
+    check(limit >= 1 && limit <= 100, '送信設定の「1回の送信上限」は1〜100にしてください');
+    const all = dunningTargets(ctx.members, ctx.fees, ctx.today).filter(t => t.year === year);
+    const skipped = { '郵送': 0, '要確認': 0, '送らない': 0, '最近送信済み': 0 };
+    const today = Date.parse(ctx.today + 'T00:00:00Z'), days = v.recentDays || 7;
+    const messages = [];
+    all.forEach(t => {
+      if (t.route !== 'メール') { skipped[t.route]++; return; }
+      if (v.selected && v.selected.get(t.id + ':' + t.year) === false) { skipped['送らない']++; return; }
+      const recent = (v.history || []).some(h => h.id === t.id && h.year === t.year && h.mode === mode &&
+        (['送信中', '結果不明'].includes(h.result) || (['送信済み', '試験送信済み'].includes(h.result) && today - Date.parse(h.day + 'T00:00:00Z') < days * 86400000)));
+      if (recent) { skipped['最近送信済み']++; return; }
+      if (mode === '本番') check(!t.emails.some(a => /\.(invalid|example|test|localhost)$/.test(a)), t.id + ' の会費案内先が試験用のアドレスです。本番では送れません');
+      messages.push({
+        id: t.id, name: t.name, year: t.year, to: mode === '試験' ? testTo : t.emails.join(','),
+        subject: (mode === '試験' ? '【試験】' : '') + text(v.subject),
+        body: (mode === '試験' ? '（試験送信です。本来の宛先：' + t.id + ' ' + t.name + '）\n\n' : '') + renderMail(v.body, t, s),
+      });
+    });
+    if (all.length) renderMail(v.body, all[0], s); // 文面の誤りは、送る相手がいなくても知らせる
+    return { year, mode, account: v.account, testTo, limit, total: messages.length, messages: messages.slice(0, limit), remaining: Math.max(0, messages.length - limit), skipped, today: ctx.today };
+  }
+
+  function sendPreview(p) {
+    const lines = [];
+    lines.push('【督促メール・' + p.mode + '】' + p.year + '年度／送信元 ' + p.account);
+    lines.push('今回送る件数：' + p.messages.length + '件' + (p.remaining ? '（上限のため残り ' + p.remaining + '件は次回）' : ''));
+    if (p.mode === '試験') lines.push('宛先：全件を試験送信先 ' + p.testTo + ' に送ります（会員には届きません）');
+    else lines.push('宛先：各会員の会費案内先（本番。会員に届きます）');
+    lines.push('送らない人：郵送 ' + p.skipped['郵送'] + '名／要確認 ' + p.skipped['要確認'] + '名／「送る」のチェックなし ' + p.skipped['送らない'] + '名／最近送信済み ' + p.skipped['最近送信済み'] + '名');
+    if (p.messages.length) {
+      const m = p.messages[0];
+      lines.push('―― 1件目の例 ――', '件名：' + m.subject, m.body, '――――');
+      lines.push('→ この内容でよければ、もう一度「実行」にチェックしてください');
+    } else lines.push('送る相手がいません');
+    return lines.join('\n');
+  }
+
   let APP_REMIT_DEADLINE = '09-30';
   function setRemitDeadline(md) { APP_REMIT_DEADLINE = md; }
 
@@ -478,6 +582,7 @@ const Logic = (() => {
     parseMembers, parseSettings, parseFees, parseTransfers, snapFee,
     planMembership, membershipPreview, planNewYear, newYearPreview, planTransfer, transferPreview,
     matrix, yearTotals, transferSummary, setRemitDeadline,
+    MAIL_KEYS, MAIL_MODES, emailList, isEmail, dunningTargets, renderMail, checkTemplate, planSend, sendPreview,
   };
 })();
 if (typeof module !== 'undefined') module.exports = { Logic, APP };
@@ -501,6 +606,24 @@ const TRANSFER_IN_INPUTS = ['年度', '送金先', '対象人数', '送金額', 
 const TRANSFER_LOG_HEADERS = ['記録ID', '区分', '年度', '送金先', '対象人数', '送金額', '送金日', '備考', '取消対象ID', '記録日時'];
 const AUDIT_HEADERS = ['日時', '操作した人', '行', '登録番号', '年度', '項目', '変更前', '変更後'];
 const ERROR_HEADERS = ['日時', 'ブック', 'シート', '行', '内容'];
+const SEND_SETTING_ROWS = [
+  ['送信モード', '停止', '停止：送らない／試験：全件を試験送信先へ／本番：会員へ送る'],
+  ['試験送信先', '', '試験のとき、全員分をこのアドレスにだけ送ります'],
+  ['差出人の表示名', '日本樹木医会神奈川県支部', '受け取った人に見える差出人名'],
+  ['返信先', '', '空欄なら送信アカウントに返信が届きます'],
+  ['本番で使う送信アカウント', '', '本番の送信元。このシステムを動かすアカウントと同じときだけ本番送信できます'],
+  ['1回の送信上限', 30, '1回のチェックで送る最大件数（無料のGmailは1日約100件まで）'],
+];
+const SEND_RUN_HEADERS = ['実行', '状態', '結果・確認内容', '対象年度', 'メモ', '確認キー', '受付ID', '処理日時'];
+const SEND_RUN_INPUTS = ['対象年度', 'メモ'];
+const SEND_LOG_HEADERS = ['日時', '受付ID', '登録番号', '氏名', '年度', '宛先', 'モード', '結果'];
+const TEMPLATE_DEFAULT = {
+  subject: '【日本樹木医会神奈川県支部】年会費納入のお願い',
+  body: ['{{氏名}} 様', '', '日本樹木医会神奈川県支部です。',
+    '{{対象年度}}年度の年会費 {{会費額}}（本会分 {{本会分}}・支部分 {{支部分}}・関東甲信地区協議会分 {{地区協議会分}}）について、',
+    '納期限（{{納期限}}）を過ぎましたが、まだ入金を確認できておりません。', 'お手数ですが、下記へお振り込みをお願いいたします。', '',
+    '振込先：{{振込先}}', '振込名義：{{振込名義}}', '', '行き違いでお振り込み済みの場合は、ご容赦ください。', 'お問い合わせ：{{問い合わせ先}}'].join('\n'),
+};
 
 const AUTO_FILL = '#eef2f0';
 const INPUT_ROWS = 500;
@@ -641,7 +764,39 @@ function 初期設定() {
     protectSheet_(ensureSheet_(soumu, '会員異動履歴', JOURNAL_HEADERS), '自動記録');
     protectSheet_(ensureSheet_(soumu, '管理', ['項目', '値']), '自動出力');
     protectSheet_(ensureSheet_(soumu, 'エラー記録', ERROR_HEADERS), '自動記録');
+    // 督促メール（第2段階）
+    const sset = ensureSheet_(soumu, '送信設定', ['項目', '値', '説明']);
+    const have = sset.getLastRow() >= 2 ? sset.getRange(2, 1, sset.getLastRow() - 1, 1).getValues().map(r => String(r[0])) : [];
+    SEND_SETTING_ROWS.filter(r => !have.includes(r[0])).forEach(r => sset.appendRow(r));
+    const modeRow = sendSettingRow_(sset, '送信モード');
+    sset.getRange(modeRow, 2).setDataValidation(list_(Logic.MAIL_MODES));
+    sset.setColumnWidth(1, 200); sset.setColumnWidth(2, 280); sset.setColumnWidth(3, 520);
+    const run = ensureSheet_(soumu, '送信実行', SEND_RUN_HEADERS);
+    setupInputSheet_(run, SEND_RUN_HEADERS, {
+      checkbox: '実行', auto: ['状態', '結果・確認内容', '確認キー', '受付ID', '処理日時'], hide: ['確認キー'],
+      numbers: ['対象年度'], widths: { '結果・確認内容': 520 }, rows: 200,
+    });
+    protectSheet_(ensureSheet_(soumu, '送信記録', SEND_LOG_HEADERS), '自動記録');
+    protectSheet_(ensureSheet_(soumu, '郵送リスト', null), '自動出力');
     removeDefaultSheet_(soumu);
+
+    // ---- 広報ブック ----
+    const kouhou = book_('kouhou');
+    kouhou.setSpreadsheetTimeZone(APP.tz); kouhou.setSpreadsheetLocale('ja_JP');
+    const tpl = ensureSheet_(kouhou, '文面', ['項目', '値', '説明']);
+    if (tpl.getLastRow() < 3) {
+      tpl.getRange(2, 1, 2, 3).setValues([
+        ['件名', TEMPLATE_DEFAULT.subject, '改行なし・150文字以内'],
+        ['本文', TEMPLATE_DEFAULT.body, '使える差し込み：' + Logic.MAIL_KEYS.map(k => '{{' + k + '}}').join(' ')],
+      ]);
+    }
+    tpl.getRange(2, 2, 2, 1).setWrap(true);
+    tpl.setColumnWidth(1, 80); tpl.setColumnWidth(2, 560); tpl.setColumnWidth(3, 300);
+    protectRange_(tpl.getRange(1, 1, 3, 1), '項目名');
+    ['督促対象', '文面の確認', '送信結果'].forEach(name => ensureSheet_(kouhou, name, null));
+    protectSheet_(sheet_(kouhou, '文面の確認'), '自動出力');
+    protectSheet_(sheet_(kouhou, '送信結果'), '自動出力');
+    removeDefaultSheet_(kouhou);
 
     // ---- 会計ブック ----
     migrateOldLedger_(kaikei);
@@ -668,10 +823,11 @@ function 初期設定() {
 
     // ---- トリガー ----
     ScriptApp.getProjectTriggers()
-      .filter(t => ['handleSoumuEdit', 'handleKaikeiEdit', 'refreshTick'].includes(t.getHandlerFunction()))
+      .filter(t => ['handleSoumuEdit', 'handleKaikeiEdit', 'handleKouhouEdit', 'refreshTick'].includes(t.getHandlerFunction()))
       .forEach(t => ScriptApp.deleteTrigger(t));
     ScriptApp.newTrigger('handleSoumuEdit').forSpreadsheet(soumu).onEdit().create();
     ScriptApp.newTrigger('handleKaikeiEdit').forSpreadsheet(kaikei).onEdit().create();
+    ScriptApp.newTrigger('handleKouhouEdit').forSpreadsheet(kouhou).onEdit().create();
     ScriptApp.newTrigger('refreshTick').timeBased().everyMinutes(10).create();
 
     PropertiesService.getScriptProperties().setProperty('VERSION', APP.version);
@@ -798,8 +954,20 @@ function handleSoumuEdit(e) {
   try {
     if (name === '異動受付') onMoveEdit_(e, sh);
     else if (name === '正本') onRosterEdit_(e, sh);
+    else if (name === '送信実行') onSendEdit_(e, sh);
+    else if (name === '送信設定') withLock_(() => { invalidateAllSends_(); refreshNow_(); });
   } catch (err) {
     logError_('総務', name, e.range.getRow(), err.message);
+  }
+}
+
+function handleKouhouEdit(e) {
+  if (!e || !e.range) return;
+  const sh = e.range.getSheet(), name = sh.getName();
+  try {
+    if (name === '文面' || name === '督促対象') { invalidateAllSends_(); if (name === '文面') withLock_(() => writeMailPreview_(loadContext_())); }
+  } catch (err) {
+    logError_('広報', name, e.range.getRow(), err.message);
   }
 }
 
@@ -1224,6 +1392,143 @@ function processTransfer_(sh, H, row) {
 }
 
 /* ======================================================================
+ * 督促メール（第2段階）
+ * ====================================================================== */
+function sendSettingRow_(sh, key) {
+  const v = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), 1).getValues();
+  for (let i = 1; i < v.length; i++) if (String(v[i][0]).trim() === key) return i + 1;
+  throw new Error('総務ブック「送信設定」に「' + key + '」の行がありません。「初期設定」を実行してください');
+}
+
+function sendSettings_(soumu) {
+  const sh = sheet_(soumu, '送信設定'), out = {};
+  SEND_SETTING_ROWS.forEach(r => { out[r[0]] = String(cell_(sh.getRange(sendSettingRow_(sh, r[0]), 2).getValue())).trim(); });
+  return out;
+}
+
+function mailTemplate_() {
+  const sh = sheet_(book_('kouhou'), '文面'), v = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), 2).getValues();
+  const get = k => { const r = v.find(x => String(x[0]).trim() === k); return r ? String(r[1]) : ''; };
+  return { subject: get('件名'), body: get('本文') };
+}
+
+// 広報ブック「督促対象」の「送る」チェック（登録番号:年度 → true/false）
+function sendSelection_() {
+  const sh = book_('kouhou').getSheetByName('督促対象'), map = new Map();
+  if (!sh || sh.getLastRow() < 3) return map;
+  const head = sh.getRange(2, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const ci = head.indexOf('送る'), ii = head.indexOf('登録番号'), yi = head.indexOf('年度');
+  if (ci < 0 || ii < 0 || yi < 0) return map;
+  sh.getRange(3, 1, sh.getLastRow() - 2, head.length).getValues().forEach(r => {
+    const id = Logic.normId(r[ii], APP.idDigits);
+    if (id) map.set(id + ':' + Number(r[yi]), r[ci] === true || String(r[ci]).toUpperCase() === 'TRUE');
+  });
+  return map;
+}
+
+function sendHistory_(soumu) {
+  return readRows_(sheet_(soumu, '送信記録'), SEND_LOG_HEADERS, ['受付ID']).rows.map(r => ({
+    id: Logic.normId(r['登録番号'], APP.idDigits), name: String(r['氏名']), year: Number(r['年度']), mode: String(r['モード']),
+    result: String(r['結果']).startsWith('結果不明') ? '結果不明' : String(r['結果']), day: String(r['日時']).slice(0, 10), at: String(r['日時']),
+  }));
+}
+
+// 文面・対象・設定が変わったら、確認待ちの送信をやり直してもらう
+function invalidateAllSends_() {
+  const sh = book_('soumu').getSheetByName('送信実行');
+  if (!sh || sh.getLastRow() < 2) return;
+  const H = headerMap_(sh, SEND_RUN_HEADERS);
+  const st = sh.getRange(2, H['状態'], sh.getLastRow() - 1, 1).getValues();
+  st.forEach((v, i) => { if (String(v[0]) === '確認待ち') { const r = i + 2; sh.getRange(r, H['状態']).setValue(''); sh.getRange(r, H['結果・確認内容']).setValue('文面・送る相手・送信設定のどれかが変わりました。もう一度チェックして確認してください'); sh.getRange(r, H['確認キー']).setValue(''); } });
+}
+
+function onSendEdit_(e, sh) {
+  const H = headerMap_(sh, SEND_RUN_HEADERS);
+  if (isTick_(e, H, '実行')) {
+    const row = e.range.getRow();
+    try { withLock_(() => processSend_(sh, H, row)); }
+    catch (err) {
+      sh.getRange(row, H['状態']).setValue('エラー');
+      sh.getRange(row, H['結果・確認内容']).setValue('エラー：' + err.message);
+    } finally { sh.getRange(row, H['実行']).setValue(false); }
+    return;
+  }
+  if (touches_(e, H, SEND_RUN_INPUTS)) invalidate_(sh, H, editedRows_(e));
+}
+
+function processSend_(sh, H, row) {
+  const o = rowObject_(sh, H, row, SEND_RUN_HEADERS);
+  if (String(o['状態']) === '完了') { sh.getRange(row, H['結果・確認内容']).setValue('この行は送信済みです。新しい送信は新しい行で行ってください'); return; }
+  let receipt = String(o['受付ID']);
+  if (!receipt) { receipt = Utilities.getUuid(); sh.getRange(row, H['受付ID']).setValue(receipt); }
+  const ctx = loadContext_();
+  const cfg = sendSettings_(ctx.soumu), tpl = mailTemplate_();
+  const plan = Logic.planSend({
+    year: o['対象年度'], mode: cfg['送信モード'], testTo: cfg['試験送信先'], account: Session.getEffectiveUser().getEmail(),
+    allowed: cfg['本番で使う送信アカウント'], limit: cfg['1回の送信上限'], subject: tpl.subject, body: tpl.body,
+    selected: sendSelection_(), history: sendHistory_(ctx.soumu), recentDays: APP.mailRecentDays,
+  }, ctx);
+  const key = Logic.hash(JSON.stringify(plan) + receipt + cfg['差出人の表示名'] + cfg['返信先']);
+  if (String(o['状態']) !== '確認待ち' || String(o['確認キー']) !== key) {
+    sh.getRange(row, H['状態']).setValue(plan.messages.length ? '確認待ち' : '');
+    sh.getRange(row, H['結果・確認内容']).setValue(safe_(Logic.sendPreview(plan)));
+    sh.getRange(row, H['確認キー']).setValue(plan.messages.length ? key : '');
+    return;
+  }
+  const result = sendMessages_(ctx.soumu, plan, receipt, cfg);
+  const left = plan.remaining + (plan.messages.length - result.sent);
+  sh.getRange(row, H['状態']).setValue(result.stopped ? '中断' : (left ? '一部完了' : '完了'));
+  sh.getRange(row, H['結果・確認内容']).setValue(now_() + '：' + plan.mode + 'で ' + result.sent + '件送りました' +
+    (left ? '。残り ' + left + '件は、もう一度「実行」にチェックすると確認内容が出ます' : '') + (result.stopped ? '\n中断の理由：' + result.stopped : ''));
+  sh.getRange(row, H['確認キー']).setValue('');
+  sh.getRange(row, H['処理日時']).setValue(now_());
+  refreshNow_();
+}
+
+// 1通ずつ「送信中」と記録してから送る。結果が分からないものは自動で再送しない
+function sendMessages_(soumu, plan, receipt, cfg) {
+  const log = sheet_(soumu, '送信記録'), started = Date.now();
+  let sent = 0, stopped = '';
+  for (const m of plan.messages) {
+    if (Date.now() - started > 240000) { stopped = '時間の上限（4分）'; break; }
+    if (MailApp.getRemainingDailyQuota() < 1) { stopped = 'このアカウントの1日の送信上限に達しました'; break; }
+    const r = log.getLastRow() + 1;
+    log.getRange(r, 1, 1, SEND_LOG_HEADERS.length).setValues([[now_(), receipt, "'" + m.id, safe_(m.name), m.year, plan.mode === '試験' ? m.to + '（試験送信先）' : m.to, plan.mode, '送信中']]);
+    SpreadsheetApp.flush();
+    const msg = { to: m.to, subject: m.subject, body: m.body, name: cfg['差出人の表示名'] || '日本樹木医会神奈川県支部' };
+    if (cfg['返信先']) msg.replyTo = cfg['返信先'];
+    try { MailApp.sendEmail(msg); }
+    catch (err) {
+      log.getRange(r, SEND_LOG_HEADERS.length).setValue(safe_('結果不明：' + err.message));
+      logError_('総務', '送信実行', '', m.id + ' への送信：' + err.message);
+      stopped = m.id + ' への送信でエラー（' + err.message + '）。この人には自動で再送しません。届いたか確認してください';
+      break;
+    }
+    log.getRange(r, SEND_LOG_HEADERS.length).setValue(plan.mode === '試験' ? '試験送信済み' : '送信済み');
+    sent++;
+  }
+  return { sent, stopped };
+}
+
+// 広報ブックの「文面の確認」に、1人目の対象者で差し込んだ例を出す
+function writeMailPreview_(ctx) {
+  const sh = sheet_(book_('kouhou'), '文面の確認'), tpl = mailTemplate_();
+  const t = Logic.dunningTargets(ctx.members, ctx.fees, ctx.today).find(x => x.route === 'メール') ||
+    { id: '0000', name: '（見本）樹木 太郎', year: Object.keys(ctx.settings).map(Number).sort().pop() || 2026, amount: 18000, due: ctx.today };
+  let text;
+  try {
+    Logic.checkTemplate(tpl.subject, tpl.body);
+    const s = ctx.settings[t.year];
+    if (!s) throw new Error(t.year + '年度の年度設定がありません');
+    text = '件名：' + tpl.subject + '\n\n' + Logic.renderMail(tpl.body, t, s);
+  } catch (err) { text = '文面に問題があります：' + err.message; }
+  sh.clearContents();
+  sh.getRange(1, 1).setValue('文面の確認（最終更新 ' + now_() + '）　' + t.id + ' ' + t.name + ' さんに送る場合の例です').setFontWeight('bold');
+  sh.getRange(3, 1).setValue(safe_(text)).setWrap(true);
+  sh.setColumnWidth(1, 700);
+}
+
+/* ======================================================================
  * 一覧・集計の更新
  * ====================================================================== */
 function refreshTick() {
@@ -1267,6 +1572,9 @@ function refreshAll_() {
   writeTable_(sheet_(ctx.kaikei, '年度別集計'), '年度別集計（最終更新 ' + stamp + '）　要確認の行は合計に含めていません', Logic.yearTotals(ctx.fees), ['請求額の合計', '入金額の合計', '未収額（未納・確認中）']);
   writeTable_(sheet_(ctx.kaikei, '送金集計'), '送金集計（最終更新 ' + stamp + '）　目安＝台帳で「納入済み」の人数×1人あたりの額。送金額は自動では決めません', Logic.transferSummary(ctx.fees, ctx.settings, ctx.transfers, ctx.today), ['1人あたり', '送るべき額（目安）', '送金済み額', '差額']);
 
+  // 督促（第2段階）：広報の督促対象・文面の確認・送信結果、総務の郵送リスト
+  refreshDunning_(ctx, stamp);
+
   // 総務の管理シート
   const count = st => ctx.members.filter(m => m.membership === st).length;
   const badFees = ctx.fees.filter(f => !f.ok);
@@ -1280,11 +1588,56 @@ function refreshAll_() {
   ];
   Logic.yearTotals(ctx.fees.filter(f => { const m = ctx.membersById.get(f.id); return m && m.membership === '在籍'; })).rows
     .forEach(r => rows.push([r[0] + '年度（在籍者のみ）', '未納 ' + r[2] + '／納入済み ' + r[3] + '／確認中 ' + r[4] + '／免除 ' + r[5] + '／他支部納入済み ' + r[6]]));
+  const dun = Logic.dunningTargets(ctx.members, ctx.fees, ctx.today);
+  rows.push(['督促メールの送信モード', sendSettings_(ctx.soumu)['送信モード'] || '（未設定）']);
+  rows.push(['督促の対象（在籍・納期限超過の未納）', 'メール ' + dun.filter(t => t.route === 'メール').length + '件／郵送 ' + dun.filter(t => t.route === '郵送').length + '件／要確認 ' + dun.filter(t => t.route === '要確認').length + '件']);
   rows.push(['会計ブック', 'https://docs.google.com/spreadsheets/d/' + APP.books.kaikei + '/edit']);
+  rows.push(['広報ブック', 'https://docs.google.com/spreadsheets/d/' + APP.books.kouhou + '/edit']);
   const admin = sheet_(ctx.soumu, '管理');
   admin.getRange(2, 1, Math.max(admin.getMaxRows() - 1, 1), 2).clearContent();
   admin.getRange(2, 1, rows.length, 2).setValues(rows.map(r => [r[0], safe_(String(r[1]))])).setWrap(true);
   admin.setColumnWidth(1, 260); admin.setColumnWidth(2, 560);
+}
+
+function refreshDunning_(ctx, stamp) {
+  const kouhou = book_('kouhou');
+  const targets = Logic.dunningTargets(ctx.members, ctx.fees, ctx.today);
+  const history = sendHistory_(ctx.soumu);
+  const last = new Map();
+  history.forEach(h => { if (h.id) last.set(h.id + ':' + h.year, h.at + ' ' + h.result + (h.mode === '試験' ? '（試験）' : '')); });
+  const keep = sendSelection_();
+  const tsh = sheet_(kouhou, '督促対象');
+  writeTable_(tsh, '督促対象（最終更新 ' + stamp + '）　在籍者で納期限を過ぎた「未納」。メールを送らない人は「送る」のチェックを外してください', {
+    header: ['送る', '登録番号', '氏名', '登録期', '年度', '請求金額', '納期限', '送り方', '備考', '最終送信'],
+    rows: targets.map(t => [t.route === 'メール' ? (keep.has(t.id + ':' + t.year) ? keep.get(t.id + ':' + t.year) : true) : false,
+      t.id, t.name, t.cohort, t.year, t.amount, t.due, t.route, t.note, last.get(t.id + ':' + t.year) || '']),
+  }, ['請求金額']);
+  if (tsh.getMaxRows() > 2) tsh.getRange(3, 1, tsh.getMaxRows() - 2, 1).clearDataValidations();
+  if (targets.length) tsh.getRange(3, 1, targets.length, 1).insertCheckboxes();
+  const p = tsh.getProtections(SpreadsheetApp.ProtectionType.SHEET).find(x => x.getDescription() === '自動出力（「送る」だけ変更可）') ||
+    tsh.protect().setDescription('自動出力（「送る」だけ変更可）');
+  p.setUnprotectedRanges(targets.length ? [tsh.getRange(3, 1, targets.length, 1)] : []);
+  const me = Session.getEffectiveUser();
+  p.addEditor(me); p.removeEditors(p.getEditors().filter(u => u.getEmail() !== me.getEmail()));
+  if (p.canDomainEdit()) p.setDomainEdit(false);
+
+  writeMailPreview_(ctx);
+  writeTable_(sheet_(kouhou, '送信結果'), '送信結果（最終更新 ' + stamp + '）　宛先のアドレスは総務だけが見られます', {
+    header: ['日時', '登録番号', '氏名', '年度', 'モード', '結果'],
+    rows: history.slice().reverse().map(h => [h.at, h.id || '', h.name, h.year, h.mode, h.result]),
+  });
+
+  // 郵送リスト（総務。住所を含むので総務のブックにだけ出す）
+  const roster = sheet_(ctx.soumu, '正本');
+  let addr = new Map();
+  try {
+    readRows_(roster, ['登録番号', '自宅〒', '自宅住所'], ['登録番号']).rows.forEach(r => addr.set(Logic.normId(r['登録番号'], APP.idDigits), [r['自宅〒'], r['自宅住所']]));
+  } catch (ignore) { addr = new Map(); }
+  const postal = targets.filter(t => t.route === '郵送');
+  writeTable_(sheet_(ctx.soumu, '郵送リスト'), '郵送リスト（最終更新 ' + stamp + '）　会費案内先のメールがない、在籍・納期限超過の未納者', {
+    header: ['登録番号', '氏名', '年度', '請求金額', '納期限', '自宅〒', '自宅住所'],
+    rows: postal.map(t => [t.id, t.name, t.year, t.amount, t.due].concat(addr.get(t.id) || ['', ''])),
+  }, ['請求金額']);
 }
 
 function writeTable_(sh, title, table, moneyCols) {
@@ -1352,7 +1705,7 @@ function 架空データを入れる() {
       ['0001', '納入済み', 18000, '2026-07-10', ''],
       ['0002', '納入済み', 18000, '2026-07-20', ''],
       ['0003', '他支部納入済み', 0, '', '架空：転入元 東京都支部／本人申告により元支部で納入済み（当支部では確認不可）'],
-      ['0004', '確認中', 5000, '2026-08-01', '架空：一部入金（5,000円）'],
+      ['0004', '未納', 0, '', '架空：督促メールの試験用（メールあり・納期限超過）'],
       ['0005', '未納', 0, '', ''],
       ['0006', '免除', 0, '', '架空：休会中のため免除（理事会承認の想定）'],
       ['0007', '未納', 0, '', ''],
@@ -1367,7 +1720,7 @@ function 架空データを入れる() {
 
 function トリガーを止める() {
   ScriptApp.getProjectTriggers()
-    .filter(t => ['handleSoumuEdit', 'handleKaikeiEdit', 'refreshTick'].includes(t.getHandlerFunction()))
+    .filter(t => ['handleSoumuEdit', 'handleKaikeiEdit', 'handleKouhouEdit', 'refreshTick'].includes(t.getHandlerFunction()))
     .forEach(t => ScriptApp.deleteTrigger(t));
   console.log('自動処理を止めました。再開するには「初期設定」を実行してください');
 }

@@ -17,7 +17,7 @@ let FIXED_NOW = Date.parse('2026-10-02T03:00:00Z');
 class Protection {
   constructor(sheet) { this.sheet = sheet; this.desc = ''; this.editors = ['owner@example.invalid']; }
   setDescription(d) { this.desc = d; return this; } getDescription() { return this.desc; }
-  setWarningOnly() { return this; } addEditor() { return this; } removeEditors() { return this; }
+  setWarningOnly() { return this; } addEditor() { return this; } removeEditors() { return this; } setUnprotectedRanges(r) { this.unprotected = r; return this; }
   getEditors() { return this.editors.map(e => ({ getEmail: () => e })); } canDomainEdit() { return false; } setDomainEdit() { return this; }
   remove() { this.sheet.protections = this.sheet.protections.filter(p => p !== this); }
 }
@@ -34,7 +34,7 @@ class Range {
   clearContent() { this.each((r, c) => this.sh.set(r, c, '')); return this; }
   insertCheckboxes() { this.each((r, c) => { this.sh.check.add(r + ':' + c); if (this.sh.get(r, c) === '') this.sh.set(r, c, false); }); return this; }
   setNumberFormat(f) { this.each((r, c) => this.sh.fmt.set(r + ':' + c, f)); return this; } setDataValidation() { return this; } setBackground() { return this; } setBackgrounds(b) { assert.strictEqual(b.length, this.nr); return this; }
-  setFontWeight() { return this; } setFontColor() { return this; } setWrap() { return this; }
+  setFontWeight() { return this; } setFontColor() { return this; } setWrap() { return this; } clearDataValidations() { this.each((r, c) => this.sh.check.delete(r + ':' + c)); return this; }
   protect() { const p = new Protection(this.sh); p.type = 'RANGE'; this.sh.protections.push(p); return p; }
 }
 class Sheet {
@@ -76,11 +76,14 @@ const books = {};
 const props = new Map();
 const triggers = [];
 function builder() { const b = { requireValueInList: () => b, setAllowInvalid: () => b, requireDate: () => b, build: () => ({}) }; return b; }
+const mails = [];
+let mailQuota = 100;
 const sandbox = {
+  MailApp: { sendEmail: m => { mails.push(m); mailQuota--; }, getRemainingDailyQuota: () => mailQuota },
   console: { log: () => {}, error: m => { sandbox.__errors.push(m); } }, __errors: [],
   SpreadsheetApp: {
     openById: id => books[id] || (books[id] = new Book(id)),
-    newDataValidation: builder, ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' },
+    newDataValidation: builder, ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' }, flush: () => {},
   },
   Utilities: {
     formatDate: (d, tz, f) => fmt(d, f),
@@ -102,9 +105,9 @@ const sandbox = {
 };
 sandbox.Date = class extends Date { constructor(...a) { if (a.length) super(...a); else super(FIXED_NOW); } static now() { return FIXED_NOW; } };
 vm.createContext(sandbox);
-vm.runInContext(src + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,今すぐ一覧を更新,handleSoumuEdit,handleKaikeiEdit,refreshTick,headerMap_,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
+vm.runInContext(src + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,今すぐ一覧を更新,handleSoumuEdit,handleKaikeiEdit,handleKouhouEdit,refreshTick,headerMap_,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
 const api = sandbox.__api;
-const soumu = () => books[api.APP.books.soumu], kaikei = () => books[api.APP.books.kaikei];
+const soumu = () => books[api.APP.books.soumu], kaikei = () => books[api.APP.books.kaikei], kouhou = () => books[api.APP.books.kouhou];
 const sh = (b, n) => b.getSheetByName(n);
 const col = (s, h) => api.headerMap_(s, [h])[h];
 function edit(book, sheetName, row, header, value, handler) {
@@ -128,11 +131,14 @@ function step(name, fn) { fn(); passed++; console.log('OK  ' + name); }
 
 step('初期設定：シート・トリガーができる', () => {
   api.初期設定();
-  assert.deepStrictEqual(soumu().getSheets().map(s => s.name), ['正本', '異動受付', '会員異動履歴', '管理', 'エラー記録']);
+  assert.deepStrictEqual(soumu().getSheets().map(s => s.name), ['正本', '異動受付', '会員異動履歴', '管理', 'エラー記録', '送信設定', '送信実行', '送信記録', '郵送リスト']);
   assert.deepStrictEqual(kaikei().getSheets().map(s => s.name), ['年度設定', '送金入力', '送金記録', '会計一覧', '年度別集計', '送金集計', '台帳変更履歴']);
-  assert.deepStrictEqual(triggers.map(t => t.getHandlerFunction()), ['handleSoumuEdit', 'handleKaikeiEdit', 'refreshTick']);
+  assert.deepStrictEqual(triggers.map(t => t.getHandlerFunction()), ['handleSoumuEdit', 'handleKaikeiEdit', 'handleKouhouEdit', 'refreshTick']);
+  assert.deepStrictEqual(kouhou().getSheets().map(s => s.name), ['文面', '督促対象', '文面の確認', '送信結果']);
+  assert.ok(['送信設定', '送信実行', '送信記録', '郵送リスト'].every(n => soumu().getSheetByName(n)));
   api.初期設定(); // 2回目も壊れない
-  assert.strictEqual(triggers.length, 3);
+  assert.strictEqual(triggers.length, 4);
+  assert.strictEqual(sh(soumu(), '送信設定').getLastRow(), 7, '設定行は重複しない');
 });
 
 step('架空データ：台帳がすべてOKになる', () => {
@@ -145,6 +151,13 @@ step('架空データ：台帳がすべてOKになる', () => {
   assert.ok(rows[0].due instanceof Date, '納期限は日付で保存');
   assert.strictEqual(typeof rows[0].amount, 'number', '金額は数値で保存');
   assert.throws(() => api.架空データを入れる(), /既にデータ/);
+  // 督促：0004（メールあり）と 0008（メールなし＝郵送）
+  const t = sh(kouhou(), '督促対象');
+  assert.deepStrictEqual([t.get(3, 2), t.get(3, 8), t.get(3, 1)], ['0004', 'メール', true]);
+  assert.deepStrictEqual([t.get(4, 2), t.get(4, 8), t.get(4, 1)], ['0008', '郵送', false]);
+  const post = sh(soumu(), '郵送リスト');
+  assert.deepStrictEqual([post.get(3, 1), post.get(3, 7)], ['0008', '架空市 見本町']);
+  assert.match(String(sh(kouhou(), '文面の確認').get(3, 1)), /架空 梅二 様[\s\S]*18,000円[\s\S]*架空銀行/);
 });
 
 step('年度追加：1回目は確認、2回目で追加', () => {
@@ -286,8 +299,69 @@ step('数式になる名前でも安全に保存', () => {
   api.今すぐ一覧を更新();
 });
 
+step('督促メール：停止中は送れない → 試験で確認 → 送信 → 二重送信しない', () => {
+  const b = soumu(), n = '送信実行', h = 'handleSoumuEdit';
+  edit(b, n, 2, '対象年度', 2026, h);
+  tick(b, n, 2, '実行', h);
+  assert.match(cellOf(b, n, 2, '結果・確認内容'), /送信モードが「停止」/);
+  const set = sh(b, '送信設定');
+  const rowOf = key => { for (let r = 2; r <= set.getLastRow(); r++) if (set.get(r, 1) === key) return r; };
+  set.set(rowOf('送信モード'), 2, '試験');
+  set.set(rowOf('試験送信先'), 2, 'tester@example.invalid');
+  tick(b, n, 2, '実行', h);
+  assert.strictEqual(cellOf(b, n, 2, '状態'), '確認待ち');
+  assert.match(cellOf(b, n, 2, '結果・確認内容'), /今回送る件数：1件[\s\S]*tester@example.invalid[\s\S]*架空 梅二 様/);
+  assert.strictEqual(mails.length, 0, '1回目では送らない');
+  tick(b, n, 2, '実行', h);
+  assert.strictEqual(cellOf(b, n, 2, '状態'), '完了', cellOf(b, n, 2, '結果・確認内容'));
+  assert.strictEqual(mails.length, 1);
+  assert.deepStrictEqual([mails[0].to, mails[0].name], ['tester@example.invalid', '日本樹木医会神奈川県支部']);
+  assert.match(mails[0].subject, /^【試験】/);
+  const log = sh(b, '送信記録');
+  assert.deepStrictEqual([log.get(2, 3), log.get(2, 7), log.get(2, 8)], ['0004', '試験', '試験送信済み']);
+  assert.strictEqual(sh(kouhou(), '送信結果').get(3, 2), '0004');
+  // 7日以内は同じ人に送らない
+  edit(b, n, 3, '対象年度', 2026, h);
+  tick(b, n, 3, '実行', h);
+  assert.match(cellOf(b, n, 3, '結果・確認内容'), /最近送信済み 1名[\s\S]*送る相手がいません/);
+});
+
+step('督促メール：「送る」を外す・文面の誤り・本番の安全装置', () => {
+  const b = soumu(), n = '送信実行', h = 'handleSoumuEdit';
+  const set = sh(b, '送信設定');
+  const rowOf = key => { for (let r = 2; r <= set.getLastRow(); r++) if (set.get(r, 1) === key) return r; };
+  // 本番：送信アカウントが未登録なら止める
+  set.set(rowOf('送信モード'), 2, '本番');
+  edit(b, n, 4, '対象年度', 2026, h);
+  tick(b, n, 4, '実行', h);
+  assert.match(cellOf(b, n, 4, '結果・確認内容'), /本番で使う送信アカウント/);
+  // 登録しても、試験用アドレス（.invalid）の会員には送らない
+  set.set(rowOf('本番で使う送信アカウント'), 2, 'owner@example.invalid');
+  tick(b, n, 4, '実行', h);
+  assert.match(cellOf(b, n, 4, '結果・確認内容'), /試験用のアドレス/);
+  set.set(rowOf('送信モード'), 2, '試験');
+  // 文面に使えない差し込み
+  const tpl = sh(kouhou(), '文面');
+  const body = tpl.get(3, 2);
+  tpl.set(3, 2, body + '{{住所}}');
+  api.handleKouhouEdit({ range: tpl.getRange(3, 2) });
+  assert.match(String(sh(kouhou(), '文面の確認').get(3, 1)), /使えない差し込み項目.*住所/);
+  tpl.set(3, 2, body);
+  api.handleKouhouEdit({ range: tpl.getRange(3, 2) });
+  assert.strictEqual(mails.length, 1, '本番・誤りのときは送っていない');
+  // 「送る」を外すと対象から外れ、一覧を更新してもチェックは外れたまま
+  const t = sh(kouhou(), '督促対象');
+  t.set(3, 1, false);
+  api.handleKouhouEdit({ range: t.getRange(3, 1) });
+  api.今すぐ一覧を更新();
+  assert.strictEqual(sh(kouhou(), '督促対象').get(3, 1), false);
+  edit(b, n, 5, '対象年度', 2026, h);
+  tick(b, n, 5, '実行', h);
+  assert.match(cellOf(b, n, 5, '結果・確認内容'), /チェックなし 1名/);
+});
+
 step('旧形式の「会費台帳」1枚を年度ごとのシートへ移す', () => {
-  delete books[api.APP.books.soumu]; delete books[api.APP.books.kaikei];
+  delete books[api.APP.books.soumu]; delete books[api.APP.books.kaikei]; delete books[api.APP.books.kouhou];
   triggers.length = 0;
   const k = api.Logic && (books[api.APP.books.kaikei] = new Book(api.APP.books.kaikei));
   const old = k.insertSheet('会費台帳');
