@@ -26,7 +26,7 @@ const APP = {
   },
   tz: 'Asia/Tokyo',
   fiscalStartMonth: 4,  // 会費の年度は4月始まり
-  idDigits: 5,          // 登録番号の桁数
+  idDigits: 4,          // 登録番号（＝樹木医番号）の桁数
   pref: { code: '14', name: '神奈川県' },
   remitDeadline: '09-30', // 本会への納入期限（取扱要領 第4条）
 };
@@ -201,7 +201,7 @@ const Logic = (() => {
     check(date, '「異動日」を 2026-10-02 の形で入力してください');
     check(date <= today, '異動日は今日以前の日付にしてください（未来の予約はできません）');
     const id = normId(v.id, digits);
-    check(id, '「登録番号」は数字で入力してください（' + digits + '桁まで。先頭の0は自動で補います）');
+    check(id, '「登録番号」（樹木医番号）は数字で入力してください（' + digits + '桁まで。先頭の0は自動で補います）');
     const reason = text(v.reason);
     check(reason, '「確認内容・理由」を入力してください');
     check(reason.length <= 1000, '確認内容・理由は1000文字以内にしてください');
@@ -1234,14 +1234,14 @@ function 架空データを入れる() {
     const roster = sheet_(soumu, '正本');
     const RH = headerMap_(roster, ROSTER_HEADERS);
     const people = [
-      ['00001', '21期', '架空 桜子', 'カクウ サクラコ', '在籍', 'sakura@example.invalid'],
-      ['00002', '21期', '架空 欅一', 'カクウ ケヤキイチ', '在籍', 'keyaki@example.invalid'],
-      ['00003', '27期', '架空 松美', 'カクウ マツミ', '在籍', 'matsu@example.invalid'],
-      ['00004', '28期', '架空 梅二', 'カクウ ウメジ', '在籍', 'ume@example.invalid'],
-      ['00005', '34期', '架空 杉子', 'カクウ スギコ', '退会', 'sugi@example.invalid'],
-      ['00006', '30期', '架空 楓', 'カクウ カエデ', '休会', 'kaede@example.invalid'],
-      ['00007', '32期', '架空 椿', 'カクウ ツバキ', '転出', 'tsubaki@example.invalid'],
-      ['00008', '35期', '架空 柏', 'カクウ カシワ', '在籍', ''],
+      ['0001', '21期', '架空 桜子', 'カクウ サクラコ', '在籍', 'sakura@example.invalid'],
+      ['0002', '21期', '架空 欅一', 'カクウ ケヤキイチ', '在籍', 'keyaki@example.invalid'],
+      ['0003', '27期', '架空 松美', 'カクウ マツミ', '在籍', 'matsu@example.invalid'],
+      ['0004', '28期', '架空 梅二', 'カクウ ウメジ', '在籍', 'ume@example.invalid'],
+      ['0005', '34期', '架空 杉子', 'カクウ スギコ', '退会', 'sugi@example.invalid'],
+      ['0006', '30期', '架空 楓', 'カクウ カエデ', '休会', 'kaede@example.invalid'],
+      ['0007', '32期', '架空 椿', 'カクウ ツバキ', '転出', 'tsubaki@example.invalid'],
+      ['0008', '35期', '架空 柏', 'カクウ カシワ', '在籍', ''],
     ];
     const d = toDate_(ctx.today);
     const values = people.map(p => {
@@ -1268,14 +1268,14 @@ function 架空データを入れる() {
     const ledger = sheet_(kaikei, '会費台帳');
     const LH = headerMap_(ledger, LEDGER_HEADERS);
     const fees = [
-      ['00001', '納入済み', 18000, '2026-07-10', ''],
-      ['00002', '納入済み', 18000, '2026-07-20', ''],
-      ['00003', '他支部納入済み', 0, '', '架空：転入元 東京都支部／本人申告により元支部で納入済み（当支部では確認不可）'],
-      ['00004', '確認中', 5000, '2026-08-01', '架空：一部入金（5,000円）'],
-      ['00005', '未納', 0, '', ''],
-      ['00006', '免除', 0, '', '架空：休会中のため免除（理事会承認の想定）'],
-      ['00007', '未納', 0, '', ''],
-      ['00008', '未納', 0, '', ''],
+      ['0001', '納入済み', 18000, '2026-07-10', ''],
+      ['0002', '納入済み', 18000, '2026-07-20', ''],
+      ['0003', '他支部納入済み', 0, '', '架空：転入元 東京都支部／本人申告により元支部で納入済み（当支部では確認不可）'],
+      ['0004', '確認中', 5000, '2026-08-01', '架空：一部入金（5,000円）'],
+      ['0005', '未納', 0, '', ''],
+      ['0006', '免除', 0, '', '架空：休会中のため免除（理事会承認の想定）'],
+      ['0007', '未納', 0, '', ''],
+      ['0008', '未納', 0, '', ''],
     ].map(([id, status, paid, paidDate, note]) => ({ id, year: 2026, status, amount: status === '他支部納入済み' ? 0 : 18000, due: '2026-07-31', paid, paidDate, note }));
     appendFees_(ledger, LH, fees, null);
     PropertiesService.getScriptProperties().deleteProperty('DIRTY');

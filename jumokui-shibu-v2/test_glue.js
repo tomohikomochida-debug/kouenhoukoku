@@ -150,7 +150,7 @@ step('年度追加：1回目は確認、2回目で追加', () => {
   tick(kaikei(), '年度設定', 3, '年度追加', 'handleKaikeiEdit');
   assert.strictEqual(cellOf(kaikei(), '年度設定', 3, '状態'), '完了');
   const y27 = ledgerRows().filter(r => r.year === 2027);
-  assert.deepStrictEqual(y27.map(r => r.id), ['00001', '00002', '00003', '00004', '00008']);
+  assert.deepStrictEqual(y27.map(r => r.id), ['0001', '0002', '0003', '0004', '0008']);
   assert.ok(y27.every(r => r.amount === 18000 && r.status === '未納' && r.name));
 });
 
@@ -169,18 +169,18 @@ step('新入会：確認 → 入力を変えると確認やり直し → 保存'
   edit(b, n, 2, '個別納期限', '2026-10-31', h);
   tick(b, n, 2, '実行', h);
   assert.strictEqual(cellOf(b, n, 2, '状態'), '確認待ち');
-  assert.match(cellOf(b, n, 2, '結果・確認内容'), /00009 新 太郎[\s\S]*2026年度 未納／請求 18,000円[\s\S]*2027年度/);
+  assert.match(cellOf(b, n, 2, '結果・確認内容'), /0009 新 太郎[\s\S]*2026年度 未納／請求 18,000円[\s\S]*2027年度/);
   edit(b, n, 2, '確認内容・理由', '入会届を受領（9/30付）', h);
   assert.strictEqual(cellOf(b, n, 2, '状態'), '');
   tick(b, n, 2, '実行', h);
   tick(b, n, 2, '実行', h);
   assert.strictEqual(cellOf(b, n, 2, '状態'), '完了', cellOf(b, n, 2, '結果・確認内容'));
   const roster = sh(b, '正本'), RH = api.headerMap_(roster, api.ROSTER_HEADERS);
-  assert.strictEqual(roster.get(10, RH['登録番号']), '00009');
+  assert.strictEqual(roster.get(10, RH['登録番号']), '0009');
   assert.strictEqual(roster.get(10, RH['在籍状況']), '在籍');
   assert.strictEqual(roster.get(10, RH['都道府県名']), '神奈川県');
   assert.ok(roster.get(10, RH['修正日']) instanceof Date);
-  const mine = ledgerRows().filter(r => r.id === '00009');
+  const mine = ledgerRows().filter(r => r.id === '0009');
   assert.deepStrictEqual(mine.map(r => [r.year, r.amount, r.status, r.name]), [[2026, 18000, '未納', '新 太郎'], [2027, 18000, '未納', '新 太郎']]);
   assert.strictEqual(sh(b, '会員異動履歴').get(2, 2), '完了');
   tick(b, n, 2, '実行', h);
@@ -191,19 +191,19 @@ step('退会：翌年度の未納が対象外になる', () => {
   const b = soumu(), n = '異動受付', h = 'handleSoumuEdit';
   edit(b, n, 3, '手続き', '退会', h);
   edit(b, n, 3, '異動日', '2026-10-01', h);
-  edit(b, n, 3, '登録番号', '00002', h);
+  edit(b, n, 3, '登録番号', '0002', h);
   edit(b, n, 3, '確認内容・理由', '退会届', h);
   tick(b, n, 3, '実行', h);
   tick(b, n, 3, '実行', h);
   assert.strictEqual(cellOf(b, n, 3, '状態'), '完了', cellOf(b, n, 3, '結果・確認内容'));
-  const r27 = ledgerRows().find(r => r.id === '00002' && r.year === 2027);
+  const r27 = ledgerRows().find(r => r.id === '0002' && r.year === 2027);
   assert.strictEqual(r27.status, '対象外');
-  assert.strictEqual(ledgerRows().find(r => r.id === '00002' && r.year === 2026).status, '納入済み');
+  assert.strictEqual(ledgerRows().find(r => r.id === '0002' && r.year === 2026).status, '納入済み');
 });
 
 step('会費台帳の直接入力：検査と変更履歴', () => {
   const k = kaikei();
-  const r = ledgerRows().find(x => x.id === '00008' && x.year === 2026).r;
+  const r = ledgerRows().find(x => x.id === '0008' && x.year === 2026).r;
   edit(k, '会費台帳', r, '納入状況', '納入済み', 'handleKaikeiEdit');
   assert.match(cellOf(k, '会費台帳', r, 'チェック（自動）'), /要確認：.*同額/);
   const audit = sh(k, '台帳変更履歴');
