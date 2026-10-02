@@ -784,7 +784,18 @@ function protectRange_(range, description) {
 /* ======================================================================
  * 初期設定（何度実行しても大丈夫です）
  * ====================================================================== */
+// 許可画面で一部の権限（メールの送信など）が外されていたら、もう一度許可画面を出す
+function requireAllScopes_() {
+  if (typeof ScriptApp.requireAllScopes === 'function') ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
+}
+
+function メール送信を許可する() {
+  requireAllScopes_();
+  console.log('メール送信は許可されています（今日あと ' + MailApp.getRemainingDailyQuota() + ' 人まで送れます）');
+}
+
 function 初期設定() {
+  requireAllScopes_();
   withLock_(() => {
     const soumu = book_('soumu'), kaikei = book_('kaikei');
     [soumu, kaikei].forEach(ss => { ss.setSpreadsheetTimeZone(APP.tz); ss.setSpreadsheetLocale('ja_JP'); });
@@ -886,7 +897,9 @@ function 初期設定() {
   });
   // メール送信の許可を確認する（許可画面で「メールの送信」が外れていると、ここで知らせる）
   try { MailApp.getRemainingDailyQuota(); }
-  catch (err) { throw new Error('初期設定は済みましたが、メール送信が許可されていません。もう一度「初期設定」を実行し、許可画面で「すべて選択」にチェックしてから許可してください（' + err.message + '）'); }
+  catch (err) {
+    throw new Error('初期設定は済みましたが、メール送信が許可されていません。Googleアカウントの「サードパーティ製のアプリとサービス」でこのプロジェクトのアクセス権を削除してから、もう一度「初期設定」を実行し、許可画面で「すべて選択」にチェックしてください（' + err.message + '）');
+  }
   console.log('初期設定が完了しました（' + APP.version + '）');
 }
 
