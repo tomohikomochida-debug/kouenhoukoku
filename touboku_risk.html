@@ -176,42 +176,53 @@ const fmt = (v, d = 1) => (v == null || !isFinite(v)) ? '—' : v.toFixed(d);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
-/* ---------- 係数（仮値） ---------- */
-// Cw：樹冠の抗力係数（SIA方式の慣用値0.25前後）／sigma：生材の圧縮強度 MPa／rho：生材密度 kg/m³
-// root：根の張り方 deep・mid・shallow／ever：常緑／decay：腐朽しやすい
+/* ---------- 係数（仮値。出典は src に記録） ---------- */
+// Cw：樹冠の抗力係数／sigma：生材の縦圧縮強度 MPa／rho：生材密度 kg/m³
+// root：根の張り方 deep・mid・shallow（出典がない樹種は mid）／ever：常緑／decay：腐朽しやすい（警告用）
+// 出典の略号：S＝Stuttgart強度カタログ（Detter・Brudi「Baumlasten」2022 の表から）、U＝USDA Wood Handbook 表5-3（生材）、
+//   J＝国内の気乾強度データ（木材工業ハンドブック系の表）× 0.5 で生材に換算（Stuttgartの値と照らして控えめ）、R＝根系の資料
+// Cw に樹種の出典がないものは Stuttgart 表で最も多い 0.25 を使う。生材強度は Stuttgart 表の最大（ナラ類28MPa）を上限にする。
 const SPECIES0 = [
-  { k: 'sakura',   name: 'サクラ類（ソメイヨシノ等）', Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: false, decay: true },
-  { k: 'keyaki',   name: 'ケヤキ',                     Cw: 0.25, sigma: 24, rho: 950,  root: 'deep',    ever: false, decay: false },
-  { k: 'icho',     name: 'イチョウ',                   Cw: 0.20, sigma: 18, rho: 900,  root: 'deep',    ever: false, decay: false },
-  { k: 'kusu',     name: 'クスノキ',                   Cw: 0.30, sigma: 20, rho: 900,  root: 'deep',    ever: true,  decay: false },
-  { k: 'kuromatsu',name: 'クロマツ',                   Cw: 0.20, sigma: 20, rho: 950,  root: 'deep',    ever: true,  decay: false },
-  { k: 'akamatsu', name: 'アカマツ',                   Cw: 0.20, sigma: 20, rho: 950,  root: 'deep',    ever: true,  decay: false },
-  { k: 'platanus', name: 'プラタナス（スズカケノキ類）', Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: false, decay: true },
-  { k: 'yurinoki', name: 'ユリノキ',                   Cw: 0.25, sigma: 16, rho: 850,  root: 'mid',     ever: false, decay: true },
-  { k: 'kashi',    name: 'カシ類（シラカシ等）',       Cw: 0.30, sigma: 26, rho: 1050, root: 'deep',    ever: true,  decay: false },
-  { k: 'shii',     name: 'シイ類（スダジイ等）',       Cw: 0.30, sigma: 22, rho: 1000, root: 'mid',     ever: true,  decay: true },
-  { k: 'mukunoki', name: 'ムクノキ',                   Cw: 0.25, sigma: 22, rho: 950,  root: 'deep',    ever: false, decay: false },
-  { k: 'enoki',    name: 'エノキ',                     Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: false, decay: true },
-  { k: 'himaraya', name: 'ヒマラヤスギ',               Cw: 0.25, sigma: 17, rho: 900,  root: 'shallow', ever: true,  decay: false },
-  { k: 'meta',     name: 'メタセコイア',               Cw: 0.20, sigma: 14, rho: 850,  root: 'mid',     ever: false, decay: false },
-  { k: 'kaede',    name: 'カエデ類（トウカエデ等）',   Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: false, decay: true },
-  { k: 'hanamizu', name: 'ハナミズキ',                 Cw: 0.25, sigma: 22, rho: 1000, root: 'shallow', ever: false, decay: false },
-  { k: 'nara',     name: 'コナラ・クヌギ',             Cw: 0.25, sigma: 22, rho: 1000, root: 'deep',    ever: false, decay: true },
-  { k: 'acacia',   name: 'ニセアカシア',               Cw: 0.25, sigma: 26, rho: 1000, root: 'shallow', ever: false, decay: true },
-  { k: 'tabu',     name: 'タブノキ',                   Cw: 0.30, sigma: 20, rho: 950,  root: 'deep',    ever: true,  decay: false },
-  { k: 'sugi',     name: 'スギ・ヒノキ',               Cw: 0.20, sigma: 14, rho: 850,  root: 'mid',     ever: true,  decay: false },
-  { k: 'o_dec',    name: 'その他の落葉広葉樹',         Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: false, decay: false },
-  { k: 'o_ever',   name: 'その他の常緑広葉樹',         Cw: 0.30, sigma: 20, rho: 950,  root: 'mid',     ever: true,  decay: false },
-  { k: 'o_con',    name: 'その他の針葉樹',             Cw: 0.20, sigma: 18, rho: 900,  root: 'mid',     ever: true,  decay: false },
+  { k: 'sakura',   name: 'サクラ類（ソメイヨシノ等）', Cw: 0.25, sigma: 21, rho: 950,  root: 'shallow', ever: false, decay: true,  src: 'Cw 既定値／強度 J：気乾44MPa×0.5／根 R：浅根（国総研資料ほか）' },
+  { k: 'keyaki',   name: 'ケヤキ',                     Cw: 0.25, sigma: 23, rho: 1000, root: 'mid',     ever: false, decay: false, src: 'Cw S：ニレ類0.25／強度 J：気乾47MPa×0.5／密度 S：ニレ類10kN/m³／根：資料により深根・浅根に分かれるため中間' },
+  { k: 'icho',     name: 'イチョウ',                   Cw: 0.25, sigma: 18, rho: 900,  root: 'deep',    ever: false, decay: false, src: 'Cw 既定値／強度 J：気乾36〜40MPa×0.5（資料により差）／根 R：深根型（樹木根系図説）' },
+  { k: 'kusu',     name: 'クスノキ',                   Cw: 0.25, sigma: 20, rho: 900,  root: 'mid',     ever: true,  decay: false, src: 'Cw 既定値／強度 J：気乾39MPa×0.5／根 R：中間型' },
+  { k: 'kuromatsu',name: 'クロマツ',                   Cw: 0.25, sigma: 20, rho: 900,  root: 'mid',     ever: true,  decay: false, src: 'Cw 既定値／強度：アカマツから類推／根：資料なし' },
+  { k: 'akamatsu', name: 'アカマツ',                   Cw: 0.25, sigma: 21, rho: 900,  root: 'mid',     ever: true,  decay: false, src: 'Cw 既定値／強度 J：気乾44MPa×0.5／根：資料なし' },
+  { k: 'platanus', name: 'プラタナス（スズカケノキ類）', Cw: 0.25, sigma: 20, rho: 1100, root: 'deep',    ever: false, decay: true,  src: 'Cw S：Platane 0.25／強度 U：生材20.1MPa／密度 S：11.0kN/m³／根 R：深根' },
+  { k: 'yurinoki', name: 'ユリノキ',                   Cw: 0.25, sigma: 18, rho: 850,  root: 'mid',     ever: false, decay: true,  src: 'Cw 既定値／強度 U：生材18.3MPa／根：資料なし' },
+  { k: 'kashi',    name: 'カシ類（シラカシ等）',       Cw: 0.25, sigma: 28, rho: 1100, root: 'mid',     ever: true,  decay: false, src: 'Cw 既定値／強度 J：気乾56〜69MPa×0.5を上限28で頭打ち／根：資料なし' },
+  { k: 'shii',     name: 'シイ類（スダジイ等）',       Cw: 0.25, sigma: 22, rho: 1000, root: 'mid',     ever: true,  decay: true,  src: 'Cw 既定値／強度 J：気乾44MPa×0.5／根：資料なし' },
+  { k: 'mukunoki', name: 'ムクノキ',                   Cw: 0.25, sigma: 22, rho: 950,  root: 'mid',     ever: false, decay: false, src: 'Cw S：ニレ類0.25から類推／強度：資料なし／根：資料なし' },
+  { k: 'enoki',    name: 'エノキ',                     Cw: 0.25, sigma: 18, rho: 950,  root: 'mid',     ever: false, decay: true,  src: 'Cw S：ニレ類0.25から類推／強度 U：Celtis属から類推／根：資料なし' },
+  { k: 'himaraya', name: 'ヒマラヤスギ',               Cw: 0.25, sigma: 17, rho: 900,  root: 'shallow', ever: true,  decay: false, src: 'Cw 既定値／強度：資料なし／根：浅根・根返り事例の報告（査読論文ではない）' },
+  { k: 'meta',     name: 'メタセコイア',               Cw: 0.25, sigma: 12, rho: 850,  root: 'mid',     ever: false, decay: false, src: 'Cw 既定値／強度：密度が低い（0.27）ことから推定／根：資料なし' },
+  { k: 'kaede',    name: 'カエデ類（トウカエデ等）',   Cw: 0.25, sigma: 24, rho: 860,  root: 'mid',     ever: false, decay: true,  src: 'Cw S：Ahorn 0.25／強度 S：Bergahorn 25MPa／密度 S：8.4kN/m³／根：資料なし' },
+  { k: 'hanamizu', name: 'ハナミズキ',                 Cw: 0.25, sigma: 22, rho: 1000, root: 'shallow', ever: false, decay: false, src: 'Cw 既定値／強度：資料なし／根：浅根（園芸資料）' },
+  { k: 'nara',     name: 'コナラ・クヌギ',             Cw: 0.25, sigma: 26, rho: 1020, root: 'mid',     ever: false, decay: true,  src: 'Cw S：Eiche 0.25／強度 S：Eiche 28MPaを少し割引／密度 S：10kN/m³／根：資料なし' },
+  { k: 'acacia',   name: 'ニセアカシア',               Cw: 0.25, sigma: 28, rho: 1050, root: 'shallow', ever: false, decay: true,  src: 'Cw 既定値／強度 U：生材46.9MPaを上限28で頭打ち／根 R：浅根（国交省・経産省資料。中間型とする資料もある）' },
+  { k: 'tabu',     name: 'タブノキ',                   Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: true,  decay: false, src: 'Cw 既定値／強度 J：気乾39MPa×0.5／根：資料なし' },
+  { k: 'sugi',     name: 'スギ・ヒノキ',               Cw: 0.25, sigma: 15, rho: 850,  root: 'mid',     ever: true,  decay: false, src: 'Cw 既定値／強度 J：スギ気乾33MPa×0.5（ヒノキはやや強い）／根：資料なし' },
+  { k: 'o_dec',    name: 'その他の落葉広葉樹',         Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: false, decay: false, src: 'Cw 既定値／強度：Stuttgart表の中央付近' },
+  { k: 'o_ever',   name: 'その他の常緑広葉樹',         Cw: 0.25, sigma: 20, rho: 950,  root: 'mid',     ever: true,  decay: false, src: 'Cw 既定値／強度：Stuttgart表の中央付近' },
+  { k: 'o_con',    name: 'その他の針葉樹',             Cw: 0.25, sigma: 18, rho: 900,  root: 'mid',     ever: true,  decay: false, src: 'Cw 既定値／強度：控えめの値' },
 ];
 // rho：空気密度／creg：根返り抵抗 = creg × 幹重量（N·m/kg）／form：幹の形状係数／cdTrunk：枝下の幹の抗力係数
 // leanMass：傾斜の自重モーメントに使う樹木全体の重さ ÷ 幹重量
+// creg 130：ForestGALES（Nicoll ほか 2006、英国の針葉樹など約2000本の引き倒し）のカバ129・ヨーロッパアカマツ140付近。ナラ・ブナは約200。
 const GLOBAL0 = { rho: 1.25, creg: 130, form: 0.5, cdTrunk: 0.7, leanMass: 1.4 };
-const ROOT_TYPE = { deep: { label: '深根', f: 1.1 }, mid: { label: '中間', f: 1.0 }, shallow: { label: '浅根', f: 0.85 } };
+const ROOT_TYPE = { deep: { label: '深根', f: 1.1 }, mid: { label: '中間', f: 1.0 }, shallow: { label: '浅根', f: 0.9 } };  // 深根÷浅根≒1.2（ForestGALES 1.16、Nicoll ほか 2006：+10〜15%）
 const SOIL = {
   normal:  { label: '普通', f: 1.0 },
-  wet:     { label: '湿っている・軟らかい', f: 0.75 },
-  shallow: { label: '浅い・盛土・礫が多い', f: 0.8 },
+  poor:    { label: '水はけが悪い・粘土質', f: 0.89, d: 'ForestGALES：グライ土 ×0.886' },
+  wet:     { label: '大雨で水が溜まる・ぬかるむ', f: 0.6, d: 'Fan ほか 2022：飽和で最大モーメント35〜50%低下' },
+  shallow: { label: '浅い・盛土・礫が多い', f: 0.8, d: '出典なし' },
+};
+// 根の切断：Smiley ほか（AUF 51(1)）幹直径の1倍で−45%・3倍で−35%・5倍で−22%、Fini ほか 20〜66%低下
+const ROOT_CUT = {
+  none: { label: 'なし', f: 1.0 },
+  far:  { label: '幹から直径の3倍より外', f: 0.8 },
+  near: { label: '幹から直径の3倍以内', f: 0.7 },
 };
 const BED = {
   wide:  { label: '広い（芝生地・植込み）', f: 1.0 },
@@ -219,11 +230,10 @@ const BED = {
   pit:   { label: '植桝・狭い', f: 0.75 },
 };
 const DEFECTS = [
-  { k: 'rot',   label: '根元の腐朽・キノコ', f: 0.7 },
-  { k: 'cut',   label: '根の切断・工事の跡', f: 0.8 },
-  { k: 'lift',  label: '根上がり・根の露出', f: 0.85 },
-  { k: 'crack', label: '地際の亀裂', f: 0.8 },
-  { k: 'heave', label: '根元の土の盛り上がり・根鉢の浮き（最近）', f: 0.6, imminent: true },
+  { k: 'rot',   label: '根元の腐朽・キノコ', f: 0.7, src: '根株腐朽で最大33%低下（Forests 11:416）' },
+  { k: 'lift',  label: '根上がり・根の露出', f: 0.85, src: '出典なし' },
+  { k: 'crack', label: '地際の亀裂', f: 0.8, src: '出典なし' },
+  { k: 'heave', label: '根元の土の盛り上がり・根鉢の浮き（最近）', f: 0.6, imminent: true, src: '根鉢がすでに動き始めている状態' },
 ];
 const EXPO = {
   protected: { label: '守られている', d: '周りの木や建物より低く、風が遮られる', f: 0.85 },
@@ -243,6 +253,8 @@ const TOPO = {
   slope: { label: '斜面の上部・小高い丘', f: 1.1 },
   ridge: { label: '尾根・崖の上・海岸の最前列', f: 1.2 },
 };
+// V_SIA：ビューフォート風力12の下限（SIA方式の基準暴風。文献によって32〜32.5m/sと丸める例もある）
+// V_NILIM：国総研「街路樹の倒伏対策の手引き 第2版」東京都の事例で被害が急増し始めた最大瞬間風速
 const V_SIA = 32.7, V_NILIM = 30, GUST = 1.5;
 const V0_LIST = [30, 32, 34, 36, 38, 40, 42, 44, 46];
 
@@ -306,7 +318,7 @@ function newRecord() {
     name: '', place: '', date: today(), species: 'sakura', H: null, C: null,
     decay: { rate: null, tR: null, open: false },
     lean: { deg: null, prog: false },
-    root: { soil: 'normal', bed: 'wide', def: {} },
+    root: { soil: 'normal', bed: 'wide', cut: 'none', def: {} },
     expo: { traq: 'full', terrain: 'III', topo: 'flat', change: false, v0: 34 },
     photos: { A: null, B: null }, surround: [],
     traq: { target: '', impact: 'medium', cons: 'significant' },
@@ -482,6 +494,7 @@ function loadOf(p, rec, pr) {
   return { F: F / 1000, M: M / 1000, A, phi, k, Wmax, zc: F ? M / F : 0, hTop, foliage: sf, rows };
 }
 
+const rootCut = rec => rec.root.cut || (rec.root.def && rec.root.def.cut ? 'far' : 'none');
 function resistOf(rec) {
   const sp = species(rec.species), g = G();
   const H = rec.H, D = rec.C / 100 / Math.PI;
@@ -500,6 +513,8 @@ function resistOf(rec) {
   const so = SOIL[rec.root.soil] || SOIL.normal, be = BED[rec.root.bed] || BED.wide;
   rf *= so.f; if (so.f !== 1) rnotes.push(`土壌（${so.label}）×${so.f}`);
   rf *= be.f; if (be.f !== 1) rnotes.push(`植栽基盤（${be.label}）×${be.f}`);
+  const cut = ROOT_CUT[rootCut(rec)];
+  if (cut.f !== 1) { rf *= cut.f; rnotes.push(`根の切断（${cut.label}）×${cut.f}`); }
   for (const d of DEFECTS) if (rec.root.def[d.k]) { rf *= d.f; rnotes.push(`${d.label} ×${d.f}`); }
   rf = Math.max(rf, 0.3);
   const Mroot = g.creg * mass * rf / 1000;
@@ -510,6 +525,7 @@ function resistOf(rec) {
 
 function lofOf(sf, rec) {
   if (rec.lean.prog || rec.root.def.heave) return 'imminent';
+  sf = Math.round(sf * 100) / 100;  // 画面の表示（小数2桁）と判定をそろえる
   return sf >= 1.5 ? 'improbable' : sf >= 1.0 ? 'possible' : sf >= 0.6 ? 'probable' : 'imminent';
 }
 
@@ -617,6 +633,7 @@ const segHtml = (path, obj, col, descKey) => `<div class="seg${col ? ' col' : ''
 /* ---------- 基本 ---------- */
 function paneKihon(el) {
   const sp = speciesList();
+  if (!S.rec.root.cut) S.rec.root.cut = rootCut(S.rec);
   el.innerHTML = `
   <div class="card"><h2>樹木</h2>
     <div class="grid2">
@@ -646,13 +663,15 @@ function paneKihon(el) {
   <div class="card"><h2>根株・植栽基盤</h2>
     <h3>土壌</h3>${segHtml('root.soil', SOIL)}
     <h3>植栽基盤</h3>${segHtml('root.bed', BED)}
+    <p class="note">国総研の調査では、植栽幅1m未満の植桝は植樹帯より倒伏が多い（係数の大きさは仮）。</p>
+    <h3>根の切断・工事の跡</h3>${segHtml('root.cut', ROOT_CUT)}
     <h3>根株の状態</h3>
-    ${DEFECTS.map(d => `<label class="chk"><input type="checkbox" data-k="root.def.${d.k}"><span>${esc(d.label)}<small>根返りの限界 ×${d.f}${d.imminent ? '・「差し迫っている」扱い' : ''}<span class="kari">仮</span></small></span></label>`).join('')}
+    ${DEFECTS.map(d => `<label class="chk"><input type="checkbox" data-k="root.def.${d.k}"><span>${esc(d.label)}<small>根返りの限界 ×${d.f}${d.imminent ? '・「差し迫っている」扱い' : ''}（${esc(d.src)}）<span class="kari">仮</span></small></span></label>`).join('')}
   </div>
   <div class="btns no-print"><button class="btn danger" id="btnDel">この木を削除</button></div>`;
   const info = () => {
     const s = species(S.rec.species);
-    $('#spInfo').innerHTML = `係数：Cw ${s.Cw}・生材強度 ${s.sigma}MPa・${ROOT_TYPE[s.root].label}・${s.ever ? '常緑' : '落葉'}${s.decay ? '・腐朽しやすい' : ''} <span class="kari">仮</span>`;
+    $('#spInfo').innerHTML = `係数：Cw ${s.Cw}・生材強度 ${s.sigma}MPa・生材密度 ${s.rho}kg/m³・${ROOT_TYPE[s.root].label}・${s.ever ? '常緑' : '落葉'}${s.decay ? '・腐朽しやすい' : ''} <span class="kari">仮</span><br>出典：${esc(s.src || '—')}`;
   };
   bindInputs(el, p => { if (p === 'species') info(); if (p === 'name') $('#title').textContent = S.rec.name || '名前なしの木'; });
   info();
@@ -954,7 +973,7 @@ function paneKekka(el) {
   const rec = S.rec, c = compute(rec, false);
   if (c.err) { el.innerHTML = `<div class="card"><div class="warn">${esc(c.err)}</div></div>`; return; }
   const cp = rec.prune.on ? compute(rec, true) : null;
-  const vRef = [[`SIA方式 ${V_SIA}m/s（判定に使用）`, V_SIA, true], [`国総研の経験値 瞬間${V_NILIM}m/s`, V_NILIM], [`地域 V0=${rec.expo.v0}m/s × 突風率${GUST}（簡易換算）`, rec.expo.v0 * GUST]];
+  const vRef = [[`ビューフォート12 ${V_SIA}m/s（SIA方式・判定に使用）`, V_SIA, true], [`国総研の経験値 瞬間${V_NILIM}m/s`, V_NILIM], [`地域 V0=${rec.expo.v0}m/s × 突風率${GUST}（簡易換算）`, rec.expo.v0 * GUST]];
   const ch = chartHtml(c, cp);
   const speeds = [20, 25, 30, V_SIA, 35, 40];
   const sp = species(rec.species);
@@ -1014,7 +1033,7 @@ function paneKekka(el) {
   </div>
   ${(() => { const w = warningsOf(rec, c); return w.length ? `<div class="card"><h2>注意</h2>${w.map(t => `<div class="warn">${esc(t)}</div>`).join('')}</div>` : ''; })()}
   <div class="card"><p class="note" style="margin:0">この結果は写真と仮の係数による<b>1次スクリーニング</b>です。安全率が1〜1.5前後の木や、根株・腐朽に不安がある木は、引っ張り試験（PiCUS・Fakopp）で確かめてください。
-  風は動的な荷重のため、静的な計算より弱い風で倒れることがあります。</p></div>
+  風は動的な荷重のため、静的な引っ張り試験や計算の予測より弱い風で倒れた例が報告されています（James ほか 2006、2014）。</p></div>
   <div class="btns"><button class="btn" id="btnPrint">🖨 印刷・PDF保存</button></div>`;
   ch.bind();
   const traq = () => {
@@ -1085,10 +1104,10 @@ async function paneSentei(el) {
     </div>
     <p class="note">モーメントの減少 ${fmt((1 - a.M(V_SIA) / c.M(V_SIA)) * 100, 0)}%。剪定しても根や幹の強さは変わらないため、限界は剪定前と同じ値を使っています。</p>`;
     const w = [];
-    if (rm > 0.25) w.push(`1回の剪定で葉量の${fmt(rm * 100, 0)}%を除去します。一般的な目安（25%以内）を超えています。樹勢の衰退に注意してください。`);
+    if (rm > 0.25) w.push(`葉量の${fmt(rm * 100, 0)}%を除去します。ANSI A300 Part 1 は「1生育期に葉量の25%を超えて除去すべきでない（樹種・樹齢・健康状態・立地で調整）」としています。`);
     if (pr.H2 < rec.H * 0.8) w.push('強い切り下げです。数年で胴吹き枝が伸びて樹冠が再び大きくなり、付け根が弱い枝になりやすいので、継続的な管理が必要です。');
     if (species(rec.species).decay && (pr.H2 < rec.H * 0.9 || pr.wcut >= 20)) w.push(`${species(rec.species).name}は腐朽しやすい樹種です。太い切り口が腐朽の入口になるため、できるだけ細い枝で切り戻してください。`);
-    if (pr.raise > cbz + 0.05 && la.M > lb.M * 0.95) w.push('枝おろし（下枝を上げる）は荷重の中心が上がるため、モーメントを減らす効果が小さい方法です（Pavlis ほか 2008）。');
+    if (pr.raise > cbz + 0.05 && la.M > lb.M * 0.95) w.push('枝おろし（下枝を上げる）は、切り下げや透かしに比べて強風時の揺れ・曲げモーメントを減らす効果が小さいと報告されています（Gilman ほか 2008、Burcham ほか 2021）。');
     $('#pw').innerHTML = w.map(t => `<div class="warn">${esc(t)}</div>`).join('');
   };
   const on = (id, k) => { $('#' + id).oninput = e => { pr[k] = +e.target.value; touch(); update(); }; };
@@ -1160,7 +1179,8 @@ async function renderSettings() {
       <td><input type="number" step="0.01" data-f="Cw" value="${s.Cw}" style="width:4.6em"></td>
       <td><input type="number" step="1" data-f="sigma" value="${s.sigma}" style="width:4.6em"></td>
       <td><input type="number" step="10" data-f="rho" value="${s.rho}" style="width:5.4em"></td>
-      <td><select data-f="root" style="width:5.4em">${Object.entries(ROOT_TYPE).map(([k, o]) => `<option value="${k}"${k === s.root ? ' selected' : ''}>${o.label}</option>`).join('')}</select></td></tr>`).join('')}
+      <td><select data-f="root" style="width:5.4em">${Object.entries(ROOT_TYPE).map(([k, o]) => `<option value="${k}"${k === s.root ? ' selected' : ''}>${o.label}</option>`).join('')}</select></td></tr>
+      <tr><td colspan="5" class="note" style="text-align:left;padding-top:0">${esc(s.src || '')}</td></tr>`).join('')}
     </table></div>
     <div class="btns"><button class="btn small danger" id="resetSp">係数を最初の値に戻す</button></div>
   </div>
@@ -1177,7 +1197,25 @@ async function renderSettings() {
     ・根返り限界：根返り係数 × 幹重量 × 根株の補正（樹種の根の張り方・土壌・植栽基盤・根株の状態）。<br>
     ・安全率＝限界 ÷ 32.7m/s のモーメント（SIA方式）。1.5以上 安全／1〜1.5 中程度／1未満 高リスク。<br>
     ・TRAQ：安全率 1.5以上「ほぼない」、1〜1.5「あり得る」、0.6〜1「可能性が高い」、0.6未満「差し迫っている」として、ISA の2つの表に当てはめる。<br>
-    ・参考：Wessolly SIA方式／PiCUS TreeQinetic（IML）／Fakopp Pulling Test／Arbostat・TreeCalc・ArWiLo／ANSI A300 Part 9・ISA TRAQ／Pavlis ほか 2008（AUF 34(4)）／国総研「街路樹の倒伏対策の手引き 第2版」／建築基準法 告示1454号／EN 1991-1-4。
+    ・密度補正は防風林の研究（Guan ほか 2003）を参考にした簡易式で、単木での検証はまだない。<br>
+    <b>出典</b>（多くは検索結果の要約で確認。原典で再確認が必要）<br>
+    ・<a href="https://www.tree-consult.org/upload/mediapool/pdf/baumstatik_und_biomechanik/baumlasten_ki_032022_kompr.pdf" target="_blank" rel="noopener">Detter・Brudi ほか「Baumlasten」（Konstruktiver Ingenieurbau 2022）Stuttgart強度カタログの Cw・生材強度・単位重量</a><br>
+    ・<a href="https://fakopp.com/docs/products/pullingtest/pullingtest_manual.pdf" target="_blank" rel="noopener">FAKOPP Pulling Test Manual（安全率1.5以上 安全／1〜1.5 中程度／1未満 高リスク、Cw は Wessolly & Erb 1998）</a><br>
+    ・<a href="https://www.tree-consult.org/upload/mediapool/pdf/baumstatik_und_biomechanik/sia-method.pdf" target="_blank" rel="noopener">Brudi「SIA Method」（基準暴風＝ビューフォート12）</a><br>
+    ・<a href="https://fpl.fs.usda.gov/documnts/fplgtr/fplgtr190/chapter_05.pdf" target="_blank" rel="noopener">USDA Wood Handbook 第5章 表5-3（生材の縦圧縮強度）</a><br>
+    ・<a href="https://www.jawic.or.jp/qanda/index.php?no=42" target="_blank" rel="noopener">日本木材総合情報センター Q&A No.42（気乾と生材の強度の比）</a><br>
+    ・<a href="https://cdnsciencepub.com/doi/10.1139/x06-072" target="_blank" rel="noopener">Nicoll ほか 2006 Can. J. For. Res. 36:1871（引き倒し試験と根返り抵抗）／ForestGALES の係数表</a><br>
+    ・<a href="https://www.mdpi.com/1999-4907/13/11/1875" target="_blank" rel="noopener">Fan ほか 2022 Forests 13:1875（クスノキ、土壌飽和で最大モーメント35〜50%低下）</a><br>
+    ・<a href="https://auf.isa-arbor.com/content/51/1/94" target="_blank" rel="noopener">Smiley ほか AUF 51(1)（根の切断による倒伏抵抗の低下）</a><br>
+    ・<a href="https://wwv.isa-arbor.com/education/resources/ISABasicTreeRiskAssessmentForm_Instructions.pdf" target="_blank" rel="noopener">ISA 基本樹木リスク評価フォームの手引き（荷重要因・TRAQ）</a><br>
+    ・<a href="https://planning-org-uploaded-media.s3.amazonaws.com/legacy_resources/research/treemanagement/pdf/treeriskassessment.pdf" target="_blank" rel="noopener">Smiley「Community Tree Risk Assessment」（TRAQ の2つの表）</a><br>
+    ・<a href="https://sv-info.org/arntsfiles/2017%20NOV%20TREE%20REPORT%20WSSI%20SVHOA/EXHIBIT%20N%20ANSI-A300-Part1-2008-Pruning.pdf" target="_blank" rel="noopener">ANSI A300 Part 1（剪定。葉量の25%）</a><br>
+    ・<a href="https://auf.isa-arbor.com/content/34/4/207" target="_blank" rel="noopener">Pavlis ほか 2008 AUF 34(4)（剪定と曲げモーメント）</a><br>
+    ・<a href="https://www.sciencedirect.com/science/article/abs/pii/S1618866721001254" target="_blank" rel="noopener">Burcham ほか 2021 UFUG 61（切り下げは枝おろしより曲げモーメントが減る）</a><br>
+    ・<a href="https://auf.isa-arbor.com/content/40/1/1" target="_blank" rel="noopener">James ほか 2014 AUF 40(1)「Tree Biomechanics Literature Review: Dynamics」</a><br>
+    ・<a href="https://www.nilim.go.jp/lab/bcg/siryou/tnn/tnn1059.htm" target="_blank" rel="noopener">国総研「街路樹の倒伏対策の手引き 第2版」（最大瞬間風速 東京約30m/s・沖縄約40m/sで被害急増）</a><br>
+    ・<a href="https://www.kenken.go.jp/japanese/research/lecture/h16/slide/06-1/ref/No6.htm" target="_blank" rel="noopener">建築基準法 告示1454号（基準風速30〜46m/s、地表面粗度区分のα・Zb）</a><br>
+    ・Guan・Zhang・Zhu 2003 Agric. For. Meteorol. 118:75–84（防風林：空力的すき間率＝見た目のすき間率^0.4。単木ではないため参考）<br>
   </div></div>`;
   $$('[data-g]').forEach(i => i.onchange = () => { SETTINGS.global = { ...(SETTINGS.global || {}), [i.dataset.g]: num(i.value) ?? GLOBAL0[i.dataset.g] }; saveSettings(); });
   $$('#spt [data-f]').forEach(i => i.onchange = () => {
