@@ -39,7 +39,7 @@ class Range {
 }
 class Sheet {
   constructor(ss, name) { Object.assign(this, { ss, name, cells: new Map(), fmt: new Map(), maxRows: 1000, maxCols: 26, protections: [], check: new Set(), hidden: [] }); }
-  getName() { return this.name; }
+  getName() { return this.name; } getParent() { return this.ss; } setName(n) { this.name = n; return this; }
   get(r, c) { const v = this.cells.get(r + ':' + c); return v === undefined ? '' : v; }
   set(r, c, v) {
     assert.ok(r >= 1 && c >= 1 && r <= this.maxRows && c <= this.maxCols, this.name + ' 範囲外 ' + r + ',' + c);
@@ -67,7 +67,7 @@ class Book {
   constructor(id) { this.id = id; this.sheets = [new Sheet(this, 'シート1')]; }
   getId() { return this.id; }
   getSheetByName(n) { return this.sheets.find(s => s.name === n) || null; }
-  insertSheet(n) { const s = new Sheet(this, n); this.sheets.push(s); return s; }
+  insertSheet(n, i) { const s = new Sheet(this, n); if (i === undefined) this.sheets.push(s); else this.sheets.splice(i, 0, s); return s; }
   deleteSheet(s) { this.sheets = this.sheets.filter(x => x !== s); }
   getSheets() { return this.sheets; }
   setSpreadsheetTimeZone() {} setSpreadsheetLocale() {}
@@ -116,9 +116,12 @@ function edit(book, sheetName, row, header, value, handler) {
 function tick(book, sheetName, row, header, handler) { edit(book, sheetName, row, header, true, handler); }
 function cellOf(book, sheetName, row, header) { const s = sh(book, sheetName); return s.get(row, col(s, header)); }
 function ledgerRows() {
-  const s = sh(kaikei(), '会費台帳'), H = api.headerMap_(s, api.LEDGER_HEADERS), out = [];
-  for (let r = 2; r <= s.getLastRow(); r++) if (s.get(r, H['登録番号']) !== '') out.push({ r, id: s.get(r, H['登録番号']), name: s.get(r, H['氏名（自動）']), year: s.get(r, H['年度']), amount: s.get(r, H['請求金額']), status: s.get(r, H['納入状況']), check: s.get(r, H['チェック（自動）']), due: s.get(r, H['納期限']) });
-  return out;
+  const out = [];
+  kaikei().getSheets().filter(x => /^会費台帳_\d{4}$/.test(x.name)).forEach(s => {
+    const H = api.headerMap_(s, api.LEDGER_HEADERS), year = Number(s.name.slice(-4));
+    for (let r = 2; r <= s.getLastRow(); r++) if (s.get(r, H['登録番号']) !== '') out.push({ r, sheet: s.name, id: s.get(r, H['登録番号']), name: s.get(r, H['氏名（自動）']), year, amount: s.get(r, H['請求金額']), status: s.get(r, H['納入状況']), check: s.get(r, H['チェック（自動）']), due: s.get(r, H['納期限']) });
+  });
+  return out.sort((a, b) => a.year - b.year || a.r - b.r);
 }
 let passed = 0;
 function step(name, fn) { fn(); passed++; console.log('OK  ' + name); }
@@ -126,7 +129,7 @@ function step(name, fn) { fn(); passed++; console.log('OK  ' + name); }
 step('初期設定：シート・トリガーができる', () => {
   api.初期設定();
   assert.deepStrictEqual(soumu().getSheets().map(s => s.name), ['正本', '異動受付', '会員異動履歴', '管理', 'エラー記録']);
-  assert.deepStrictEqual(kaikei().getSheets().map(s => s.name), ['会費台帳', '年度設定', '送金入力', '送金記録', '会計一覧', '年度別集計', '送金集計', '台帳変更履歴']);
+  assert.deepStrictEqual(kaikei().getSheets().map(s => s.name), ['年度設定', '送金入力', '送金記録', '会計一覧', '年度別集計', '送金集計', '台帳変更履歴']);
   assert.deepStrictEqual(triggers.map(t => t.getHandlerFunction()), ['handleSoumuEdit', 'handleKaikeiEdit', 'refreshTick']);
   api.初期設定(); // 2回目も壊れない
   assert.strictEqual(triggers.length, 3);
@@ -136,6 +139,7 @@ step('架空データ：台帳がすべてOKになる', () => {
   api.架空データを入れる();
   const rows = ledgerRows();
   assert.strictEqual(rows.length, 8);
+  assert.strictEqual(kaikei().getSheets()[0].name, '会費台帳_2026', '年度のシートが先頭にできる');
   assert.ok(rows.every(r => r.check === 'OK'), JSON.stringify(rows.filter(r => r.check !== 'OK')));
   assert.strictEqual(rows[0].name, '架空 桜子');
   assert.ok(rows[0].due instanceof Date, '納期限は日付で保存');
@@ -150,6 +154,7 @@ step('年度追加：1回目は確認、2回目で追加', () => {
   assert.strictEqual(cellOf(kaikei(), '年度設定', 3, '年度追加'), false);
   tick(kaikei(), '年度設定', 3, '年度追加', 'handleKaikeiEdit');
   assert.strictEqual(cellOf(kaikei(), '年度設定', 3, '状態'), '完了');
+  assert.deepStrictEqual(kaikei().getSheets().slice(0, 2).map(x => x.name), ['会費台帳_2027', '会費台帳_2026'], '新しい年度が先頭');
   const y27 = ledgerRows().filter(r => r.year === 2027);
   assert.deepStrictEqual(y27.map(r => r.id), ['0001', '0002', '0003', '0004', '0008']);
   assert.ok(y27.every(r => r.amount === 18000 && r.status === '未納' && r.name));
@@ -205,14 +210,15 @@ step('退会：翌年度の未納が対象外になる', () => {
 step('会費台帳の直接入力：検査と変更履歴', () => {
   const k = kaikei();
   const r = ledgerRows().find(x => x.id === '0008' && x.year === 2026).r;
-  edit(k, '会費台帳', r, '納入状況', '納入済み', 'handleKaikeiEdit');
-  assert.match(cellOf(k, '会費台帳', r, 'チェック（自動）'), /要確認：.*同額/);
+  edit(k, '会費台帳_2026', r, '納入状況', '納入済み', 'handleKaikeiEdit');
+  assert.match(cellOf(k, '会費台帳_2026', r, 'チェック（自動）'), /要確認：.*同額/);
   const audit = sh(k, '台帳変更履歴');
   assert.strictEqual(audit.get(audit.getLastRow(), 6), '納入状況');
   assert.strictEqual(audit.get(audit.getLastRow(), 8), '納入済み');
-  edit(k, '会費台帳', r, '入金額', 18000, 'handleKaikeiEdit');
-  edit(k, '会費台帳', r, '入金日', '2026-09-30', 'handleKaikeiEdit');
-  assert.strictEqual(cellOf(k, '会費台帳', r, 'チェック（自動）'), 'OK');
+  assert.strictEqual(audit.get(audit.getLastRow(), 5), 2026, '変更履歴に年度が入る');
+  edit(k, '会費台帳_2026', r, '入金額', 18000, 'handleKaikeiEdit');
+  edit(k, '会費台帳_2026', r, '入金日', '2026-09-30', 'handleKaikeiEdit');
+  assert.strictEqual(cellOf(k, '会費台帳_2026', r, 'チェック（自動）'), 'OK');
 });
 
 step('送金入力：確認 → 記録 → 二重記録しない → 取消', () => {
@@ -272,6 +278,26 @@ step('数式になる名前でも安全に保存', () => {
   const roster = sh(b, '正本'), RH = api.headerMap_(roster, api.ROSTER_HEADERS);
   assert.strictEqual(roster.get(11, RH['氏名']), '=HYPERLINK("x")', '文字のまま保存');
   api.今すぐ一覧を更新();
+});
+
+step('旧形式の「会費台帳」1枚を年度ごとのシートへ移す', () => {
+  delete books[api.APP.books.soumu]; delete books[api.APP.books.kaikei];
+  triggers.length = 0;
+  const k = api.Logic && (books[api.APP.books.kaikei] = new Book(api.APP.books.kaikei));
+  const old = k.insertSheet('会費台帳');
+  const head = ['登録番号', '氏名（自動）', '登録期（自動）', '在籍状況（自動）', '年度', '請求金額', '納期限', '納入状況', '入金日', '入金額', '会計備考', 'チェック（自動）', '最終更新（自動）'];
+  head.forEach((h, i) => old.set(1, i + 1, h));
+  [['0001', 2026, 18000, '納入済み', 18000, '2026-07-10'], ['0001', 2027, 18000, '未納', 0, ''], ['0002', 2026, 18000, '未納', 0, '']].forEach((v, i) => {
+    old.fmt.set((i + 2) + ':1', '@');
+    old.set(i + 2, 1, v[0]); old.set(i + 2, 5, v[1]); old.set(i + 2, 6, v[2]); old.set(i + 2, 7, '2026-07-31'); old.set(i + 2, 8, v[3]); old.set(i + 2, 10, v[4]); old.set(i + 2, 9, v[5]);
+  });
+  api.初期設定();
+  assert.deepStrictEqual(k.getSheets().filter(x => x.name.startsWith('会費台帳_')).map(x => x.name), ['会費台帳_2027', '会費台帳_2026']);
+  assert.ok(k.getSheetByName('旧_会費台帳（移行済み）'));
+  const rows = ledgerRows();
+  assert.deepStrictEqual(rows.map(r => [r.year, r.id, r.status]), [[2026, '0001', '納入済み'], [2026, '0002', '未納'], [2027, '0001', '未納']]);
+  api.初期設定(); // 2回目は何もしない
+  assert.strictEqual(ledgerRows().length, 3);
 });
 
 console.log('\n全 ' + passed + ' 件の通しテストに合格しました');

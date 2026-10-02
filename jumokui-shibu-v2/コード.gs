@@ -10,8 +10,8 @@
  * 【ふだんの使い方】
  *  - 会員の異動：総務ブックの「異動受付」に1行入力し、「実行」にチェック → 確認内容が出る
  *    → もう一度「実行」にチェックすると保存。
- *  - 会費：会計ブックの「会費台帳」に直接入力（入力ルールと自動チェックあり）。
- *  - 年度追加：会計ブックの「年度設定」の「年度追加」にチェック（2回チェックで実行）。
+ *  - 会費：会計ブックの「会費台帳_2026」など年度ごとのシートに直接入力（入力ルールと自動チェックあり）。
+ *  - 年度追加：会計ブックの「年度設定」の「年度追加」にチェック（2回チェックで実行）。その年度のシートができます。
  *  - 送金記録：会計ブックの「送金入力」に1行入力し、「実行」にチェック（2回チェックで保存）。
  *  - 一覧・集計は10分以内に自動更新。すぐ更新したいときは「今すぐ一覧を更新」を実行。
  *
@@ -149,7 +149,7 @@ const Logic = (() => {
     rows.forEach(r => {
       const paidRaw = text(r.paid);
       const f = {
-        row: r.row, idRaw: text(r.id), id: normId(r.id, digits), year: toInt(r.year),
+        row: r.row, sheet: text(r.sheet) || '会費台帳', idRaw: text(r.id), id: normId(r.id, digits), year: toInt(r.year),
         amount: toInt(r.amount), due: normDate(r.due), status: text(r.status),
         paidDate: normDate(r.paidDate), paid: paidRaw === '' ? 0 : toInt(paidRaw), note: text(r.note),
       };
@@ -279,7 +279,7 @@ const Logic = (() => {
         check(ex.length <= 1, '会費台帳に ' + id + ' の ' + year + '年度が重複しています。会計で先に直してください');
         if (!ex.length) { feeAdds.push(Object.assign({ id, year }, target, { paidDate: '', paid: 0 })); return; }
         const f = ex[0];
-        check(f.ok, '会費台帳 ' + f.row + '行目（' + id + '／' + year + '年度）にエラーがあります。会計で先に直してください');
+        check(f.ok, f.sheet + ' ' + f.row + '行目（' + id + '）にエラーがあります。会計で先に直してください');
         if (f.status === '対象外') feeUpdates.push({ id, year, from: snapFee(f), to: Object.assign({}, target, { paidDate: '', paid: 0 }) });
         else warnings.push(year + '年度の会費記録が既にあるため変更しません（' + f.status + '）');
       };
@@ -296,7 +296,7 @@ const Logic = (() => {
       const fy = fiscalYear(date, ctx.startMonth);
       myFees.filter(f => f.year > fy).forEach(f => {
         if (f.status === '未納') {
-          check(f.ok, '会費台帳 ' + f.row + '行目にエラーがあります。会計で先に直してください');
+          check(f.ok, f.sheet + ' ' + f.row + '行目にエラーがあります。会計で先に直してください');
           feeUpdates.push({ id, year: f.year, from: snapFee(f), to: Object.assign(snapFee(f), { status: '対象外', note: (f.note ? f.note + '／' : '') + date + ' ' + action + 'により対象外' }) });
         } else if (f.status !== '対象外') {
           warnings.push(f.year + '年度は「' + f.status + '」のため変更しません。返金などは会計で確認してください');
@@ -310,7 +310,7 @@ const Logic = (() => {
       warnings.push('会費の記録は自動では変えません。必要なら会計で調整してください');
       if (action === '復会') {
         const fy = fiscalYear(date, ctx.startMonth);
-        if (!myFees.some(f => f.year === fy)) warnings.push(fy + '年度の会費行がありません。請求する場合は会計で会費台帳に行を追加してください');
+        if (!myFees.some(f => f.year === fy)) warnings.push(fy + '年度の会費行がありません。請求する場合は会計で「会費台帳_' + fy + '」に行を追加してください');
       }
     }
 
@@ -490,7 +490,10 @@ const ROSTER_REQUIRED = ['都道府県番号', '都道府県名', '登録番号'
 const MOVE_HEADERS = ['実行', '状態', '結果・確認内容', '手続き', '異動日', '登録番号', '氏名', 'よみがな', '登録期', '会費案内先', '関係支部', '元支部での納入（本人申告）', '対象年度', '個別納期限', '確認内容・理由', '受付ID', '確認キー', '処理日時'];
 const MOVE_INPUTS = ['手続き', '異動日', '登録番号', '氏名', 'よみがな', '登録期', '会費案内先', '関係支部', '元支部での納入（本人申告）', '対象年度', '個別納期限', '確認内容・理由'];
 const JOURNAL_HEADERS = ['受付ID', '処理状態', '受付日時', '異動日', '手続き', '登録番号', '氏名', '変更前', '変更後', '関係支部', '確認内容', '処理計画'];
-const LEDGER_HEADERS = ['登録番号', '氏名（自動）', '登録期（自動）', '在籍状況（自動）', '年度', '請求金額', '納期限', '納入状況', '入金日', '入金額', '会計備考', 'チェック（自動）', '最終更新（自動）'];
+// 会費台帳は年度ごとのシート（会費台帳_2026 など）。年度はシート名で表す
+const LEDGER_HEADERS = ['登録番号', '氏名（自動）', '登録期（自動）', '在籍状況（自動）', '請求金額', '納期限', '納入状況', '入金日', '入金額', '会計備考', 'チェック（自動）', '最終更新（自動）'];
+const LEDGER_INPUTS = ['登録番号', '請求金額', '納入状況'];
+const OLD_LEDGER_HEADERS = ['登録番号', '年度', '請求金額', '納期限', '納入状況', '入金日', '入金額', '会計備考'];
 const LEDGER_AUTO = ['氏名（自動）', '登録期（自動）', '在籍状況（自動）', 'チェック（自動）', '最終更新（自動）'];
 const SETTINGS_HEADERS = ['年度', '本会分', '支部分', '地区協議会分', '会費額（自動）', '標準納期限', '振込先', '振込名義', '問い合わせ先', '年度追加', '状態', '結果・確認内容', '確認キー'];
 const TRANSFER_IN_HEADERS = ['実行', '状態', '結果・確認内容', '年度', '送金先', '対象人数', '送金額', '送金日', '備考', '取消する記録ID', '確認キー', '記録ID'];
@@ -554,8 +557,13 @@ function loadContext_() {
   const mem = Logic.parseMembers(roster.rows.map(r => ({ row: r._row, id: r['登録番号'], name: r['氏名'], kana: r['よみがな'], cohort: r['登録期'], membership: r['在籍状況'], emails: r['会費案内先'] })), APP.idDigits);
   const st = readRows_(sheet_(kaikei, '年度設定'), ['年度', '本会分', '支部分', '地区協議会分', '標準納期限', '振込先', '振込名義', '問い合わせ先'], ['年度']);
   const settings = Logic.parseSettings(st.rows.map(r => ({ row: r._row, year: r['年度'], main: r['本会分'], branch: r['支部分'], district: r['地区協議会分'], due: r['標準納期限'], bank: r['振込先'], payer: r['振込名義'], contact: r['問い合わせ先'] })));
-  const lg = readRows_(sheet_(kaikei, '会費台帳'), ['登録番号', '年度', '請求金額', '納期限', '納入状況', '入金日', '入金額', '会計備考'], ['登録番号', '年度', '請求金額', '納入状況']);
-  const fees = Logic.parseFees(lg.rows.map(r => ({ row: r._row, id: r['登録番号'], year: r['年度'], amount: r['請求金額'], due: r['納期限'], status: r['納入状況'], paidDate: r['入金日'], paid: r['入金額'], note: r['会計備考'] })), new Set(mem.byId.keys()), today, APP.idDigits);
+  const feeRows = [];
+  ledgerSheets_(kaikei).forEach(({ sh, year }) => {
+    readRows_(sh, ['登録番号', '請求金額', '納期限', '納入状況', '入金日', '入金額', '会計備考'], LEDGER_INPUTS).rows.forEach(r => feeRows.push({
+      row: r._row, sheet: sh.getName(), id: r['登録番号'], year, amount: r['請求金額'], due: r['納期限'], status: r['納入状況'], paidDate: r['入金日'], paid: r['入金額'], note: r['会計備考'],
+    }));
+  });
+  const fees = Logic.parseFees(feeRows, new Set(mem.byId.keys()), today, APP.idDigits);
   const tl = readRows_(sheet_(kaikei, '送金記録'), TRANSFER_LOG_HEADERS, ['記録ID']);
   const transfers = Logic.parseTransfers(tl.rows.map(r => ({ row: r._row, id: r['記録ID'], kind: r['区分'], year: r['年度'], recipient: r['送金先'], count: r['対象人数'], amount: r['送金額'], date: r['送金日'], note: r['備考'], cancelOf: r['取消対象ID'] })));
   return {
@@ -630,22 +638,8 @@ function 初期設定() {
     removeDefaultSheet_(soumu);
 
     // ---- 会計ブック ----
-    const ledger = ensureSheet_(kaikei, '会費台帳', LEDGER_HEADERS);
-    const LH = headerMap_(ledger, LEDGER_HEADERS);
-    ensureRows_(ledger, 2000);
-    const n = ledger.getMaxRows() - 1;
-    ledger.getRange(2, LH['登録番号'], n, 1).setNumberFormat('@');
-    ledger.getRange(2, LH['年度'], n, 1).setNumberFormat('0');
-    ['請求金額', '入金額'].forEach(h => ledger.getRange(2, LH[h], n, 1).setNumberFormat('#,##0'));
-    ['納期限', '入金日'].forEach(h => ledger.getRange(2, LH[h], n, 1).setNumberFormat('yyyy-mm-dd').setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).build()));
-    ledger.getRange(2, LH['納入状況'], n, 1).setDataValidation(list_(Logic.FEE_STATUSES));
-    LEDGER_AUTO.forEach(h => ledger.getRange(1, LH[h], ledger.getMaxRows(), 1).setBackground(AUTO_FILL));
-    ledger.setFrozenRows(1);
-    ledger.setColumnWidth(LH['チェック（自動）'], 320);
-    ledger.setColumnWidth(LH['会計備考'], 260);
-    protectRange_(ledger.getRange(1, LH['氏名（自動）'], ledger.getMaxRows(), 3), '自動列（氏名・登録期・在籍状況）');
-    protectRange_(ledger.getRange(1, LH['チェック（自動）'], ledger.getMaxRows(), 2), '自動列（チェック・最終更新）');
-    protectRange_(ledger.getRange(1, 1, 1, LEDGER_HEADERS.length), '見出し');
+    migrateOldLedger_(kaikei);
+    ledgerSheets_(kaikei).forEach(x => setupLedgerSheet_(x.sh));
 
     const settings = ensureSheet_(kaikei, '年度設定', SETTINGS_HEADERS);
     setupInputSheet_(settings, SETTINGS_HEADERS, {
@@ -678,6 +672,68 @@ function 初期設定() {
     refreshAll_();
   });
   console.log('初期設定が完了しました（' + APP.version + '）');
+}
+
+function ledgerName_(year) { return '会費台帳_' + year; }
+
+function ledgerSheets_(ss) {
+  return ss.getSheets().map(sh => {
+    const m = sh.getName().match(/^会費台帳_(20\d\d)$/);
+    return m ? { sh, year: Number(m[1]) } : null;
+  }).filter(Boolean).sort((a, b) => b.year - a.year);
+}
+
+// その年度のシートを返す。create のときは無ければ先頭に作る
+function ledgerSheet_(ss, year, create) {
+  let sh = ss.getSheetByName(ledgerName_(year));
+  if (!sh && create) { sh = ss.insertSheet(ledgerName_(year), 0); setupLedgerSheet_(sh); }
+  return sh;
+}
+
+function setupLedgerSheet_(ledger) {
+  ensureSheet_(ledger.getParent(), ledger.getName(), LEDGER_HEADERS);
+  const LH = headerMap_(ledger, LEDGER_HEADERS);
+  ensureRows_(ledger, 1000);
+  const n = ledger.getMaxRows() - 1;
+  ledger.getRange(2, LH['登録番号'], n, 1).setNumberFormat('@');
+  ['請求金額', '入金額'].forEach(h => ledger.getRange(2, LH[h], n, 1).setNumberFormat('#,##0'));
+  ['納期限', '入金日'].forEach(h => ledger.getRange(2, LH[h], n, 1).setNumberFormat('yyyy-mm-dd').setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).build()));
+  ledger.getRange(2, LH['納入状況'], n, 1).setDataValidation(list_(Logic.FEE_STATUSES));
+  LEDGER_AUTO.forEach(h => ledger.getRange(1, LH[h], ledger.getMaxRows(), 1).setBackground(AUTO_FILL));
+  ledger.setFrozenRows(1);
+  ledger.setColumnWidth(LH['チェック（自動）'], 320);
+  ledger.setColumnWidth(LH['会計備考'], 260);
+  protectRange_(ledger.getRange(1, LH['氏名（自動）'], ledger.getMaxRows(), 3), '自動列（氏名・登録期・在籍状況）');
+  protectRange_(ledger.getRange(1, LH['チェック（自動）'], ledger.getMaxRows(), 2), '自動列（チェック・最終更新）');
+  protectRange_(ledger.getRange(1, 1, 1, LEDGER_HEADERS.length), '見出し');
+}
+
+// 1枚にまとまった旧形式の「会費台帳」を、年度ごとのシートへ移す（1回だけ）
+function migrateOldLedger_(ss) {
+  const old = ss.getSheetByName('会費台帳');
+  if (!old) return;
+  const { rows } = readRows_(old, OLD_LEDGER_HEADERS, ['登録番号', '年度', '請求金額', '納入状況']);
+  const byYear = {};
+  rows.forEach(r => {
+    const y = Logic.toInt(r['年度']);
+    if (!(y >= 2000 && y <= 2099)) throw new Error('旧「会費台帳」' + r._row + '行目の年度を確認してください（移行を中止しました）');
+    (byYear[y] = byYear[y] || []).push(r);
+  });
+  Object.keys(byYear).forEach(y => {
+    const sh = ss.getSheetByName(ledgerName_(y));
+    if (sh && lastDataRow_(sh, headerMap_(sh, LEDGER_HEADERS)['登録番号']) > 1) throw new Error('「' + ledgerName_(y) + '」に既にデータがあるため、旧「会費台帳」の移行を中止しました');
+  });
+  Object.keys(byYear).sort().forEach(y => {
+    const sh = ledgerSheet_(ss, Number(y), true);
+    const keep = (v, parsed) => (parsed === null || (typeof parsed === 'number' && isNaN(parsed)) ? v : parsed);
+    appendFees_(sh, headerMap_(sh, LEDGER_HEADERS), byYear[y].map(r => ({
+      id: Logic.normId(r['登録番号'], APP.idDigits) || String(r['登録番号']), year: Number(y),
+      amount: keep(r['請求金額'], Logic.toInt(r['請求金額'])), due: keep(r['納期限'], Logic.normDate(r['納期限'])),
+      status: String(r['納入状況']), paidDate: keep(r['入金日'], Logic.normDate(r['入金日'])),
+      paid: String(r['入金額']).trim() === '' ? 0 : keep(r['入金額'], Logic.toInt(r['入金額'])), note: String(r['会計備考']),
+    })), null);
+  });
+  old.setName('旧_会費台帳（移行済み）');
 }
 
 function ensureSheet_(ss, name, headers, required) {
@@ -745,7 +801,7 @@ function handleKaikeiEdit(e) {
   if (!e || !e.range) return;
   const sh = e.range.getSheet(), name = sh.getName();
   try {
-    if (name === '会費台帳') onLedgerEdit_(e, sh);
+    if (/^会費台帳_20\d\d$/.test(name)) onLedgerEdit_(e, sh);
     else if (name === '年度設定') onSettingsEdit_(e, sh);
     else if (name === '送金入力') onTransferEdit_(e, sh);
   } catch (err) {
@@ -915,36 +971,39 @@ function applyMove_(plan, receipt) {
     }
   }
 
-  // 2) 会費台帳
-  if (plan.feeAdds.length || plan.feeUpdates.length) {
-    const ledger = sheet_(kaikei, '会費台帳');
+  // 2) 会費台帳（年度ごとのシート）
+  const years = [...new Set(plan.feeAdds.map(f => f.year).concat(plan.feeUpdates.map(u => u.year)))];
+  years.forEach(year => {
+    const ledger = ledgerSheet_(kaikei, year, true);
     const LH = headerMap_(ledger, LEDGER_HEADERS);
-    const lg = readRows_(ledger, LEDGER_HEADERS, ['登録番号', '年度', '請求金額', '納入状況']).rows;
-    const find = (id, year) => lg.filter(r => Logic.normId(r['登録番号'], APP.idDigits) === id && Logic.toInt(r['年度']) === year);
+    const lg = readRows_(ledger, LEDGER_HEADERS, LEDGER_INPUTS).rows;
+    const find = id => lg.filter(r => Logic.normId(r['登録番号'], APP.idDigits) === id);
     const snap = r => ({ status: String(r['納入状況']), amount: Logic.toInt(r['請求金額']), due: Logic.normDate(r['納期限']), paidDate: Logic.normDate(r['入金日']) || '', paid: String(r['入金額']).trim() === '' ? 0 : Logic.toInt(r['入金額']), note: String(r['会計備考']) });
     const same = (a, b) => a.status === b.status && a.amount === b.amount && a.due === b.due && a.paidDate === b.paidDate && a.paid === b.paid && a.note === b.note;
+    const where = id => '「' + ledgerName_(year) + '」の ' + id;
     const appendRows = [];
-    plan.feeAdds.forEach(f => {
-      const ex = find(f.id, f.year);
+    plan.feeAdds.filter(f => f.year === year).forEach(f => {
+      const ex = find(f.id);
       if (ex.length === 0) appendRows.push(f);
-      else if (ex.length > 1 || !same(snap(ex[0]), f)) throw new Error('会費台帳の ' + f.id + '／' + f.year + '年度が確認後に変わりました。台帳を確認してください');
+      else if (ex.length > 1 || !same(snap(ex[0]), f)) throw new Error(where(f.id) + ' が確認後に変わりました。台帳を確認してください');
     });
-    plan.feeUpdates.forEach(u => {
-      const ex = find(u.id, u.year);
-      if (ex.length !== 1) throw new Error('会費台帳の ' + u.id + '／' + u.year + '年度の行が見つからないか、重複しています');
+    plan.feeUpdates.filter(u => u.year === year).forEach(u => {
+      const ex = find(u.id);
+      if (ex.length !== 1) throw new Error(where(u.id) + ' の行が見つからないか、重複しています');
       const cur = snap(ex[0]);
       if (same(cur, u.to)) return;
-      if (!same(cur, u.from)) throw new Error('会費台帳の ' + u.id + '／' + u.year + '年度が確認後に変わりました。台帳を確認してください');
+      if (!same(cur, u.from)) throw new Error(where(u.id) + ' が確認後に変わりました。台帳を確認してください');
       writeFee_(ledger, LH, ex[0]._row, u.to);
     });
     if (appendRows.length) appendFees_(ledger, LH, appendRows, () => plan.after);
-  }
+  });
 
   journal.getRange(jRow, J['処理状態']).setValue('完了');
 }
 
 function feeCells_(f) {
-  return { '請求金額': f.amount, '納期限': toDate_(f.due), '納入状況': f.status, '入金日': f.paidDate ? toDate_(f.paidDate) : '', '入金額': f.paid, '会計備考': safe_(f.note) };
+  const d = v => (Logic.isDate(v) ? toDate_(v) : (v || ''));
+  return { '請求金額': f.amount, '納期限': d(f.due), '納入状況': f.status, '入金日': d(f.paidDate), '入金額': f.paid, '会計備考': safe_(f.note) };
 }
 
 function writeFee_(ledger, LH, row, f) {
@@ -961,7 +1020,7 @@ function appendFees_(ledger, LH, fees, memberOf) {
     const row = new Array(LH._width).fill('');
     const put = (h, v) => { row[LH[h] - 1] = v; };
     const cells = feeCells_(f);
-    put('登録番号', f.id); put('年度', f.year);
+    put('登録番号', f.id);
     Object.keys(cells).forEach(h => put(h, cells[h]));
     const member = memberOf ? memberOf(f.id) : null;
     if (member) { put('氏名（自動）', safe_(member.name)); put('登録期（自動）', safe_(member.cohort)); put('在籍状況（自動）', member.membership); }
@@ -1002,6 +1061,7 @@ function onLedgerEdit_(e, sh) {
   const H = headerMap_(sh, LEDGER_HEADERS);
   const rows = editedRows_(e, 500);
   if (!rows.length) return;
+  const year = Number(sh.getName().slice(-4));
   // 変更履歴
   const audit = sheet_(book_('kaikei'), '台帳変更履歴');
   const user = (e.user && e.user.getEmail && e.user.getEmail()) || '（取得できません）';
@@ -1009,10 +1069,10 @@ function onLedgerEdit_(e, sh) {
   const head = sh.getRange(1, e.range.getColumn(), 1, e.range.getNumColumns()).getValues()[0];
   if (single) {
     const r = e.range.getRow();
-    audit.appendRow([now_(), user, r, "'" + String(sh.getRange(r, H['登録番号']).getValue()), cell_(sh.getRange(r, H['年度']).getValue()), String(head[0]),
+    audit.appendRow([now_(), user, r, "'" + String(sh.getRange(r, H['登録番号']).getValue()), year, String(head[0]),
       safe_(e.oldValue === undefined ? '' : String(e.oldValue)), safe_(e.value === undefined ? '（空欄）' : String(e.value))]);
   } else {
-    audit.appendRow([now_(), user, e.range.getA1Notation(), '', '', '複数セル（' + head.join('・') + '）', '（記録できません）', '貼り付けなどで変更']);
+    audit.appendRow([now_(), user, e.range.getA1Notation(), '', year, '複数セル（' + head.join('・') + '）', '（記録できません）', '貼り付けなどで変更']);
   }
   // 登録番号の桁をそろえる
   if (touches_(e, H, ['登録番号'])) {
@@ -1024,10 +1084,10 @@ function onLedgerEdit_(e, sh) {
   // 編集した行をすぐ検査する
   withLock_(() => {
     const ctx = loadContext_();
-    const byRow = new Map(ctx.fees.map(f => [f.row, f]));
+    const byRow = new Map(ctx.fees.map(f => [f.sheet + ':' + f.row, f]));
     const stamp = now_();
     rows.forEach(r => {
-      const f = byRow.get(r);
+      const f = byRow.get(sh.getName() + ':' + r);
       writeCheck_(sh, H, r, f, ctx);
       if (f || String(sh.getRange(r, H['登録番号']).getValue()).trim()) sh.getRange(r, H['最終更新（自動）']).setValue(stamp);
     });
@@ -1089,7 +1149,7 @@ function processNewYear_(sh, H, row) {
     sh.getRange(row, H['確認キー']).setValue(plan.adds.length ? key : '');
     return;
   }
-  const ledger = sheet_(ctx.kaikei, '会費台帳');
+  const ledger = ledgerSheet_(ctx.kaikei, year, true);
   const LH = headerMap_(ledger, LEDGER_HEADERS);
   appendFees_(ledger, LH, plan.adds, id => ctx.membersById.get(id));
   sh.getRange(row, H['状態']).setValue('完了');
@@ -1170,22 +1230,22 @@ function refreshAll_() {
   const stamp = now_();
   Logic.setRemitDeadline(APP.remitDeadline);
 
-  // 会費台帳の自動列（氏名・登録期・在籍状況・チェック）
-  const ledger = sheet_(ctx.kaikei, '会費台帳');
-  const LH = headerMap_(ledger, LEDGER_HEADERS);
-  const lastRow = lastDataRow_(ledger, LH['登録番号']);
-  if (lastRow >= 2) {
-    const byRow = new Map(ctx.fees.map(f => [f.row, f]));
+  // 各年度の会費台帳の自動列（氏名・登録期・在籍状況・チェック）
+  const byRow = new Map(ctx.fees.map(f => [f.sheet + ':' + f.row, f]));
+  ledgerSheets_(ctx.kaikei).forEach(({ sh: ledger }) => {
+    const LH = headerMap_(ledger, LEDGER_HEADERS);
+    const lastRow = lastDataRow_(ledger, LH['登録番号']);
+    if (lastRow < 2) return;
     const names = [], checks = [], colors = [];
     for (let r = 2; r <= lastRow; r++) {
-      const f = byRow.get(r), m = f && f.id && ctx.membersById.get(f.id);
+      const f = byRow.get(ledger.getName() + ':' + r), m = f && f.id && ctx.membersById.get(f.id);
       names.push([m ? safe_(m.name) : '', m ? safe_(m.cohort) : '', m ? m.membership : '']);
       checks.push([f ? (f.ok ? 'OK' : '要確認：' + f.errors.join('／')) : '']);
       colors.push([f && !f.ok ? '#f8d7d3' : AUTO_FILL]);
     }
     ledger.getRange(2, LH['氏名（自動）'], names.length, 3).setValues(names);
     ledger.getRange(2, LH['チェック（自動）'], checks.length, 1).setValues(checks).setBackgrounds(colors);
-  }
+  });
 
   writeTable_(sheet_(ctx.kaikei, '会計一覧'), '会計一覧（最終更新 ' + stamp + '）　「（要確認）」は会費台帳のチェック欄を見てください', Logic.matrix(ctx.members, ctx.fees));
   writeTable_(sheet_(ctx.kaikei, '年度別集計'), '年度別集計（最終更新 ' + stamp + '）　要確認の行は合計に含めていません', Logic.yearTotals(ctx.fees), ['請求額の合計', '入金額の合計', '未収額（未納・確認中）']);
@@ -1200,7 +1260,7 @@ function refreshAll_() {
     ['会員数（在籍／休会／退会／転出）', count('在籍') + '／' + count('休会') + '／' + count('退会') + '／' + count('転出')],
     ['正本の要確認', ctx.memberErrors.length ? ctx.memberErrors.join('\n') : 'なし'],
     ['年度設定の要確認', ctx.settingErrors.length ? ctx.settingErrors.join('\n') : 'なし'],
-    ['会費台帳の要確認', badFees.length ? badFees.length + '行（会計ブックの会費台帳「チェック」欄を参照）' : 'なし'],
+    ['会費台帳の要確認', badFees.length ? badFees.length + '行（会計ブックの各年度の会費台帳「チェック」欄を参照）' : 'なし'],
   ];
   Logic.yearTotals(ctx.fees.filter(f => { const m = ctx.membersById.get(f.id); return m && m.membership === '在籍'; })).rows
     .forEach(r => rows.push([r[0] + '年度（在籍者のみ）', '未納 ' + r[2] + '／納入済み ' + r[3] + '／確認中 ' + r[4] + '／免除 ' + r[5] + '／他支部納入済み ' + r[6]]));
@@ -1268,7 +1328,7 @@ function 架空データを入れる() {
       put('標準納期限', toDate_(due)); put('振込先', '架空銀行 架空支店 普通0000000'); put('振込名義', '登録番号＋氏名'); put('問い合わせ先', '会計部会（試験用）');
     });
 
-    const ledger = sheet_(kaikei, '会費台帳');
+    const ledger = ledgerSheet_(kaikei, 2026, true);
     const LH = headerMap_(ledger, LEDGER_HEADERS);
     const fees = [
       ['0001', '納入済み', 18000, '2026-07-10', ''],
