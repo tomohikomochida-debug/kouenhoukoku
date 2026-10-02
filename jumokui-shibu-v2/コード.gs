@@ -242,7 +242,9 @@ const Logic = (() => {
 
     let after;
     if (!old) {
-      const name = req(v.name, '氏名'), kana = req(v.kana, 'よみがな'), cohort = req(v.cohort, '登録期');
+      const name = req(v.name, '氏名'), kana = req(v.kana, 'よみがな');
+      let cohort = req(v.cohort, '登録期').normalize('NFKC');
+      if (/^\d+$/.test(cohort)) cohort += '期'; // 「51」→「51期」
       after = { id, name, kana, cohort, membership: '在籍', emails: normEmails(v.emails) };
       const dup = ctx.members.filter(m => nameKey(m.name) === nameKey(name) || nameKey(m.kana) === nameKey(kana));
       if (dup.length) warnings.push('同じ氏名またはよみがなの会員がいます（' + dup.map(m => m.id + ' ' + m.name + '／' + m.membership).join('、') + '）。同じ方なら登録番号を確認してください');

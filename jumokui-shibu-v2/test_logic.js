@@ -77,6 +77,7 @@ test('新入会：今年度の会費と、既にある後の年度の会費を�
   const c = ctxOf(M, [{ id: '0001', year: 2027, amount: 18000, status: '未納' }]);
   const p = Logic.planMembership({ action: '新入会', date: '2026-10-01', id: '10', name: '新 太郎', kana: 'シン タロウ', cohort: '36期', reason: '入会届受領', due: '2026-10-31' }, c);
   assert.strictEqual(p.id, '0010');
+  assert.strictEqual(Logic.planMembership({ action: '新入会', date: '2026-10-01', id: '11', name: '別 次郎', kana: 'ベツ ジロウ', cohort: '５１', reason: 'x', due: '2026-10-31' }, c).after.cohort, '51期');
   assert.deepStrictEqual(p.feeAdds.map(f => [f.year, f.amount, f.status, f.due]), [[2026, 18000, '未納', '2026-10-31'], [2027, 18000, '未納', '2027-07-31']]);
   assert.ok(p.warnings.some(w => w.includes('郵送')));
   assert.ok(Logic.membershipPreview(p).includes('18,000円'));
