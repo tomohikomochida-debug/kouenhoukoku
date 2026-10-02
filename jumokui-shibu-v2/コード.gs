@@ -23,7 +23,8 @@
  *    研修会ごとの「申込_研修ID」シートができる。「フォーム作成」にチェック → 申込フォームができる。
  *    回答は10分ごとにその研修の申込シートへ取り込まれ、参加資格を自動で判定（基準は「判定の基準」シート）。
  *    締切・定員・開催日でフォームの受付は自動で閉じます。出欠は申込シートの「出欠」に入力し、
- *    年度ごとの「年度集計_2026」などに出欠の一覧が出ます。
+ *    年度ごとの「年度集計_2026」などに出欠の一覧が出ます。年度が変わると前の年度の研修のシートは非表示になります
+ *    （シート一覧のボタンからいつでも再表示できます）。
  *  - 一覧・集計は操作のたびに自動更新（念のため10分ごとにも確認）。
  *
  * このプロジェクトはウェブアプリとして公開しないでください。
@@ -843,6 +844,7 @@ const JUDGE_RULES = [
   '・判定は開催日まで自動でやり直します（入金が確認されると参加可に変わります）。開催日を過ぎると固定されます。',
   '・要確認を確かめたら「研修担当の判断」に参加可／参加不可を入れてください。「最終」に反映されます。',
   '・2年度分以上の会費が未納の方は規約により退会の扱いです（総務ブック「長期未納」に一覧が出ます）。',
+  '・年度が変わると、前の年度の研修のシート（申込_…・年度集計_…）は自動で非表示になります。左下のシート一覧（≡）から再表示できます。',
 ];
 const TRIGGER_FNS = ['handleSoumuEdit', 'handleKaikeiEdit', 'handleKouhouEdit', 'handleKenshuEdit', 'refreshTick'];
 
@@ -1914,15 +1916,19 @@ function assignTrainingIds_(kenshu) {
   });
 }
 
-// 研修会ごとの申込シートを用意する（研修IDを変えたらシート名も合わせる）
+function hideSheet_(sh) { if (!sh.isSheetHidden()) sh.hideSheet(); }
+function currentYear_() { return Logic.fiscalYear(today_(), APP.fiscalStartMonth); }
+
+// 研修会ごとの申込シートを用意する（研修IDを変えたらシート名も合わせる。前の年度の研修のシートは非表示で作る）
 function ensureApplySheets_(kenshu, tr) {
+  const fy = currentYear_();
   tr.parsed.list.forEach(t => {
     if (!t.idOk) { t.sheet = t.sheetName ? kenshu.getSheetByName(t.sheetName) : null; return; }
     const want = applySheetName_(t.id);
     let sh = kenshu.getSheetByName(want);
     const prev = t.sheetName && t.sheetName !== want ? kenshu.getSheetByName(t.sheetName) : null;
     if (!sh && prev) { prev.setName(want); sh = prev; }
-    if (!sh) { sh = kenshu.insertSheet(want, 1); setupApplySheet_(sh); }
+    if (!sh) { sh = kenshu.insertSheet(want, 1); setupApplySheet_(sh); if (t.year && t.year < fy) hideSheet_(sh); }
     t.sheet = sh;
     if (t.sheetName !== want) { tr.sh.getRange(t.row, tr.H['申込シート（自動）']).setValue(want); t.sheetName = want; }
   });
@@ -2141,10 +2147,19 @@ function refreshKenshu_(ctx) {
   byYear.forEach((list, year) => {
     const name = '年度集計_' + year;
     let sh = kenshu.getSheetByName(name);
-    if (!sh) { sh = kenshu.insertSheet(name); protectSheet_(sh, '自動出力'); }
+    if (!sh) { sh = kenshu.insertSheet(name); protectSheet_(sh, '自動出力'); if (year < currentYear_()) hideSheet_(sh); }
     list.sort((a, b) => (a.t.date < b.t.date ? -1 : a.t.date > b.t.date ? 1 : 0));
     writeTable_(sh, year + '年度の研修の出欠（最終更新 ' + stamp + '）　出席・欠席・取消は各研修の申込シートの「出欠」から。「申込」は出欠が未入力', Logic.yearAttendance(list));
   });
+
+  // 年度が変わったら、前の年度までの研修のシート（申込・年度集計）を非表示にする。
+  // 年度が変わるときに1回だけ行うので、手で再表示したシートはそのまま見えます
+  const fy = Logic.fiscalYear(today, APP.fiscalStartMonth);
+  if (Number(props.getProperty('KENSHU_HIDE_FY') || 0) < fy) {
+    tr.parsed.list.forEach(t => { if (t.sheet && t.year && t.year < fy) hideSheet_(t.sheet); });
+    kenshu.getSheets().forEach(sh => { const m = sh.getName().match(/^年度集計_(\d{4})$/); if (m && Number(m[1]) < fy) hideSheet_(sh); });
+    props.setProperty('KENSHU_HIDE_FY', String(fy));
+  }
   props.setProperty('KENSHU_DAY', today);
 }
 

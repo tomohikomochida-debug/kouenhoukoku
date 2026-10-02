@@ -59,6 +59,7 @@ class Sheet {
   getMaxRows() { return this.maxRows; } getMaxColumns() { return this.maxCols; }
   insertRowsAfter(after, n) { this.maxRows += n; } insertColumnsAfter(after, n) { this.maxCols += n; }
   setFrozenRows() {} setColumnWidth() { return this; } hideColumns(c) { this.hidden.push(c); }
+  hideSheet() { this.sheetHidden = true; return this; } showSheet() { this.sheetHidden = false; return this; } isSheetHidden() { return !!this.sheetHidden; }
   insertColumnAfter(col) {
     const shift = m => { const next = new Map(); for (const [k, v] of m) { const [r, c] = k.split(':').map(Number); next.set(r + ':' + (c > col ? c + 1 : c), v); } return next; };
     this.cells = shift(this.cells); this.fmt = shift(this.fmt); this.maxCols++;
@@ -492,6 +493,18 @@ step('研修：研修会ごとの申込シートで判定 → フォーム作成
   assert.ok(grid.includes('0004|架空 梅二|' + K[0] + '|1|出席|申込|'), grid.join('\n'));
   assert.ok(grid.includes('0006|架空 楓|' + K[0] + '|0||取消|'), grid.join('\n'));
   assert.ok(grid.includes('|一般 次郎|' + K[2] + '|0||申込|'), grid.join('\n'));
+  // 年度が変わると、前の年度の研修のシートは非表示。手で再表示したものは、そのまま
+  assert.ok(b.getSheets().every(x => !x.isSheetHidden()));
+  FIXED_NOW = Date.parse('2027-04-02T03:00:00Z');
+  api.refreshTick();
+  assert.deepStrictEqual(b.getSheets().filter(x => x.isSheetHidden()).map(x => x.name).sort(), ['年度集計_2026', '申込_2026-03', '申込_TEST-01', '申込_TEST-02']);
+  sh(b, '申込_TEST-02').showSheet();
+  api.今すぐ一覧を更新();
+  assert.ok(!sh(b, '申込_TEST-02').isSheetHidden(), '再表示したシートは隠し直さない');
+  edit(b, '研修一覧', 5, '研修名', '架空・前年度の研修（後から入力）', h);
+  edit(b, '研修一覧', 5, '開催日', new sandbox.Date(Date.UTC(2027, 2, 1) - 9 * 3600 * 1000), h);
+  assert.ok(sh(b, '申込_2026-04').isSheetHidden(), '前の年度の研修を後から入れたら、シートは非表示で作る');
+  assert.ok(!sh(b, '研修一覧').isSheetHidden() && !sh(b, '判定の基準').isSheetHidden());
   FIXED_NOW = saved;
   api.今すぐ一覧を更新();
   assert.deepStrictEqual(sh(soumu(), '長期未納').getRange(2, 1, 1, 5).getValues()[0], ['登録番号', '氏名', '登録期', '未納の年度', '未納額の合計']);
