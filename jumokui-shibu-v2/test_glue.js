@@ -40,6 +40,7 @@ class Range {
 class Sheet {
   constructor(ss, name) { Object.assign(this, { ss, name, cells: new Map(), fmt: new Map(), maxRows: 1000, maxCols: 26, protections: [], check: new Set(), hidden: [] }); }
   getName() { return this.name; } getParent() { return this.ss; } setName(n) { this.name = n; return this; }
+  deleteRow(r) { const next = new Map(); for (const [k, v] of this.cells) { const [rr, cc] = k.split(':').map(Number); if (rr < r) next.set(k, v); else if (rr > r) next.set((rr - 1) + ':' + cc, v); } this.cells = next; }
   get(r, c) { const v = this.cells.get(r + ':' + c); return v === undefined ? '' : v; }
   set(r, c, v) {
     assert.ok(r >= 1 && c >= 1 && r <= this.maxRows && c <= this.maxCols, this.name + ' 範囲外 ' + r + ',' + c);
@@ -65,7 +66,7 @@ class Sheet {
 }
 class Book {
   constructor(id) { this.id = id; this.sheets = [new Sheet(this, 'シート1')]; }
-  getId() { return this.id; }
+  getId() { return this.id; } getName() { return 'ブック' + this.id.slice(0, 4); }
   getSheetByName(n) { return this.sheets.find(s => s.name === n) || null; }
   insertSheet(n, i) { const s = new Sheet(this, n); if (i === undefined) this.sheets.push(s); else this.sheets.splice(i, 0, s); return s; }
   deleteSheet(s) { this.sheets = this.sheets.filter(x => x !== s); }
@@ -131,14 +132,15 @@ function step(name, fn) { fn(); passed++; console.log('OK  ' + name); }
 
 step('初期設定：シート・トリガーができる', () => {
   api.初期設定();
-  assert.deepStrictEqual(soumu().getSheets().map(s => s.name), ['正本', '異動受付', '会員異動履歴', '管理', 'エラー記録', '送信設定', '送信実行', '送信記録', '郵送リスト']);
+  assert.deepStrictEqual(soumu().getSheets().map(s => s.name), ['正本', '異動受付', '会員異動履歴', '管理', 'エラー記録', '送信設定', '送信記録', '郵送リスト']);
   assert.deepStrictEqual(kaikei().getSheets().map(s => s.name), ['年度設定', '送金入力', '送金記録', '会計一覧', '年度別集計', '送金集計', '台帳変更履歴']);
   assert.deepStrictEqual(triggers.map(t => t.getHandlerFunction()), ['handleSoumuEdit', 'handleKaikeiEdit', 'handleKouhouEdit', 'refreshTick']);
-  assert.deepStrictEqual(kouhou().getSheets().map(s => s.name), ['文面', '督促対象', '文面の確認', '送信結果']);
-  assert.ok(['送信設定', '送信実行', '送信記録', '郵送リスト'].every(n => soumu().getSheetByName(n)));
+  assert.deepStrictEqual(kouhou().getSheets().map(s => s.name), ['文面', '督促対象', '文面の確認', '送信結果', '送信設定', '送信実行']);
+  assert.ok(['送信設定', '送信記録', '郵送リスト'].every(n => soumu().getSheetByName(n)));
   api.初期設定(); // 2回目も壊れない
   assert.strictEqual(triggers.length, 4);
-  assert.strictEqual(sh(soumu(), '送信設定').getLastRow(), 8, '設定行は重複しない');
+  assert.strictEqual(sh(soumu(), '送信設定').getLastRow(), 2, '総務は本番アカウントの1行だけ');
+  assert.strictEqual(sh(kouhou(), '送信設定').getLastRow(), 7, '広報の設定行は重複しない');
 });
 
 step('架空データ：台帳がすべてOKになる', () => {
@@ -300,7 +302,7 @@ step('数式になる名前でも安全に保存', () => {
 });
 
 step('督促メール：停止中は送れない → 試験で確認 → 送信 → 二重送信しない', () => {
-  const b = soumu(), n = '送信実行', h = 'handleSoumuEdit';
+  const b = kouhou(), n = '送信実行', h = 'handleKouhouEdit';
   edit(b, n, 2, '対象年度', 2026, h);
   tick(b, n, 2, '実行', h);
   assert.match(cellOf(b, n, 2, '結果・確認内容'), /送信モードが「停止」/);
@@ -317,7 +319,7 @@ step('督促メール：停止中は送れない → 試験で確認 → 送信 
   assert.strictEqual(mails.length, 1);
   assert.deepStrictEqual([mails[0].to, mails[0].name], ['tester@example.invalid', '日本樹木医会神奈川県支部']);
   assert.match(mails[0].subject, /^【試験】/);
-  const log = sh(b, '送信記録');
+  const log = sh(soumu(), '送信記録');
   assert.deepStrictEqual([log.get(2, 3), log.get(2, 7), log.get(2, 8)], ['0004', '試験', '試験送信済み']);
   assert.strictEqual(sh(kouhou(), '送信結果').get(3, 2), '0004');
   // 7日以内は同じ人に送らない
@@ -327,8 +329,8 @@ step('督促メール：停止中は送れない → 試験で確認 → 送信 
 });
 
 step('督促メール：「送る」を外す・文面の誤り・本番の安全装置', () => {
-  const b = soumu(), n = '送信実行', h = 'handleSoumuEdit';
-  const set = sh(b, '送信設定');
+  const b = kouhou(), n = '送信実行', h = 'handleKouhouEdit';
+  const set = sh(b, '送信設定'), sset = sh(soumu(), '送信設定');
   const rowOf = key => { for (let r = 2; r <= set.getLastRow(); r++) if (set.get(r, 1) === key) return r; };
   // 本番：送信アカウントが未登録なら止める
   set.set(rowOf('送信モード'), 2, '本番');
@@ -336,7 +338,7 @@ step('督促メール：「送る」を外す・文面の誤り・本番の安�
   tick(b, n, 4, '実行', h);
   assert.match(cellOf(b, n, 4, '結果・確認内容'), /本番で使う送信アカウント/);
   // 登録しても、試験用アドレス（.invalid）の会員には送らない
-  set.set(rowOf('本番で使う送信アカウント'), 2, 'owner@example.invalid');
+  sset.set(2, 2, 'owner@example.invalid'); // 総務が本番の送信アカウントを登録
   tick(b, n, 4, '実行', h);
   assert.match(cellOf(b, n, 4, '結果・確認内容'), /試験用のアドレス/);
   // 会費案内先を本物らしいアドレスにすると、本番はBCCで送られる
@@ -348,7 +350,7 @@ step('督促メール：「送る」を外す・文面の誤り・本番の安�
   assert.strictEqual(cellOf(b, n, 4, '状態'), '完了', cellOf(b, n, 4, '結果・確認内容'));
   const last = mails[mails.length - 1];
   assert.deepStrictEqual([last.to, last.bcc, last.subject], ['owner@example.invalid', 'ume@mail.jp', '【日本樹木医会神奈川県支部】年会費納入のお願い']);
-  const log = sh(b, '送信記録');
+  const log = sh(soumu(), '送信記録');
   assert.deepStrictEqual([log.get(log.getLastRow(), 6), log.get(log.getLastRow(), 8)], ['BCC：ume@mail.jp', '送信済み']);
   set.set(rowOf('送信モード'), 2, '試験');
   // 文面に使えない差し込み
@@ -382,7 +384,18 @@ step('旧形式の「会費台帳」1枚を年度ごとのシートへ移す', (
     old.fmt.set((i + 2) + ':1', '@');
     old.set(i + 2, 1, v[0]); old.set(i + 2, 5, v[1]); old.set(i + 2, 6, v[2]); old.set(i + 2, 7, '2026-07-31'); old.set(i + 2, 8, v[3]); old.set(i + 2, 10, v[4]); old.set(i + 2, 9, v[5]);
   });
+  // 前の版：総務に送信設定（全項目）と送信実行があった
+  const so = books[api.APP.books.soumu] = new Book(api.APP.books.soumu);
+  const oldSet = so.insertSheet('送信設定');
+  [['項目', '値', '説明'], ['送信モード', '試験', ''], ['試験送信先', 'me@mail.jp', ''], ['差出人の表示名', '日本樹木医会神奈川県支部', ''], ['返信先', '', ''], ['本番で使う送信アカウント', 'shibu@ws.jp', ''], ['1回の送信上限', 30, ''], ['送り方', 'BCCで一斉', '']]
+    .forEach((row, i) => row.forEach((v, j) => oldSet.set(i + 1, j + 1, v)));
+  so.insertSheet('送信実行').set(1, 1, '実行');
   api.初期設定();
+  assert.deepStrictEqual([oldSet.getLastRow(), oldSet.get(2, 1), oldSet.get(2, 2)], [2, '本番で使う送信アカウント', 'shibu@ws.jp'], '総務には本番アカウントだけ残る');
+  const ks = sh(kouhou(), '送信設定');
+  const val = key => { for (let r = 2; r <= ks.getLastRow(); r++) if (ks.get(r, 1) === key) return ks.get(r, 2); };
+  assert.deepStrictEqual([val('送信モード'), val('試験送信先')], ['試験', 'me@mail.jp'], '広報へ値が移る');
+  assert.ok(so.getSheetByName('旧_送信実行（広報へ移動）'));
   assert.deepStrictEqual(k.getSheets().filter(x => x.name.startsWith('会費台帳_')).map(x => x.name), ['会費台帳_2027', '会費台帳_2026']);
   assert.ok(k.getSheetByName('旧_会費台帳（移行済み）'));
   const rows = ledgerRows();
