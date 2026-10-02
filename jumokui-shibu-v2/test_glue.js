@@ -78,8 +78,38 @@ const props = new Map();
 const triggers = [];
 function builder() { const b = { requireValueInList: () => b, setAllowInvalid: () => b, requireDate: () => b, build: () => ({}) }; return b; }
 const mails = [];
+// フォームの模擬
+const forms = new Map();
+class FormItem {
+  constructor(type) { this.type = type; this.title = ''; }
+  setTitle(t) { this.title = t; return this; } getTitle() { return this.title; } setChoiceValues(v) { this.choices = v; return this; }
+  setRequired(r) { this.required = r; return this; } setHelpText() { return this; } setValidation(v) { this.validation = v; return this; }
+}
+class Form {
+  constructor(id, title) { Object.assign(this, { id, title, items: [], responses: [], accepting: true, desc: '' }); }
+  getId() { return this.id; } getPublishedUrl() { return 'https://forms.example/' + this.id + '/viewform'; } getEditUrl() { return 'https://forms.example/' + this.id + '/edit'; }
+  setTitle(t) { this.title = t; return this; } setDescription(d) { this.desc = d; return this; }
+  setCollectEmail() { return this; } setAllowResponseEdits() { return this; } setShowLinkToRespondAgain() { return this; } setConfirmationMessage() { return this; } setCustomClosedFormMessage() { return this; }
+  setRequireLogin() { throw new Error('Google Workspace のフォームだけで使えます'); }
+  addMultipleChoiceItem() { const i = new FormItem('choice'); this.items.push(i); return i; }
+  addTextItem() { const i = new FormItem('text'); this.items.push(i); return i; }
+  addParagraphTextItem() { const i = new FormItem('paragraph'); this.items.push(i); return i; }
+  setAcceptingResponses(b) { this.accepting = b; return this; } isAcceptingResponses() { return this.accepting; }
+  respond(id, email, answers) { assert.ok(this.accepting, '受付が終わったフォームに回答'); this.responses.push({ id, email, answers, ts: FIXED_NOW }); }
+  getResponses() {
+    return this.responses.map(r => ({
+      getId: () => r.id, getTimestamp: () => new sandbox.Date(r.ts), getRespondentEmail: () => r.email,
+      getItemResponses: () => Object.entries(r.answers).map(([k, v]) => ({ getItem: () => ({ getTitle: () => k }), getResponse: () => v })),
+    }));
+  }
+}
 let mailQuota = 100;
 const sandbox = {
+  FormApp: {
+    create: t => { const f = new Form('form' + (forms.size + 1), t); forms.set(f.id, f); return f; },
+    openById: id => { if (!forms.has(id)) throw new Error('フォームがありません'); return forms.get(id); },
+    createTextValidation: () => { const b = { setHelpText: () => b, requireTextMatchesPattern: () => b, build: () => ({}) }; return b; },
+  },
   MailApp: { sendEmail: m => { mails.push(m); mailQuota--; }, getRemainingDailyQuota: () => mailQuota },
   console: { log: () => {}, error: m => { sandbox.__errors.push(m); } }, __errors: [],
   SpreadsheetApp: {
@@ -89,7 +119,7 @@ const sandbox = {
   Utilities: {
     formatDate: (d, tz, f) => fmt(d, f),
     parseDate: (s, tz, f) => { const [y, m, d] = s.split('-').map(Number); return new sandbox.Date(Date.UTC(y, m - 1, d) - TZ_OFFSET); },
-    getUuid: () => 'uuid-' + Math.random().toString(16).slice(2, 10),
+    getUuid: () => require('crypto').randomUUID(),
   },
   Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@example.invalid' }) },
   LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock: () => {}, releaseLock: () => {} }) },
@@ -106,9 +136,9 @@ const sandbox = {
 };
 sandbox.Date = class extends Date { constructor(...a) { if (a.length) super(...a); else super(FIXED_NOW); } static now() { return FIXED_NOW; } };
 vm.createContext(sandbox);
-vm.runInContext(src + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,今すぐ一覧を更新,handleSoumuEdit,handleKaikeiEdit,handleKouhouEdit,refreshTick,headerMap_,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
+vm.runInContext(src + '\n;this.__api={Logic,APP,初期設定,架空データを入れる,研修の架空データを入れる,今すぐ一覧を更新,handleSoumuEdit,handleKaikeiEdit,handleKouhouEdit,handleKenshuEdit,refreshTick,headerMap_,ROSTER_HEADERS,MOVE_HEADERS,LEDGER_HEADERS,SETTINGS_HEADERS,TRANSFER_IN_HEADERS};', sandbox);
 const api = sandbox.__api;
-const soumu = () => books[api.APP.books.soumu], kaikei = () => books[api.APP.books.kaikei], kouhou = () => books[api.APP.books.kouhou];
+const soumu = () => books[api.APP.books.soumu], kaikei = () => books[api.APP.books.kaikei], kouhou = () => books[api.APP.books.kouhou], kenshu = () => books[api.APP.books.kenshu];
 const sh = (b, n) => b.getSheetByName(n);
 const col = (s, h) => api.headerMap_(s, [h])[h];
 function edit(book, sheetName, row, header, value, handler) {
@@ -132,13 +162,14 @@ function step(name, fn) { fn(); passed++; console.log('OK  ' + name); }
 
 step('初期設定：シート・トリガーができる', () => {
   api.初期設定();
-  assert.deepStrictEqual(soumu().getSheets().map(s => s.name), ['正本', '異動受付', '会員異動履歴', '管理', 'エラー記録', '送信設定', '送信記録', '郵送リスト']);
+  assert.deepStrictEqual(soumu().getSheets().map(s => s.name), ['正本', '異動受付', '会員異動履歴', '管理', 'エラー記録', '送信設定', '送信記録', '郵送リスト', '長期未納']);
+  assert.deepStrictEqual(kenshu().getSheets().map(s => s.name), ['研修一覧', '申込一覧', '参加履歴', '判定の基準']);
   assert.deepStrictEqual(kaikei().getSheets().map(s => s.name), ['年度設定', '送金入力', '送金記録', '会計一覧', '年度別集計', '送金集計', '台帳変更履歴']);
-  assert.deepStrictEqual(triggers.map(t => t.getHandlerFunction()), ['handleSoumuEdit', 'handleKaikeiEdit', 'handleKouhouEdit', 'refreshTick']);
+  assert.deepStrictEqual(triggers.map(t => t.getHandlerFunction()), ['handleSoumuEdit', 'handleKaikeiEdit', 'handleKouhouEdit', 'handleKenshuEdit', 'refreshTick']);
   assert.deepStrictEqual(kouhou().getSheets().map(s => s.name), ['文面', '督促対象', '文面の確認', '送信結果', '送信設定', '送信実行']);
   assert.ok(['送信設定', '送信記録', '郵送リスト'].every(n => soumu().getSheetByName(n)));
   api.初期設定(); // 2回目も壊れない
-  assert.strictEqual(triggers.length, 4);
+  assert.strictEqual(triggers.length, 5);
   assert.strictEqual(sh(soumu(), '送信設定').getLastRow(), 2, '総務は本番アカウントの1行だけ');
   assert.strictEqual(sh(kouhou(), '送信設定').getLastRow(), 7, '広報の設定行は重複しない');
 });
@@ -371,6 +402,73 @@ step('督促メール：「送る」を外す・文面の誤り・本番の安�
   edit(b, n, 5, '対象年度', 2026, h);
   tick(b, n, 5, '実行', h);
   assert.match(cellOf(b, n, 5, '結果・確認内容'), /チェックなし 1名/);
+});
+
+step('研修：架空の申込の判定 → フォーム作成 → 回答の取り込み → 研修担当の判断 → 入金状況の反映', () => {
+  const K = api.Logic.KUBUN, b = kenshu(), h = 'handleKenshuEdit';
+  api.研修の架空データを入れる();
+  const ap = sh(b, '申込一覧'), tl = sh(b, '研修一覧');
+  const A = (r, hd) => cellOf(b, '申込一覧', r, hd), T = (r, hd) => cellOf(b, '研修一覧', r, hd);
+  const judged = r => [A(r, '登録番号'), A(r, '判定（自動）')];
+  assert.deepStrictEqual([2, 3, 4, 5, 6, 7, 8, 9].map(judged), [
+    ['0004', '参加可'], ['0001', '参加可'], ['0003', '参加可'], ['0004', '参加不可'], ['0006', '参加不可'], ['0001', '要確認'], ['1234', api.Logic.EXTERNAL], ['', api.Logic.EXTERNAL]]);
+  assert.match(A(2, '理由（自動）'), /納期限（2026-07-31）前/);
+  assert.match(A(5, '理由（自動）'), /2026年度の会費が未納/);
+  assert.match(A(7, '理由（自動）'), /重複[\s\S]*氏名が名簿と違います/);
+  assert.match(String(A(2, '受付ID')), /^M-/);
+  assert.deepStrictEqual([T(2, '受付（自動）'), T(3, '受付（自動）'), T(3, '申込（自動）'), T(3, '参加可（自動）'), T(3, '外部（自動）')], ['終了（開催済み）', 'フォーム未作成', 6, 2, 2]);
+  // フォームを作る（個人のアカウントでは setRequireLogin が使えなくても止まらない）
+  tick(b, '研修一覧', 3, 'フォーム作成', h);
+  assert.match(String(T(3, '結果・確認内容')), /フォームを作りました/);
+  const form = forms.get(T(3, 'フォームID'));
+  assert.ok(form && form.accepting);
+  assert.strictEqual(T(3, 'フォームURL（自動）'), form.getPublishedUrl());
+  assert.strictEqual(T(3, '受付（自動）'), '受付中');
+  assert.deepStrictEqual(form.items.map(i => i.title), ['区分', '樹木医登録番号', '氏名', '所属・勤務先', '連絡事項']);
+  assert.match(form.title, /架空・秋の研修.*参加申込/);
+  tick(b, '研修一覧', 3, 'フォーム作成', h);
+  assert.strictEqual(forms.size, 1, '2回目は作らない');
+  // 回答 → 10分ごとの処理で取り込む（同じ回答は1回だけ）
+  form.respond('r1', 'shin@mail.jp', { '区分': K[0], '樹木医登録番号': '9', '氏名': '新 太郎', '懇親会': '参加' });
+  api.refreshTick(); api.refreshTick();
+  assert.strictEqual(ap.getLastRow(), 10);
+  assert.deepStrictEqual([A(10, '受付ID'), A(10, '研修ID'), A(10, '登録番号'), A(10, 'メール'), A(10, 'その他の回答'), A(10, '判定（自動）')],
+    ['F-r1', 'TEST-02', '9', 'shin@mail.jp', '懇親会：参加', '参加不可']);
+  assert.match(A(10, '理由（自動）'), /納期限 2026-10-31/);
+  // 研修担当の判断が「最終」に反映
+  edit(b, '申込一覧', 5, '研修担当の判断', '参加可', h);
+  assert.deepStrictEqual([A(5, '判定（自動）'), A(5, '最終（自動）')], ['参加不可', '参加可']);
+  edit(b, '申込一覧', 5, '研修担当の判断', '', h);
+  // 会計で「確認中」にすると、判定が自動で変わる
+  const r04 = ledgerRows().find(x => x.id === '0004' && x.year === 2026).r;
+  edit(kaikei(), '会費台帳_2026', r04, '納入状況', '確認中', 'handleKaikeiEdit');
+  assert.deepStrictEqual([A(5, '判定（自動）'), A(5, '理由（自動）')], ['要確認', '2026年度の会費が確認中です']);
+  // 定員に達するとフォームを閉じる
+  edit(b, '研修一覧', 3, '定員', 7, h);
+  assert.deepStrictEqual([T(3, '申込（自動）'), T(3, '受付（自動）'), form.accepting], [7, '定員到達', false]);
+  edit(b, '研修一覧', 3, '定員', 30, h);
+  assert.deepStrictEqual([T(3, '受付（自動）'), form.accepting], ['受付中', true]);
+  // 開催日を過ぎると判定は固定。出欠は参加履歴へ
+  const saved = FIXED_NOW;
+  FIXED_NOW = Date.parse('2026-11-20T03:00:00Z');
+  api.refreshTick();
+  assert.deepStrictEqual([T(3, '受付（自動）'), form.accepting], ['終了（開催済み）', false]);
+  edit(kaikei(), '会費台帳_2026', r04, '納入状況', '未納', 'handleKaikeiEdit');
+  assert.strictEqual(A(5, '判定（自動）'), '要確認', '開催後は変わらない');
+  edit(b, '研修一覧', 3, '研修名', '', h);
+  assert.match(String(T(3, '結果・確認内容')), /^入力を確認：研修名/);
+  assert.strictEqual(A(5, '判定（自動）'), '要確認', '研修一覧の入力が崩れても、開催後の判定は残る');
+  edit(b, '研修一覧', 3, '研修名', '架空・秋の研修（納期限後）', h);
+  assert.strictEqual(T(3, '結果・確認内容'), '', '直したら注意書きは消える');
+  edit(b, '申込一覧', 3, '出欠', '出席', h);
+  edit(b, '申込一覧', 8, '出欠', '出席', h);
+  const hist = sh(b, '参加履歴');
+  assert.deepStrictEqual(hist.getRange(3, 1, 2, 7).getValues().map(r => [r[2], r[5], r[6]]), [['TEST-02', '0001', '架空 桜子'], ['TEST-02', '1234', '他支部 花子']]);
+  assert.strictEqual(T(3, '出席（自動）'), 2);
+  FIXED_NOW = saved;
+  api.今すぐ一覧を更新();
+  assert.deepStrictEqual(sh(soumu(), '長期未納').getRange(2, 1, 1, 5).getValues()[0], ['登録番号', '氏名', '登録期', '未納の年度', '未納額の合計']);
+  assert.deepStrictEqual(sandbox.__errors, [], 'エラー記録なし');
 });
 
 step('旧形式の「会費台帳」1枚を年度ごとのシートへ移す', () => {

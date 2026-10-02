@@ -223,4 +223,98 @@ test('督促：1人ずつなら氏名入り。試験は試験送信先だけ', (
   throws(() => Logic.planSend({ year: 2026, mode: '本番', account: 'x@mail.jp', allowed: '', limit: 10, subject: 's', body: 'b' }, c), /本番で使う送信アカウント/);
 });
 
+
+// ---- 研修（第3段階） ----
+const K = Logic.KUBUN;
+function jctx(c) { return { digits: 4, membersById: c.membersById, fees: c.fees, settings: c.settings, startMonth: 4 }; }
+function training(o) { return Logic.parseTrainings([Object.assign({ row: 2, id: 'T1', name: '研修', date: '2026-11-15', deadline: '2026-11-01', capacity: '' }, o)]).list[0]; }
+const KM = M.concat([
+  { id: '0003', name: '架空 松美', kana: 'カクウ マツミ', cohort: '27期', membership: '在籍', emails: '' },
+  { id: '0004', name: '架空 梅二', kana: 'カクウ ウメジ', cohort: '28期', membership: '在籍', emails: '' },
+  { id: '0008', name: '架空 柏', kana: 'カクウ カシワ', cohort: '35期', membership: '在籍', emails: '' },
+]);
+const KF = [
+  { id: '0001', year: 2026, amount: 18000, status: '納入済み', paid: 18000, paidDate: '2026-07-01' },
+  { id: '0002', year: 2026, amount: 18000, status: '確認中' },
+  { id: '0003', year: 2026, amount: 0, status: '他支部納入済み', note: '東京都支部（本人申告）' },
+  { id: '0004', year: 2026, amount: 18000, status: '未納' },
+  { id: '0006', year: 2026, amount: 0, status: '免除', note: '休会' },
+  { id: '0008', year: 2025, amount: 18000, status: '未納', due: '2025-07-31' },
+  { id: '0008', year: 2026, amount: 18000, status: '未納' },
+];
+test('研修：納入済み・他支部納入済み（本人申告）は参加可、確認中は要確認', () => {
+  const c = ctxOf(KM, KF), t = training({});
+  const j = (id, name) => Logic.judgeApplication({ kind: K[0], id, name }, t, jctx(c));
+  assert.strictEqual(j('1', '架空 桜子').result, '参加可');
+  assert.strictEqual(j('0003', '架空　松美').result, '参加可', '他支部納入済みは参加可（全角空白も同じ氏名）');
+  assert.deepStrictEqual([j('0002', '架空 欅一').result, j('0002', '架空 欅一').reason], ['要確認', '2026年度の会費が確認中です']);
+});
+test('研修：未納は納期限前の開催なら参加可、期限後なら参加不可。前年度の未納も参加不可', () => {
+  const c = ctxOf(KM, KF);
+  const j = (date, id) => Logic.judgeApplication({ kind: K[0], id, name: KM.find(m => m.id === id).name }, training({ date, deadline: '' }), jctx(c));
+  const before = j('2026-07-15', '0004');
+  assert.strictEqual(before.result, '参加可');
+  assert.match(before.reason, /納期限（2026-07-31）前/);
+  assert.strictEqual(j('2026-07-31', '0004').result, '参加可', '納期限の当日は期限内');
+  const after = j('2026-08-01', '0004');
+  assert.deepStrictEqual([after.result], ['参加不可']);
+  assert.match(after.reason, /2026年度の会費が未納（納期限 2026-07-31/);
+  const prev = j('2026-07-15', '0008');
+  assert.strictEqual(prev.result, '参加不可');
+  assert.match(prev.reason, /2025年度の会費が未納[\s\S]*2026年度は未納ですが/);
+  // 年度は開催日で決まる：2027年3月の研修は2026年度
+  assert.strictEqual(j('2027-03-10', '0001').result, '参加可');
+});
+test('研修：休会は参加不可、名簿にない番号・氏名違いは要確認、外部は判定しない', () => {
+  const c = ctxOf(KM, KF), t = training({});
+  const j = a => Logic.judgeApplication(a, t, jctx(c));
+  assert.strictEqual(j({ kind: K[0], id: '0006', name: '架空 楓' }).result, '参加不可');
+  assert.match(j({ kind: K[0], id: '0006', name: '架空 楓' }).reason, /休会/);
+  assert.match(j({ kind: K[0], id: '0099', name: 'だれか' }).reason, /名簿にない/);
+  assert.strictEqual(j({ kind: K[0], id: '', name: 'だれか' }).result, '要確認');
+  const nm = j({ kind: K[0], id: '0001', name: '架空 さくら' });
+  assert.deepStrictEqual([nm.result], ['要確認']);
+  assert.match(nm.reason, /氏名が名簿と違います（名簿：架空 桜子）/);
+  assert.deepStrictEqual(j({ kind: K[1], id: '1234', name: '他支部 花子' }), { result: Logic.EXTERNAL, reason: K[1] });
+  assert.strictEqual(j({ kind: K[2], id: '', name: '一般 次郎' }).result, Logic.EXTERNAL);
+  assert.match(j({ kind: K[1], id: '0001', name: '架空 桜子' }).reason, /区分を確認/);
+  assert.strictEqual(j({ kind: K[0], id: '0005', name: '架空 杉子' }).result, '要確認', '退会者が会員として申込');
+});
+test('研修：その年度の行がない（年度設定あり → 要確認、年度設定前 → 前年度までで判定）', () => {
+  const c = ctxOf(KM, KF);
+  const j = (date, id) => Logic.judgeApplication({ kind: K[0], id, name: KM.find(m => m.id === id).name }, training({ date, deadline: '' }), jctx(c));
+  assert.match(j('2027-05-10', '0001').reason, /2027年度の会費台帳にこの方の行がありません/);
+  const y28 = j('2028-05-10', '0001');
+  assert.deepStrictEqual([y28.result], ['参加可']);
+  assert.match(y28.reason, /設定前/);
+  assert.strictEqual(j('2028-05-10', '0004').result, '参加不可', '前年度までの未納は見る');
+});
+test('研修一覧の検査と受付の状態', () => {
+  const p = Logic.parseTrainings([
+    { row: 2, id: '2026-01', name: '研修A', date: '2026-11-15', deadline: '2026-11-01', capacity: 30, formId: 'f1' },
+    { row: 3, id: '2026-01', name: '', date: '2026/11/1', deadline: '2026-12-01', capacity: -1 },
+    { row: 4, id: '研修1', name: 'B', date: '2026-11-15' },
+  ]);
+  assert.ok(p.list[0].ok);
+  assert.match(p.list[1].errors.join('／'), /重複[\s\S]*研修名[\s\S]*開催日より後[\s\S]*定員/);
+  assert.match(p.list[2].errors.join(), /半角/);
+  const t = p.list[0];
+  assert.strictEqual(Logic.trainingState(t, 0, '2026-10-02'), '受付中');
+  assert.strictEqual(Logic.trainingState(t, 30, '2026-10-02'), '定員到達');
+  assert.strictEqual(Logic.trainingState(t, 0, '2026-11-02'), '締切');
+  assert.strictEqual(Logic.trainingState(t, 0, '2026-11-16'), '終了（開催済み）');
+  assert.strictEqual(Logic.trainingState(Object.assign({}, t, { formId: '' }), 0, '2026-10-02'), 'フォーム未作成');
+  assert.match(Logic.formText(t).description, /開催日：2026-11-15[\s\S]*申込締切：2026-11-01[\s\S]*定員：30名/);
+});
+test('フォームの回答の読み取り（追加の質問は「その他の回答」）', () => {
+  const a = Logic.mapAnswers([['区分', K[0]], ['樹木医登録番号', ' 12 '], ['氏名', '架空 桜子'], ['懇親会', '参加'], ['資料', ['紙', 'PDF']], ['連絡事項', '']]);
+  assert.deepStrictEqual(a, { kind: K[0], id: '12', name: '架空 桜子', org: '', note: '', other: '懇親会：参加\n資料：紙、PDF' });
+});
+test('長期未納：2年度分以上・納期限経過の在籍会員', () => {
+  const c = ctxOf(KM, KF);
+  const l = Logic.longUnpaid(c.members, c.fees, '2026-10-02');
+  assert.deepStrictEqual(l.map(x => [x.id, x.years, x.total]), [['0008', [2025, 2026], 36000]]);
+  assert.deepStrictEqual(Logic.longUnpaid(c.members, c.fees, '2026-07-31'), [], '2026年度の納期限当日まではまだ1年度分');
+});
+
 console.log('\n全 ' + passed + ' 件のテストに合格しました');
