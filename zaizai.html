@@ -160,6 +160,8 @@
   .rec .qline{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 6px}
   .rec .qline .qp{font-size:13px;font-weight:700;color:var(--leaf);background:var(--field);border:1px solid var(--line);border-radius:6px;padding:2px 9px;font-variant-numeric:tabular-nums}
   .rec .qline .qp .lb{font-weight:600;color:var(--bark);margin-right:4px}
+  .backbtn{width:100%;height:46px;margin-bottom:12px;background:var(--card);color:var(--leaf);border:1px solid var(--leaf);border-radius:var(--radius);font-size:15px;font-weight:700;cursor:pointer}
+  .backbtn:hover{background:var(--field)}
   .empty{text-align:center;color:var(--bark);padding:40px 0}
 
   .overlay{position:fixed;inset:0;z-index:60;background:var(--leaf);display:flex;align-items:center;justify-content:center;padding:24px}
@@ -296,6 +298,7 @@
     <span class="lbl">表示</span>
     <span class="seg"><button id="listDenpyo" class="on">一台ごと</button><button id="listSite">現場ごと</button></span>
   </div>
+  <button id="btnListBack" class="backbtn" style="display:none">← 現場一覧にもどる</button>
   <div class="totals" id="totals"></div>
   <div id="recList"></div>
 </main>
@@ -357,6 +360,7 @@ let sites={};                // id -> {cat,contract,site,qty}
 let editDenpyo=null;
 let allRecords=[];
 let listMode='denpyo';       // 'denpyo'（一台ごと） | 'site'（現場ごと）
+let drilledFromSite=false;   // 現場ごと一覧から現場を選んで絞り込み中か
 
 const $=s=>document.querySelector(s);
 const num=v=>{const n=Number(String(v).replace(/[^\d.-]/g,''));return isFinite(n)?n:0;};
@@ -730,13 +734,16 @@ function filteredRows(){ const y=$('#flYear').value,m=$('#flMonth').value,kw=$('
     if(m&&normDate(r.date).slice(5,7)!==m) return false;
     if(kw){ const hay=(r.site+' '+r.siteContract+' '+r.place+' '+r.vehicle+' '+r.type); if(!hay.includes(kw)) return false; } return true; }); }
 function setListMode(m){ listMode=m; $('#listDenpyo').classList.toggle('on',m==='denpyo'); $('#listSite').classList.toggle('on',m==='site'); renderList(); }
-$('#listDenpyo').onclick=()=>setListMode('denpyo'); $('#listSite').onclick=()=>setListMode('site');
+$('#listDenpyo').onclick=()=>{ drilledFromSite=false; setListMode('denpyo'); };
+$('#listSite').onclick=()=>{ drilledFromSite=false; setListMode('site'); };
+$('#btnListBack').onclick=()=>{ drilledFromSite=false; $('#flKeyword').value=''; setListMode('site'); };
 /* 処分量（kg）と単価（円/kg）。単価は 金額÷量 で、民間＝合計金額÷量、公共＝自動で15円/kgになる */
 function fmtKg(kg){ const v=num(kg); return v>0 ? yen(v)+'kg' : '—'; }
 function unitPrice(total,qty){ const q=num(qty); return q>0 ? num(total)/q : null; }
 function fmtUp(up){ if(up==null) return '¥—/kg'; const v = up>=100 ? yen(up) : String(Math.round(up*10)/10); return '¥'+v+'/kg'; }
 function renderList(){
   const rows=filteredRows();
+  $('#btnListBack').style.display = drilledFromSite ? 'block' : 'none';
   const sum=rows.reduce((s,r)=>{ s.amount+=num(r.amount); s.govfee+=num(r.govfee); s.total+=num(r.total); return s; },{amount:0,govfee:0,total:0});
   const headK = listMode==='site' ? '現場数' : '台数（伝票）';
   const headV = listMode==='site'
@@ -785,7 +792,7 @@ function renderBySite(rows){
       <div class="meta"><span class="mtag">民間 ¥${yen(s.amount)}</span><span class="mtag">公共 ¥${yen(s.govfee)}</span></div>
     </div>`;}).join('');
   $('#recList').querySelectorAll('.rec').forEach(el=>{ el.onclick=()=>{
-    $('#flKeyword').value=el.dataset.site; setListMode('denpyo'); }; });
+    drilledFromSite=true; $('#flKeyword').value=el.dataset.site; setListMode('denpyo'); }; });
 }
 ['flYear','flMonth','flKeyword'].forEach(id=>$('#'+id).addEventListener('input',renderList));
 $('#flReload').onclick=()=>loadList(true);
