@@ -69,6 +69,18 @@ input:focus{outline:none; border-bottom-color:var(--leaf)}
 .settled{background:var(--leaf-soft); color:var(--ok); border-radius:6px; padding:2px 7px; font-weight:700}
 .why{flex:1}
 .del{margin-left:auto; background:none; border:none; color:var(--danger); font-size:12px; cursor:pointer}
+.we{margin-top:8px; font-size:12.5px; font-weight:700; border-radius:8px; padding:6px 10px; display:flex; align-items:center; gap:6px}
+.we.cash{background:var(--leaf-soft); color:var(--leaf)}
+.we.nocash{background:var(--field); color:var(--bark); font-weight:600}
+.mtbl-wrap{overflow-x:auto; -webkit-overflow-scrolling:touch}
+.mtbl{width:100%; border-collapse:collapse; font-size:13px}
+.mtbl th,.mtbl td{padding:7px 8px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap}
+.mtbl th{color:var(--bark); font-weight:700; font-size:12px; background:var(--field)}
+.mtbl td.r,.mtbl th.r{text-align:right; font-variant-numeric:tabular-nums}
+.mtbl td.store{max-width:120px; overflow:hidden; text-overflow:ellipsis}
+.mtbl .cat-dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle}
+.mtbl tr.foot td{font-weight:800; border-top:2px solid var(--leaf-soft); border-bottom:none; font-size:14px}
+.mtbl .pay-s{font-size:11px; color:var(--bark)}
 .sum-h{font-weight:700; margin-bottom:10px}
 .sum-row{display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px dashed var(--line)}
 .dot{width:10px; height:10px; border-radius:50%; flex:0 0 auto}
@@ -167,6 +179,11 @@ input:focus{outline:none; border-bottom-color:var(--leaf)}
     <p class="note">「清算する」を押すと、その分が財布の現金残高から引かれます。</p>
   </section>
 
+  <section class="card" id="monthTableCard" hidden>
+    <div class="sum-h">今月の一覧（月締め用）</div>
+    <div class="mtbl-wrap"><table class="mtbl" id="monthTable"></table></div>
+  </section>
+
   <section class="card close-card" id="closeCard" hidden>
     <div class="sum-h">月締め</div>
     <p class="note" style="text-align:left">締めると、この月の記録が「確定」になります。残高は締めなくても翌月へ自動でつながるので、繰り越しの操作はいりません。未清算の立て替えは翌月に残ります。</p>
@@ -257,7 +274,30 @@ function calc(){
 }
 
 /* ===== 描画 ===== */
-function renderAll(){ renderStaff(); renderPending(); renderList(); renderSummary(); renderWallet(); renderOwed(); renderClose(); }
+function renderAll(){ renderStaff(); renderPending(); renderList(); renderMonthTable(); renderSummary(); renderWallet(); renderOwed(); renderClose(); }
+
+/* 今月の一覧表（日付・店・費目・支払い・金額） */
+function dateKey(s){ const m=String(s||"").match(/(\d{1,2})\D+(\d{1,2})/); return m?(("0"+m[1]).slice(-2)+("0"+m[2]).slice(-2)):"9999"; }
+function renderMonthTable(){
+  const recs=state.records.slice().sort((a,b)=>dateKey(a.date).localeCompare(dateKey(b.date)));
+  $("monthTableCard").hidden = recs.length===0;
+  if(!recs.length){ $("monthTable").innerHTML=""; return; }
+  let total=0;
+  const body=recs.map(r=>{ const a=Number(r.amount)||0; total+=a;
+    const c=CAT_C[r.category]||"#bbb";
+    const pay=PAY_LBL[r.pay]||""; const paySub=(r.pay==="advance"&&!r.settled)?"<span class=\"pay-s\">未清算</span>":"";
+    return `<tr>
+      <td>${esc(r.date||"—")}</td>
+      <td class="store">${esc(r.store||"—")}</td>
+      <td>${r.category?`<span class="cat-dot" style="background:${c}"></span>${esc(r.category)}`:"—"}</td>
+      <td>${pay}${paySub}</td>
+      <td class="r">${yen(a)}</td>
+    </tr>`;}).join("");
+  $("monthTable").innerHTML=
+    `<thead><tr><th>日付</th><th>店</th><th>費目</th><th>支払い</th><th class="r">金額</th></tr></thead>`+
+    `<tbody>${body}</tbody>`+
+    `<tfoot><tr class="foot"><td colspan="4">合計（${recs.length}件）</td><td class="r">${yen(total)}</td></tr></tfoot>`;
+}
 
 function renderStaff(){ $("staffList").innerHTML = staff.map(n=>`<option value="${esc(n)}">`).join(""); }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
@@ -270,6 +310,14 @@ function payHTML(r){
   if(r.pay==="advance") h+=`<input class="who-in" list="staffList" data-act="who" data-id="${r.id}" value="${esc(r.who||"")}" placeholder="立て替えた人">`;
   return h;
 }
+function walletEffectHTML(r){
+  const a=Number(r.amount)||0;
+  if(r.pay==="cash") return `<div class="we cash">💰 財布から引く　−${yen(a)}</div>`;
+  if(r.pay==="advance") return r.settled
+      ? `<div class="we cash">💰 立替を清算済 → 財布から引いた　−${yen(a)}</div>`
+      : `<div class="we nocash">立替（いまは財布から引かない／あとで清算）</div>`;
+  return `<div class="we nocash">カード（財布は変わりません）</div>`;
+}
 function recCardHTML(r){
   return `<div class="rc"><div class="rc-body">
     <input class="store-in" data-act="store" data-id="${r.id}" value="${esc(r.store||"")}" placeholder="店名">
@@ -279,6 +327,7 @@ function recCardHTML(r){
       ${r.items&&r.items.length?`<span class="items">${esc(r.items.slice(0,4).join("・"))}</span>`:""}</div>
     <div class="chips">${chipsHTML(r)}</div>
     <div class="pay-row">${payHTML(r)}</div>
+    ${walletEffectHTML(r)}
     <div class="why-row">${r.why?`<span class="why">${esc(r.why)}</span>`:`<span class="why"></span>`}
       ${r.pay==="advance"&&r.settled?`<span class="settled">清算済</span>`:""}
       <button class="del" data-act="delrec" data-id="${r.id}">削除</button></div>
