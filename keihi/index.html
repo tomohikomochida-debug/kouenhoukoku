@@ -314,8 +314,9 @@ function walletEffectHTML(r){
   const a=Number(r.amount)||0;
   if(r.pay==="cash") return `<div class="we cash">💰 財布から引く　−${yen(a)}</div>`;
   if(r.pay==="advance") return r.settled
-      ? `<div class="we cash">💰 立替を清算済 → 財布から引いた　−${yen(a)}</div>`
-      : `<div class="we nocash">立替（いまは財布から引かない／あとで清算）</div>`;
+      ? `<div class="we cash">💰 立替を精算済 → 財布から −${yen(a)}</div>`
+      : `<div class="we nocash">立替：その場で精算すると財布から引かれます
+          <button class="btn primary sm" style="margin-left:auto" data-act="settleone" data-id="${r.id}">その場で精算</button></div>`;
   return `<div class="we nocash">カード（財布は変わりません）</div>`;
 }
 function recCardHTML(r){
@@ -407,6 +408,7 @@ document.addEventListener("click", async (e)=>{
     state.adjustments=state.adjustments.filter(x=>String(x.id)!==String(id)); renderWallet();
     try{ await apiPost({mode:"deleteAdjustment",id}); load(); }catch(e){ commErr(); } }
   else if(act==="settle"){ await settle(b.dataset.who); }
+  else if(act==="settleone"){ await settleOne(id); }
   else if(act==="retry"){ const p=pending.find(x=>x.tempId==b.dataset.tid); if(p){p.status="reading";renderPending();analyze(p);} }
   else if(act==="pmanual"){ const p=pending.find(x=>x.tempId==b.dataset.tid); pending=pending.filter(x=>x!==p); renderPending(); await addManual(); }
   else if(act==="pdel"){ pending=pending.filter(x=>x.tempId!=b.dataset.tid); renderPending(); }
@@ -466,6 +468,12 @@ $("countBtn").onclick=async ()=>{
   finally{ btn.disabled=false; }
 };
 
+async function settleOne(id){
+  const r=rec(id); if(!r) return;
+  if(!confirm("このレシート "+yen(r.amount)+" を、その場で財布から渡して精算済みにします。よろしいですか？")) return;
+  r.settled=true; renderAll();
+  await saveRec(id,{settled:true});
+}
 async function settle(who){
   state.records.forEach(r=>{ if(r.pay==="advance"&&!r.settled&&(r.who||"（名前なし）")===who) r.settled=true; });
   renderAll();
