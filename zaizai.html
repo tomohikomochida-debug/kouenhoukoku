@@ -156,6 +156,10 @@
   .rec .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
   .rec .mtag{font-size:12px;background:var(--field);border:1px solid var(--line);border-radius:6px;padding:2px 8px;color:var(--bark)}
   .rec .mtag.t{border-color:var(--tape);color:var(--tape)}
+  .rec .mtag.a{border-color:var(--leaf);color:var(--leaf);font-weight:700}
+  .rec .qline{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 6px}
+  .rec .qline .qp{font-size:13px;font-weight:700;color:var(--leaf);background:var(--field);border:1px solid var(--line);border-radius:6px;padding:2px 9px;font-variant-numeric:tabular-nums}
+  .rec .qline .qp .lb{font-weight:600;color:var(--bark);margin-right:4px}
   .empty{text-align:center;color:var(--bark);padding:40px 0}
 
   .overlay{position:fixed;inset:0;z-index:60;background:var(--leaf);display:flex;align-items:center;justify-content:center;padding:24px}
@@ -660,7 +664,9 @@ function openPreview(){
   html+=`<div class="pv-row"><span class="k">種類</span><span class="v">${types||'—'}</span></div>`;
   html+=`<div class="pv-row"><span class="k">処分場所</span><span class="v">${place||'—'}</span></div>`;
   html+=`<div class="pv-row"><span class="k">使用車両</span><span class="v">${veh||'—'}</span></div>`;
+  html+=`<div class="pv-row"><span class="k">記入者</span><span class="v">${author||'—'}</span></div>`;
   html+=`<div class="pv-row"><span class="k">民間処分費 / 公共ぶん</span><span class="v">¥${yen(t.amount)} / ¥${yen(t.govfee)}</span></div>`;
+  html+=`<div class="pv-row"><span class="k">処分量 / 単価</span><span class="v">${fmtKg(t.qtyKg)} / ${fmtUp(unitPrice(t.total,t.qtyKg))}</span></div>`;
   html+=`<div class="pv-row big"><span class="k">集計用金額（合計）</span><span class="v">¥${yen(t.total)}</span></div>`;
   $('#pvBody').innerHTML=html;
   $('#pvTitle').textContent=editDenpyo?'この内容に更新します':'この内容で記録します';
@@ -725,6 +731,10 @@ function filteredRows(){ const y=$('#flYear').value,m=$('#flMonth').value,kw=$('
     if(kw){ const hay=(r.site+' '+r.siteContract+' '+r.place+' '+r.vehicle+' '+r.type); if(!hay.includes(kw)) return false; } return true; }); }
 function setListMode(m){ listMode=m; $('#listDenpyo').classList.toggle('on',m==='denpyo'); $('#listSite').classList.toggle('on',m==='site'); renderList(); }
 $('#listDenpyo').onclick=()=>setListMode('denpyo'); $('#listSite').onclick=()=>setListMode('site');
+/* 処分量（kg）と単価（円/kg）。単価は 金額÷量 で、民間＝合計金額÷量、公共＝自動で15円/kgになる */
+function fmtKg(kg){ const v=num(kg); return v>0 ? yen(v)+'kg' : '—'; }
+function unitPrice(total,qty){ const q=num(qty); return q>0 ? num(total)/q : null; }
+function fmtUp(up){ if(up==null) return '¥—/kg'; const v = up>=100 ? yen(up) : String(Math.round(up*10)/10); return '¥'+v+'/kg'; }
 function renderList(){
   const rows=filteredRows();
   const sum=rows.reduce((s,r)=>{ s.amount+=num(r.amount); s.govfee+=num(r.govfee); s.total+=num(r.total); return s; },{amount:0,govfee:0,total:0});
@@ -746,25 +756,34 @@ function renderList(){
     return {k,date,tot,g}; }).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   $('#recList').innerHTML=cards.map(c=>{
     const r0=c.g[0];
+    const qtyKg=c.g.reduce((a,r)=>a+num(r.qty),0);
+    const up=unitPrice(c.tot,qtyKg);
+    const kind=c.g.some(r=>num(r.amount)>0)?'民間':(c.g.some(r=>num(r.govfee)>0)?'公共':'');
     const slines=c.g.map(r=>`<div class="sline"><span class="nm">${(r.site||'(現場未選択)').replace(/</g,'&lt;')}</span><span class="sv">¥${yen(num(r.total))}</span></div>`).join('');
-    const tags=[]; if(r0.type) tags.push(`<span class="mtag t">${r0.type}</span>`);
+    const qline=`<div class="qline"><span class="qp"><span class="lb">処分量</span>${fmtKg(qtyKg)}</span><span class="qp"><span class="lb">単価</span>${fmtUp(up)}${kind?'（'+kind+'）':''}</span></div>`;
+    const tags=[]; if(r0.author) tags.push(`<span class="mtag a">記入 ${String(r0.author).replace(/</g,'&lt;')}</span>`);
+    if(r0.type) tags.push(`<span class="mtag t">${r0.type}</span>`);
     if(r0.place) tags.push(`<span class="mtag">${r0.place}</span>`); if(r0.vehicle) tags.push(`<span class="mtag">${r0.vehicle}</span>`);
     return `<div class="rec" data-k="${c.k}"><div class="top"><span class="date">${c.date}</span><span class="amt">¥${yen(c.tot)}</span></div>
-      <div class="sites">${slines}</div><div class="meta">${tags.join('')}</div></div>`;
+      <div class="sites">${slines}</div>${qline}<div class="meta">${tags.join('')}</div></div>`;
   }).join('');
   $('#recList').querySelectorAll('.rec').forEach(el=>{ el.onclick=()=>openEdit(el.dataset.k); });
 }
 function renderBySite(rows){
   const map={};
-  rows.forEach(r=>{ const k=r.site||'(現場未選択)'; if(!map[k]) map[k]={amount:0,govfee:0,total:0,cnt:0};
-    map[k].amount+=num(r.amount); map[k].govfee+=num(r.govfee); map[k].total+=num(r.total); map[k].cnt++; });
+  rows.forEach(r=>{ const k=r.site||'(現場未選択)'; if(!map[k]) map[k]={amount:0,govfee:0,total:0,qty:0,cnt:0};
+    map[k].amount+=num(r.amount); map[k].govfee+=num(r.govfee); map[k].total+=num(r.total); map[k].qty+=num(r.qty); map[k].cnt++; });
   const arr=Object.keys(map).map(k=>Object.assign({site:k},map[k])).sort((a,b)=>b.total-a.total);
-  $('#recList').innerHTML=arr.map(s=>`
+  $('#recList').innerHTML=arr.map(s=>{
+    const up=unitPrice(s.total,s.qty);
+    const qline=`<div class="qline"><span class="qp"><span class="lb">処分量</span>${fmtKg(s.qty)}</span><span class="qp"><span class="lb">単価</span>${fmtUp(up)}</span></div>`;
+    return `
     <div class="rec" data-site="${s.site.replace(/"/g,'&quot;')}">
       <div class="top"><span class="date">${s.cnt}件</span><span class="amt">¥${yen(s.total)}</span></div>
       <div class="sites"><div class="sline"><span class="nm">${s.site.replace(/</g,'&lt;')}</span></div></div>
+      ${qline}
       <div class="meta"><span class="mtag">民間 ¥${yen(s.amount)}</span><span class="mtag">公共 ¥${yen(s.govfee)}</span></div>
-    </div>`).join('');
+    </div>`;}).join('');
   $('#recList').querySelectorAll('.rec').forEach(el=>{ el.onclick=()=>{
     $('#flKeyword').value=el.dataset.site; setListMode('denpyo'); }; });
 }
