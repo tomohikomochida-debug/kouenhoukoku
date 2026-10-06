@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="道具管理">
+<meta name="theme-color" content="#214A37">
+<title>道具管理｜庭乃持田園</title>
+<style>
+:root{
+  --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7; --ok:#2E7D55;
+  --tape:#C77C30; --bark:#5B5750; --ink:#22231F; --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F;
+  --radius:10px; --shadow:0 1px 0 rgba(34,35,31,.04), 0 8px 24px -16px rgba(34,35,31,.25);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif;
+  -webkit-text-size-adjust:100%;line-height:1.6}
+.tnum{font-variant-numeric:tabular-nums}
+header{background:var(--leaf);color:#fff;padding:12px 16px calc(12px);position:sticky;top:0;z-index:20;
+  padding-top:calc(12px + env(safe-area-inset-top))}
+header .row{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;flex:1;letter-spacing:.04em}
+header .me{font-size:13px;background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:999px;padding:5px 12px}
+.demo-bar{background:var(--tape);color:#fff;font-size:12.5px;text-align:center;padding:5px 12px}
+main{max-width:680px;margin:0 auto;padding:14px 16px calc(96px + env(safe-area-inset-bottom))}
+.error-banner{display:none;background:var(--danger);color:#fff;padding:10px 16px;font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+h2{font-size:15px;margin:4px 0 10px;color:var(--leaf)}
+.hint{font-size:12.5px;color:var(--bark);margin:4px 0 0}
+label.lbl{display:block;font-size:13px;font-weight:600;color:var(--bark);margin:0 0 6px}
+input[type=text],input[type=search],textarea,select{width:100%;font:inherit;font-size:16px;padding:11px 12px;
+  border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink)}
+textarea{min-height:64px;resize:vertical}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--leaf);outline-offset:1px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-size:15px;font-weight:600;
+  border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:11px 16px;min-height:46px;cursor:pointer}
+.btn.primary{background:var(--leaf);color:#fff;border-color:var(--leaf)}
+.btn.ok{background:var(--ok);color:#fff;border-color:var(--ok)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.block{width:100%}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.sm{min-height:36px;padding:6px 12px;font-size:13.5px}
+.row2{display:flex;gap:8px}
+.row2>*{flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--field);border-radius:999px;padding:7px 13px;font-size:14px;cursor:pointer;color:var(--ink);font-family:inherit}
+.chip.on{background:var(--leaf-soft);border-color:var(--leaf);color:var(--leaf);font-weight:700}
+.tag{display:inline-block;font-size:11.5px;border-radius:6px;padding:1px 7px;margin-left:4px;vertical-align:1px}
+.tag.mis{background:#F6E7D8;color:#8A4F17}
+.tag.wait{background:#EEE;color:var(--bark)}
+.tag.loc{background:var(--leaf-soft);color:var(--leaf)}
+.tag.out{background:#F4DED8;color:var(--danger)}
+.searchbox{display:flex;gap:8px}
+.searchbox input{flex:1}
+.mic{width:50px;min-width:50px;padding:0;font-size:20px}
+.tool{display:flex;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);margin-bottom:8px;cursor:pointer;width:100%;text-align:left;font:inherit;color:inherit}
+.tool .ph{width:60px;height:60px;border-radius:8px;background:var(--leaf-soft);flex:none;display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden}
+.tool .ph img{width:100%;height:100%;object-fit:cover}
+.tool .nm{font-weight:700;font-size:15.5px}
+.tool .nm small{font-weight:400;color:var(--bark);font-size:13px}
+.tool .sub{font-size:12.5px;color:var(--bark)}
+.sec-title{font-size:13px;font-weight:700;color:var(--bark);margin:14px 2px 8px}
+.maybe{border-left:4px solid var(--tape);padding-left:10px}
+.empty{color:var(--bark);text-align:center;padding:22px 10px;font-size:14px}
+.photo-box{border:2px dashed var(--line);border-radius:10px;min-height:150px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--field);margin-bottom:8px}
+.photo-box img{max-width:100%;max-height:260px;display:block}
+.qty{display:flex;align-items:center;gap:10px}
+.qty button{width:52px;height:46px;font-size:22px}
+.qty .n{font-size:22px;font-weight:700;min-width:40px;text-align:center}
+.step{display:flex;gap:10px;margin-bottom:14px}
+.step .no{flex:none;width:26px;height:26px;border-radius:50%;background:var(--tape);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:2px}
+.step .bd{flex:1;min-width:0}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);z-index:30;
+  padding-bottom:env(safe-area-inset-bottom)}
+nav.tabs .in{max-width:680px;margin:0 auto;display:flex}
+nav.tabs button{flex:1;border:0;background:none;font:inherit;font-size:11.5px;color:var(--bark);padding:8px 0 7px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;position:relative}
+nav.tabs button .ic{font-size:21px;line-height:1.1}
+nav.tabs button.on{color:var(--leaf);font-weight:700}
+nav.tabs .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--danger);color:#fff;font-size:10.5px;border-radius:999px;padding:0 6px;min-width:18px}
+.modal-bg{position:fixed;inset:0;background:rgba(34,35,31,.45);z-index:50;display:none;align-items:flex-end;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--paper);width:100%;max-width:680px;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.modal h3{margin:0 0 12px;font-size:17px;color:var(--leaf)}
+.detail-ph{width:100%;max-height:300px;object-fit:contain;border-radius:10px;background:var(--leaf-soft);display:block;margin-bottom:12px}
+.big-ph{height:160px;border-radius:10px;background:var(--leaf-soft);display:flex;align-items:center;justify-content:center;font-size:60px;margin-bottom:12px}
+dl.kv{display:grid;grid-template-columns:88px 1fr;gap:6px 10px;margin:0 0 12px;font-size:14px}
+dl.kv dt{color:var(--bark)}
+dl.kv dd{margin:0}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%}
+.toast.show{opacity:1}
+.loading{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+.btn:not(.primary):not(.ok) .loading{border-color:var(--line);border-top-color:var(--leaf)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
+.seg button{flex:1;border:0;background:var(--card);font:inherit;font-size:13.5px;padding:9px 4px;cursor:pointer;color:var(--bark)}
+.seg button.on{background:var(--leaf);color:#fff;font-weight:700}
+.miss-box{background:#FBF1E6;border:1px solid #EBCFAE;border-radius:10px;padding:12px;margin-bottom:12px;font-size:14px}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="error-banner" id="errBanner"></div>
+<header><div class="row"><h1>🧰 道具管理</h1><button class="me" id="meBtn" type="button">名前を選ぶ</button></div></header>
+<div class="demo-bar" id="demoBar" hidden>お試しモード：データはこのスマホの中だけに保存されます（AI判定は簡易版）。名前・呼び方は用語集アプリと共有</div>
+
+<main>
+  <!-- 探す -->
+  <section id="tab-search">
+    <div class="card">
+      <h2>道具を探す</h2>
+      <div class="searchbox">
+        <input type="search" id="q" placeholder="名前・呼び方・聞いた言葉" autocomplete="off" enterkeyhint="search">
+        <button class="btn mic" type="button" data-mic="q" aria-label="音声で入力">🎤</button>
+      </div>
+      <p class="hint" id="micHint" hidden>キーボードのマイク🎤を押して話してください</p>
+      <p class="hint">聞き間違えた言葉や「柄の長い木づち」のような説明でも探せます。</p>
+    </div>
+    <div id="results"></div>
+  </section>
+
+  <!-- 登録 -->
+  <section id="tab-reg" hidden>
+    <div class="card">
+      <h2>道具を登録する</h2>
+      <div class="step"><div class="no">1</div><div class="bd">
+        <label class="lbl">保管場所</label>
+        <div class="chips" id="locChips"></div>
+        <input type="text" id="locNew" placeholder="一覧にない場所を入力（例：2F-C-3段目）" style="margin-top:8px" hidden>
+        <p class="hint">棚のQRラベルを読むと、ここが自動で入ります。</p>
+      </div></div>
+      <div class="step"><div class="no">2</div><div class="bd">
+        <label class="lbl">写真</label>
+        <div class="photo-box" id="photoBox"><span class="hint">道具を1枚撮ってください</span></div>
+        <div class="row2">
+          <button class="btn" type="button" id="camBtn">📷 撮影</button>
+          <button class="btn" type="button" id="libBtn">🖼 選ぶ</button>
+        </div>
+        <input type="file" id="camFile" accept="image/*" capture="environment" hidden>
+        <input type="file" id="libFile" accept="image/*" hidden>
+      </div></div>
+      <div class="step"><div class="no">3</div><div class="bd">
+        <label class="lbl">名前（普段の呼び方でOK）</label>
+        <div class="searchbox">
+          <input type="text" id="regName" placeholder="例：パチン、バリカン、かけや" autocomplete="off">
+          <button class="btn mic" type="button" data-mic="regName" aria-label="音声で入力">🎤</button>
+        </div>
+      </div></div>
+      <div class="step"><div class="no">4</div><div class="bd">
+        <label class="lbl">数量</label>
+        <div class="qty"><button class="btn" type="button" id="qMinus">－</button><span class="n tnum" id="qN">1</span><button class="btn" type="button" id="qPlus">＋</button></div>
+      </div></div>
+      <button class="btn primary block" type="button" id="regNext" disabled>確認する</button>
+      <p class="hint" style="text-align:center">AIが写真と名前から、登録済みの道具と同じかを確かめます。</p>
+    </div>
+  </section>
+
+  <!-- 辞典 -->
+  <section id="tab-dict" hidden>
+    <div class="seg" id="dictSeg">
+      <button type="button" class="on" data-v="kana">名前順</button>
+      <button type="button" data-v="loc">場所ごと</button>
+      <button type="button" data-v="mis">間違えやすい言葉</button>
+    </div>
+    <div id="dictList"></div>
+  </section>
+
+  <!-- 確認（管理者） -->
+  <section id="tab-review" hidden>
+    <div class="sec-title">新しく登録された道具（未確認）</div>
+    <div id="revTools"></div>
+    <div class="sec-title">承認待ちの呼び方</div>
+    <div id="revAliases"></div>
+  </section>
+</main>
+
+<nav class="tabs"><div class="in">
+  <button type="button" data-tab="search" class="on"><span class="ic">🔍</span>探す</button>
+  <button type="button" data-tab="reg"><span class="ic">＋</span>登録</button>
+  <button type="button" data-tab="dict"><span class="ic">📖</span>呼び方辞典</button>
+  <button type="button" data-tab="review" id="tabReview" hidden><span class="ic">✔</span>確認<span class="badge" id="revBadge" hidden>0</span></button>
+</div></nav>
+
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ 設定 ============ */
+// 道具管理GAS（保管場所・数量・写真）と、用語集GAS（名前・呼び方＝言葉のマスタ）のURL。
+// どちらかが空のままだと「お試しモード」（このスマホの中だけで動く）
+const GAS_URL = '';
+const YOUGO_URL = '';
+const YOUGO_PAGE = 'yougo.html';
+// 名簿（スタッフ）を取る日報GAS
+const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
+const DEMO = !GAS_URL || !YOUGO_URL;
+// words は用語集アプリのお試しデータと同じ場所（同じサイト上なら2つのアプリで共有される）
+const LS = { me: 'dougu_me', admin: 'dougu_admin', draft: 'dougu_draft', tools: 'dougu_demo_v3', words: 'yougo_demo_v1', cache: 'dougu_cache' };
+const NET_ERR = '電波を確認して、もう一度お試しください';
+const TOOL_CATS = ['道具', '資材'];
+
+/* ============ 小道具 ============ */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function lsGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2400); }
+function showError(msg) { const b = $('errBanner'); b.textContent = '⚠️ ' + msg; b.style.display = 'block'; }
+window.addEventListener('error', e => showError('画面の処理でエラー：' + (e.message || '')));
+function now() { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+
+/* ============ 文字のゆれ・音の近さ（用語集アプリと同じ仕組み） ============ */
+const SMALL = { 'ぁ': 'あ', 'ぃ': 'い', 'ぅ': 'う', 'ぇ': 'え', 'ぉ': 'お', 'っ': 'つ', 'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'ゎ': 'わ' };
+function toHira(s) { return String(s || '').replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)); }
+function isKana(s) { return /^[ぁ-ゖァ-ーー\s]+$/.test(String(s || '')); }
+function norm(s) { return toHira(String(s || '').normalize('NFKC').toLowerCase()).replace(/[\s・･,，、。.\-－_/／（）()「」『』]/g, ''); }
+function loose(s) { return norm(s).normalize('NFD').replace(/[゙゚]/g, '').normalize('NFC').replace(/[ぁぃぅぇぉっゃゅょゎ]/g, c => SMALL[c]).replace(/ー/g, ''); }
+function lev(a, b) {
+  if (a === b) return 0; const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j), cur = new Array(n + 1);
+  for (let i = 1; i <= m; i++) { cur[0] = i; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); [prev, cur] = [cur, prev]; }
+  return prev[n];
+}
+
+/* ============ お試し用データ（用語集の「道具」「資材」の言葉と、道具マスタ） ============ */
+const SEED_WORDS = {
+  terms: [["Y0153","剪定鋏","せんていばさみ","道具","片手で使う小型の鋏、太めの枝も切れる。","","","T0001"],
+    ["Y0154","木鋏","きばさみ","道具","輪の持ち手の鋏、細かい枝や葉の整え用。","","","T0002"],
+    ["Y0155","芽切鋏","めきりばさみ","道具","刃先の細い小さな鋏、芽摘み・松の手入れ用。","","","T0003"],
+    ["Y0156","刈込鋏","かりこみばさみ","道具","両手で使う刃の長い鋏、生垣・玉物の刈込み。","","","T0004"],
+    ["Y0157","剪定鋸","せんていのこぎり","道具","枝を切る細身のノコギリ、腰に下げる。","","","T0005"],
+    ["Y0158","両刃鋸","りょうばのこぎり","道具","刃が両側にある大工用ノコギリ、丸太や竹を切る。","","","T0006"],
+    ["Y0159","高枝切鋏","たかえだきりばさみ","道具","柄の長い鋏、脚立が届かない高い枝用。","","","T0007"],
+    ["Y0160","高枝鋸","たかえだのこぎり","道具","伸縮する長い柄の先にノコギリ。","","","T0008"],
+    ["Y0161","草刈鎌","くさかりがま","道具","草を刈る片手の鎌。","","","T0009"],
+    ["Y0162","ヘッジトリマー","へっじとりまー","道具","生垣の刈込み用、エンジン式の長い刃。","","","T0010"],
+    ["Y0163","チェーンソー","ちぇーんそー","道具","エンジン式の木を切る機械、伐採・玉切り。","","","T0011"],
+    ["Y0164","トップハンドルソー","とっぷはんどるそー","道具","片手で扱える小型のチェーンソー、木の上の作業用。","","","T0012"],
+    ["Y0165","刈払機","かりばらいき","道具","肩に掛けて回転刃で草を刈る機械。","","","T0013"],
+    ["Y0166","ブロワー","ぶろわー","道具","風で落ち葉や刈りカスを吹き飛ばす機械。","","","T0014"],
+    ["Y0167","動力噴霧器","どうりょくふんむき","道具","エンジンで薬剤を散布する機械、ホース付き。","","","T0015"],
+    ["Y0168","背負い式噴霧器","せおいしきふんむき","道具","背中に背負って手で薬剤を撒くタンク。","","","T0016"],
+    ["Y0169","唐鍬","とうぐわ","道具","刃が厚く重い鍬、根切り・抜根・固い土の掘り起こし。","","","T0017"],
+    ["Y0170","ツルハシ","つるはし","道具","両側がとがった掘削用具、石混じりの土を砕く。","","","T0018"],
+    ["Y0171","剣先スコップ","けんさきすこっぷ","道具","先がとがったスコップ、植え穴掘り用。","","","T0019"],
+    ["Y0172","角スコップ","かくすこっぷ","道具","先が平らなスコップ、土やゴミをすくう。","","","T0020"],
+    ["Y0173","移植ゴテ","いしょくごて","道具","片手で使う小さなスコップ、草花の植え付け。","","","T0021"],
+    ["Y0174","レーキ","れーき","道具","鉄の爪が並んだ道具、土をならす・石を集める。","","","T0022"],
+    ["Y0175","熊手","くまで","道具","落ち葉をかき集める扇形の道具。","","","T0023"],
+    ["Y0176","竹箒","たけぼうき","道具","竹の枝で作ったほうき、仕上げの掃除。","","","T0024"],
+    ["Y0177","手箕","てみ","道具","取っ手付きの浅いちりとり型のかご、ゴミ運び。","","","T0025"],
+    ["Y0178","一輪車","いちりんしゃ","道具","車輪1つの手押し車、土や枝の運搬。","","","T0026"],
+    ["Y0179","掛矢","かけや","道具","柄の長い大きな木づち、支柱の杭打ち用。","","","T0027"],
+    ["Y0180","大ハンマー","おおはんまー","道具","鉄の重いハンマー、杭打ち・石割り。","","","T0028"],
+    ["Y0181","突き棒","つきぼう","道具","植え付け時に土を突き固める棒。","","","T0029"],
+    ["Y0182","バール","ばーる","道具","先が曲がった鉄の棒、てこで持ち上げ・釘抜き。","","","T0030"],
+    ["Y0183","シノ","しの","道具","番線をねじって締める先のとがった工具。","","","T0031"],
+    ["Y0184","番線カッター","ばんせんかったー","道具","番線（太い針金）を切る大きなペンチ。","","","T0032"],
+    ["Y0185","三脚脚立","さんきゃくきゃたつ","道具","植木用の3本足の脚立、生垣の中にも立てられる。","","","T0033"],
+    ["Y0186","四脚脚立","よんきゃくきゃたつ","道具","4本足のアルミ脚立、平らな地面用。","","","T0034"],
+    ["Y0187","梯子","はしご","道具","伸縮する梯子、高木に掛ける。","","","T0035"],
+    ["Y0188","フルハーネス","ふるはーねす","道具","高所作業で体を支える墜落防止の器具。","","","T0036"],
+    ["Y0189","カラーコーン","からーこーん","道具","道路作業の区画に置く円すいの標識。","","","T0037"],
+    ["Y0190","コーンバー","こーんばー","道具","カラーコーン同士をつなぐ棒。","","","T0038"],
+    ["Y0191","シュロ縄","しゅろなわ","資材","支柱や竹垣の結束に使う黒い縄。","","","T0039"],
+    ["Y0192","杉皮","すぎかわ","資材","支柱を結ぶ所の幹に巻いて傷を防ぐ皮。","","","T0040"],
+    ["Y0193","番線","ばんせん","資材","支柱の固定などに使う太い針金（巻き）。","","","T0041"],
+    ["Y0194","幹巻きテープ","みきまきてーぷ","資材","植え付け後の幹を日焼けや乾燥から守るテープ。","","","T0042"],
+    ["Y0195","土嚢袋","どのうぶくろ","資材","土や刈りカスを入れる袋。","","","T0043"],
+    ["Y0196","ブルーシート","ぶるーしーと","資材","作業時に下に敷く青いシート。","","","T0044"],
+    ["Y0197","丸太","まるた","資材","皮をむいた細い木の幹。支柱に使う。","「八ツ掛け用の丸太を10本」","八ツ掛け",""],
+    ["Y0198","支柱竹","しちゅうたけ","資材","支柱や布掛けに使う真竹などの竹。","「竹屋で竹12本」","支柱・布掛け",""]],
+  aliases: [["パチン","ぱちん","Y0153","社内呼び"],
+    ["はさみ","はさみ","Y0153","略称"],
+    ["剪定バサミ","せんていばさみ","Y0153","別名"],
+    ["植木鋏","うえきばさみ","Y0154","別名"],
+    ["わらび手","わらびて","Y0154","別名"],
+    ["芽切り","めきり","Y0155","略称"],
+    ["芽切りばさみ","めきりばさみ","Y0155","別名"],
+    ["両手","りょうて","Y0156","社内呼び"],
+    ["刈込","かりこみ","Y0156","略称"],
+    ["両手鋏","りょうてばさみ","Y0156","別名"],
+    ["ノコ","のこ","Y0157","略称"],
+    ["腰ノコ","こしのこ","Y0157","別名"],
+    ["ノコ","のこ","Y0158","略称"],
+    ["高枝","たかえだ","Y0159","社内呼び"],
+    ["高ノコ","たかのこ","Y0160","社内呼び"],
+    ["ポールソー","ぽーるそー","Y0160","別名"],
+    ["鎌","かま","Y0161","略称"],
+    ["バリカン","ばりかん","Y0162","社内呼び"],
+    ["トリマー","とりまー","Y0162","略称"],
+    ["ヘッジ","へっじ","Y0162","略称"],
+    ["チェンソー","ちぇんそー","Y0163","社内呼び"],
+    ["チェーン","ちぇーん","Y0163","略称"],
+    ["トップハン","とっぷはん","Y0164","社内呼び"],
+    ["小チェン","こちぇん","Y0164","社内呼び"],
+    ["草刈機","くさかりき","Y0165","別名"],
+    ["ビーバー","びーばー","Y0165","社内呼び"],
+    ["草刈り","くさかり","Y0165","略称"],
+    ["刈り払い","かりはらい","Y0165","略称"],
+    ["ブロア","ぶろあ","Y0166","別名"],
+    ["送風機","そうふうき","Y0166","別名"],
+    ["動噴","どうふん","Y0167","社内呼び"],
+    ["消毒機","しょうどくき","Y0167","社内呼び"],
+    ["背負い","せおい","Y0168","社内呼び"],
+    ["噴霧器","ふんむき","Y0168","略称"],
+    ["からくわ","からくわ","Y0169","聞き間違い"],
+    ["とんが","とんが","Y0169","社内呼び"],
+    ["唐鍬","からぐわ","Y0169","別名"],
+    ["つるはし","つるはし","Y0170","別名"],
+    ["ピック","ぴっく","Y0170","別名"],
+    ["スコップ","すこっぷ","Y0171","社内呼び"],
+    ["剣スコ","けんすこ","Y0171","略称"],
+    ["シャベル","しゃべる","Y0171","別名"],
+    ["角スコ","かくすこ","Y0172","略称"],
+    ["平スコ","ひらすこ","Y0172","別名"],
+    ["コテ","こて","Y0173","略称"],
+    ["移植","いしょく","Y0173","略称"],
+    ["くま","くま","Y0175","略称"],
+    ["竹熊手","たけくまで","Y0175","別名"],
+    ["ほうき","ほうき","Y0176","略称"],
+    ["竹ぼうき","たけぼうき","Y0176","別名"],
+    ["てみ","てみ","Y0177","社内呼び"],
+    ["箕","み","Y0177","別名"],
+    ["手み","てみ","Y0177","別名"],
+    ["ネコ","ねこ","Y0178","社内呼び"],
+    ["ネコ車","ねこぐるま","Y0178","別名"],
+    ["かけや","かけや","Y0179","社内呼び"],
+    ["大木槌","おおきづち","Y0179","別名"],
+    ["竹屋","たけや","Y0179","聞き間違い"],
+    ["大ハン","おおはん","Y0180","社内呼び"],
+    ["セットハンマー","せっとはんまー","Y0180","別名"],
+    ["つき棒","つきぼう","Y0181","別名"],
+    ["かじや","かじや","Y0182","社内呼び"],
+    ["鍛冶屋","かじや","Y0182","別名"],
+    ["番線しめ","ばんせんしめ","Y0183","社内呼び"],
+    ["番線切り","ばんせんきり","Y0184","社内呼び"],
+    ["ボルトクリッパー","ぼるとくりっぱー","Y0184","別名"],
+    ["三脚","さんきゃく","Y0185","社内呼び"],
+    ["植木脚立","うえききゃたつ","Y0185","別名"],
+    ["脚立","きゃたつ","Y0185","略称"],
+    ["脚立","きゃたつ","Y0186","社内呼び"],
+    ["安全帯","あんぜんたい","Y0188","社内呼び"],
+    ["ハーネス","はーねす","Y0188","略称"],
+    ["コーン","こーん","Y0189","社内呼び"],
+    ["パイロン","ぱいろん","Y0189","別名"],
+    ["三角コーン","さんかくこーん","Y0189","別名"],
+    ["シュロ","しゅろ","Y0191","略称"],
+    ["棕櫚縄","しゅろなわ","Y0191","別名"],
+    ["針金","はりがね","Y0193","別名"],
+    ["幹巻き","みきまき","Y0194","社内呼び"],
+    ["緑化テープ","りょっかてーぷ","Y0194","別名"],
+    ["土のう","どのう","Y0195","社内呼び"],
+    ["シート","しーと","Y0196","略称"],
+    ["丸木","まるき","Y0197","社内呼び"],
+    ["マル","まる","Y0197","略称"],
+    ["竹","たけ","Y0198","略称"]]
+};
+const SEED_TOOLS = [["T0001","Y0153","1F-A-2段",6],
+  ["T0002","Y0154","1F-A-2段",6],
+  ["T0003","Y0155","1F-A-2段",3],
+  ["T0004","Y0156","1F-A-3段",4],
+  ["T0005","Y0157","1F-A-2段",5],
+  ["T0006","Y0158","1F-B-壁",2],
+  ["T0007","Y0159","2F-C-梁の上",2],
+  ["T0008","Y0160","2F-C-梁の上",2],
+  ["T0009","Y0161","1F-A-青コンテナ",8],
+  ["T0010","Y0162","2F-C-床置き",2],
+  ["T0011","Y0163","1F-C-棚1段",3],
+  ["T0012","Y0164","1F-C-棚1段",2],
+  ["T0013","Y0165","1F-C-床置き",4],
+  ["T0014","Y0166","1F-C-棚2段",3],
+  ["T0015","Y0167","屋外-倉庫裏",1],
+  ["T0016","Y0168","2F-D-床置き",2],
+  ["T0017","Y0169","1F-B-壁",3],
+  ["T0018","Y0170","1F-B-壁",2],
+  ["T0019","Y0171","1F-B-壁",6],
+  ["T0020","Y0172","1F-B-壁",4],
+  ["T0021","Y0173","1F-A-青コンテナ",6],
+  ["T0022","Y0174","1F-B-壁",3],
+  ["T0023","Y0175","1F-B-壁",5],
+  ["T0024","Y0176","1F-B-壁",6],
+  ["T0025","Y0177","1F-B-床置き",8],
+  ["T0026","Y0178","屋外-軒下",3],
+  ["T0027","Y0179","1F-B-床置き",2],
+  ["T0028","Y0180","1F-B-床置き",2],
+  ["T0029","Y0181","1F-B-壁",2],
+  ["T0030","Y0182","1F-B-壁",2],
+  ["T0031","Y0183","1F-A-青コンテナ",4],
+  ["T0032","Y0184","1F-A-青コンテナ",2],
+  ["T0033","Y0185","屋外-脚立置き場",4],
+  ["T0034","Y0186","屋外-脚立置き場",3],
+  ["T0035","Y0187","屋外-脚立置き場",2],
+  ["T0036","Y0188","2F-A-ハンガー",5],
+  ["T0037","Y0189","屋外-軒下",12],
+  ["T0038","Y0190","屋外-軒下",8],
+  ["T0039","Y0191","1F-A-青コンテナ",10],
+  ["T0040","Y0192","2F-D-床置き",20],
+  ["T0041","Y0193","1F-A-青コンテナ",5],
+  ["T0042","Y0194","2F-D-棚2段",10],
+  ["T0043","Y0195","2F-D-床置き",100],
+  ["T0044","Y0196","2F-D-床置き",10]];
+
+/* ============ データ ============ */
+// tools＝道具マスタ（termId で用語集とつながる）、terms・aliases＝用語集の言葉
+let DB = { tools: [], terms: [], aliases: [], locations: [] };
+let TOOLS = [];   // 表示用：道具マスタに用語集の名前・読み・意味を合わせたもの
+const termById = id => DB.terms.find(t => String(t.termId) === String(id));
+const termByName = n => DB.terms.find(t => norm(t.term) === norm(n));
+const aliasesOf = termId => DB.aliases.filter(a => String(a.termId) === String(termId));
+const toolById = id => TOOLS.find(t => String(t.id) === String(id));
+function commonOf(termId) {
+  const a = aliasesOf(termId).find(x => x.type === '社内呼び' && x.state === '承認済');
+  return a ? a.alias : '';
+}
+function buildTools() {
+  TOOLS = DB.tools.map(t => {
+    const w = termById(t.termId) || {};
+    return Object.assign({}, t, { qty: Number(t.qty) || 0, name: w.term || '（用語集に名前がありません）', kana: w.kana || '', feature: w.meaning || '', category: w.category || '', commonName: commonOf(t.termId) });
+  });
+}
+
+/* ---- お試しモードの保存場所 ---- */
+function demoWords() {
+  const d = lsGet(LS.words, null) || { terms: [], aliases: [] };
+  const haveT = new Set(d.terms.map(t => t.termId)), haveA = new Set(d.aliases.map(a => a.termId + '|' + a.alias));
+  SEED_WORDS.terms.forEach(r => { if (!haveT.has(r[0])) d.terms.push({ termId: r[0], term: r[1], kana: r[2], category: r[3], meaning: r[4], usage: r[5], related: r[6], toolId: r[7], source: '業界', photoUrl: '', reviewState: '下書き', addedBy: 'Claude下書き', updatedAt: now() }); });
+  SEED_WORDS.aliases.forEach(a => { if (!haveA.has(a[2] + '|' + a[0])) d.aliases.push({ alias: a[0], kana: a[1], termId: a[2], type: a[3], state: '承認済', addedBy: 'Claude下書き', addedAt: now() }); });
+  lsSet(LS.words, d);
+  return d;
+}
+function demoTools() {
+  let t = lsGet(LS.tools, null);
+  if (!t) { t = SEED_TOOLS.map(r => ({ id: r[0], termId: r[1], location: r[2], qty: r[3], photoUrl: '', status: '倉庫', statusSite: '', registeredBy: 'お試し', reviewState: '確認済', createdAt: now(), updatedAt: now() })); lsSet(LS.tools, t); }
+  return t;
+}
+function demoSave() {
+  const ok1 = lsSet(LS.tools, DB.tools);
+  const ok2 = lsSet(LS.words, { terms: DB.terms, aliases: DB.aliases });
+  if (!ok1 || !ok2) toast('端末の保存容量がいっぱいです（写真を減らしてください）');
+}
+
+/* ---- 通信：道具は道具管理GAS、言葉は用語集GAS ---- */
+const api = {
+  async load() {
+    if (DEMO) { const w = demoWords(); return { ok: true, tools: demoTools(), terms: w.terms, aliases: w.aliases, locations: [] }; }
+    const [a, b] = await Promise.all([
+      fetch(GAS_URL + '?action=data', { cache: 'no-store' }).then(r => r.json()),
+      fetch(YOUGO_URL + '?action=data', { cache: 'no-store' }).then(r => r.json())
+    ]);
+    if (!a.ok) throw new Error(a.error || '道具データを読めません');
+    if (!b.ok) throw new Error(b.error || '用語集を読めません');
+    return { ok: true, tools: a.tools || [], locations: a.locations || [], terms: b.terms || [], aliases: b.aliases || [] };
+  },
+  async post(target, body) {   // target: 'dougu'（道具管理GAS）／'yougo'（用語集GAS）
+    if (DEMO) return demoPost(target, body);
+    const r = await fetch(target === 'yougo' ? YOUGO_URL : GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+    return r.json();
+  }
+};
+function demoPost(target, b) {
+  const T = DB.tools, W = DB.terms, A = DB.aliases;
+  if (target === 'yougo') {
+    switch (b.mode) {
+      case 'aiSearch': {
+        const words = norm(b.query).match(/[一-鿿]{2,}|[ぁ-ゖ]{3,}/g) || [];
+        const res = W.filter(t => !b.categories || b.categories.includes(t.category)).map(t => ({ t, s: words.filter(w => norm(t.meaning).includes(w)).length }))
+          .filter(x => x.s > 0).sort((x, y) => y.s - x.s).slice(0, 3).map(x => ({ id: x.t.termId, reason: '特徴が近い（簡易判定）' }));
+        return { ok: true, results: res };
+      }
+      case 'addTerm': {
+        const dup = W.find(t => t.term === b.term.term);
+        if (dup) return { ok: false, error: '「' + b.term.term + '」はすでに登録されています', termId: dup.termId };
+        const max = W.reduce((m, t) => Math.max(m, Number(String(t.termId).replace(/\D/g, '')) || 0), 0);
+        const id = 'Y' + String(max + 1).padStart(4, '0');
+        W.push(Object.assign({ termId: id, kana: isKana(b.term.term) ? toHira(b.term.term) : '', related: '', toolId: '', photoUrl: '', usage: '', source: '社内', reviewState: '未確認', addedBy: b.by, updatedAt: now() }, b.term));
+        (b.aliases || []).forEach(a => demoPost('yougo', { mode: 'addAlias', alias: a.alias, termId: id, type: a.type, by: b.by, state: a.state }));
+        demoSave(); return { ok: true, termId: id };
+      }
+      case 'addAlias': {
+        if (A.some(a => a.termId === b.termId && a.alias === b.alias)) return { ok: true, duplicate: true };
+        A.push({ alias: b.alias, kana: b.kana || (isKana(b.alias) ? toHira(b.alias) : ''), termId: b.termId, type: b.type || '別名', state: b.state || '承認待ち', addedBy: b.by || '', addedAt: now() });
+        demoSave(); return { ok: true };
+      }
+      case 'review': {
+        if (b.kind === 'term') { const t = W.find(x => x.termId === b.key); if (t) t.reviewState = b.action === 'approve' ? '確認済' : '未確認'; }
+        else { const i = A.findIndex(a => a.termId === b.key.termId && a.alias === b.key.alias); if (i >= 0) { if (b.action === 'approve') A[i].state = '承認済'; else A.splice(i, 1); } }
+        demoSave(); return { ok: true };
+      }
+    }
+  } else {
+    switch (b.mode) {
+      case 'identify': {
+        const top = searchTools(b.text || '')[0];
+        const m = top && top.score >= 90 ? top.tool : null;
+        return { ok: true, data: { matchId: m ? m.id : null, matchConfidence: m ? .8 : 0, name: m ? m.name : (b.text || ''), kana: isKana(b.text) ? toHira(b.text) : '', commonName: b.text || '', feature: '', why: m ? '呼び方が一致' : 'お試しモードの簡易判定' } };
+      }
+      case 'addTool': {
+        const max = T.reduce((m, t) => Math.max(m, Number(String(t.id).replace(/\D/g, '')) || 0), 0);
+        const id = 'T' + String(max + 1).padStart(4, '0');
+        T.push({ id, termId: b.tool.termId, location: b.tool.location, qty: Number(b.tool.qty) || 1, photoUrl: b.image ? 'data:image/jpeg;base64,' + b.image : '', status: '倉庫', statusSite: '', registeredBy: b.by, reviewState: '未確認', createdAt: now(), updatedAt: now() });
+        demoSave(); return { ok: true, id };
+      }
+      case 'updateTool': {
+        const t = T.find(x => x.id === b.id); if (!t) return { ok: false, error: '道具が見つかりません' };
+        const p = Object.assign({}, b.patch);
+        if (p.addQty) { p.qty = (Number(t.qty) || 0) + Number(p.addQty); delete p.addQty; }
+        if (p.image) { p.photoUrl = 'data:image/jpeg;base64,' + p.image; delete p.image; }
+        Object.assign(t, p, { updatedAt: now() }); demoSave(); return { ok: true, id: b.id, qty: t.qty };
+      }
+      case 'review': { const t = T.find(x => x.id === b.key); if (t) t.reviewState = b.action === 'approve' ? '確認済' : '未確認'; demoSave(); return { ok: true }; }
+    }
+  }
+  return { ok: false, error: 'unknown mode' };
+}
+
+async function load() {
+  try {
+    const r = await api.load();
+    DB = { tools: r.tools, terms: r.terms, aliases: r.aliases, locations: r.locations || [] };
+    if (!DEMO) lsSet(LS.cache, DB);
+  } catch (e) {
+    const c = lsGet(LS.cache, null);
+    if (c) { DB = c; toast('前回のデータを表示しています（' + NET_ERR + '）'); }
+    else showError('道具データを読み込めませんでした。' + NET_ERR);
+  }
+  buildTools();
+  renderAll();
+}
+
+/* ============ 検索 ============ */
+function searchTools(qRaw) {
+  const q = norm(qRaw), ql = loose(qRaw);
+  if (!q) return [];
+  const out = [];
+  TOOLS.forEach(t => {
+    const terms = [{ s: t.name, why: '正式名' }, { s: t.kana, why: '読み' }];
+    aliasesOf(t.termId).forEach(a => { terms.push({ s: a.alias, why: a.type, alias: a }); if (a.kana) terms.push({ s: a.kana, why: a.type, alias: a }); });
+    let best = { score: 0 };
+    const set = (score, why, alias) => { if (score > best.score) best = { score, why, alias }; };
+    terms.forEach(term => {
+      const n = norm(term.s), l = loose(term.s);
+      if (!n) return;
+      if (n === q) set(100, term.why, term.alias);
+      else if (l && l === ql) set(92, term.why, term.alias);
+      else if (q.length >= 2 && n.startsWith(q)) set(82, term.why, term.alias);
+      else if (q.length >= 3 && n.includes(q)) set(72, term.why, term.alias);
+      else if (n.length >= 2 && q.includes(n)) set(n.length >= 3 ? 64 : 56, term.why, term.alias);   // 「パチン持ってきて」など（2文字は候補どまり）
+      else if (isKana(term.s) && ql.length >= 3 && l.length >= 3) {                                 // 音の近さ（聞き間違い）
+        const d = lev(ql, l);
+        if (d === 1) set(52, '音が近い', term.alias);
+        else if (d === 2 && Math.min(ql.length, l.length) >= 5) set(42, '音が近い', term.alias);
+      }
+    });
+    if (best.score < 40 && (q.length >= 3 || /[一-鿿]/.test(q)) && norm(t.feature).includes(q)) set(35, '特徴');
+    if (best.score > 0) out.push(Object.assign({ tool: t }, best));
+  });
+  return out.sort((a, b) => b.score - a.score || String(a.tool.kana).localeCompare(String(b.tool.kana), 'ja'));
+}
+
+let lastMiss = '', aiCache = {};
+function doSearch() {
+  const qv = $('q').value.trim(), box = $('results');
+  if (!qv) { box.innerHTML = ''; lastMiss = ''; return; }
+  const hits = searchTools(qv), found = hits.filter(h => h.score >= 60), maybe = hits.filter(h => h.score < 60);
+  lastMiss = found.length ? '' : qv;
+  let html = '';
+  if (found.length) {
+    if (found.length > 1 && found[0].score >= 90 && found[1].score >= 90) html += '<div class="sec-title">同じ呼び方の道具が複数あります。写真で選んでください</div>';
+    html += found.map(h => toolRow(h.tool, h.why)).join('');
+  }
+  if (maybe.length) html += '<div class="sec-title">もしかして</div><div class="maybe">' + maybe.slice(0, 5).map(h => toolRow(h.tool, h.why)).join('') + '</div>';
+  if (!found.length) html += '<div id="aiBox"><div class="empty">「' + esc(qv) + '」に近い道具を <b>AI</b> で探しています… <span class="loading"></span></div></div>';
+  box.innerHTML = html || '<div class="empty">見つかりませんでした</div>';
+  if (!found.length) aiSearch(qv, maybe.map(h => h.tool.id));
+}
+async function aiSearch(qv, already) {
+  try {
+    const r = aiCache[qv] || await api.post('yougo', { mode: 'aiSearch', query: qv, categories: TOOL_CATS });
+    aiCache[qv] = r;
+    if ($('q').value.trim() !== qv) return;
+    const box = $('aiBox'); if (!box) return;
+    if (!r.ok) throw new Error(r.error);
+    // 用語集が返すのは用語ID → その言葉の道具に置きかえる
+    const res = [];
+    (r.results || []).forEach(x => TOOLS.filter(t => t.termId === x.id && !already.includes(t.id)).forEach(t => res.push({ t, reason: x.reason })));
+    box.innerHTML = res.length
+      ? '<div class="sec-title">AIの候補（聞き間違い・特徴から）</div><div class="maybe">' + res.map(x => toolRow(x.t, x.reason)).join('') + '</div>'
+      : (already.length ? '' : '<div class="empty">見つかりませんでした。<br>未登録なら「＋登録」から登録してください。</div>');
+  } catch (e) {
+    const box = $('aiBox'); if (box) box.innerHTML = '<div class="empty">AIで探せませんでした（' + esc(e.message || NET_ERR) + '）</div>';
+  }
+}
+function phHtml(t) { return t.photoUrl ? '<img src="' + esc(t.photoUrl) + '" alt="" loading="lazy">' : '🧰'; }
+function nameHtml(t) { return esc(t.name) + (t.commonName && norm(t.commonName) !== norm(t.name) ? ' <small>〈' + esc(t.commonName) + '〉</small>' : ''); }
+function toolRow(t, why) {
+  const out = t.status && t.status !== '倉庫' ? '<span class="tag out">' + esc(t.statusSite || '持ち出し中') + '</span>' : '';
+  return '<button type="button" class="tool" data-tool="' + esc(t.id) + '"><div class="ph">' + phHtml(t) + '</div><div style="min-width:0">' +
+    '<div class="nm">' + nameHtml(t) + '</div>' +
+    '<div class="sub"><span class="tag loc">' + esc(t.location || '場所未設定') + '</span> ' + out + ' <span class="tnum">' + t.qty + '個</span>' + (why ? '　' + esc(why) : '') + '</div>' +
+    '</div></button>';
+}
+
+/* ============ 道具の詳細 ============ */
+function openTool(id, fromSearch) {
+  const t = toolById(id); if (!t) return;
+  const al = aliasesOf(t.termId);
+  const missQ = fromSearch && lastMiss && !al.some(a => norm(a.alias) === norm(lastMiss)) && norm(t.name) !== norm(lastMiss) ? lastMiss : '';
+  let h = '';
+  if (missQ) h += '<div class="miss-box">「<b>' + esc(missQ) + '</b>」で探してこの道具を開きました。<br>この言葉を呼び方として登録しますか？（用語集に登録されます）' +
+    '<div class="row2" style="margin-top:10px"><button class="btn sm" data-add-miss="聞き間違い">聞き間違いとして</button><button class="btn sm" data-add-miss="別名">呼び方として</button></div></div>';
+  h += '<h3>' + nameHtml(t) + '</h3>';
+  h += t.photoUrl ? '<img class="detail-ph" src="' + esc(t.photoUrl) + '" alt="">' : '<div class="big-ph">🧰</div>';
+  h += '<dl class="kv"><dt>保管場所</dt><dd><b>' + esc(t.location || '未設定') + '</b></dd>' +
+    '<dt>数量</dt><dd class="tnum">' + t.qty + '個</dd>' +
+    '<dt>今どこ</dt><dd>' + (t.status && t.status !== '倉庫' ? '<span class="tag out">' + esc(t.statusSite || '持ち出し中') + '</span>' : '倉庫') + '</dd>' +
+    (t.feature ? '<dt>どんな道具</dt><dd>' + esc(t.feature) + '</dd>' : '') +
+    '<dt>呼び方</dt><dd><div class="chips">' + (al.length ? al.map(a => '<span class="chip" style="cursor:default">' + esc(a.alias) +
+      (a.type === '聞き間違い' ? '<span class="tag mis">聞き間違い</span>' : '') + (a.state !== '承認済' ? '<span class="tag wait">承認待ち</span>' : '') + '</span>').join('') : '<span class="hint">まだありません</span>') + '</div></dd>' +
+    '<dt>登録</dt><dd style="font-size:12.5px;color:var(--bark)">' + esc(t.registeredBy || '') + (t.reviewState === '未確認' ? '<span class="tag wait">未確認</span>' : '') + '</dd></dl>';
+  h += '<div class="row2"><button class="btn" data-act="alias">＋呼び方</button><button class="btn" data-act="edit">場所・数量を直す</button></div>' +
+    '<a class="btn block" style="margin-top:8px;text-decoration:none" href="' + YOUGO_PAGE + '?q=' + encodeURIComponent(t.name) + '">📗 用語集で名前・意味を見る</a>' +
+    '<button class="btn block" style="margin-top:8px" data-act="close">閉じる</button>';
+  openModal(h, async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.addMiss) {
+      await post('yougo', { mode: 'addAlias', alias: missQ, termId: t.termId, type: b.dataset.addMiss, by: me(), state: isAdmin() ? '承認済' : '承認待ち' }, isAdmin() ? '登録しました' : '登録しました（管理者の承認待ち）');
+      lastMiss = ''; openTool(id);
+    } else if (b.dataset.act === 'alias') openAliasForm(id);
+    else if (b.dataset.act === 'edit') openEditForm(id);
+    else if (b.dataset.act === 'close') closeModal();
+  });
+}
+function openAliasForm(id) {
+  const t = toolById(id);
+  openModal('<h3>呼び方を追加</h3><p class="hint" style="margin-bottom:10px">' + esc(t.name) + ' を社内で何と呼んでいますか？（用語集に登録され、全アプリで通じるようになります）</p>' +
+    '<div class="searchbox"><input type="text" id="alIn" placeholder="例：パチン" autocomplete="off"><button class="btn mic" type="button" data-mic="alIn">🎤</button></div>' +
+    '<label class="lbl" style="margin-top:12px">種類</label><div class="chips" id="alType">' +
+    ['社内呼び', '別名', '略称', '聞き間違い'].map((x, i) => '<button type="button" class="chip' + (i === 0 ? ' on' : '') + '" data-ty="' + x + '">' + x + '</button>').join('') + '</div>' +
+    '<div class="row2" style="margin-top:16px"><button class="btn" data-act="back">戻る</button><button class="btn primary" data-act="save">追加する</button></div>',
+    async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.ty) { document.querySelectorAll('#alType .chip').forEach(c => c.classList.toggle('on', c === b)); return; }
+      if (b.dataset.act === 'back') return openTool(id);
+      if (b.dataset.act === 'save') {
+        const v = $('alIn').value.trim(); if (!v) return toast('呼び方を入力してください');
+        b.disabled = true;
+        await post('yougo', { mode: 'addAlias', alias: v, termId: t.termId, type: (document.querySelector('#alType .chip.on') || {}).dataset.ty || '別名', by: me(), state: isAdmin() ? '承認済' : '承認待ち' }, isAdmin() ? '追加しました' : '追加しました（管理者の承認待ち）');
+        openTool(id);
+      }
+    });
+}
+let edPhoto = null;
+function openEditForm(id) {
+  const t = toolById(id);
+  let qty = t.qty;
+  openModal('<h3>場所・数量を直す</h3>' +
+    '<label class="lbl">保管場所</label><input type="text" id="edLoc" value="' + esc(t.location) + '" list="locList">' + locDatalist() +
+    '<label class="lbl" style="margin-top:12px">数量</label><div class="qty"><button class="btn" data-q="-1">－</button><span class="n tnum" id="edQ">' + qty + '</span><button class="btn" data-q="1">＋</button></div>' +
+    '<label class="lbl" style="margin-top:12px">写真を撮り直す</label><div class="row2"><button class="btn" data-act="cam">📷 撮影</button><button class="btn" data-act="lib">🖼 選ぶ</button></div><p class="hint" id="edPhHint"></p>' +
+    '<p class="hint">名前や意味を直すときは用語集アプリで直します。</p>' +
+    '<div class="row2" style="margin-top:16px"><button class="btn" data-act="back">戻る</button><button class="btn primary" data-act="save">保存する</button></div>',
+    async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.q) { qty = Math.max(0, qty + Number(b.dataset.q)); $('edQ').textContent = qty; return; }
+      if (b.dataset.act === 'cam' || b.dataset.act === 'lib') { pickPhoto(b.dataset.act === 'cam', p => { edPhoto = p; $('edPhHint').textContent = '✓ 新しい写真を選びました'; }); return; }
+      if (b.dataset.act === 'back') { edPhoto = null; return openTool(id); }
+      if (b.dataset.act === 'save') {
+        b.disabled = true;
+        const patch = { location: $('edLoc').value.trim(), qty };
+        if (edPhoto) patch.image = edPhoto.b64;
+        await post('dougu', { mode: 'updateTool', id, patch, by: me() }, '保存しました');
+        edPhoto = null; openTool(id);
+      }
+    });
+}
+
+/* ============ 登録 ============ */
+const reg = { loc: '', photo: null, name: '', qty: 1 };
+function saveDraft() { lsSet(LS.draft, { loc: reg.loc, name: reg.name, qty: reg.qty }); }
+function locList() {
+  const s = new Set();
+  DB.locations.forEach(l => l.code && s.add(String(l.code)));
+  DB.tools.forEach(t => t.location && s.add(String(t.location)));
+  if (reg.loc) s.add(reg.loc);
+  return Array.from(s).sort((a, b) => a.localeCompare(b, 'ja', { numeric: true }));
+}
+function locDatalist() { return '<datalist id="locList">' + locList().map(l => '<option value="' + esc(l) + '">').join('') + '</datalist>'; }
+function renderLocChips() {
+  $('locChips').innerHTML = locList().map(l => '<button type="button" class="chip' + (l === reg.loc ? ' on' : '') + '" data-loc="' + esc(l) + '">' + esc(l) + '</button>').join('') +
+    '<button type="button" class="chip" data-loc="__new">＋新しい場所</button>';
+}
+function updateRegBtn() { $('regNext').disabled = !(reg.loc && (reg.name || reg.photo)); }
+function resetRegItem() {
+  reg.photo = null; reg.name = ''; reg.qty = 1;
+  $('regName').value = ''; $('qN').textContent = '1';
+  $('photoBox').innerHTML = '<span class="hint">道具を1枚撮ってください</span>';
+  saveDraft(); updateRegBtn();
+}
+function pickPhoto(camera, cb) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; if (camera) inp.capture = 'environment';
+  inp.onchange = () => { const f = inp.files && inp.files[0]; if (f) shrink(f, cb); };
+  inp.click();
+}
+function shrink(file, cb) {   // 写真を縮小して base64 に（通信量とAIの負担を減らす）
+  const url = URL.createObjectURL(file), img = new Image();
+  img.onload = () => {
+    const max = DEMO ? 480 : 1000, sc = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas'); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const dataUrl = c.toDataURL('image/jpeg', DEMO ? .7 : .82);
+    URL.revokeObjectURL(url);
+    cb({ dataUrl, b64: dataUrl.split(',')[1] });
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); toast('写真を読み込めませんでした'); };
+  img.src = url;
+}
+function setRegPhoto(p) { reg.photo = p; $('photoBox').innerHTML = '<img src="' + p.dataUrl + '" alt="">'; updateRegBtn(); }
+function catalog() {   // AIに渡す登録済み道具の一覧（1行1道具）
+  return TOOLS.map(t => [t.id, t.name + '(' + t.kana + ')', '呼び方:' + aliasesOf(t.termId).map(a => a.alias).join('/'), '特徴:' + t.feature, '場所:' + t.location].join(' | ')).join('\n');
+}
+async function regConfirm() {
+  const btn = $('regNext');
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span> 確認中…';
+  let ai = null;
+  try {
+    const r = await api.post('dougu', { mode: 'identify', text: reg.name, image: reg.photo ? reg.photo.b64 : '', loc: reg.loc, catalog: catalog() });
+    if (r.ok) ai = r.data; else throw new Error(r.error);
+  } catch (e) { toast('AIの確認ができませんでした。名前だけで照合します'); }
+  finally { btn.innerHTML = '確認する'; updateRegBtn(); }
+  const local = reg.name ? searchTools(reg.name).filter(h => h.score >= 90) : [];
+  let match = null;
+  if (local.length) match = local[0].tool;
+  else if (ai && ai.matchId && ai.matchConfidence >= .6) match = toolById(ai.matchId);
+  match ? showMatch(match, ai) : showNew(ai);
+}
+function showMatch(t, ai) {
+  const sameLoc = norm(t.location) === norm(reg.loc);
+  const knowName = !reg.name || norm(t.name) === norm(reg.name) || aliasesOf(t.termId).some(a => norm(a.alias) === norm(reg.name));
+  openModal('<h3>この道具ですか？</h3><p class="hint" style="margin-bottom:10px">登録済みの道具と同じかもしれません。' + (ai && ai.why ? '（' + esc(ai.why) + '）' : '') + '</p>' +
+    '<div class="tool" style="cursor:default"><div class="ph">' + phHtml(t) + '</div><div><div class="nm">' + nameHtml(t) + '</div>' +
+    '<div class="sub"><span class="tag loc">' + esc(t.location || '場所未設定') + '</span> <span class="tnum">今 ' + t.qty + '個</span></div></div></div>' +
+    (!sameLoc ? '<p class="hint" style="color:var(--danger)">登録済みの場所は「' + esc(t.location) + '」です。今の場所は「' + esc(reg.loc) + '」。</p>' : '') +
+    (!knowName ? '<label style="display:flex;gap:8px;align-items:center;margin:10px 0;font-size:14px"><input type="checkbox" id="mAddAlias" checked style="width:20px;height:20px">「' + esc(reg.name) + '」を呼び方に追加する（用語集へ）</label>' : '') +
+    '<button class="btn ok block" data-act="add" style="margin-top:8px">同じ道具：数量を＋' + reg.qty + '（' + (t.qty + reg.qty) + '個に）</button>' +
+    (!sameLoc ? '<button class="btn block" data-act="move" style="margin-top:8px">同じ道具：場所を「' + esc(reg.loc) + '」に変える</button>' : '') +
+    '<button class="btn block" data-act="new" style="margin-top:8px">別の道具として登録する</button>' +
+    '<button class="btn block" data-act="cancel" style="margin-top:8px">やめる</button>',
+    async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.act === 'cancel') return closeModal();
+      if (b.dataset.act === 'new') return showNew(ai);
+      b.disabled = true;
+      const addAl = $('mAddAlias') && $('mAddAlias').checked;
+      const patch = b.dataset.act === 'add' ? { addQty: reg.qty } : { location: reg.loc };
+      if (!t.photoUrl && reg.photo) patch.image = reg.photo.b64;
+      const ok = await post('dougu', { mode: 'updateTool', id: t.id, patch, by: me() }, b.dataset.act === 'add' ? '数量を追加しました' : '場所を変えました');
+      if (ok && addAl) await post('yougo', { mode: 'addAlias', alias: reg.name, termId: t.termId, type: '社内呼び', by: me() });
+      if (ok) { closeModal(); resetRegItem(); }
+    });
+}
+function showNew(ai) {
+  ai = ai || {};
+  const name = ai.name || reg.name, common = ai.commonName && norm(ai.commonName) !== norm(name) ? ai.commonName : (reg.name && norm(reg.name) !== norm(name) ? reg.name : '');
+  const known = termByName(name);
+  openModal('<h3>新しい道具として登録</h3>' +
+    (reg.photo ? '<img class="detail-ph" src="' + reg.photo.dataUrl + '" alt="" style="max-height:180px">' : '') +
+    '<label class="lbl">正式名</label><input type="text" id="nName" value="' + esc(name) + '">' +
+    '<p class="hint" id="nKnown">' + (known ? '✓ 用語集にある言葉です' : (ai.name ? 'AIの提案です。違うときは直してください。用語集にも新しく登録されます。' : '用語集にも新しく登録されます。')) + '</p>' +
+    '<label class="lbl" style="margin-top:12px">よく使う呼び方</label><input type="text" id="nCommon" value="' + esc(common) + '" placeholder="例：パチン">' +
+    '<label class="lbl" style="margin-top:12px">どんな道具か（見た目・用途を一言）</label><input type="text" id="nFeat" value="' + esc(known ? known.meaning : (ai.feature || '')) + '" placeholder="例：柄の長い大きな木づち">' +
+    '<dl class="kv" style="margin-top:14px"><dt>保管場所</dt><dd><b>' + esc(reg.loc) + '</b></dd><dt>数量</dt><dd class="tnum">' + reg.qty + '個</dd></dl>' +
+    '<div class="row2"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="save">登録する</button></div>',
+    async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.act === 'cancel') return closeModal();
+      if (b.dataset.act !== 'save') return;
+      const nm = $('nName').value.trim(); if (!nm) return toast('正式名を入れてください');
+      const cm = $('nCommon').value.trim(), feat = $('nFeat').value.trim();
+      const aliases = [];
+      if (cm && norm(cm) !== norm(nm)) aliases.push({ alias: cm, type: '社内呼び', state: '承認済' });
+      if (reg.name && norm(reg.name) !== norm(nm) && norm(reg.name) !== norm(cm)) aliases.push({ alias: reg.name, type: '社内呼び', state: '承認待ち' });
+      b.disabled = true; b.innerHTML = '<span class="loading"></span> 登録中…';
+      const ok = await registerTool(nm, ai.name === nm ? (ai.kana || '') : '', feat, aliases);
+      if (ok) { closeModal(); resetRegItem(); } else { b.disabled = false; b.textContent = '登録する'; }
+    });
+}
+/* 新しい道具：①用語集に言葉がなければ登録 → ②その用語IDで道具マスタに登録 */
+async function registerTool(nm, kana, feat, aliases) {
+  try {
+    let w = termByName(nm), termId = w && w.termId;
+    if (!termId) {
+      const r = await api.post('yougo', { mode: 'addTerm', by: me(), term: { term: nm, kana, category: '道具', meaning: feat, source: '社内', reviewState: '未確認' }, aliases });
+      if (r.ok) termId = r.termId; else if (r.termId) termId = r.termId; else throw new Error(r.error || '用語集に登録できませんでした');
+    } else {
+      for (const a of aliases) await api.post('yougo', { mode: 'addAlias', alias: a.alias, termId, type: a.type, by: me(), state: a.state });
+    }
+    const r2 = await api.post('dougu', { mode: 'addTool', by: me(), image: reg.photo ? reg.photo.b64 : '', tool: { termId, location: reg.loc, qty: reg.qty } });
+    if (!r2.ok) throw new Error(r2.error || '道具を登録できませんでした');
+    toast('登録しました。同じ場所の次の道具をどうぞ');
+    if (!DEMO) await load(); else { buildTools(); renderAll(); }
+    return true;
+  } catch (e) { toast(String(e.message || '').includes('Failed to fetch') ? NET_ERR : (e.message || NET_ERR)); return false; }
+}
+
+/* 書き込み共通：成功したら再読み込み */
+async function post(target, body, okMsg) {
+  try {
+    const r = await api.post(target, body);
+    if (!r.ok) throw new Error(r.error || '保存に失敗しました');
+    if (okMsg) toast(okMsg);
+    if (!DEMO) await load(); else { buildTools(); renderAll(); }
+    return true;
+  } catch (e) { toast(String(e.message || '').includes('Failed to fetch') ? NET_ERR : (e.message || NET_ERR)); return false; }
+}
+
+/* ============ 辞典 ============ */
+let dictView = 'kana';
+function renderDict() {
+  const box = $('dictList');
+  if (!TOOLS.length) { box.innerHTML = '<div class="empty">まだ道具が登録されていません</div>'; return; }
+  if (dictView === 'kana') {
+    box.innerHTML = TOOLS.slice().sort((a, b) => String(a.kana || a.name).localeCompare(String(b.kana || b.name), 'ja')).map(t => toolRow(t, aliasesOf(t.termId).map(a => a.alias).slice(0, 4).join('・'))).join('');
+  } else if (dictView === 'loc') {
+    const g = {};
+    TOOLS.forEach(t => (g[t.location || '場所未設定'] = g[t.location || '場所未設定'] || []).push(t));
+    box.innerHTML = Object.keys(g).sort((a, b) => a.localeCompare(b, 'ja', { numeric: true })).map(k => '<div class="sec-title">📍 ' + esc(k) + '（' + g[k].length + '）</div>' + g[k].map(t => toolRow(t)).join('')).join('');
+  } else {
+    const rows = [];
+    DB.aliases.filter(a => a.type === '聞き間違い').forEach(a => TOOLS.filter(t => t.termId === a.termId).forEach(t => rows.push({ a, t })));
+    box.innerHTML = '<p class="hint" style="margin:0 2px 10px">新人さんが聞き間違えやすい言葉です。</p>' + (rows.length ? rows.map(({ a, t }) =>
+      '<button type="button" class="tool" data-tool="' + esc(t.id) + '"><div class="ph">' + phHtml(t) + '</div><div><div class="nm">「' + esc(a.alias) + '」<small> → </small>' + esc(t.name) + '</div>' +
+      '<div class="sub">正しくは「' + esc(t.commonName || t.name) + '」' + (a.state !== '承認済' ? '<span class="tag wait">承認待ち</span>' : '') + '</div></div></button>').join('') : '<div class="empty">まだありません</div>');
+  }
+}
+
+/* ============ 確認（管理者） ============ */
+function renderReview() {
+  const tools = TOOLS.filter(t => t.reviewState === '未確認');
+  const toolTerms = new Set(DB.tools.map(t => t.termId));
+  const als = DB.aliases.filter(a => a.state !== '承認済' && toolTerms.has(a.termId));
+  const n = tools.length + als.length;
+  $('revBadge').textContent = n; $('revBadge').hidden = !n;
+  $('revTools').innerHTML = tools.length ? tools.map(t => '<div class="card" style="padding:10px">' + toolRow(t, '登録：' + (t.registeredBy || '')) +
+    '<div class="row2"><button class="btn sm" data-tool="' + esc(t.id) + '">開いて直す</button><button class="btn sm ok" data-rev-tool="' + esc(t.id) + '">✓ 確認済にする</button></div></div>').join('')
+    : '<div class="empty">ありません</div>';
+  $('revAliases').innerHTML = als.length ? als.map((a, i) => {
+    const w = termById(a.termId) || {};
+    return '<div class="card" style="padding:12px"><div style="font-size:15px"><b>「' + esc(a.alias) + '」</b> → ' + esc(w.term) + '<span class="tag ' + (a.type === '聞き間違い' ? 'mis' : 'wait') + '">' + esc(a.type) + '</span></div>' +
+      '<div class="hint">追加：' + esc(a.addedBy) + '　' + esc(a.addedAt) + '</div>' +
+      '<div class="row2" style="margin-top:8px"><button class="btn sm danger" data-rev-al="' + i + '" data-ac="reject">✗ 却下</button><button class="btn sm ok" data-rev-al="' + i + '" data-ac="approve">✓ 承認</button></div></div>';
+  }).join('') : '<div class="empty">ありません</div>';
+  renderReview._als = als;
+}
+async function approveTool(id) {
+  const t = toolById(id); if (!t) return;
+  const ok = await post('dougu', { mode: 'review', key: id, action: 'approve' }, '確認済にしました');
+  const w = termById(t.termId);
+  if (ok && w && w.reviewState === '未確認') await post('yougo', { mode: 'review', kind: 'term', key: w.termId, action: 'approve' });   // 一緒に登録した言葉も確認済に
+}
+
+/* ============ 名前・管理者 ============ */
+const me = () => lsGet(LS.me, '');
+const isAdmin = () => !!lsGet(LS.admin, false);
+async function chooseName(force) {
+  if (me() && !force) return;
+  let staff = [];
+  try { const r = await fetch(MASTERS_URL + '?action=masters', { cache: 'no-store' }).then(x => x.json()); staff = (r.staff || []).map(s => typeof s === 'string' ? s : (s.name || s.staff || '')).filter(Boolean); } catch (e) { /* 名簿が取れなくても手入力で進める */ }
+  openModal('<h3>あなたの名前</h3><p class="hint" style="margin-bottom:12px">最初の1回だけ選びます。登録した人として記録されます。</p>' +
+    (staff.length ? '<div class="chips" style="margin-bottom:12px">' + staff.map(s => '<button type="button" class="chip" data-nm="' + esc(s) + '">' + esc(s) + '</button>').join('') + '</div>' : '') +
+    '<input type="text" id="nmIn" placeholder="名前を入力" value="' + esc(me()) + '"><button class="btn primary block" style="margin-top:12px" data-act="ok">決定</button>',
+    e => {
+      const b = e.target.closest('button'); if (!b) return;
+      const v = b.dataset.nm || (b.dataset.act === 'ok' ? $('nmIn').value.trim() : '');
+      if (!v) return b.dataset.act === 'ok' && toast('名前を選ぶか入力してください');
+      lsSet(LS.me, v); $('meBtn').textContent = '👤 ' + v; closeModal();
+    }, true);
+}
+
+/* ============ モーダル・音声 ============ */
+let modalHandler = null, modalLocked = false;
+function openModal(html, handler, locked) { $('modal').innerHTML = html; modalHandler = handler; modalLocked = !!locked; $('modalBg').classList.add('show'); $('modal').scrollTop = 0; bindMics($('modal')); }
+function closeModal() { $('modalBg').classList.remove('show'); $('modal').innerHTML = ''; modalHandler = null; }
+$('modal').addEventListener('click', e => { if (modalHandler) modalHandler(e); });
+$('modalBg').addEventListener('click', e => { if (e.target === $('modalBg') && !modalLocked) closeModal(); });
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function bindMics(root) {
+  root.querySelectorAll('[data-mic]').forEach(b => {
+    if (b._bound) return; b._bound = true;
+    b.addEventListener('click', () => {
+      const inp = $(b.dataset.mic);
+      if (!SR || IOS) { inp.focus(); $('micHint').hidden = false; toast('キーボードのマイク🎤を押して話してください'); return; }
+      const rec = new SR(); rec.lang = 'ja-JP'; rec.interimResults = false;
+      b.textContent = '⏺'; rec.onend = () => { b.textContent = '🎤'; };
+      rec.onresult = ev => { inp.value = ev.results[0][0].transcript.replace(/[。、]$/, ''); inp.dispatchEvent(new Event('input', { bubbles: true })); };
+      rec.onerror = () => toast('うまく聞き取れませんでした');
+      rec.start();
+    });
+  });
+}
+
+/* ============ 画面切り替え・描画 ============ */
+function showTab(name) {
+  ['search', 'reg', 'dict', 'review'].forEach(n => { $('tab-' + n).hidden = n !== name; });
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  window.scrollTo(0, 0);
+  if (name === 'reg') chooseName();
+}
+function renderAll() { renderLocChips(); renderDict(); renderReview(); if ($('q').value.trim()) doSearch(); updateRegBtn(); }
+
+/* ============ イベント ============ */
+document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+let qTimer;
+$('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(doSearch, 350); });
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(qTimer); doSearch(); $('q').blur(); } });
+document.body.addEventListener('click', e => {
+  if (e.target.closest('#modal')) return;
+  const tb = e.target.closest('[data-tool]'); if (tb) return openTool(tb.dataset.tool, !!e.target.closest('#results'));
+  const rt = e.target.closest('[data-rev-tool]'); if (rt) return approveTool(rt.dataset.revTool);
+  const ra = e.target.closest('[data-rev-al]');
+  if (ra) { const a = renderReview._als[Number(ra.dataset.revAl)]; if (a) post('yougo', { mode: 'review', kind: 'alias', key: { termId: a.termId, alias: a.alias }, action: ra.dataset.ac }, ra.dataset.ac === 'approve' ? '承認しました' : '却下しました'); return; }
+  const lc = e.target.closest('[data-loc]');
+  if (lc) {
+    if (lc.dataset.loc === '__new') { $('locNew').hidden = false; $('locNew').focus(); return; }
+    reg.loc = lc.dataset.loc; $('locNew').hidden = true; $('locNew').value = ''; renderLocChips(); saveDraft(); updateRegBtn();
+  }
+});
+$('locNew').addEventListener('input', () => { reg.loc = $('locNew').value.trim(); document.querySelectorAll('#locChips .chip').forEach(c => c.classList.remove('on')); saveDraft(); updateRegBtn(); });
+$('locNew').addEventListener('change', () => { if (reg.loc) { $('locNew').hidden = true; $('locNew').value = ''; renderLocChips(); } });
+$('regName').addEventListener('input', () => { reg.name = $('regName').value.trim(); saveDraft(); updateRegBtn(); });
+$('camBtn').addEventListener('click', () => pickPhoto(true, setRegPhoto));
+$('libBtn').addEventListener('click', () => pickPhoto(false, setRegPhoto));
+$('qMinus').addEventListener('click', () => { reg.qty = Math.max(1, reg.qty - 1); $('qN').textContent = reg.qty; saveDraft(); });
+$('qPlus').addEventListener('click', () => { reg.qty++; $('qN').textContent = reg.qty; saveDraft(); });
+$('regNext').addEventListener('click', regConfirm);
+$('dictSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; dictView = b.dataset.v; document.querySelectorAll('#dictSeg button').forEach(x => x.classList.toggle('on', x === b)); renderDict(); });
+$('meBtn').addEventListener('click', () => chooseName(true));
+
+/* ============ 起動 ============ */
+(function init() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('admin') === '1') lsSet(LS.admin, true);
+  if (p.get('admin') === '0') lsSet(LS.admin, false);
+  $('tabReview').hidden = !isAdmin();
+  $('demoBar').hidden = !DEMO;
+  if (me()) $('meBtn').textContent = '👤 ' + me();
+  const d = lsGet(LS.draft, null);
+  if (d) { reg.loc = d.loc || ''; reg.name = d.name || ''; reg.qty = d.qty || 1; $('regName').value = reg.name; $('qN').textContent = reg.qty; }
+  if (p.get('loc')) { reg.loc = p.get('loc'); saveDraft(); showTab('reg'); }   // 棚のQRラベル：dougu.html?loc=1F-A-2段
+  if (p.get('q')) $('q').value = p.get('q');
+  bindMics(document);
+  load();
+})();
+
+</script>
+</body>
+</html>
