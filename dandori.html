@@ -735,8 +735,7 @@ function renderPlan() {
   $('calSites').innerHTML = evs.filter(e => !cards.some(c => c.site === e.title)).map(e => '<div class="sitecal"><span class="tag site">カレンダー</span><span class="t">' + esc(e.title) + '</span><button class="btn sm" data-new-site="' + esc(e.title) + '">＋段取り</button></div>').join('');
   const undated = CARDS.filter(c => !c.date);
   $('plans').innerHTML = (cards.length ? cards.map(planHtml).join('') : (evs.length ? '' : '<div class="empty">' + md(SEL) + ' の段取りはまだありません。<br>下の「🎤 段取りを話す」から。</div>')) +
-    (undated.length ? '<div class="sec">📌 日付未定のやること</div>' + undated.map(planHtml).join('') : '') +
-    '<button type="button" class="btn sm block" id="nickBtn" style="margin-top:14px">👷 名簿の呼び名（あだ名）を登録</button>';
+    (undated.length ? '<div class="sec">📌 日付未定のやること</div>' + undated.map(planHtml).join('') : '');
 }
 function planHtml(c) {
   const w = warningsOf(c);
@@ -1018,9 +1017,11 @@ function drawName() {
   openModal('<h3>あなたの名前</h3><p class="hint" style="margin:4px 0 12px">最初の1回だけ選びます。</p>' +
     '<div class="chips" style="margin-bottom:12px">' + staffList().map(s => '<button type="button" class="chip" data-nm="' + esc(s) + '">' + esc(s) + '</button>').join('') + '</div>' +
     '<input type="text" id="nmIn" placeholder="一覧にないときは名前を入力" value="' + esc(typed) + '">' +
-    '<div class="row2" style="margin-top:12px"><button class="btn" data-act="later">あとで</button><button class="btn primary" data-act="ok">決定</button></div>',
+    '<div class="row2" style="margin-top:12px"><button class="btn" data-act="later">あとで</button><button class="btn primary" data-act="ok">決定</button></div>' +
+    (me() ? '<button type="button" class="btn sm block" data-act="nick" style="margin-top:16px">👷 名簿の呼び名（あだ名）を見る・直す</button>' : ''),
     e => {
       const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.act === 'nick') { NAME_OPEN = false; AFTER_NAME = null; return openNick(); }
       if (b.dataset.act === 'later') { NAME_OPEN = false; AFTER_NAME = null; closeModal(); return; }
       const v = b.dataset.nm || (b.dataset.act === 'ok' ? $('nmIn').value.trim() : '');
       if (!v) { if (b.dataset.act === 'ok') toast('名前を選ぶか入力してください'); return; }
@@ -1041,7 +1042,6 @@ document.body.addEventListener('click', e => {
   if (e.target.closest('#modal')) return;
   const dy = e.target.closest('[data-day]'); if (dy) { SEL = dy.dataset.day; return render(); }
   const cd = e.target.closest('[data-card]'); if (cd) return openCard(cd.dataset.card);
-  if (e.target.closest('#nickBtn')) return openNick();
   const ns = e.target.closest('[data-new-site]'); if (ns) return openCard(null, { cardId: '', date: SEL, site: ns.dataset.newSite, eventId: '', meetTime: '', staff: [], vehicle: '', stops: [], items: [], steps: [], notes: [], rawText: '' });
   const sh = e.target.closest('[data-shop]'); if (sh) return toggleShop(sh.dataset.shop);
   const ld = e.target.closest('[data-load]'); if (ld) return toggleLoad(ld.dataset.load);
