@@ -174,9 +174,9 @@ function doGet(e) {
   try {
     if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL) });
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
-    if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair') });
-    if (app === 'torihiki' && a === 'data') return out_({ ok: true, suppliers: rows_('suppliers') });
-    if (app === 'sharyo' && a === 'data') return out_({ ok: true, vehicles: rows_('vehicles'), logs: rows_('vehicleLog'), docs: rows_('vehicleDocs'), suppliers: rows_('suppliers') });
+    if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair'), suppliers: rows_('suppliers'), admins: admins_() });
+    if (app === 'torihiki' && a === 'data') return out_({ ok: true, suppliers: rows_('suppliers'), history: supplierHistory_(), admins: admins_() });
+    if (app === 'sharyo' && a === 'data') return out_({ ok: true, vehicles: rows_('vehicles'), logs: rows_('vehicleLog'), docs: rows_('vehicleDocs'), suppliers: rows_('suppliers'), admins: admins_() });
     if (app === 'dandori') {
       var today = ymd_(new Date());
       if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles') });
@@ -191,6 +191,7 @@ function doPost(e) {
   try { b = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad json' }); }
   try {
     var key = (b.app || '') + ':' + (b.mode || '');
+    if (ADMIN_ONLY.indexOf(key) >= 0 && !isAdmin_(b.by)) return out_({ ok: false, error: '削除は' + admins_().join('・') + 'だけができます。消したいときは頼んでください' });
     switch (key) {
       /* 用語集 */
       case 'yougo:aiSearch':   return out_(aiSearch_(b.query, b.categories));
@@ -229,6 +230,26 @@ function doPost(e) {
       default: return out_({ ok: false, error: 'unknown mode: ' + key });
     }
   } catch (err) { return out_({ ok: false, error: String(err) }); }
+}
+
+/* ================================================================
+ *  削除できる人（親方）。スクリプト プロパティ ADMIN_NAMES に「親方,持田」のように書けば変えられる
+ * ================================================================ */
+var ADMIN_ONLY = ['torihiki:delete', 'sharyo:delete', 'sharyo:deleteDoc', 'sharyo:deleteLog', 'dougu:deleteRepair'];
+function admins_() { return String(prop_('ADMIN_NAMES', '親方')).split(/[,、，\s]+/).map(function (x) { return x.trim(); }).filter(String); }
+function isAdmin_(name) { return admins_().indexOf(String(name || '').trim()) >= 0; }
+
+/* 取引先ごとの修理・点検の履歴（道具の修理履歴と車両の記録から、お店の名前・呼び方で集める） */
+function supplierHistory_() {
+  var tools = rows_('tools'), terms = {};
+  rows_('terms').forEach(function (t) { terms[t.termId] = t.term; });
+  var toolName = {}; tools.forEach(function (t) { toolName[t.id] = terms[t.termId] || t.id; });
+  var vehName = {}; rows_('vehicles').forEach(function (v) { vehName[v.id] = v.name; });
+  var out = [];
+  rows_('toolRepair').forEach(function (r) { if (r.shop) out.push({ shop: r.shop, date: r.date, what: '道具', name: toolName[r.toolId] || r.toolId, type: r.type, content: r.content, cost: r.cost, by: r.by }); });
+  rows_('vehicleLog').forEach(function (r) { if (r.shop) out.push({ shop: r.shop, date: r.date, what: '車両', name: vehName[r.vehicleId] || r.vehicleId, type: r.type, content: r.content, cost: r.cost, by: r.by }); });
+  rows_('vehicles').forEach(function (v) { if (v.ownership === 'レンタル' && v.rentalShop) out.push({ shop: v.rentalShop, date: v.rentalFrom, what: '車両', name: v.name, type: 'レンタル', content: (v.rentalFrom || '') + '〜' + (v.rentalTo || ''), cost: '', by: v.updatedBy }); });
+  return out;
 }
 
 /* ================================================================

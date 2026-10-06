@@ -161,14 +161,22 @@ async function getJSON(url) { return (await fetch(url, { cache: 'no-store' })).j
 async function postJSON(body) { return (await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ app: 'torihiki', by: me() }, body)) })).json(); }
 
 /* ============ データ ============ */
-let SUP = [], KIND = '';
+let SUP = [], KIND = '', HIST = [], ADMINS = ['親方'];
+const canDelete = () => ADMINS.includes(me());
 async function load() {
   try {
-    if (DEMO) SUP = lsGet(LS.demo, []);
-    else { const r = await getJSON(GAS_URL + '?app=torihiki&action=data'); if (!r.ok) throw new Error(r.error); SUP = r.suppliers || []; lsSet(LS.cache, SUP); }
+    if (DEMO) {
+      SUP = lsGet(LS.demo, []);
+      const sv = lsGet('sharyo_demo_v1', { vehicles: [], logs: [] }) || {}, vn = {}; (sv.vehicles || []).forEach(v => { vn[v.id] = v.name; });
+      HIST = (sv.logs || []).filter(l => l.shop).map(l => ({ shop: l.shop, date: l.date, what: '車両', name: vn[l.vehicleId] || '', type: l.type, content: l.content, cost: l.cost, by: l.by }))
+        .concat((lsGet('dougu_repairs_demo', []) || []).filter(r => r.shop).map(r => ({ shop: r.shop, date: r.date, what: '道具', name: r.toolId, type: r.type, content: r.content, cost: r.cost, by: r.by })));
+    } else {
+      const r = await getJSON(GAS_URL + '?app=torihiki&action=data'); if (!r.ok) throw new Error(r.error);
+      SUP = r.suppliers || []; HIST = r.history || []; ADMINS = r.admins && r.admins.length ? r.admins : ADMINS; lsSet(LS.cache, { SUP, HIST, ADMINS });
+    }
   } catch (e) {
     const c = lsGet(LS.cache, null);
-    if (c) { SUP = c; toast('前回のデータを表示しています（' + NET_ERR + '）'); } else showError('取引先を読み込めませんでした。' + NET_ERR);
+    if (c) { if (Array.isArray(c)) SUP = c; else ({ SUP, HIST, ADMINS } = c); toast('前回のデータを表示しています（' + NET_ERR + '）'); } else showError('取引先を読み込めませんでした。' + NET_ERR);
   }
   render();
 }
@@ -209,6 +217,23 @@ function render() {
     : '<div class="empty">' + (SUP.length ? '見つかりません。' + (q ? '「' + esc(q) + '」で新しく追加できます。<br><button class="btn sm" style="margin-top:8px" data-new="' + esc(q) + '">＋「' + esc(bare(q)) + '」を追加</button>' : '') : 'まだ取引先がありません。<br>右下の「＋ 取引先を追加」から登録してください。') + '</div>';
 }
 
+/* ============ 修理・点検・レンタルの履歴（道具管理・車両アプリの記録から） ============ */
+const supNames = s => [s.name, s.kana].concat(splitList(s.aliases)).map(bare).filter(Boolean);
+function historyOf(s) {
+  const ns = supNames(s).map(norm);
+  return HIST.filter(h => ns.includes(norm(bare(h.shop)))).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+}
+const yen = v => { const n = Number(String(v || '').replace(/[^\d]/g, '')); return n ? n.toLocaleString('ja-JP') + '円' : ''; };
+function historyHtml(s) {
+  const list = historyOf(s); if (!list.length) return '';
+  const y = String(new Date().getFullYear()), sum = arr => arr.reduce((t, h) => t + (Number(String(h.cost || '').replace(/[^\d]/g, '')) || 0), 0);
+  const total = sum(list), thisYear = sum(list.filter(h => String(h.date || '').startsWith(y)));
+  return '<div class="sec-title">🔧 修理・点検・レンタルの履歴（' + list.length + '件）</div>' +
+    (total ? '<p class="hint" style="margin:0 0 6px">費用の合計：今年 ' + (thisYear ? thisYear.toLocaleString('ja-JP') + '円' : '0円') + '／全部 ' + total.toLocaleString('ja-JP') + '円</p>' : '') +
+    list.slice(0, 30).map(h => '<div style="border-top:1px solid var(--line);padding:7px 0;font-size:14px"><div style="display:flex;gap:8px"><b style="flex:1">' + (h.what === '車両' ? '🚚 ' : '🧰 ') + esc(h.name || '') + '　' + esc(h.type || '') + '</b><span class="hint" style="margin:0">' + esc(String(h.date || '').replace(/-/g, '/')) + '</span></div>' +
+      (h.content ? '<div class="hint" style="margin:0;white-space:pre-wrap">' + esc(h.content) + '</div>' : '') + (yen(h.cost) || h.by ? '<div class="hint" style="margin:0">' + esc([yen(h.cost), h.by].filter(Boolean).join('・')) + '</div>' : '') + '</div>').join('');
+}
+
 /* ============ 詳細・編集 ============ */
 function openSup(id) {
   const s = SUP.find(x => x.id === id); if (!s) return;
@@ -224,8 +249,9 @@ function openSup(id) {
     '<dt>担当の人</dt><dd>' + esc(s.contact || '—') + '</dd>' +
     '<dt>扱う物</dt><dd>' + esc(s.items || '—') + '</dd>' +
     '<dt>メモ</dt><dd style="white-space:pre-wrap">' + esc(s.memo || '—') + '</dd>' +
-    '</dl>' + (s.updatedBy || s.updatedAt ? '<p class="hint">最後に直した人：' + esc(s.updatedBy || '') + '　' + esc(s.updatedAt || '') + '</p>' : '') +
-    '<div class="row2" style="margin-top:14px"><button class="btn danger" data-act="del">削除</button><button class="btn primary" data-act="edit">✏️ 直す</button></div>' +
+    '</dl>' + historyHtml(s) + (s.updatedBy || s.updatedAt ? '<p class="hint">最後に直した人：' + esc(s.updatedBy || '') + '　' + esc(s.updatedAt || '') + '</p>' : '') +
+    '<div class="row2" style="margin-top:14px">' + (canDelete() ? '<button class="btn danger" data-act="del">削除</button>' : '') + '<button class="btn primary" data-act="edit">✏️ 直す</button></div>' +
+    (canDelete() ? '' : '<p class="hint">削除は' + esc(ADMINS.join('・')) + 'だけができます。</p>') +
     '<button class="btn block" style="margin-top:8px" data-act="close">閉じる</button>',
     async e => {
       const b = e.target.closest('button'); if (!b) return;

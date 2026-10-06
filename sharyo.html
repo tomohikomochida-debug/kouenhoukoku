@@ -222,14 +222,15 @@ async function getJSON(url) { return (await fetch(url, { cache: 'no-store' })).j
 async function postJSON(body) { return (await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ app: 'sharyo', by: me() }, body)) })).json(); }
 
 /* ============ データ ============ */
-let VEH = [], LOGS = [], SUP = [], DOCS = [];
+let VEH = [], LOGS = [], SUP = [], DOCS = [], ADMINS = ['親方'];
+const canDelete = () => ADMINS.includes(me());
 async function load() {
   try {
     if (DEMO) { const d = lsGet(LS.demo, { vehicles: [], logs: [] }); VEH = d.vehicles; LOGS = d.logs; DOCS = d.docs || []; SUP = lsGet('torihiki_demo_v1', []); }
-    else { const r = await getJSON(GAS_URL + '?app=sharyo&action=data'); if (!r.ok) throw new Error(r.error); VEH = r.vehicles || []; LOGS = r.logs || []; DOCS = r.docs || []; SUP = r.suppliers || []; lsSet(LS.cache, { VEH, LOGS, SUP, DOCS }); }
+    else { const r = await getJSON(GAS_URL + '?app=sharyo&action=data'); if (!r.ok) throw new Error(r.error); VEH = r.vehicles || []; LOGS = r.logs || []; DOCS = r.docs || []; SUP = r.suppliers || []; if (r.admins && r.admins.length) ADMINS = r.admins; lsSet(LS.cache, { VEH, LOGS, SUP, DOCS, ADMINS }); }
   } catch (e) {
     const c = lsGet(LS.cache, null);
-    if (c) { ({ VEH, LOGS, SUP } = c); DOCS = c.DOCS || []; toast('前回のデータを表示しています（' + NET_ERR + '）'); } else showError('車両を読み込めませんでした。' + NET_ERR);
+    if (c) { ({ VEH, LOGS, SUP } = c); DOCS = c.DOCS || []; ADMINS = c.ADMINS || ADMINS; toast('前回のデータを表示しています（' + NET_ERR + '）'); } else showError('車両を読み込めませんでした。' + NET_ERR);
   }
   render();
 }
@@ -328,10 +329,11 @@ function openVeh(id) {
     '<dt>メモ</dt><dd style="white-space:pre-wrap">' + esc(v.memo || '—') + '</dd></dl>' +
     docsHtml(v) +
     '<div class="sec-title" style="display:flex;align-items:center;justify-content:space-between">🔧 点検・修理の記録<button class="btn sm" data-act="log">＋記録を足す</button></div>' +
-    (logs.length ? logs.map(l => '<div class="log"><div class="h"><b>' + esc(l.type || '記録') + '</b><span class="m">' + esc(l.date ? md(l.date) : '') + '</span><button class="x" data-dellog="' + esc(l.logId) + '" aria-label="記録を消す">✕</button></div>' +
+    (logs.length ? logs.map(l => '<div class="log"><div class="h"><b>' + esc(l.type || '記録') + '</b><span class="m">' + esc(l.date ? md(l.date) : '') + '</span>' + (canDelete() ? '<button class="x" data-dellog="' + esc(l.logId) + '" aria-label="記録を消す">✕</button>' : '') + '</div>' +
       (l.content ? '<div style="white-space:pre-wrap">' + esc(l.content) + '</div>' : '') +
       '<div class="m">' + esc([l.shop, yen(l.cost), l.odometer ? l.odometer + 'km' : '', l.by].filter(Boolean).join('・')) + '</div></div>').join('') : '<div class="empty" style="padding:10px">まだ記録がありません</div>') +
-    '<div class="row2" style="margin-top:16px"><button class="btn danger" data-act="del">削除</button><button class="btn primary" data-act="edit">✏️ 直す</button></div>' +
+    '<div class="row2" style="margin-top:16px">' + (canDelete() ? '<button class="btn danger" data-act="del">削除</button>' : '') + '<button class="btn primary" data-act="edit">✏️ 直す</button></div>' +
+    (canDelete() ? '' : '<p class="hint">削除は' + esc(ADMINS.join('・')) + 'だけができます（返した・手放した車は「直す」で状態を変えてください）。</p>') +
     '<button class="btn block" style="margin-top:8px" data-act="close">閉じる</button>',
     async e => {
       const b = e.target.closest('button'); if (!b) return;
@@ -362,7 +364,7 @@ function batchHtml(g, latest) {
     (latest ? '<button class="btn sm" data-until="' + esc(f.batch || f.docId) + '" title="有効期限を入れる・直す">期限</button>' : '') + '</div>' +
     (isPhotoType(f.type) && f.mime !== 'application/pdf' ? '<div class="thumbs">' + g.map((x, i) => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener"><img src="' + esc(thumbOf(x)) + '" alt="' + esc(f.type) + '" onerror="this.replaceWith(\'📷 ' + (i + 1) + '\')"></a>').join('') + '</div>'
       : '<div class="pages">' + g.map((x, i) => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">📄 ' + (g.length > 1 ? (i + 1) + '枚目' : '開く') + (x.mime === 'application/pdf' ? '（PDF）' : '') + '</a>').join('') + '</div>') +
-    '<div class="m">' + esc(String(f.at || '').slice(0, 10).replace(/-/g, '/')) + ' ' + esc(f.by || '') + '　<button class="x" style="border:0;background:none;color:var(--bark);cursor:pointer;font-size:12px;text-decoration:underline" data-delbatch="' + esc(f.batch || f.docId) + '">消す</button></div></div>';
+    '<div class="m">' + esc(String(f.at || '').slice(0, 10).replace(/-/g, '/')) + ' ' + esc(f.by || '') + (canDelete() ? '　<button class="x" style="border:0;background:none;color:var(--bark);cursor:pointer;font-size:12px;text-decoration:underline" data-delbatch="' + esc(f.batch || f.docId) + '">消す</button>' : '') + '</div></div>';
 }
 function docsHtml(v) {
   const mine = DOCS.filter(x => x.vehicleId === v.id);
