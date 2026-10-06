@@ -398,6 +398,7 @@ async function load() {
       [c, cal, w, t].forEach(r => { if (!r.ok) throw new Error(r.error || '読み込み失敗'); });
       CARDS = c.cards; NICK = c.nicknames || []; CAL = { sites: cal.sites, holidays: cal.holidays }; WORDS = { terms: w.terms, aliases: w.aliases }; TOOLS = t.tools;
       lsSet(LS.cache, { CARDS, NICK, CAL, WORDS, TOOLS });
+      moveDemoNicks();
     }
   } catch (e) {
     const c = lsGet(LS.cache, null);
@@ -911,6 +912,24 @@ async function addNickname(name, nick) {
   if (DEMO) { NICK.push({ name, nickname: nick }); lsSet(LS.me + '_nick', NICK); return; }
   const r = await postJSON(GAS_URL, { app: 'dandori', mode: 'addNickname', name, nickname: nick, by: me() });
   if (!r.ok) throw new Error(r.error); NICK.push({ name, nickname: nick });
+}
+/* お試し版でこの端末に登録した呼び名を、本番の「呼び名」シートへ一度だけ移す（失敗したら次回また試す） */
+let NICK_MOVING = false;
+async function moveDemoNicks() {
+  const flag = LS.me + '_nick_moved';
+  if (DEMO || NICK_MOVING || lsGet(flag, false)) return;
+  const local = lsGet(LS.me + '_nick', []);
+  const add = (Array.isArray(local) ? local : []).filter(x => x && x.name && x.nickname && !NICK.some(y => y.name === x.name && norm(y.nickname) === norm(x.nickname)));
+  NICK_MOVING = true; let n = 0;
+  try {
+    for (const x of add) {
+      const r = await postJSON(GAS_URL, { app: 'dandori', mode: 'addNickname', name: x.name, nickname: x.nickname, by: me() });
+      if (!r.ok) throw new Error(r.error);
+      NICK.push({ name: x.name, nickname: x.nickname }); n++;
+    }
+    lsSet(flag, true);
+    if (n) { lsSet(LS.cache, { CARDS, NICK, CAL, WORDS, TOOLS }); toast('この端末で登録した呼び名を ' + n + ' 件、みんなの名簿に移しました'); }
+  } catch (e) { /* 通信できないときは次に開いたときにもう一度 */ } finally { NICK_MOVING = false; }
 }
 async function removeNickname(name, nick) {
   if (!DEMO) { const r = await postJSON(GAS_URL, { app: 'dandori', mode: 'deleteNickname', name, nickname: nick }); if (!r.ok) throw new Error(r.error); }
