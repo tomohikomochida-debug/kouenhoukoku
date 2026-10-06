@@ -388,6 +388,7 @@ async function load() {
   try {
     if (DEMO) {
       CARDS = lsGet(LS.cards, []);
+      NICK = lsGet(LS.me + '_nick', []);
       CAL = demoCalendar();
       const x = demoWordsAndTools(); WORDS = x.w; TOOLS = x.t;
     } else {
@@ -395,12 +396,12 @@ async function load() {
         getJSON(GAS_URL + '?app=dandori&action=data'), getJSON(GAS_URL + '?app=dandori&action=calendar&from=' + addDays(TODAY, -1) + '&to=' + addDays(TODAY, 21)),
         getJSON(YOUGO_URL + '?app=yougo&action=data'), getJSON(DOUGU_URL + '?app=dougu&action=data')]);
       [c, cal, w, t].forEach(r => { if (!r.ok) throw new Error(r.error || '読み込み失敗'); });
-      CARDS = c.cards; CAL = { sites: cal.sites, holidays: cal.holidays }; WORDS = { terms: w.terms, aliases: w.aliases }; TOOLS = t.tools;
-      lsSet(LS.cache, { CARDS, CAL, WORDS, TOOLS });
+      CARDS = c.cards; NICK = c.nicknames || []; CAL = { sites: cal.sites, holidays: cal.holidays }; WORDS = { terms: w.terms, aliases: w.aliases }; TOOLS = t.tools;
+      lsSet(LS.cache, { CARDS, NICK, CAL, WORDS, TOOLS });
     }
   } catch (e) {
     const c = lsGet(LS.cache, null);
-    if (c) { ({ CARDS, CAL, WORDS, TOOLS } = c); toast('前回のデータを表示しています（' + NET_ERR + '）'); }
+    if (c) { ({ CARDS, CAL, WORDS, TOOLS } = c); NICK = c.NICK || []; toast('前回のデータを表示しています（' + NET_ERR + '）'); }
     else showError('データを読み込めませんでした。' + NET_ERR);
   }
   STAFF = staffList();   // 覚えている名簿ですぐ表示し、最新の名簿は裏で取る
@@ -446,7 +447,7 @@ function dictText() { return toolWords(true).filter(x => x.type !== '正式名')
 
 /* ============ お試し用の簡易整理（本番はAI） ============ */
 const STEP_WORDS = [[/抜根|根っこ抜/, '抜根'], [/伐採|切り倒|伐って/, '伐採'], [/掘り取|根巻/, '掘り取り'], [/土掘|穴掘|掘削|掘って/, '掘削'], [/移植/, '移植'],
-  [/客土/, '客土'], [/植えて|植える|植付|植栽|植え付け|植えるから/, '植付'], [/水極め|水ぎめ/, '水極め'], [/支柱/, '支柱'], [/剪定/, '剪定'], [/刈り込|刈込/, '刈り込み'],
+  [/客土/, '客土'], [/植えて|植える|植付|植栽|植え付け|植えるから/, '植付'], [/水極め|水ぎめ/, '水極め'], [/支柱/, '支柱'], [/枝おろし|枝下ろし|枝を下ろ|枝をおろ/, '枝おろし'], [/剪定/, '剪定'], [/刈り込|刈込/, '刈り込み'],
   [/消毒/, '消毒'], [/草刈|草取/, '草刈り'], [/搬出|運び出/, '搬出'], [/掃除|清掃|片付/, '清掃']];
 const KNUM = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
 function dateIn(s, base) {
@@ -463,15 +464,75 @@ function dateIn(s, base) {
   if (m) { const d = parseYmd(base); let c = new Date(d.getFullYear(), d.getMonth(), Number(m[1])); if (ymd(c) < base) c = new Date(d.getFullYear(), d.getMonth() + 1, Number(m[1])); return ymd(c); }
   return null;
 }
+
+/* ---- 現場名：現場マスタ（日報アプリの現場一覧）と照らして、聞き間違いを直す ---- */
+const DEMO_SITES = ['高津公園', '溝口南公園', '上作延第3公園', '久地伊屋ノ免公園', '下作延南こども公園', '○○邸', '□□公園', '中山建設 南区 須賀邸', '桜ヶ丘', '岸邸', '齋藤邸', '港北ガーデンホームズ'];
+function flatSites(sg) {
+  const out = [];
+  const walk = v => { if (Array.isArray(v)) v.forEach(x => typeof x === 'string' ? out.push(x) : walk(x)); else if (v && typeof v === 'object') Object.values(v).forEach(walk); };
+  walk(sg); return Array.from(new Set(out.filter(Boolean)));
+}
+function masterSites() {
+  const m = lsGet('nippou_masters', null), f = lsGet(LS.me + '_sites', null);
+  let list = (f && f.length) ? f : (m && m.siteGroups ? flatSites(m.siteGroups) : []);
+  if (!list.length && DEMO) list = DEMO_SITES;
+  return Array.from(new Set(list.concat(CAL.sites.map(s => s.title))));
+}
+function siteKey(s) { return norm(s).replace(/[のノヶケが]/g, ''); }   // 溝の口／溝口、桜ヶ丘／桜ケ丘 などのゆれを吸収
+function bigrams(s) { const k = siteKey(s), o = []; for (let i = 0; i < k.length - 1; i++) o.push(k.slice(i, i + 2)); return o; }
+const GENERIC_BG = new Set(['公園', '緑地', '小学', '学校', '中学', '保育']);
+function siteScore(text, site) {   // 現場名の2文字ずつのうち、話の中に出てくる割合（「公園」だけの一致は数えない）
+  const tb = new Set(bigrams(text)), sb = bigrams(site);
+  if (!sb.length) return 0;
+  const hit = sb.filter(b => tb.has(b)), strong = hit.filter(b => !GENERIC_BG.has(b));
+  return strong.length ? hit.length / sb.length : 0;
+}
+function bestSite(text, list) {
+  let best = null, score = 0;
+  (list || masterSites()).forEach(s => {
+    const sc = siteKey(text).includes(siteKey(s)) ? 1 : siteScore(text, s);
+    if (sc > score || (sc === score && best && s.length > best.length)) { best = s; score = sc; }
+  });
+  return score >= 0.5 ? { site: best, exact: score === 1, score } : null;
+}
 function siteIn(s, date) {
   const near = CAL.sites.filter(x => !date || x.date === date).concat(CAL.sites);
   for (const ev of near) {
     const parts = ev.title.split(/[\s　]+/).filter(p => p.length >= 2);
-    if (parts.some(p => s.includes(p))) return ev.title;
+    if (parts.some(p => s.includes(p))) return { site: ev.title, exact: true };
   }
+  const b = bestSite(s);
+  if (b) return b;
   const m = s.match(/([^\s、。はのでにをとが]{1,10}?(?:邸|公園|緑地|団地|小学校|中学校|保育園|ハイツ|マンション|霊園|寺))/);
-  return m ? m[1] : '';
+  if (!m || /^(朝|昼|夕方|この|その|あの|次の|同じ|別の|他の|近くの|前の)/.test(m[1]) || m[1].length < 3) return null;
+  return { site: m[1], exact: true };
 }
+
+/* ---- 人：名簿の名前・呼び名（あだ名）・〜くん／さん／ちゃん ---- */
+let NICK = [];   // [{name, nickname}]
+function personOf(word) {
+  const w = String(word || '').trim(); if (!w) return '';
+  if (STAFF.includes(w)) return w;
+  const n = NICK.find(x => norm(x.nickname) === norm(w)); if (n) return n.name;
+  const bare = w.replace(/(さん|くん|君|ちゃん|っち|氏)$/, '');
+  if (STAFF.includes(bare)) return bare;
+  const n2 = NICK.find(x => norm(x.nickname) === norm(bare)); return n2 ? n2.name : '';
+}
+function rosterText() {
+  return STAFF.map(n => { const ns = NICK.filter(x => x.name === n).map(x => x.nickname); return n + (ns.length ? '（' + ns.join('・') + '）' : ''); }).join('、');
+}
+function peopleIn(clause) {   // 文の中の人：名簿の名前・登録済みの呼び名・〜くん等。分からない呼び名は unknown へ
+  const found = [], unknown = [];
+  STAFF.forEach(n => { if (clause.includes(n)) found.push(n); });
+  NICK.forEach(x => { if (clause.includes(x.nickname) && !found.includes(x.name)) found.push(x.name); });
+  // 呼び名は「漢字・カタカナ1〜3文字」か「文頭・区切りの後のひらがな2〜3文字」＋くん／ちゃん（「取りは開くん」のような取りすぎを防ぐ）
+  const nickRe = /(?:([\u4e00-\u9fff\u30a1-\u30fa]{1,3})|(?:^|[\s、。])([\u3041-\u3096]{2,3}))(くん|君|ちゃん)/g;
+  Array.from(clause.matchAll(nickRe)).map(m => (m[1] || m[2]) + m[3]).forEach(w => {
+    const p = personOf(w); if (p) { if (!found.includes(p)) found.push(p); } else if (!unknown.includes(w)) unknown.push(w);
+  });
+  return { found, unknown };
+}
+
 function qtyAfter(text, pos) {
   const m = text.slice(pos).match(/^[^\d一二三四五六七八九十、。]{0,6}?(\d+|[一二三四五六七八九十]+)\s*(本|個|束|枚|台|袋|丁|足|株|m|メートル|つ|kg|キロ)?/);
   if (!m) return { qty: '', unit: '' };
@@ -495,34 +556,69 @@ function findItems(clause) {   // 文の中の道具・資材を長い言葉か�
   });
   return found.sort((a, b) => a.pos - b.pos);
 }
+
+/* ============ お試し用の簡易整理（本番はAI） ============ */
 function demoOrganize(text, spokenAt, fixed) {
-  const base = spokenAt.slice(0, 10), hour = Number(spokenAt.slice(11, 13));
+  const base = spokenAt.slice(0, 10), hour = Number(spokenAt.slice(11, 13)), speaker = me();
   const cards = [];
+  const blank = (kind, date, site, title) => ({ kind, date, dateNote: '', site, title, meetTime: '', members: [], vehicle: '', stops: [], items: [], steps: [], notes: [], unresolved: [], unknownPeople: [], corrections: [] });
   const get = (date, site) => {
-    let c = cards.find(x => x.date === date && x.site === site);
-    if (!c && site) { c = cards.find(x => x.date === date && !x.site); if (c) c.site = site; }
-    if (!c) { c = { date, site, meetTime: '', members: [], vehicle: '', stops: [], items: [], steps: [], notes: [], unresolved: [] }; cards.push(c); }
+    let c = cards.find(x => x.kind === 'site' && x.date === date && x.site === site);
+    if (!c && site) { c = cards.find(x => x.kind === 'site' && x.date === date && !x.site); if (c) c.site = site; }
+    if (!c) { c = blank('site', date, site, ''); cards.push(c); }
     return c;
   };
   let curDate = fixed ? fixed.date : (hour >= 12 ? addDays(base, 1) : base), curSite = fixed ? fixed.site : '';
-  let cur = get(curDate, curSite);
+  let cur = get(curDate, curSite), task = null;
   const clauses = text.normalize('NFKC').split(/[、。\n,.!?！？]+/).map(s => s.trim()).filter(s => s.length > 1);
   clauses.forEach(cl => {
-    if (!fixed) {
-      const d = dateIn(cl, base), s = siteIn(cl, d || curDate);
-      if (d && d !== curDate) { curDate = d; curSite = ''; }
-      if (s) curSite = s;
-      if (d || s) cur = get(curDate, curSite);
+    const d = fixed ? null : dateIn(cl, base);
+    // 現場のない用事（残土・処分など）は「やること」カードに
+    if (!fixed && /今日/.test(cl) && /(出た|やった|終わった|行った)(?:$|けど|から|ので)/.test(cl) && !/明日|明後日/.test(cl)) return;   // 今日の報告（予定ではない）は飛ばす
+    const isTask = /残土|処分|捨てに|捨て場|捨てる場所|ゴミ出し|根株|ねかぶ|抜根したもの/.test(cl);
+    const aboutTask = task && /捨て|積載|軽トラ|ダンプ|厳しければ|無理なら|残土|山町/.test(cl);
+    if (!fixed && (isTask || aboutTask)) {
+      if (!task) { task = blank('task', d || curDate, '', /残土/.test(cl) ? '残土処分' : '処分'); cards.push(task); }
+      if (d) task.date = d;
+      if (/厳しければ|無理なら|どこかで|空いたら|都合/.test(cl)) task.dateNote = '都合がつかなければ別の日';
+      const ppl = peopleIn(cl); ppl.unknown.forEach(u => { if (!task.unknownPeople.includes(u)) task.unknownPeople.push(u); });
+      if (/軽トラ/.test(cl) && /ダンプ/.test(cl)) task.vehicle = '軽トラ（積載オーバーなら' + ((cl.match(/(\d)\s*(?:t|トン)\s*ダンプ/) || [])[1] ? cl.match(/(\d)\s*(?:t|トン)\s*ダンプ/)[1] + 't' : '') + 'ダンプ）';
+      else { const vh = cl.match(/(\d\s*(?:t|トン))?\s*(ダンプ|軽トラ)/); if (vh && !task.vehicle) task.vehicle = vh[0].replace(/\s/g, '').replace('トン', 't'); }
+      if (/捨てる場所|捨て場|どこに捨て|聞いて/.test(cl) || /抜根|根株|ねかぶ|振/.test(cl)) task.notes.push(cl.replace(/^(あと|それと|で|あ)+/, '').trim());
+      if (/抜根|根株|ねかぶ/.test(cl)) { const sm = bestSite(cl); if (sm) task.title = sm.site + 'の残土処分'; }
+      return;
     }
-    STAFF.forEach(n => { if (cl.includes(n) && !cur.members.includes(n)) cur.members.push(n); });
+    if (!fixed) {
+      const s = siteIn(cl, d || curDate);
+      const help = cl.match(/([^\s、。はのでにを]{1,6}?)から.*応援/);
+      if (d && d !== curDate) { curDate = d; curSite = ''; task = null; }
+      if (s) { curSite = s.site; task = null; }
+      else if (help) { curSite = help[1] + ' 応援'; task = null; }
+      if (d || s || help) {
+        cur = get(curDate, curSite);
+        if (s && !s.exact && !cur.corrections.some(x => x.includes(s.site))) cur.corrections.push('話の中の言葉から「' + s.site + '」と読みました（聞き間違いかもしれません）');
+      }
+    }
+    // 人：「全員」「私以外」「他の人」は名簿から（休みの人は除く）
+    const off = offNames(curDate);
+    if (/全員|みんなで/.test(cl) && !/聞いて/.test(cl)) {
+      const except = /私以外|俺以外|自分以外/.test(cl) ? [speaker] : [];
+      STAFF.filter(n => !except.includes(n) && !off.includes(n)).forEach(n => { if (!cur.members.includes(n)) cur.members.push(n); });
+      off.forEach(n => { const note = n + 'さんは休み（カレンダー）'; if (!except.includes(n) && !cur.notes.includes(note)) cur.notes.push(note); });
+    }
+    if (/^(朝)?(私|俺)が|私が|俺が/.test(cl) && speaker && !cur.members.includes(speaker)) cur.members.push(speaker);
+    const ppl = peopleIn(cl);
+    ppl.found.forEach(n => { if (!cur.members.includes(n)) cur.members.push(n); });
+    ppl.unknown.forEach(u => { if (!cur.unknownPeople.includes(u)) cur.unknownPeople.push(u); });
+    if (/体調|戻ったら|来られたら/.test(cl)) cur.notes.push(cl.replace(/^(あと|それと|で|あ|他の人で)+/, '').trim());
     const tm = cl.match(/(\d{1,2})時(半)?/); if (tm && /集合|出発|出る|待ち合わせ|時に/.test(cl + '時に')) cur.meetTime = tm[1] + ':' + (tm[2] ? '30' : '00');
-    const vh = cl.match(/(2t|4t|2トン|4トン)?(ダンプ|軽トラ|ユニック|パッカー|キャラバン|高所作業車)/); if (vh && !/手配/.test(cl)) cur.vehicle = vh[0];
+    const vh = cl.match(/(2t|4t|2トン|4トン)?(ダンプ|軽トラ|ユニック|パッカー|キャラバン|高所作業車|クレーン)/); if (vh && !/手配/.test(cl)) cur.vehicle = vh[0];
     const items = findItems(cl);
     const isFix = /やっぱ|いや|じゃなくて|訂正|やっぱり/.test(cl);
     // 立ち寄り先：「○○屋で」「○○さんとこで」、または「○○で〜買って／もらって」
     const pm = cl.match(/([^\s、。]{1,14}?(?:屋|センター|店|さんとこ|さんち|資材|園芸))(?:で|に|へ)/) || cl.match(/([^\s、。]{1,14})(?:で|に|へ)(?=[^でにへ]*(買|もら|受け取|仕入|寄|拾))/);
     let place = pm ? pm[1].replace(/^(その前に|その後|あと|それと|で|あ|まず|最初に|帰りに|行きに|朝|ついでに|は)+/, '').trim() : '';
-    if (place && STAFF.some(n => place.includes(n))) place = '';
+    if (place && (STAFF.some(n => place.includes(n)) || bestSite(place))) place = '';
     if (place) {
       let stop = cur.stops.find(s => s.place === place);
       if (!stop) { stop = { order: cur.stops.length + 1, place, items: [], done: false }; cur.stops.push(stop); }
@@ -543,35 +639,48 @@ function demoOrganize(text, spokenAt, fixed) {
       });
     }
     STEP_WORDS.forEach(([re, lab]) => { if (re.test(cl) && !cur.steps.includes(lab)) cur.steps.push(lab); });
-    if (/注意|気をつけ|危な|駐車|隣|近所|手配|忘れ|電線|通学/.test(cl)) {
-      const s = cl.replace(/^(あ|それと|あと|で)+/, '').replace(/(明日|今日|明後日|[月火水木金土日]曜(日)?の?)/g, '').replace(curSite, '').replace(/^は/, '').trim();
+    if (/注意|気をつけ|危な|駐車|隣|近所|手配|忘れ|電線|通学|様子|見て決め|決めて|調整|段取りは|要請/.test(cl)) {
+      const s = cl.replace(/^(あ|それと|あと|で)+/, '').replace(/(明日|今日|明後日|[月火水木金土日]曜(日)?の?)/g, '').replace(curSite, '').replace(/^(は|ですが)/, '').trim();
       if (s && !cur.notes.includes(s)) cur.notes.push(s);
     }
   });
-  return cards.filter(c => c.site || c.items.length || c.stops.length || c.steps.length || c.notes.length || c.members.length);
+  return cards.filter(c => c.site || c.title || c.items.length || c.stops.length || c.steps.length || c.notes.length || c.members.length);
 }
 
 /* ============ 整理結果の仕上げ（AI・お試し共通） ============ */
 const holidaysOn = date => CAL.holidays.filter(h => h.date === date);
 function offNames(date) {
+  if (!date) return [];
   const hs = holidaysOn(date);
   if (hs.some(h => h.all)) return STAFF.slice();
-  return STAFF.filter(n => hs.some(h => h.title.includes(n)));
+  return STAFF.filter(n => hs.some(h => h.title.includes(n) || NICK.some(x => x.name === n && h.title.includes(x.nickname))));
 }
 function finalize(raw) {
   return raw.map(c => {
-    const card = { cardId: '', date: c.date || SEL, site: c.site || '', eventId: '', meetTime: c.meetTime || '', staff: (c.members || c.staff || []).slice(), vehicle: c.vehicle || '',
+    const kind = c.kind === 'task' || (!c.site && c.title) ? 'task' : 'site';
+    const members = [], unknown = (c.unknownPeople || []).slice();
+    (c.members || c.staff || []).forEach(m => { const p = personOf(m); if (p) { if (!members.includes(p)) members.push(p); } else if (!unknown.includes(m)) unknown.push(m); });
+    const card = { cardId: '', kind, date: c.date === undefined ? SEL : (c.date || ''), dateNote: c.dateNote || '', site: kind === 'site' ? (c.site || '') : '', title: kind === 'task' ? (c.title || 'やること') : '',
+      eventId: '', meetTime: c.meetTime || '', staff: members, vehicle: c.vehicle || '',
       stops: (c.stops || []).map((s, i) => ({ order: i + 1, place: s.place || '', done: !!s.done, items: (s.items || []).map(it => Object.assign({ done: false }, it, (() => { const m = it.termId ? { termId: it.termId } : matchWord(it.name); return m ? { termId: m.termId } : {}; })())) })),
       items: (c.items || []).map(it => { const m = it.termId ? termById(it.termId) && { termId: it.termId } : matchWord(it.name); const t = m && toolOfTerm(m.termId); return { name: m ? termById(m.termId).term : it.name, termId: m ? m.termId : '', toolId: t ? t.id : '', qty: it.qty || '', unit: it.unit || '', loaded: false, returned: false }; }),
-      steps: (c.steps || []).slice(), notes: (c.notes || []).slice(), rawText: '', unresolved: (c.unresolved || []).slice() };
-    // 現場名をカレンダーの予定名にそろえる
-    const evs = CAL.sites.filter(e => e.date === card.date);
-    const ev = evs.find(e => card.site && (norm(e.title).includes(norm(card.site)) || norm(card.site).includes(norm(e.title))));
-    if (ev) { card.site = ev.title; card.eventId = ev.id; }
-    else if (!card.site && evs.length === 1) { card.site = evs[0].title; card.eventId = evs[0].id; card.unresolved.push('現場が話に出なかったので、カレンダーの「' + evs[0].title + '」にしました'); }
-    else if (!card.site) card.unresolved.push('どの現場の段取りですか？');
+      steps: (c.steps || []).slice(), notes: (c.notes || []).slice(), rawText: '',
+      unresolved: (c.unresolved || []).slice(), unknownPeople: unknown, fixes: (c.corrections || []).slice() };
+    if (kind === 'site') {
+      // 現場名：現場マスタ・カレンダーにない名前は、近い名前に直す（聞き間違い対策）
+      const list = masterSites();
+      if (card.site && !list.some(s => siteKey(s) === siteKey(card.site))) {
+        const b = bestSite(card.site, list);
+        if (b && siteKey(b.site) !== siteKey(card.site)) { card.fixes.push('「' + card.site + '」→「' + b.site + '」に直しました'); card.site = b.site; }
+      }
+      const evs = CAL.sites.filter(e => e.date === card.date);
+      const ev = evs.find(e => card.site && (norm(e.title).includes(norm(card.site)) || norm(card.site).includes(norm(e.title))));
+      if (ev) { card.site = ev.title; card.eventId = ev.id; }
+      else if (!card.site && evs.length === 1) { card.site = evs[0].title; card.eventId = evs[0].id; card.unresolved.push('現場が話に出なかったので、カレンダーの「' + evs[0].title + '」にしました'); }
+      else if (!card.site) card.unresolved.push('どの現場の段取りですか？');
+    }
     // すでにあるカードには追記
-    const ex = CARDS.find(x => x.date === card.date && x.site && x.site === card.site);
+    const ex = CARDS.find(x => x.date === card.date && ((kind === 'site' && x.site && x.site === card.site) || (kind === 'task' && x.kind === 'task' && x.title === card.title)));
     card._merge = ex ? ex.cardId : '';
     return card;
   });
@@ -611,6 +720,8 @@ function renderDays() {
   $('days').innerHTML = h;
   const on = $('days').querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ inline: 'center', block: 'nearest' });
 }
+function cardName(c) { return c.kind === 'task' ? '📌 ' + (c.title || 'やること') : (c.site || '（現場未定）'); }
+function dateLabel(c) { return (c.date ? md(c.date) : '日付未定') + (c.dateNote ? '（' + c.dateNote + '）' : ''); }
 function holHtml(date) {
   const hs = holidaysOn(date);
   if (!hs.length) return '';
@@ -621,12 +732,16 @@ function renderPlan() {
   const cards = CARDS.filter(c => c.date === SEL);
   const evs = []; CAL.sites.filter(s => s.date === SEL).forEach(s => { if (!evs.some(e => e.title === s.title)) evs.push(s); });
   $('calSites').innerHTML = evs.filter(e => !cards.some(c => c.site === e.title)).map(e => '<div class="sitecal"><span class="tag site">カレンダー</span><span class="t">' + esc(e.title) + '</span><button class="btn sm" data-new-site="' + esc(e.title) + '">＋段取り</button></div>').join('');
-  $('plans').innerHTML = cards.length ? cards.map(planHtml).join('') : (evs.length ? '' : '<div class="empty">' + md(SEL) + ' の段取りはまだありません。<br>下の「🎤 段取りを話す」から。</div>');
+  const undated = CARDS.filter(c => !c.date);
+  $('plans').innerHTML = (cards.length ? cards.map(planHtml).join('') : (evs.length ? '' : '<div class="empty">' + md(SEL) + ' の段取りはまだありません。<br>下の「🎤 段取りを話す」から。</div>')) +
+    (undated.length ? '<div class="sec">📌 日付未定のやること</div>' + undated.map(planHtml).join('') : '') +
+    '<button type="button" class="btn sm block" id="nickBtn" style="margin-top:14px">👷 名簿の呼び名（あだ名）を登録</button>';
 }
 function planHtml(c) {
   const w = warningsOf(c);
   const stops = c.stops.map((s, i) => '①②③④⑤⑥⑦⑧⑨'[i] + esc(s.place) + (s.items.length ? '：' + s.items.map(it => esc(it.name) + (it.qty ? ' ' + it.qty + (it.unit || '') : '')).join('・') : '')).join('　');
-  return '<button type="button" class="plan" data-card="' + esc(c.cardId) + '"><div class="st">' + esc(c.site || '（現場未定）') + '</div>' +
+  return '<button type="button" class="plan" data-card="' + esc(c.cardId) + '"' + (c.kind === 'task' ? ' style="border-left-color:var(--tape)"' : '') + '><div class="st">' + esc(cardName(c)) + '</div>' +
+    (c.dateNote || !c.date ? '<div class="meta">🗓 ' + esc(dateLabel(c)) + '</div>' : '') +
     '<div class="meta">' + (c.meetTime ? '⏰ ' + esc(c.meetTime) + '　' : '') + (c.staff.length ? '👷 ' + esc(c.staff.join('・')) : '👷 メンバー未定') + (c.vehicle ? '　🚚 ' + esc(c.vehicle) : '') + '</div>' +
     (stops ? '<div class="ln">🛒 ' + stops + '</div>' : '') +
     (c.items.length ? '<div class="ln">🧰 ' + c.items.map(it => esc(it.name) + (it.qty ? ' ' + it.qty + (it.unit || '') : '')).join('、') + '</div>' : '') +
@@ -664,7 +779,7 @@ function openSpeak(fixed) {
 async function organize(text, fixed) {
   const spokenAt = nowStr();
   if (DEMO) return demoOrganize(text, spokenAt, fixed);
-  const r = await postJSON(GAS_URL, { app: 'dandori', mode: 'organize', text, spokenAt, sites: CAL.sites.filter(s => s.date >= TODAY), holidays: CAL.holidays.filter(h => h.date >= TODAY), staff: STAFF, dict: dictText() });
+  const r = await postJSON(GAS_URL, { app: 'dandori', mode: 'organize', text, spokenAt, speaker: me(), sites: CAL.sites.filter(s => s.date >= TODAY), holidays: CAL.holidays.filter(h => h.date >= TODAY), staff: STAFF, roster: rosterText(), masterSites: masterSites(), dict: dictText() });
   if (!r.ok) throw new Error(r.error || 'AIで整理できませんでした');
   return r.cards;
 }
@@ -674,7 +789,7 @@ function showPreview(cards) {
   const h = '<h3>こう整理しました</h3><p class="hint" style="margin-bottom:12px">' + cards.length + '件のカードに分けました。違うところは保存してから直せます。</p>' +
     cards.map((c, i) => {
       const w = warningsOf(c);
-      return '<div class="pv" id="pv' + i + '"><div class="hd"><span class="t">' + md(c.date) + '　' + esc(c.site || '（現場未定）') + '</span>' + (c._merge ? '<span class="tag new">既存に追記</span>' : '<span class="tag new">新しいカード</span>') +
+      return '<div class="pv" id="pv' + i + '"' + (c.kind === 'task' ? ' style="border-left-color:var(--tape)"' : '') + '><div class="hd"><span class="t">' + esc(dateLabel(c)) + '　' + esc(cardName(c)) + '</span>' + (c._merge ? '<span class="tag new">既存に追記</span>' : '<span class="tag new">新しいカード</span>') +
         '<button class="btn sm" data-skip="' + i + '">外す</button></div><dl>' +
         (c.meetTime ? '<dt>集合</dt><dd>' + esc(c.meetTime) + '</dd>' : '') +
         '<dt>メンバー</dt><dd>' + (c.staff.length ? esc(c.staff.join('・')) : '—') + '</dd>' +
@@ -684,22 +799,34 @@ function showPreview(cards) {
         '<dt>作業</dt><dd>' + (c.steps.length ? esc(c.steps.join(' → ')) : '—') + '</dd>' +
         '<dt>注意点</dt><dd>' + (c.notes.length ? c.notes.map(esc).join('<br>') : '—') + '</dd></dl>' +
         (w.length ? '<div class="warnbox">' + w.map(x => '● ' + esc(x)).join('<br>') + '</div>' : '') +
+        (c.fixes && c.fixes.length ? '<div class="askbox" style="background:#EEF4EF;border-color:#CFE0D3;color:var(--leaf)">' + c.fixes.map(x => '✏️ ' + esc(x)).join('<br>') + '</div>' : '') +
+        (c.unknownPeople && c.unknownPeople.length ? c.unknownPeople.map((u, k) => '<div class="askbox">👤 「' + esc(u) + '」は名簿のどなたですか？<div class="chips" style="margin-top:6px">' +
+          STAFF.map(n => '<button type="button" class="chip" data-who="' + i + '|' + k + '" data-pick="' + esc(n) + '">' + esc(n) + '</button>').join('') + '</div></div>').join('') : '') +
         (c.unresolved.length ? '<div class="askbox">' + c.unresolved.map(x => '❓ ' + esc(x)).join('<br>') + '</div>' : '') + '</div>';
     }).join('') +
     '<div class="row2"><button class="btn" data-act="back">話し直す</button><button class="btn primary" data-act="save">保存して共有</button></div>';
   openModal(h, async e => {
     const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.who) {   // 「開くん」は誰？ → 呼び名として登録し、メンバーに入れる
+      const [i, k] = b.dataset.who.split('|').map(Number), c = PREVIEW[i], word = c.unknownPeople[k], name = b.dataset.pick;
+      await addNickname(name, word);
+      c.unknownPeople.splice(k, 1);
+      c.notes = c.notes.map(n => n.includes(word) && !n.includes(name) ? n.replace(word, word + '（' + name + '）') : n);
+      PREVIEW.forEach(x => { if (x !== c && x.unknownPeople) x.unknownPeople = x.unknownPeople.filter(u => personOf(u) === '' ); });
+      toast('「' + word + '」を' + name + 'さんの呼び名に登録しました');
+      return showPreview(PREVIEW);
+    }
     if (b.dataset.skip != null) { const i = Number(b.dataset.skip); PREVIEW[i]._skip = !PREVIEW[i]._skip; $('pv' + i).classList.toggle('skip', PREVIEW[i]._skip); b.textContent = PREVIEW[i]._skip ? '戻す' : '外す'; return; }
     if (b.dataset.act === 'back') return openSpeak();
     if (b.dataset.act === 'save') {
       const out = PREVIEW.filter(c => !c._skip).map(c => {
-        const clean = Object.assign({}, c); delete clean._merge; delete clean._skip; delete clean.unresolved;
+        const clean = Object.assign({}, c); delete clean._merge; delete clean._skip; delete clean.unresolved; delete clean.unknownPeople; delete clean.fixes;
         const ex = c._merge && CARDS.find(x => x.cardId === c._merge);
         return ex ? mergeInto(ex, clean) : clean;
       });
       if (!out.length) return toast('保存するカードがありません');
       b.disabled = true;
-      try { await saveCards(out); lsSet(LS.draft, ''); closeModal(); SEL = out[0].date; render(); toast(out.length + '件の段取りを保存しました'); }
+      try { await saveCards(out); lsSet(LS.draft, ''); closeModal(); SEL = (out.find(c => c.date) || {}).date || SEL; render(); toast(out.length + '件の段取りを保存しました'); }
       catch (err) { toast(err.message || NET_ERR); b.disabled = false; }
     }
   });
@@ -715,9 +842,11 @@ function openCard(id, fresh) {
 function drawCard() {
   const c = EDIT, off = offNames(c.date);
   const evs = CAL.sites.filter(e => e.date === c.date), ev = CAL.sites.find(e => e.title === c.site && e.attachments && e.attachments.length);
-  const h = '<h3>段取りカード</h3>' +
-    '<div class="row2"><div><label class="lbl" style="margin-top:4px">日付</label><input type="date" id="cDate" value="' + esc(c.date) + '"></div><div><label class="lbl" style="margin-top:4px">集合</label><input type="text" id="cMeet" value="' + esc(c.meetTime) + '" placeholder="7:30"></div></div>' +
-    '<label class="lbl">現場</label><input type="text" id="cSite" value="' + esc(c.site) + '" list="siteList"><datalist id="siteList">' + evs.map(e => '<option value="' + esc(e.title) + '">').join('') + '</datalist>' +
+  const h = '<h3>' + (c.kind === 'task' ? 'やることカード' : '段取りカード') + '</h3>' +
+    '<div class="row2"><div><label class="lbl" style="margin-top:4px">日付（空欄＝未定）</label><input type="date" id="cDate" value="' + esc(c.date) + '"></div><div><label class="lbl" style="margin-top:4px">集合</label><input type="text" id="cMeet" value="' + esc(c.meetTime) + '" placeholder="7:30"></div></div>' +
+    '<label class="lbl">日付の条件</label><input type="text" id="cDateNote" value="' + esc(c.dateNote || '') + '" placeholder="例：厳しければ別の日">' +
+    (c.kind === 'task' ? '<label class="lbl">やること</label><input type="text" id="cTitle" value="' + esc(c.title || '') + '" placeholder="例：残土処分">' : '') +
+    '<label class="lbl">現場' + (c.kind === 'task' ? '（あれば）' : '') + '</label><input type="text" id="cSite" value="' + esc(c.site) + '" list="siteList"><datalist id="siteList">' + Array.from(new Set(evs.map(e => e.title).concat(masterSites()))).map(t => '<option value="' + esc(t) + '">').join('') + '</datalist>' +
     holHtml(c.date).replace('holline', 'holline" style="margin-top:10px') +
     '<label class="lbl">メンバー</label><div class="chips">' + STAFF.map(n => '<button type="button" class="chip' + (c.staff.includes(n) ? ' on' : '') + (off.includes(n) ? ' off' : '') + '" data-mem="' + esc(n) + '">' + esc(n) + (off.includes(n) ? '（休）' : '') + '</button>').join('') + '</div>' +
     '<label class="lbl">車両</label><input type="text" id="cVeh" value="' + esc(c.vehicle) + '" placeholder="例：2tダンプ">' +
@@ -751,7 +880,7 @@ function drawCard() {
 function findItemsLoose(s) { return s.split(/[、,，\s]+/).filter(Boolean).map(x => { const m = x.match(/^(.+?)(\d+)?(本|個|台|束|枚|袋)?$/); const w = matchWord(m[1]); return { name: m[1], termId: w ? w.termId : '', qty: m[2] ? Number(m[2]) : '', unit: m[3] || '', done: false }; }); }
 function collect() {
   if (!$('cDate')) return;
-  EDIT.date = $('cDate').value || EDIT.date; EDIT.meetTime = $('cMeet').value.trim(); EDIT.site = $('cSite').value.trim(); EDIT.vehicle = $('cVeh').value.trim();
+  EDIT.date = $('cDate').value; EDIT.dateNote = $('cDateNote').value.trim(); if ($('cTitle')) EDIT.title = $('cTitle').value.trim(); EDIT.meetTime = $('cMeet').value.trim(); EDIT.site = $('cSite').value.trim(); EDIT.vehicle = $('cVeh').value.trim();
   EDIT.steps = $('cSteps').value.split(/→|->|＞|>/).map(s => s.trim()).filter(Boolean);
   EDIT.notes = $('cNotes').value.split('\n').map(s => s.trim()).filter(Boolean);
 }
@@ -761,7 +890,7 @@ async function saveEdit(silent) {
   try { await saveCards([EDIT]); return true; } catch (err) { if (!silent) toast(err.message || NET_ERR); return false; }
 }
 function cardText(c) {
-  const L = ['【段取り】' + md(c.date) + ' ' + (c.site || '現場未定')];
+  const L = ['【' + (c.kind === 'task' ? 'やること' : '段取り') + '】' + dateLabel(c) + ' ' + (c.kind === 'task' ? (c.title || '') + (c.site ? '（' + c.site + '）' : '') : (c.site || '現場未定'))];
   if (c.meetTime) L.push('集合 ' + c.meetTime);
   L.push('メンバー：' + (c.staff.join('・') || '未定') + (c.vehicle ? '　車両：' + c.vehicle : ''));
   if (c.stops.length) { L.push('■立ち寄り・買い出し'); c.stops.forEach((s, i) => L.push('①②③④⑤⑥⑦⑧⑨'[i] + s.place + (s.items.length ? '：' + s.items.map(it => it.name + (it.qty ? ' ' + it.qty + (it.unit || '') : '')).join('・') : ''))); }
@@ -774,6 +903,33 @@ function shareCard(c) {
   const text = cardText(c);
   if (navigator.share) navigator.share({ text }).catch(() => { });
   else location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent(text);
+}
+
+/* ============ 名簿の呼び名（あだ名） ============ */
+async function addNickname(name, nick) {
+  if (!name || !nick || personOf(nick) === name) return;
+  if (DEMO) { NICK.push({ name, nickname: nick }); lsSet(LS.me + '_nick', NICK); return; }
+  const r = await postJSON(GAS_URL, { app: 'dandori', mode: 'addNickname', name, nickname: nick, by: me() });
+  if (!r.ok) throw new Error(r.error); NICK.push({ name, nickname: nick });
+}
+async function removeNickname(name, nick) {
+  if (!DEMO) { const r = await postJSON(GAS_URL, { app: 'dandori', mode: 'deleteNickname', name, nickname: nick }); if (!r.ok) throw new Error(r.error); }
+  NICK = NICK.filter(x => !(x.name === name && x.nickname === nick)); if (DEMO) lsSet(LS.me + '_nick', NICK);
+}
+function openNick() {
+  openModal('<h3>名簿の呼び名（あだ名）</h3><p class="hint" style="margin-bottom:10px">「山ちゃん」「岩ちゃん」など、段取りで話す呼び名を登録すると、話を整理するときに正しい名前に直します。「〜くん」「〜さん」は登録しなくても分かります。</p>' +
+    '<div class="card" style="padding:4px 12px">' + STAFF.map(n => '<div class="list-row"><div class="grow"><b>' + esc(n) + '</b><div class="chips" style="margin-top:4px">' +
+      (NICK.filter(x => x.name === n).map(x => '<span class="chip" style="cursor:default">' + esc(x.nickname) + ' <button class="x" style="font-size:14px;padding:0 2px" data-unnick="' + esc(n) + '|' + esc(x.nickname) + '">✕</button></span>').join('') || '<span class="hint">なし</span>') + '</div></div></div>').join('') + '</div>' +
+    '<label class="lbl">追加する</label><div class="row2"><select id="nkName">' + STAFF.map(n => '<option>' + esc(n) + '</option>').join('') + '</select><input type="text" id="nkWord" placeholder="例：山ちゃん"></div>' +
+    '<div class="row2" style="margin-top:12px"><button class="btn" data-act="close">閉じる</button><button class="btn primary" data-act="add">追加</button></div>',
+    async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      try {
+        if (b.dataset.unnick) { const [n, w] = b.dataset.unnick.split('|'); await removeNickname(n, w); return openNick(); }
+        if (b.dataset.act === 'add') { const w = $('nkWord').value.trim(); if (!w) return toast('呼び名を入れてください'); await addNickname($('nkName').value, w); toast('登録しました'); return openNick(); }
+        if (b.dataset.act === 'close') closeModal();
+      } catch (err) { toast(err.message || NET_ERR); }
+    });
 }
 
 /* ============ 買い出し ============ */
@@ -830,6 +986,7 @@ async function fetchStaff() {   // 名簿は裏で取る（10秒で打ち切り�
   try {
     const r = await (await fetch(MASTERS_URL + '?action=masters', { cache: 'no-store', signal: ac.signal })).json();
     const s = (r.staff || []).map(x => typeof x === 'string' ? x : (x.name || x.staff || '')).filter(Boolean);
+    if (r.siteGroups) lsSet(LS.me + '_sites', flatSites(r.siteGroups));   // 現場マスタ（聞き間違いの補正に使う）
     if (s.length) { STAFF_LIST = s; lsSet(LS.me + '_staff', s); if (NAME_OPEN && $('nmIn')) drawName(); if (typeof onStaff === 'function') onStaff(); }
   } catch (e) { /* 名簿が取れなくても手入力で進める */ } finally { clearTimeout(tm); }
 }
@@ -865,6 +1022,7 @@ document.body.addEventListener('click', e => {
   if (e.target.closest('#modal')) return;
   const dy = e.target.closest('[data-day]'); if (dy) { SEL = dy.dataset.day; return render(); }
   const cd = e.target.closest('[data-card]'); if (cd) return openCard(cd.dataset.card);
+  if (e.target.closest('#nickBtn')) return openNick();
   const ns = e.target.closest('[data-new-site]'); if (ns) return openCard(null, { cardId: '', date: SEL, site: ns.dataset.newSite, eventId: '', meetTime: '', staff: [], vehicle: '', stops: [], items: [], steps: [], notes: [], rawText: '' });
   const sh = e.target.closest('[data-shop]'); if (sh) return toggleShop(sh.dataset.shop);
   const ld = e.target.closest('[data-load]'); if (ld) return toggleLoad(ld.dataset.load);
