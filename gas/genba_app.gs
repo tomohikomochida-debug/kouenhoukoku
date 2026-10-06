@@ -30,7 +30,7 @@ var SHEETS = {
   tools:     { name: '道具マスタ',   head: ['id', 'termId', 'location', 'qty', 'photoUrl', 'photoId', 'status', 'statusSite', 'statusBy', 'statusAt', 'registeredBy', 'reviewState', 'createdAt', 'updatedAt'] },
   locations: { name: '番地',         head: ['code', 'floor', 'area', 'place', 'container', 'mapX', 'mapY'] },
   toolLog:   { name: '持ち出し履歴', head: ['at', 'toolId', 'action', 'site', 'by'] },
-  cards:     { name: '段取りカード', head: ['cardId', 'date', 'site', 'eventId', 'meetTime', 'staff', 'vehicle', 'stops', 'items', 'steps', 'notes', 'rawText', 'createdBy', 'updatedAt', 'kind', 'title', 'dateNote'] },
+  cards:     { name: '段取りカード', head: ['cardId', 'date', 'site', 'eventId', 'meetTime', 'staff', 'vehicle', 'stops', 'items', 'steps', 'notes', 'rawText', 'createdBy', 'updatedAt', 'kind', 'title', 'dateNote', 'doneAt', 'doneBy'] },
   nicknames: { name: '呼び名',       head: ['name', 'nickname', 'addedBy', 'addedAt'] }
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
@@ -87,6 +87,7 @@ function ss_() {
 function sh_(key) {
   var ss = ss_(), def = SHEETS[key], s = ss.getSheetByName(def.name);
   if (!s) { s = ss.insertSheet(def.name); s.appendRow(def.head); s.setFrozenRows(1); }
+  else if (s.getLastColumn() < def.head.length) s.getRange(1, 1, 1, def.head.length).setValues([def.head]);   // 列が増えたとき見出しを足す
   return s;
 }
 function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
@@ -501,8 +502,9 @@ function organize_(b) {   // 順不同に話した段取りを「日付×現場�
     '・1つの話に複数の日付・現場が混ざっていたら別々のカードにする。同じ大きな現場でも、班が分かれて別の公園に行くなら公園ごとに分ける\n' +
     '・現場名は「現場マスタ」の名前に合わせる。音声の聞き間違いが多い（例：「高津大さん上作第3公園」→「上作延第3公園」）ので、音や字が近い名前に直し、直したら corrections に「元の言葉→直した名前」を書く。カレンダーの予定名（例：高津公園）は委託全体の名前のことがある\n' +
     '・現場に結びつかない用事（残土を捨てに行く、買い物だけ、機械の修理など）は kind を "task" にし、title に短い名前（例：残土処分）を付ける。現場のカードは kind を "site"\n' +
-    '・予定や作業ではない、みんなへの連絡（例：「みんなに伝えておいて」「お知らせ」、道具の置き場所が変わった、来週から朝礼の時間が変わる、健康診断の日程、雨具を持ってくる）は kind を "notice" にし、title にお知らせの文を、スタッフが読んで分かる短い文で書く。date は「いつまで表示するか」で、話に期限や日付があればその日、なければ空。notice には members・items などは書かない\n' +
+    '・予定や作業ではない、みんなへの連絡（例：「みんなに伝えておいて」「お知らせ」、道具の置き場所が変わった、来週から朝礼の時間が変わる、健康診断の日程、雨具を持ってくる、値上げ前にまとめて注文するので欲しい人は申し出て）は kind を "notice" にし、title にお知らせの文を、スタッフが読んで分かる短い文で書く。date は「いつまで表示するか」で、話に期限や日付があればその日、なければ空。notice には members・items などは書かない\n' +
     '・日付がはっきりしない用事は date を空にし、dateNote に話した条件を書く（例：「明日が厳しければ別の日」なら date は明日、dateNote に「厳しければ別の日」）\n' +
+    '・期限のある用事（「今週中に」「〇日までに」）は date に期限の日（「今週中」はその週の土曜日、「来週中」は次の週の土曜日）、dateNote に「今週中に」「〇日までに」のように「まで」「中に」を入れて書く\n' +
     '・メンバーは名簿の正式な名前で書く。呼び名（あだ名・〜くん・〜ちゃん）は名簿の呼び名で直す。名簿に無い呼び名は unknownPeople に話したとおり書く\n' +
     '・スタッフではない人（業者・お店・「〜屋さん」・お客さん・元請・役所の担当者など。名簿の「スタッフではない人」も含む）は、members にも unknownPeople にも入れない。必要なら notes に「竹屋さんに聞いた」のように書く\n' +
     '・「全員」「私以外全員」「他の人」は名簿から展開する。その日休みの人（休みの人の一覧）は入れず、notes に「○○さんは休み」と書く\n' +

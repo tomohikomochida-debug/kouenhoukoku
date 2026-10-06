@@ -986,6 +986,10 @@ $('meBtn').addEventListener('click', () => chooseName(true));
   if (d) { reg.loc = d.loc || ''; reg.name = d.name || ''; reg.qty = d.qty || 1; $('regName').value = reg.name; $('qN').textContent = reg.qty; }
   if (p.get('loc')) { reg.loc = p.get('loc'); saveDraft(); showTab('reg'); }   // 棚のQRラベル：dougu.html?loc=1F-A-2段
   if (p.get('q')) $('q').value = p.get('q');
+  if (p.get('add')) {   // 段取りアプリの「未登録 → 登録する」から：名前を入れた状態で登録を開く
+    reg.name = p.get('add'); $('regName').value = reg.name; saveDraft(); showTab('reg');
+    setTimeout(() => toast('「' + reg.name + '」を登録します。保管場所を選んで、写真を撮ってください'), 300);
+  }
   bindMics(document);
   load();
   fetchStaff();

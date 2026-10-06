@@ -80,6 +80,10 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--leaf);outline-of
 .notice .mt{font-size:12px;color:var(--bark);margin-top:4px}
 .addnotice{background:none;border:0;color:var(--bark);font-size:12.5px;text-decoration:underline;padding:2px 0}
 .chip.out{border-style:dashed}
+.plan.done{opacity:.55}
+.plan.done .st{text-decoration:line-through}
+.tag.over{background:#FBEDED;color:#9A3A3A}
+a.tag{text-decoration:none}
 .list-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
 .list-row:last-child{border-bottom:0}
 .list-row .grow{flex:1;min-width:0}
@@ -734,7 +738,7 @@ function warningsOf(c) {
   const w = [], off = offNames(c.date);
   c.staff.filter(n => off.includes(n)).forEach(n => w.push(n + 'さんはこの日休みです'));
   c.items.filter(it => !it.termId).forEach(it => w.push('「' + it.name + '」は用語集にない言葉です'));
-  c.items.filter(it => it.termId && !it.toolId).forEach(it => w.push('「' + it.name + '」は道具管理に未登録です（保管場所が分かりません）'));
+  c.items.filter(it => it.termId && !it.toolId).forEach(it => w.push('「' + it.name + '」は道具管理に未登録です（カードを開いて「道具管理で登録」から登録できます）'));
   return w;
 }
 
@@ -800,15 +804,20 @@ function renderPlan() {
   const cards = CARDS.filter(c => c.date === SEL && c.kind !== 'notice');
   const evs = []; CAL.sites.filter(s => s.date === SEL).forEach(s => { if (!evs.some(e => e.title === s.title)) evs.push(s); });
   $('calSites').innerHTML = evs.filter(e => !cards.some(c => c.site === e.title)).map(e => '<div class="sitecal"><span class="tag site">カレンダー' + (e.time ? ' ' + esc(e.time) : '') + '</span><span class="t">' + esc(e.title) + '</span><button class="btn sm" data-new-site="' + esc(e.title) + '">＋段取り</button></div>').join('') + timedHtml(SEL);
-  const undated = CARDS.filter(c => !c.date && c.kind !== 'notice');
+  // やること（日付未定・期限まで）：完了していないものを、期限の日まで毎日出す。期限を過ぎたものは今日に「期限切れ」で出す
+  const undated = CARDS.filter(c => c.kind === 'task' && !c.doneAt && c.date !== SEL &&
+    (!c.date || (isDeadline(c) && SEL < c.date && SEL >= TODAY) || (c.date < TODAY && SEL === TODAY)));
   $('plans').innerHTML = (cards.length ? cards.map(planHtml).join('') : (evs.length ? '' : '<div class="empty">' + md(SEL) + ' の段取りはまだありません。<br>下の「🎤 段取りを話す」から。</div>')) +
-    (undated.length ? '<div class="sec">📌 日付未定のやること</div>' + undated.map(planHtml).join('') : '');
+    (undated.length ? '<div class="sec">📌 まだ済んでいないやること（日付未定・期限まで）</div>' + undated.map(planHtml).join('') : '');
 }
+const isDeadline = c => /まで|中に|中$|以内/.test(c.dateNote || '');
 const onCal = c => c.site ? CAL.sites.find(e => e.date === c.date && (e.id === c.eventId || e.title === c.site)) : null;   // カレンダーの予定から作ったカードか
 function planHtml(c) {
   const w = warningsOf(c);
   const stops = c.stops.map((s, i) => '①②③④⑤⑥⑦⑧⑨'[i] + esc(s.place) + (s.items.length ? '：' + s.items.map(it => esc(it.name) + (it.qty ? ' ' + it.qty + (it.unit || '') : '')).join('・') : '')).join('　');
-  return '<button type="button" class="plan" data-card="' + esc(c.cardId) + '"' + (c.kind === 'task' ? ' style="border-left-color:var(--tape)"' : '') + '><div class="st">' + esc(cardName(c)) + (onCal(c) ? '<span class="tag site">📅 カレンダー' + (onCal(c).time ? ' ' + esc(onCal(c).time) : '') + '</span>' : '') + '</div>' +
+  const over = c.kind === 'task' && !c.doneAt && c.date && c.date < TODAY;
+  return '<button type="button" class="plan' + (c.doneAt ? ' done' : '') + '" data-card="' + esc(c.cardId) + '"' + (c.kind === 'task' ? ' style="border-left-color:var(--tape)"' : '') + '><div class="st">' + (c.doneAt ? '✅ ' : '') + esc(cardName(c)) +
+    (over ? '<span class="tag over">期限切れ</span>' : '') + (c.doneAt ? '<span class="tag">完了 ' + esc(c.doneBy || '') + '</span>' : '') + (onCal(c) ? '<span class="tag site">📅 カレンダー' + (onCal(c).time ? ' ' + esc(onCal(c).time) : '') + '</span>' : '') + '</div>' +
     (c.dateNote || !c.date ? '<div class="meta">🗓 ' + esc(dateLabel(c)) + '</div>' : '') +
     '<div class="meta">' + (c.meetTime ? '⏰ ' + esc(c.meetTime) + '　' : '') + (c.staff.length ? '👷 ' + esc(c.staff.join('・')) : '👷 メンバー未定') + (c.vehicle ? '　🚚 ' + esc(c.vehicle) : '') + '</div>' +
     (stops ? '<div class="ln">🛒 ' + stops + '</div>' : '') +
@@ -958,13 +967,14 @@ function drawCard() {
     '<label class="lbl">車両</label><input type="text" id="cVeh" value="' + esc(c.vehicle) + '" placeholder="例：2tダンプ">' +
     '<label class="lbl">🛒 立ち寄り・買い出し（順番）</label><div class="card" style="padding:4px 12px">' + (c.stops.length ? c.stops.map((s, i) => '<div class="list-row"><div class="grow"><b>' + '①②③④⑤⑥⑦⑧⑨'[i] + ' ' + esc(s.place) + '</b><div class="hint">' + (s.items.map(it => esc(it.name) + (it.qty ? ' ' + it.qty + (it.unit || '') : '')).join('・') || '—') + '</div></div><button class="x" data-del-stop="' + i + '">✕</button></div>').join('') : '<div class="empty" style="padding:10px">なし</div>') + '</div>' +
     '<div class="row2"><input type="text" id="addStop" placeholder="例：竹屋 竹15本"><button class="btn sm" data-act="addStop" style="flex:none">追加</button></div>' +
-    '<label class="lbl">🧰 持ち物</label><div class="card" style="padding:4px 12px">' + (c.items.length ? c.items.map((it, i) => { const t = TOOLS.find(x => x.id === it.toolId); return '<div class="list-row"><div class="grow">' + esc(it.name) + (t ? '<span class="tag loc">' + esc(t.location) + '</span>' : it.termId ? '<span class="tag warn">未登録</span>' : '<span class="tag warn">用語集にない</span>') + '</div><div class="q"><button data-q="' + i + '" data-d="-1">－</button><span class="tnum" style="min-width:28px;text-align:center">' + (it.qty || '—') + '</span><button data-q="' + i + '" data-d="1">＋</button></div><button class="x" data-del-item="' + i + '">✕</button></div>'; }).join('') : '<div class="empty" style="padding:10px">なし</div>') + '</div>' +
+    '<label class="lbl">🧰 持ち物</label><div class="card" style="padding:4px 12px">' + (c.items.length ? c.items.map((it, i) => { const t = TOOLS.find(x => x.id === it.toolId); return '<div class="list-row"><div class="grow">' + esc(it.name) + (t ? '<span class="tag loc">' + esc(t.location) + '</span>' : '<a class="tag warn" href="dougu.html?add=' + encodeURIComponent(it.name) + '" target="_blank" rel="noopener">' + (it.termId ? '未登録 → 道具管理で登録' : '用語集にない → 道具管理で登録') + '</a>') + '</div><div class="q"><button data-q="' + i + '" data-d="-1">－</button><span class="tnum" style="min-width:28px;text-align:center">' + (it.qty || '—') + '</span><button data-q="' + i + '" data-d="1">＋</button></div><button class="x" data-del-item="' + i + '">✕</button></div>'; }).join('') : '<div class="empty" style="padding:10px">なし</div>') + '</div>' +
     '<div class="row2"><input type="text" id="addItem" placeholder="例：パチン、三脚 2"><button class="btn sm" data-act="addItem" style="flex:none">追加</button></div>' +
     '<label class="lbl">🔨 作業の流れ（→ で区切る）</label><input type="text" id="cSteps" value="' + esc(c.steps.join(' → ')) + '" placeholder="抜根 → 掘削 → 植付 → 支柱">' +
     '<label class="lbl">⚠️ 注意点（1行に1つ）</label><textarea id="cNotes" style="min-height:70px">' + esc(c.notes.join('\n')) + '</textarea>' +
     (ev ? '<label class="lbl">📎 カレンダーの資料</label>' + ev.attachments.map(a => '<a class="btn block sm" style="margin-bottom:6px" href="' + esc(a.url) + '" target="_blank" rel="noopener">' + esc(a.title) + '</a>').join('') : '') +
     (c.rawText ? '<details style="margin-top:12px"><summary class="hint">話した内容（原文）</summary><div class="raw">' + esc(c.rawText) + '</div></details>' : '') +
     '<div class="row2" style="margin-top:16px"><button class="btn" data-act="more">🎤 追記</button><button class="btn" data-act="share">📤 LINEで送る</button></div>' +
+    (c.kind === 'task' && c.cardId ? '<button class="btn block" style="margin-top:8px' + (c.doneAt ? '' : ';background:var(--leaf);color:#fff') + '" data-act="done">' + (c.doneAt ? '↩ 未完了に戻す（' + esc(c.doneBy || '') + ' ' + esc(String(c.doneAt).slice(5, 16)) + ' に完了）' : '✅ 完了（済んだら押す）') + '</button>' : '') +
     '<div class="row2" style="margin-top:8px"><button class="btn danger" data-act="del">削除</button><button class="btn primary" data-act="save">保存</button></div>' +
     '<button class="btn block" style="margin-top:8px" data-act="close">閉じる</button>';
   openModal(h, async e => {
@@ -977,6 +987,12 @@ function drawCard() {
     if (b.dataset.act === 'addStop') { const v = $('addStop').value.trim(); if (!v) return; const [place, ...rest] = v.split(/[\s　]+/); EDIT.stops.push({ order: EDIT.stops.length + 1, place, done: false, items: rest.join(' ') ? findItemsLoose(rest.join(' ')) : [] }); return drawCard(); }
     if (b.dataset.act === 'addItem') { const v = $('addItem').value.trim(); if (!v) return; v.split(/[、,，]/).map(s => s.trim()).filter(Boolean).forEach(s => { const m = s.match(/^(.+?)\s*(\d+)?\s*(本|個|台|束|枚)?$/); const name = m[1], w = matchWord(name), t = w && toolOfTerm(w.termId); EDIT.items.push({ name: w ? termById(w.termId).term : name, termId: w ? w.termId : '', toolId: t ? t.id : '', qty: m[2] ? Number(m[2]) : '', unit: m[3] || '', loaded: false, returned: false }); }); return drawCard(); }
     if (b.dataset.act === 'share') return shareCard(EDIT);
+    if (b.dataset.act === 'done') {
+      if (EDIT.doneAt) { EDIT.doneAt = ''; EDIT.doneBy = ''; } else { EDIT.doneAt = nowStr(); EDIT.doneBy = me() || ''; }
+      const wasDone = !!EDIT.doneAt;
+      if (await saveEdit()) { closeModal(); render(); toast(wasDone ? '完了にしました' : '未完了に戻しました'); }
+      return;
+    }
     if (b.dataset.act === 'more') { await saveEdit(true); return openSpeak({ date: EDIT.date, site: EDIT.site, cardId: EDIT.cardId }); }
     if (b.dataset.act === 'del') { if (!confirm('このカードを削除しますか？')) return; try { await deleteCard(EDIT.cardId); closeModal(); render(); toast('削除しました'); } catch (err) { toast(err.message || NET_ERR); } return; }
     if (b.dataset.act === 'save') { if (await saveEdit()) { closeModal(); render(); toast('保存しました'); } return; }
