@@ -33,10 +33,10 @@ var SHEETS = {
   cards:     { name: '段取りカード', head: ['cardId', 'date', 'site', 'eventId', 'meetTime', 'staff', 'vehicle', 'stops', 'items', 'steps', 'notes', 'rawText', 'createdBy', 'updatedAt', 'kind', 'title', 'dateNote', 'doneAt', 'doneBy'] },
   nicknames: { name: '呼び名',       head: ['name', 'nickname', 'addedBy', 'addedAt'] },
   suppliers: { name: '取引先',       head: ['id', 'name', 'kana', 'kind', 'aliases', 'phone', 'address', 'contact', 'items', 'memo', 'updatedBy', 'updatedAt'] },
-  vehicles:  { name: '車両',         head: ['id', 'name', 'aliases', 'ownership', 'plate', 'model', 'shakenDate', 'insuranceDate', 'rentalShop', 'rentalFrom', 'rentalTo', 'photoUrl', 'photoId', 'status', 'memo', 'updatedBy', 'updatedAt'] },
+  vehicles:  { name: '車両',         head: ['id', 'name', 'aliases', 'ownership', 'plate', 'model', 'shakenDate', 'insuranceDate', 'rentalShop', 'rentalFrom', 'rentalTo', 'photoUrl', 'photoId', 'status', 'memo', 'updatedBy', 'updatedAt', 'docFolderId'] },
   vehicleLog:{ name: '車両の記録',   head: ['logId', 'vehicleId', 'date', 'type', 'content', 'shop', 'cost', 'odometer', 'by', 'at'] },
   toolRepair:{ name: '修理履歴',     head: ['logId', 'toolId', 'date', 'type', 'content', 'shop', 'cost', 'by', 'at'] },
-  vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at'] }
+  vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at', 'batch', 'state', 'validUntil', 'page'] }
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
 
@@ -218,6 +218,7 @@ function doPost(e) {
       case 'sharyo:addDoc':    return out_(addVehicleDoc_(b));
       case 'sharyo:deleteDoc': return withLock_(function () { return deleteVehicleDoc_(b.docId); });
       case 'sharyo:readDoc':   return out_(readShaken_(b.data, b.mime));
+      case 'sharyo:docUntil':  return withLock_(function () { return setDocUntil_(b.batch, b.until); });
       /* 段取り */
       case 'dandori:organize':   return out_(organize_(b));
       case 'dandori:saveCards':  return withLock_(function () { return saveCards_(b.cards, b.by); });
@@ -262,28 +263,65 @@ function saveVehicle_(item, image, by) {
   if (image) { var p = savePhoto_(image, r.id); upsert_('vehicles', 'id', 'V', { id: r.id, photoUrl: p.url, photoId: p.id }, by); r.photoUrl = p.url; }
   return r;
 }
-/* 車両の書類（車検証・保険証など）：公開リンクにはせず、スプレッドシートと同じフォルダの「車両の書類」に置く
-   （社内アプリのフォルダを共有しているスタッフだけが、Googleにログインして開ける） */
+/* 車両の書類（車検証・保険証など）
+   置き場所：社内アプリ ＞ 車両の書類 ＞ 車ごとのフォルダ（例：2tダンプ（川崎 400 あ 12-34））
+   同じ種類を新しく入れると、前のものは車のフォルダの中の「過去」へ移す（車検証は毎年・2年ごとに更新されるため）
+   公開リンクにはせず、社内アプリのフォルダを共有しているスタッフだけが Google にログインして開ける */
 var DOCS_FOLDER = '車両の書類';
+var DOCS_FOLDER_DEFAULT_ID = '145jhqHrw_pCMpd97pwDIQcNyzRksAzFM';   // 社内アプリ ＞ 車両の書類
+var DOC_REPLACE = ['車検証', '自賠責保険', '任意保険', 'レンタル契約書'];   // 新しいものが入ったら前のものを「過去」へ
 function docsFolder_() {
-  var p = PropertiesService.getScriptProperties(), id = prop_('DOCS_FOLDER_ID', '');
-  if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) return f; } catch (e) {} }
-  var parent;
-  try { var ps = DriveApp.getFileById(ss_().getId()).getParents(); parent = ps.hasNext() ? ps.next() : DriveApp.getRootFolder(); } catch (e) { parent = DriveApp.getRootFolder(); }
+  var p = PropertiesService.getScriptProperties();
+  var ids = [prop_('DOCS_FOLDER_ID', ''), DOCS_FOLDER_DEFAULT_ID];
+  for (var i = 0; i < ids.length; i++) { if (!ids[i]) continue; try { var f = DriveApp.getFolderById(ids[i]); if (!f.isTrashed()) { p.setProperty('DOCS_FOLDER_ID', f.getId()); return f; } } catch (e) {} }
+  // 見つからないときは、スプレッドシートのフォルダの1つ上（社内アプリ）に作る
+  var parent = null;
+  try { var ps = DriveApp.getFileById(ss_().getId()).getParents(); if (ps.hasNext()) { var app = ps.next(), gs = app.getParents(); parent = gs.hasNext() ? gs.next() : app; } } catch (e) {}
+  parent = parent || DriveApp.getRootFolder();
   var it = parent.getFoldersByName(DOCS_FOLDER), folder = it.hasNext() ? it.next() : parent.createFolder(DOCS_FOLDER);
   p.setProperty('DOCS_FOLDER_ID', folder.getId());
+  return folder;
+}
+function subFolder_(parent, name) { var it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : parent.createFolder(name); }
+function vehicleFolder_(v) {   // 車ごとのフォルダ（名前を変えても同じフォルダを使い続ける）
+  if (v.docFolderId) { try { var f = DriveApp.getFolderById(v.docFolderId); if (!f.isTrashed()) return f; } catch (e) {} }
+  var name = String(v.name || v.id) + (v.plate ? '（' + String(v.plate).trim() + '）' : '');
+  var folder = subFolder_(docsFolder_(), name);
+  upsert_('vehicles', 'id', 'V', { id: v.id, docFolderId: folder.getId() });
   return folder;
 }
 function addVehicleDoc_(b) {
   if (!b.vehicleId || !b.data) return { ok: false, error: '車両か書類がありません' };
   var v = rows_('vehicles').filter(function (x) { return String(x.id) === String(b.vehicleId); })[0];
-  var mime = b.mime || 'image/jpeg', ext = mime === 'application/pdf' ? '.pdf' : '.jpg';
-  var name = [(v && v.name) || b.vehicleId, b.type || '書類', Utilities.formatDate(new Date(), TZ, 'yyyyMMdd_HHmmss')].join('_') + ext;
-  var file = docsFolder_().createFile(Utilities.newBlob(Utilities.base64Decode(b.data), mime, name));
-  var r = withLockRaw_(function () { return upsert_('vehicleDocs', 'docId', 'D', { vehicleId: b.vehicleId, type: b.type || 'その他', name: name, mime: mime, fileId: file.getId(), url: file.getUrl(), note: b.note || '', by: b.by || '', at: now_() }, b.by); });
-  var out = { ok: true, id: r.id, url: file.getUrl() };
-  if (b.read) { try { out.read = readShaken_(b.data, mime).data; } catch (e) { out.readError = String(e.message || e); } }
+  if (!v) return { ok: false, error: '車両が見つかりません' };
+  var type = b.type || 'その他', mime = b.mime || 'image/jpeg', ext = mime === 'application/pdf' ? '.pdf' : '.jpg';
+  var batch = String(b.batch || ('B' + Date.now())), page = Number(b.page) || 1;
+  var read = null, readError = '';
+  if (b.read) { try { read = readShaken_(b.data, mime).data; } catch (e) { readError = String(e.message || e); } }
+  var until = b.validUntil || (read && read.shakenDate) || '';
+  var folder = withLockRaw_(function () { return vehicleFolder_(v); });
+  var name = type + '_' + Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd') + (until ? '（' + until + 'まで）' : '') + (b.pages > 1 || page > 1 ? '_' + page : '') + ext;
+  var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), mime, name));
+  var moved = 0;
+  var r = withLockRaw_(function () {
+    var res = upsert_('vehicleDocs', 'docId', 'D', { vehicleId: b.vehicleId, type: type, name: name, mime: mime, fileId: file.getId(), url: file.getUrl(), note: b.note || '', by: b.by || '', at: now_(), batch: batch, state: '最新', validUntil: until, page: page }, b.by);
+    if (DOC_REPLACE.indexOf(type) >= 0) {   // 同じ種類の前の書類を「過去」へ
+      var past = null;
+      rows_('vehicleDocs').forEach(function (d) {
+        if (String(d.vehicleId) !== String(b.vehicleId) || d.type !== type || String(d.batch) === batch || d.state === '過去') return;
+        try { past = past || subFolder_(folder, '過去'); DriveApp.getFileById(d.fileId).moveTo(past); } catch (e) {}
+        upsert_('vehicleDocs', 'docId', 'D', { docId: d.docId, state: '過去' }); moved++;
+      });
+    }
+    return res;
+  });
+  var out = { ok: true, id: r.id, url: file.getUrl(), folderUrl: folder.getUrl(), moved: moved };
+  if (read) out.read = read; if (readError) out.readError = readError;
   return out;
+}
+function setDocUntil_(batch, until) {   // 有効期限をあとから入れる・直す（同じ回に撮ったページすべて）
+  rows_('vehicleDocs').filter(function (d) { return String(d.batch) === String(batch); }).forEach(function (d) { upsert_('vehicleDocs', 'docId', 'D', { docId: d.docId, validUntil: until || '' }); });
+  return { ok: true };
 }
 function deleteVehicleDoc_(docId) {
   var d = rows_('vehicleDocs').filter(function (x) { return String(x.docId) === String(docId); })[0];

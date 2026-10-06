@@ -129,6 +129,16 @@ main{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 .pend{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
 .pend .pg{width:72px;height:92px;border:1px solid var(--line);border-radius:8px;background:var(--leaf-soft);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:12px;color:var(--bark);text-align:center}
 .pend .pg img{width:100%;height:100%;object-fit:cover}
+.dgroup{border-top:1px solid var(--line);padding:8px 0;font-size:14px}
+.dgroup .hd{display:flex;align-items:center;gap:6px}
+.dgroup .hd b{flex:1}
+.dgroup .pages{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.dgroup .pages a{border:1px solid var(--line);border-radius:8px;padding:5px 10px;text-decoration:none;color:var(--leaf);font-weight:600;background:var(--card)}
+.dgroup .m{font-size:12px;color:var(--bark)}
+.until{font-size:12px;border-radius:6px;padding:1px 7px;background:#EEF4EF;color:var(--leaf)}
+.until.over{background:#FBE3DE;color:var(--danger);font-weight:700}
+details.past{margin-top:6px;font-size:13.5px}
+details.past summary{color:var(--bark);cursor:pointer;padding:6px 0}
 .tip{background:#EEF4EF;border-radius:8px;padding:8px 10px;font-size:12.5px;color:var(--leaf);margin:8px 0}
 input[type=date],input[type=number]{width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink)}
 </style>
@@ -157,6 +167,7 @@ const OWN = ['自社', 'リース', 'レンタル'];
 const STATUS = ['使用中', '返却済', '廃車・売却'];
 const LOG_TYPES = ['点検', '修理', '車検', 'オイル交換', 'タイヤ', '事故・キズ', '給油', 'その他'];
 const DOC_TYPES = ['車検証', '自賠責保険', '任意保険', 'レンタル契約書', 'その他'];
+const DOC_REPLACE = ['車検証', '自賠責保険', '任意保険', 'レンタル契約書'];   // 新しく入れたら前のものは「過去」へ
 const SHAKEN_SOON = 45, INS_SOON = 30, RENT_SOON = 3;   // 何日前から知らせるか
 
 /* ============ 小道具 ============ */
@@ -212,11 +223,16 @@ async function addLog(log) {
 }
 async function addDoc(d) {   // d: { vehicleId, type, data(base64), mime, read }
   if (DEMO) {
-    const doc = { docId: nextId(DOCS, 'docId', 'D'), vehicleId: d.vehicleId, type: d.type, name: d.type, mime: d.mime, url: 'data:' + d.mime + ';base64,' + d.data, by: me(), at: now() };
+    const doc = { docId: nextId(DOCS, 'docId', 'D'), vehicleId: d.vehicleId, type: d.type, name: d.type, mime: d.mime, url: 'data:' + d.mime + ';base64,' + d.data, by: me(), at: now(), batch: d.batch, state: '最新', validUntil: d.validUntil || '', page: d.page || 1 };
+    if (DOC_REPLACE.includes(d.type)) DOCS.forEach(x => { if (x.vehicleId === d.vehicleId && x.type === d.type && x.batch !== d.batch) x.state = '過去'; });
     DOCS.push(doc); demoSave();
     return { ok: true, id: doc.docId, read: d.read ? { plate: '', model: '', shakenDate: '' } : undefined };
   }
   const r = await postJSON(Object.assign({ mode: 'addDoc' }, d)); if (!r.ok) throw new Error(r.error); return r;
+}
+async function setUntil(batch, until) {
+  if (DEMO) { DOCS.forEach(x => { if (x.batch === batch) x.validUntil = until; }); demoSave(); return; }
+  const r = await postJSON({ mode: 'docUntil', batch, until }); if (!r.ok) throw new Error(r.error); await load();
 }
 async function delDoc(docId) {
   if (DEMO) { DOCS = DOCS.filter(x => x.docId !== docId); demoSave(); return; }
@@ -290,20 +306,55 @@ function openVeh(id) {
       if (b.dataset.act === 'edit') return openEdit(v);
       if (b.dataset.act === 'log') return chooseName(false, () => openLog(v));
       if (b.dataset.adddoc != null) return chooseName(false, () => openDocAdd(v, b.dataset.adddoc || '車検証'));
-      if (b.dataset.deldoc) { if (!confirm('この書類を消しますか？（ドライブのファイルもゴミ箱に入ります）')) return; try { await delDoc(b.dataset.deldoc); openVeh(id); toast('消しました'); } catch (err) { toast(err.message || NET_ERR); } return; }
+      if (b.dataset.until) return openUntil(id, b.dataset.until);
+      if (b.dataset.delbatch) {
+        const g = DOCS.filter(x => (x.batch || x.docId) === b.dataset.delbatch);
+        if (!confirm(g[0].type + '（' + g.length + '枚）を消しますか？（ドライブのファイルもゴミ箱に入ります）')) return;
+        try { for (const x of g) await delDoc(x.docId); openVeh(id); toast('消しました'); } catch (err) { toast(err.message || NET_ERR); } return;
+      }
       if (b.dataset.dellog) { if (!confirm('この記録を消しますか？')) return; try { await delLog(b.dataset.dellog); openVeh(id); toast('消しました'); } catch (err) { toast(err.message || NET_ERR); } return; }
       if (b.dataset.act === 'del') { if (!confirm('「' + v.name + '」を削除しますか？（記録も消えます。返却・廃車なら「直す」で状態を変えるのがおすすめです）')) return; try { await delVeh(v.id); closeModal(); render(); toast('削除しました'); } catch (err) { toast(err.message || NET_ERR); } }
     });
 }
 /* ============ 書類（車検証など） ============ */
+function docBatches(list) {   // 同じ回に撮ったページを1まとまりに
+  const m = new Map();
+  list.forEach(x => { const k = x.batch || x.docId; if (!m.has(k)) m.set(k, []); m.get(k).push(x); });
+  return Array.from(m.values()).map(g => g.sort((a, b) => (Number(a.page) || 0) - (Number(b.page) || 0))).sort((a, b) => String(b[0].at).localeCompare(String(a[0].at)));
+}
+function untilTag(until) { if (!until) return ''; const n = daysTo(until); return '<span class="until' + (n < 0 ? ' over' : '') + '">' + md(until) + 'まで' + (n < 0 ? '（切れています）' : '') + '</span>'; }
+function batchHtml(g, latest) {
+  const f = g[0];
+  return '<div class="dgroup"><div class="hd"><b>' + esc(f.type) + '</b>' + untilTag(f.validUntil) +
+    (latest ? '<button class="btn sm" data-until="' + esc(f.batch || f.docId) + '" title="有効期限を入れる・直す">期限</button>' : '') + '</div>' +
+    '<div class="pages">' + g.map((x, i) => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">📄 ' + (g.length > 1 ? (i + 1) + '枚目' : '開く') + (x.mime === 'application/pdf' ? '（PDF）' : '') + '</a>').join('') + '</div>' +
+    '<div class="m">' + esc(String(f.at || '').slice(0, 10).replace(/-/g, '/')) + ' ' + esc(f.by || '') + '　<button class="x" style="border:0;background:none;color:var(--bark);cursor:pointer;font-size:12px;text-decoration:underline" data-delbatch="' + esc(f.batch || f.docId) + '">消す</button></div></div>';
+}
 function docsHtml(v) {
-  const list = DOCS.filter(x => x.vehicleId === v.id).sort((a, b) => DOC_TYPES.indexOf(a.type) - DOC_TYPES.indexOf(b.type) || String(b.at).localeCompare(String(a.at)));
-  const missing = needShaken(v) && !list.some(x => x.type === '車検証');
+  const mine = DOCS.filter(x => x.vehicleId === v.id);
+  const latest = mine.filter(x => x.state !== '過去'), past = mine.filter(x => x.state === '過去');
+  const missing = needShaken(v) && !latest.some(x => x.type === '車検証');
+  const groups = DOC_TYPES.map(t => docBatches(latest.filter(x => x.type === t))).flat();
+  const pastGroups = docBatches(past);
   return '<div class="sec-title" style="display:flex;align-items:center;justify-content:space-between">📄 書類（車検証など）<button class="btn sm" data-adddoc="">＋撮る・入れる</button></div>' +
     (missing ? '<div class="tip" style="background:#FFF1D6;color:#8A5A00">車検証の写しがまだありません。<button class="btn sm" style="margin-left:6px" data-adddoc="車検証">📷 車検証を撮る</button></div>' : '') +
-    (list.length ? list.map(x => '<div class="doc"><span>📄</span><a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.type) + (x.mime === 'application/pdf' ? '（PDF）' : '') + '</a><span class="m">' + esc(String(x.at || '').slice(0, 10).replace(/-/g, '/')) + ' ' + esc(x.by || '') + '</span><button class="x" data-deldoc="' + esc(x.docId) + '" aria-label="書類を消す">✕</button></div>').join('') +
-      '<p class="hint">開くには、社内アプリのフォルダを共有しているGoogleアカウントでのログインが必要です（誰でも見られる公開リンクにはしていません）。</p>'
-      : (missing ? '' : '<div class="hint" style="margin-bottom:8px">まだありません</div>'));
+    (groups.length ? groups.map(g => batchHtml(g, true)).join('') : (missing ? '' : '<div class="hint" style="margin-bottom:8px">まだありません</div>')) +
+    (pastGroups.length ? '<details class="past"><summary>過去の書類（' + pastGroups.length + '件）</summary>' + pastGroups.map(g => batchHtml(g, false)).join('') + '</details>' : '') +
+    (mine.length ? '<p class="hint">' + (v.docFolderId ? '<a href="https://drive.google.com/drive/folders/' + esc(v.docFolderId) + '" target="_blank" rel="noopener">📁 ドライブのフォルダを開く</a>（社内アプリ ＞ 車両の書類 ＞ ' + esc(v.name) + '）。' : '') +
+      '同じ種類を新しく入れると、前のものは自動で「過去」に移ります。開くには、社内アプリのフォルダを共有しているGoogleアカウントでのログインが必要です。</p>' : '');
+}
+function openUntil(id, batch) {
+  const d = DOCS.find(x => (x.batch || x.docId) === batch); if (!d) return;
+  openModal('<h3>' + esc(d.type) + 'の有効期限</h3><p class="hint" style="margin-bottom:10px">車検証なら「有効期間の満了する日」、保険なら「保険期間の終わりの日」。</p>' +
+    '<input type="date" id="uDate" value="' + esc(d.validUntil || '') + '">' +
+    '<div class="row2" style="margin-top:14px"><button class="btn" data-act="back">戻る</button><button class="btn primary" data-act="save">保存</button></div>',
+    async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.act === 'back') return openVeh(id);
+      if (b.dataset.act !== 'save') return;
+      b.disabled = true;
+      try { await setUntil(batch, $('uDate').value); openVeh(id); toast('保存しました'); } catch (err) { toast(err.message || NET_ERR); b.disabled = false; }
+    });
 }
 let PAGES = [];   // これから保存するページ { b64, mime, thumb }
 function openDocAdd(v, type) {
@@ -318,7 +369,7 @@ function openDocAdd(v, type) {
   };
   openModal('<h3>📄 ' + esc(v.name) + ' の書類</h3>' +
     '<label class="lbl">何の書類？</label><div class="chips" id="dType">' + DOC_TYPES.map(t => '<button type="button" class="chip' + (t === type ? ' on' : '') + '" data-dt="' + esc(t) + '">' + esc(t) + '</button>').join('') + '</div>' +
-    '<div class="tip">📷 スマホで撮るときは、明るい所で平らに置き、真上から。影や指が入らないように。裏面・2枚目があれば続けて撮れます。<br>🖨 複合機でスキャンしたPDFは「ファイルを選ぶ」から入れられます。</div>' +
+    '<div class="tip">📷 スマホで撮るときは、明るい所で平らに置き、真上から。影や指が入らないように。裏面・2枚目があれば続けて撮れます。<br>🖨 複合機でスキャンしたPDFは「ファイルを選ぶ」から入れられます。<br>🔁 車検証・保険などを新しく入れると、前のものは自動で「過去」に移ります。</div>' +
     '<div class="row2"><button class="btn" data-act="cam">📷 撮る</button><button class="btn" data-act="file">📁 ファイルを選ぶ</button></div>' +
     '<div class="pend" id="pend"></div>' +
     '<label id="readBox" style="display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:6px 0"><input type="checkbox" id="dRead" checked style="margin-top:4px"><span>車検証から <b>ナンバー・車名・車検の満了日</b> を読み取って、車両の情報と比べる（AI）</span></label>' +
@@ -331,11 +382,13 @@ function openDocAdd(v, type) {
       if (b.dataset.act !== 'save' || !PAGES.length) return;
       const t = (document.querySelector('#dType .chip.on') || {}).dataset; const dtype = t ? t.dt : 'その他';
       const wantRead = dtype === '車検証' && $('dRead').checked;
-      b.disabled = true; let read = null, n = 0;
+      b.disabled = true; let read = null, n = 0, until = '';
+      const batch = 'B' + Date.now().toString(36);
       try {
         for (const [i, p] of PAGES.entries()) {
           b.innerHTML = '<span class="loading"></span> 保存中 ' + (i + 1) + '/' + PAGES.length + (wantRead && i === 0 ? '（読み取り中）' : '');
-          const r = await addDoc({ vehicleId: v.id, type: dtype, data: p.b64, mime: p.mime, read: wantRead && i === 0 });
+          const r = await addDoc({ vehicleId: v.id, type: dtype, data: p.b64, mime: p.mime, read: wantRead && i === 0, batch, page: i + 1, pages: PAGES.length, validUntil: until });
+          if (r.read && r.read.shakenDate) until = r.read.shakenDate;   // 2枚目以降にも同じ期限を付ける
           if (r.read) read = r.read; if (r.readError) toast('読み取りはできませんでした（保存はできています）');
           n++;
         }
