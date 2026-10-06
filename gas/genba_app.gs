@@ -35,7 +35,8 @@ var SHEETS = {
   suppliers: { name: '取引先',       head: ['id', 'name', 'kana', 'kind', 'aliases', 'phone', 'address', 'contact', 'items', 'memo', 'updatedBy', 'updatedAt'] },
   vehicles:  { name: '車両',         head: ['id', 'name', 'aliases', 'ownership', 'plate', 'model', 'shakenDate', 'insuranceDate', 'rentalShop', 'rentalFrom', 'rentalTo', 'photoUrl', 'photoId', 'status', 'memo', 'updatedBy', 'updatedAt'] },
   vehicleLog:{ name: '車両の記録',   head: ['logId', 'vehicleId', 'date', 'type', 'content', 'shop', 'cost', 'odometer', 'by', 'at'] },
-  toolRepair:{ name: '修理履歴',     head: ['logId', 'toolId', 'date', 'type', 'content', 'shop', 'cost', 'by', 'at'] }
+  toolRepair:{ name: '修理履歴',     head: ['logId', 'toolId', 'date', 'type', 'content', 'shop', 'cost', 'by', 'at'] },
+  vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at'] }
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
 
@@ -175,7 +176,7 @@ function doGet(e) {
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
     if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair') });
     if (app === 'torihiki' && a === 'data') return out_({ ok: true, suppliers: rows_('suppliers') });
-    if (app === 'sharyo' && a === 'data') return out_({ ok: true, vehicles: rows_('vehicles'), logs: rows_('vehicleLog'), suppliers: rows_('suppliers') });
+    if (app === 'sharyo' && a === 'data') return out_({ ok: true, vehicles: rows_('vehicles'), logs: rows_('vehicleLog'), docs: rows_('vehicleDocs'), suppliers: rows_('suppliers') });
     if (app === 'dandori') {
       var today = ymd_(new Date());
       if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles') });
@@ -214,6 +215,9 @@ function doPost(e) {
       case 'sharyo:delete':    return withLock_(function () { return remove_('vehicles', b.id); });
       case 'sharyo:addLog':    return withLock_(function () { return upsert_('vehicleLog', 'logId', 'L', Object.assign({ by: b.by, at: now_() }, b.log), b.by); });
       case 'sharyo:deleteLog': return withLock_(function () { return remove_('vehicleLog', b.logId); });
+      case 'sharyo:addDoc':    return out_(addVehicleDoc_(b));
+      case 'sharyo:deleteDoc': return withLock_(function () { return deleteVehicleDoc_(b.docId); });
+      case 'sharyo:readDoc':   return out_(readShaken_(b.data, b.mime));
       /* 段取り */
       case 'dandori:organize':   return out_(organize_(b));
       case 'dandori:saveCards':  return withLock_(function () { return saveCards_(b.cards, b.by); });
@@ -258,6 +262,43 @@ function saveVehicle_(item, image, by) {
   if (image) { var p = savePhoto_(image, r.id); upsert_('vehicles', 'id', 'V', { id: r.id, photoUrl: p.url, photoId: p.id }, by); r.photoUrl = p.url; }
   return r;
 }
+/* 車両の書類（車検証・保険証など）：公開リンクにはせず、スプレッドシートと同じフォルダの「車両の書類」に置く
+   （社内アプリのフォルダを共有しているスタッフだけが、Googleにログインして開ける） */
+var DOCS_FOLDER = '車両の書類';
+function docsFolder_() {
+  var p = PropertiesService.getScriptProperties(), id = prop_('DOCS_FOLDER_ID', '');
+  if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) return f; } catch (e) {} }
+  var parent;
+  try { var ps = DriveApp.getFileById(ss_().getId()).getParents(); parent = ps.hasNext() ? ps.next() : DriveApp.getRootFolder(); } catch (e) { parent = DriveApp.getRootFolder(); }
+  var it = parent.getFoldersByName(DOCS_FOLDER), folder = it.hasNext() ? it.next() : parent.createFolder(DOCS_FOLDER);
+  p.setProperty('DOCS_FOLDER_ID', folder.getId());
+  return folder;
+}
+function addVehicleDoc_(b) {
+  if (!b.vehicleId || !b.data) return { ok: false, error: '車両か書類がありません' };
+  var v = rows_('vehicles').filter(function (x) { return String(x.id) === String(b.vehicleId); })[0];
+  var mime = b.mime || 'image/jpeg', ext = mime === 'application/pdf' ? '.pdf' : '.jpg';
+  var name = [(v && v.name) || b.vehicleId, b.type || '書類', Utilities.formatDate(new Date(), TZ, 'yyyyMMdd_HHmmss')].join('_') + ext;
+  var file = docsFolder_().createFile(Utilities.newBlob(Utilities.base64Decode(b.data), mime, name));
+  var r = withLockRaw_(function () { return upsert_('vehicleDocs', 'docId', 'D', { vehicleId: b.vehicleId, type: b.type || 'その他', name: name, mime: mime, fileId: file.getId(), url: file.getUrl(), note: b.note || '', by: b.by || '', at: now_() }, b.by); });
+  var out = { ok: true, id: r.id, url: file.getUrl() };
+  if (b.read) { try { out.read = readShaken_(b.data, mime).data; } catch (e) { out.readError = String(e.message || e); } }
+  return out;
+}
+function deleteVehicleDoc_(docId) {
+  var d = rows_('vehicleDocs').filter(function (x) { return String(x.docId) === String(docId); })[0];
+  if (!d) return { ok: false, error: '書類が見つかりません' };
+  try { DriveApp.getFileById(d.fileId).setTrashed(true); } catch (e) { /* ファイルが既に無くても行は消す */ }
+  return remove_('vehicleDocs', docId);
+}
+function readShaken_(b64, mime) {   // 車検証の写真・PDFから、ナンバー・車名・車検の満了日を読む
+  var prompt = 'これは日本の自動車検査証（車検証）、または電子車検証の「自動車検査証記録事項」の写真かPDFです。次の項目を読み取り、JSONだけ返してください。' +
+    '{"plate":"自動車登録番号・車両番号（例：川崎 400 あ 12-34）","model":"車名と型式（例：いすゞ エルフ TRG-NJR85AN）","shakenDate":"有効期間の満了する日を西暦 YYYY-MM-DD で（令和n年＝2018+n年）","firstReg":"初度登録年月 YYYY-MM","kind":"自家用・事業用 など"}' +
+    '。読めない項目は空文字。推測で埋めない。';
+  var j = gemini_([{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
+  return { ok: true, data: { plate: j.plate || '', model: j.model || '', shakenDate: /^\d{4}-\d{2}-\d{2}$/.test(j.shakenDate || '') ? j.shakenDate : '', firstReg: j.firstReg || '', kind: j.kind || '' } };
+}
+function withLockRaw_(fn) { var l = LockService.getScriptLock(); l.waitLock(25000); try { return fn(); } finally { l.releaseLock(); } }
 function addRepair_(log, by) {   // 道具の修理の記録。「修理に出した」「修理から戻った」は道具の今どこも変える
   log = log || {};
   if (!log.toolId) return { ok: false, error: '道具がありません' };
