@@ -409,7 +409,7 @@ const SEED_TOOLS = [["T0001","Y0153","1F-A-2段",6],
 
 /* ============ データ ============ */
 // tools＝道具マスタ（termId で用語集とつながる）、terms・aliases＝用語集の言葉
-let DB = { tools: [], terms: [], aliases: [], locations: [] };
+let DB = { tools: [], terms: [], aliases: [], locations: [], repairs: [] };
 let TOOLS = [];   // 表示用：道具マスタに用語集の名前・読み・意味を合わせたもの
 const termById = id => DB.terms.find(t => String(t.termId) === String(id));
 const termByName = n => DB.terms.find(t => norm(t.term) === norm(n));
@@ -449,14 +449,14 @@ function demoSave() {
 /* ---- 通信：道具は道具管理GAS、言葉は用語集GAS ---- */
 const api = {
   async load() {
-    if (DEMO) { const w = demoWords(); return { ok: true, tools: demoTools(), terms: w.terms, aliases: w.aliases, locations: [] }; }
+    if (DEMO) { const w = demoWords(); return { ok: true, tools: demoTools(), terms: w.terms, aliases: w.aliases, locations: [], repairs: lsGet('dougu_repairs_demo', []) }; }
     const [a, b] = await Promise.all([
       fetch(GAS_URL + '?app=dougu&action=data', { cache: 'no-store' }).then(r => r.json()),
       fetch(YOUGO_URL + '?app=yougo&action=data', { cache: 'no-store' }).then(r => r.json())
     ]);
     if (!a.ok) throw new Error(a.error || '道具データを読めません');
     if (!b.ok) throw new Error(b.error || '用語集を読めません');
-    return { ok: true, tools: a.tools || [], locations: a.locations || [], terms: b.terms || [], aliases: b.aliases || [] };
+    return { ok: true, tools: a.tools || [], locations: a.locations || [], repairs: a.repairs || [], terms: b.terms || [], aliases: b.aliases || [] };
   },
   async post(target, body) {   // target: 'dougu'（道具管理GAS）／'yougo'（用語集GAS）
     if (DEMO) return demoPost(target, body);
@@ -515,6 +515,15 @@ function demoPost(target, b) {
         Object.assign(t, p, { updatedAt: now() }); demoSave(); return { ok: true, id: b.id, qty: t.qty };
       }
       case 'review': { const t = T.find(x => x.id === b.key); if (t) t.reviewState = b.action === 'approve' ? '確認済' : '未確認'; demoSave(); return { ok: true }; }
+      case 'addRepair': {
+        const R = DB.repairs = DB.repairs || [], log = Object.assign({ by: b.by, at: now() }, b.log);
+        log.logId = 'R' + String(R.reduce((m, x) => Math.max(m, Number(String(x.logId).replace(/\D/g, '')) || 0), 0) + 1).padStart(4, '0'); R.push(log);
+        const t = T.find(x => x.id === log.toolId);
+        if (t && log.type === '修理に出した') Object.assign(t, { status: '修理中', statusSite: log.shop || '' });
+        if (t && log.type === '修理から戻った') Object.assign(t, { status: '倉庫', statusSite: '' });
+        lsSet('dougu_repairs_demo', R); demoSave(); return { ok: true, id: log.logId };
+      }
+      case 'deleteRepair': { DB.repairs = (DB.repairs || []).filter(x => x.logId !== b.logId); lsSet('dougu_repairs_demo', DB.repairs); return { ok: true }; }
     }
   }
   return { ok: false, error: 'unknown mode' };
@@ -523,7 +532,7 @@ function demoPost(target, b) {
 async function load() {
   try {
     const r = await api.load();
-    DB = { tools: r.tools, terms: r.terms, aliases: r.aliases, locations: r.locations || [] };
+    DB = { tools: r.tools, terms: r.terms, aliases: r.aliases, locations: r.locations || [], repairs: r.repairs || [] };
     if (!DEMO) lsSet(LS.cache, DB);
   } catch (e) {
     const c = lsGet(LS.cache, null);
@@ -600,7 +609,7 @@ async function aiSearch(qv, already) {
 function phHtml(t) { return t.photoUrl ? '<img src="' + esc(t.photoUrl) + '" alt="" loading="lazy">' : '🧰'; }
 function nameHtml(t) { return esc(t.name) + (t.commonName && norm(t.commonName) !== norm(t.name) ? ' <small>〈' + esc(t.commonName) + '〉</small>' : ''); }
 function toolRow(t, why) {
-  const out = t.status && t.status !== '倉庫' ? '<span class="tag out">' + esc(t.statusSite || '持ち出し中') + '</span>' : '';
+  const out = whereTag(t);
   return '<button type="button" class="tool" data-tool="' + esc(t.id) + '"><div class="ph">' + phHtml(t) + '</div><div style="min-width:0">' +
     '<div class="nm">' + nameHtml(t) + '</div>' +
     '<div class="sub"><span class="tag loc">' + esc(t.location || '場所未設定') + '</span> ' + out + ' <span class="tnum">' + t.qty + '個</span>' + (why ? '　' + esc(why) : '') + '</div>' +
@@ -608,6 +617,43 @@ function toolRow(t, why) {
 }
 
 /* ============ 道具の詳細 ============ */
+function whereTag(t) {
+  if (!t.status || t.status === '倉庫') return '';
+  if (t.status === '修理中') return '<span class="tag out">🔧 修理中' + (t.statusSite ? '（' + esc(t.statusSite) + '）' : '') + '</span>';
+  return '<span class="tag out">' + esc(t.statusSite || '持ち出し中') + '</span>';
+}
+const REPAIR_TYPES = ['修理に出した', '修理から戻った', '修理・メンテ', '故障の報告'];
+function repairHtml(t) {
+  const logs = (DB.repairs || []).filter(r => r.toolId === t.id).sort((a, b) => String(b.date || b.at).localeCompare(String(a.date || a.at)));
+  return '<div class="sec-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">🔧 修理の記録' +
+    '<span style="display:flex;gap:6px">' + (t.status === '修理中' ? '<button class="btn sm" data-repair="修理から戻った">戻った</button>' : '<button class="btn sm" data-repair="修理に出した">修理に出す</button>') +
+    '<button class="btn sm" data-repair="修理・メンテ">＋記録</button></span></div>' +
+    (logs.length ? logs.map(r => '<div style="border-top:1px solid var(--line);padding:7px 0;font-size:14px"><div style="display:flex;gap:8px"><b style="flex:1">' + esc(r.type) + '</b><span class="hint" style="margin:0">' + esc(String(r.date || '').slice(5).replace('-', '/')) + '</span><button class="x" style="border:0;background:none;color:var(--bark);cursor:pointer" data-delrep="' + esc(r.logId) + '">✕</button></div>' +
+      (r.content ? '<div style="white-space:pre-wrap">' + esc(r.content) + '</div>' : '') +
+      '<div class="hint" style="margin:0">' + esc([r.shop, r.cost ? Number(String(r.cost).replace(/[^\d]/g, '')).toLocaleString('ja-JP') + '円' : '', r.by].filter(Boolean).join('・')) + '</div></div>').join('')
+      : '<div class="hint" style="margin-bottom:8px">まだ記録がありません。壊れた・直したを残しておくと、買い替えの判断に使えます。</div>');
+}
+function openRepair(id, type) {
+  const t = toolById(id); if (!t) return;
+  const d = new Date(), today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  openModal('<h3>🔧 ' + esc(t.name) + ' の修理の記録</h3>' +
+    '<div class="chips" id="rpType">' + REPAIR_TYPES.map(x => '<button type="button" class="chip' + (x === type ? ' on' : '') + '" data-rt="' + esc(x) + '">' + esc(x) + '</button>').join('') + '</div>' +
+    '<label class="lbl" style="margin-top:12px">日付</label><input type="date" id="rpDate" value="' + today + '" style="width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--field)">' +
+    '<label class="lbl" style="margin-top:12px">内容</label><div class="searchbox"><textarea id="rpText" placeholder="例：エンジンがかからない／刃の交換"></textarea></div>' +
+    '<div class="row2" style="margin-top:12px"><div><label class="lbl">お店</label><input type="text" id="rpShop" value="' + esc(t.status === '修理中' ? t.statusSite || '' : '') + '"></div><div><label class="lbl">費用（円）</label><input type="text" id="rpCost" inputmode="numeric"></div></div>' +
+    '<p class="hint">「修理に出した」にすると、今どこが「修理中」になります。「修理から戻った」で倉庫に戻ります。</p>' +
+    '<div class="row2" style="margin-top:16px"><button class="btn" data-act="back">戻る</button><button class="btn primary" data-act="save">記録する</button></div>',
+    async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.rt) { document.querySelectorAll('#rpType .chip').forEach(x => x.classList.toggle('on', x === b)); return; }
+      if (b.dataset.act === 'back') return openTool(id);
+      if (b.dataset.act !== 'save') return;
+      const log = { toolId: id, type: (document.querySelector('#rpType .chip.on') || {}).dataset ? document.querySelector('#rpType .chip.on').dataset.rt : '修理・メンテ', date: $('rpDate').value || today, content: $('rpText').value.trim(), shop: $('rpShop').value.trim(), cost: $('rpCost').value.trim() };
+      b.disabled = true;
+      try { const r = await api.post('dougu', { mode: 'addRepair', log, by: me() }); if (!r.ok) throw new Error(r.error); await load(); openTool(id); toast('記録しました'); }
+      catch (err) { toast(err.message || NET_ERR); b.disabled = false; }
+    });
+}
 function openTool(id, fromSearch) {
   const t = toolById(id); if (!t) return;
   const al = aliasesOf(t.termId);
@@ -619,12 +665,13 @@ function openTool(id, fromSearch) {
   h += t.photoUrl ? '<img class="detail-ph" src="' + esc(t.photoUrl) + '" alt="">' : '<div class="big-ph">🧰</div>';
   h += '<dl class="kv"><dt>保管場所</dt><dd><b>' + esc(t.location || '未設定') + '</b></dd>' +
     '<dt>数量</dt><dd class="tnum">' + t.qty + '個</dd>' +
-    '<dt>今どこ</dt><dd>' + (t.status && t.status !== '倉庫' ? '<span class="tag out">' + esc(t.statusSite || '持ち出し中') + '</span>' : '倉庫') + '</dd>' +
+    '<dt>今どこ</dt><dd>' + (whereTag(t) || '倉庫') + '</dd>' +
     (t.feature ? '<dt>どんな道具</dt><dd>' + esc(t.feature) + '</dd>' : '') +
     '<dt>呼び方</dt><dd><div class="chips">' + (al.length ? al.map(a => '<span class="chip" style="cursor:default">' + esc(a.alias) +
       (a.type === '聞き間違い' ? '<span class="tag mis">聞き間違い</span>' : '') + (a.state !== '承認済' ? '<span class="tag wait">承認待ち</span>' : '') + '</span>').join('') : '<span class="hint">まだありません</span>') + '</div></dd>' +
     '<dt>登録</dt><dd style="font-size:12.5px;color:var(--bark)">' + esc(t.registeredBy || '') + (t.reviewState === '未確認' ? '<span class="tag wait">未確認</span>' : '') + '</dd></dl>';
-  h += '<div class="row2"><button class="btn" data-act="alias">＋呼び方</button><button class="btn" data-act="edit">場所・数量を直す</button></div>' +
+  h += repairHtml(t);
+  h += '<div class="row2" style="margin-top:12px"><button class="btn" data-act="alias">＋呼び方</button><button class="btn" data-act="edit">場所・数量を直す</button></div>' +
     '<a class="btn block" style="margin-top:8px;text-decoration:none" href="' + YOUGO_PAGE + '?q=' + encodeURIComponent(t.name) + '">📗 用語集で名前・意味を見る</a>' +
     '<button class="btn block" style="margin-top:8px" data-act="close">閉じる</button>';
   openModal(h, async e => {
@@ -632,7 +679,9 @@ function openTool(id, fromSearch) {
     if (b.dataset.addMiss) {
       await post('yougo', { mode: 'addAlias', alias: missQ, termId: t.termId, type: b.dataset.addMiss, by: me(), state: isAdmin() ? '承認済' : '承認待ち' }, isAdmin() ? '登録しました' : '登録しました（管理者の承認待ち）');
       lastMiss = ''; openTool(id);
-    } else if (b.dataset.act === 'alias') openAliasForm(id);
+    } else if (b.dataset.repair) chooseName(false, () => openRepair(id, b.dataset.repair));
+    else if (b.dataset.delrep) { if (!confirm('この記録を消しますか？')) return; const r = await api.post('dougu', { mode: 'deleteRepair', logId: b.dataset.delrep }); if (!r.ok) return toast(r.error || NET_ERR); await load(); openTool(id); }
+    else if (b.dataset.act === 'alias') openAliasForm(id);
     else if (b.dataset.act === 'edit') openEditForm(id);
     else if (b.dataset.act === 'close') closeModal();
   });

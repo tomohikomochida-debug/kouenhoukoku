@@ -31,7 +31,11 @@ var SHEETS = {
   locations: { name: '番地',         head: ['code', 'floor', 'area', 'place', 'container', 'mapX', 'mapY'] },
   toolLog:   { name: '持ち出し履歴', head: ['at', 'toolId', 'action', 'site', 'by'] },
   cards:     { name: '段取りカード', head: ['cardId', 'date', 'site', 'eventId', 'meetTime', 'staff', 'vehicle', 'stops', 'items', 'steps', 'notes', 'rawText', 'createdBy', 'updatedAt', 'kind', 'title', 'dateNote', 'doneAt', 'doneBy'] },
-  nicknames: { name: '呼び名',       head: ['name', 'nickname', 'addedBy', 'addedAt'] }
+  nicknames: { name: '呼び名',       head: ['name', 'nickname', 'addedBy', 'addedAt'] },
+  suppliers: { name: '取引先',       head: ['id', 'name', 'kana', 'kind', 'aliases', 'phone', 'address', 'contact', 'items', 'memo', 'updatedBy', 'updatedAt'] },
+  vehicles:  { name: '車両',         head: ['id', 'name', 'aliases', 'ownership', 'plate', 'model', 'shakenDate', 'insuranceDate', 'rentalShop', 'rentalFrom', 'rentalTo', 'photoUrl', 'photoId', 'status', 'memo', 'updatedBy', 'updatedAt'] },
+  vehicleLog:{ name: '車両の記録',   head: ['logId', 'vehicleId', 'date', 'type', 'content', 'shop', 'cost', 'odometer', 'by', 'at'] },
+  toolRepair:{ name: '修理履歴',     head: ['logId', 'toolId', 'date', 'type', 'content', 'shop', 'cost', 'by', 'at'] }
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
 
@@ -104,7 +108,7 @@ function rows_(key) {
     var o = {};
     head.forEach(function (h, c) {
       var v = vals[i][c];
-      if (v instanceof Date) v = (h === 'date') ? ymd_(v) : Utilities.formatDate(v, TZ, 'yyyy-MM-dd HH:mm');
+      if (v instanceof Date) v = /^date$|Date$|From$|To$/.test(h) ? ymd_(v) : Utilities.formatDate(v, TZ, 'yyyy-MM-dd HH:mm');
       o[h] = v == null ? '' : v;
     });
     list.push(o);
@@ -169,10 +173,12 @@ function doGet(e) {
   try {
     if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL) });
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
-    if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations') });
+    if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair') });
+    if (app === 'torihiki' && a === 'data') return out_({ ok: true, suppliers: rows_('suppliers') });
+    if (app === 'sharyo' && a === 'data') return out_({ ok: true, vehicles: rows_('vehicles'), logs: rows_('vehicleLog'), suppliers: rows_('suppliers') });
     if (app === 'dandori') {
       var today = ymd_(new Date());
-      if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames') });
+      if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles') });
       if (a === 'calendar') { var c = calendar_(p.from || today, p.to || addDays_(today, 14)); return out_({ ok: true, sites: c.sites, holidays: c.holidays, timed: c.timed }); }
       if (a === 'colors') return out_(Object.assign({ ok: true }, colors_(today, addDays_(today, 30))));
     }
@@ -198,6 +204,16 @@ function doPost(e) {
       case 'dougu:addTool':    return withLock_(function () { return addTool_(b.tool, b.image, b.by); });
       case 'dougu:updateTool': return withLock_(function () { return updateTool_(b.id, b.patch, b.by); });
       case 'dougu:review':     return withLock_(function () { return updateTool_(b.key, { reviewState: b.action === 'approve' ? '確認済' : '未確認' }); });
+      case 'dougu:addRepair':  return withLock_(function () { return addRepair_(b.log, b.by); });
+      case 'dougu:deleteRepair': return withLock_(function () { return remove_('toolRepair', b.logId); });
+      /* 取引先 */
+      case 'torihiki:save':    return withLock_(function () { return upsert_('suppliers', 'id', 'S', b.item, b.by); });
+      case 'torihiki:delete':  return withLock_(function () { return remove_('suppliers', b.id); });
+      /* 車両 */
+      case 'sharyo:save':      return withLock_(function () { return saveVehicle_(b.item, b.image, b.by); });
+      case 'sharyo:delete':    return withLock_(function () { return remove_('vehicles', b.id); });
+      case 'sharyo:addLog':    return withLock_(function () { return upsert_('vehicleLog', 'logId', 'L', Object.assign({ by: b.by, at: now_() }, b.log), b.by); });
+      case 'sharyo:deleteLog': return withLock_(function () { return remove_('vehicleLog', b.logId); });
       /* 段取り */
       case 'dandori:organize':   return out_(organize_(b));
       case 'dandori:saveCards':  return withLock_(function () { return saveCards_(b.cards, b.by); });
@@ -208,6 +224,47 @@ function doPost(e) {
       default: return out_({ ok: false, error: 'unknown mode: ' + key });
     }
   } catch (err) { return out_({ ok: false, error: String(err) }); }
+}
+
+/* ================================================================
+ *  取引先・車両・修理履歴（1行1件の表。id で上書き、無ければ追加）
+ * ================================================================ */
+function cell_(v) {   // 電話番号・ナンバー・日付などを、スプレッドシートに勝手に数字や日付へ変えられないよう文字のまま入れる
+  if (typeof v === 'string' && /^[\d\-\/\.:\s+()]+$/.test(v) && v.trim() !== '') return "'" + v;
+  return v;
+}
+function upsert_(key, idCol, prefix, obj, by) {
+  obj = obj || {};
+  var s = sh_(key), head = SHEETS[key].head, vals = s.getDataRange().getValues(), row = 0, id = String(obj[idCol] || '').trim();
+  if (id) for (var i = 1; i < vals.length; i++) if (String(vals[i][0]) === id) { row = i + 1; break; }
+  if (!id) id = nextId_(key, idCol, prefix);
+  obj[idCol] = id;
+  if (head.indexOf('updatedBy') >= 0) obj.updatedBy = by || obj.updatedBy || '';
+  if (head.indexOf('updatedAt') >= 0) obj.updatedAt = now_();
+  var old = row ? vals[row - 1] : null;
+  var r = head.map(function (h, c) { var v = obj.hasOwnProperty(h) ? obj[h] : (old ? old[c] : ''); return cell_(v == null ? '' : v); });
+  if (row) s.getRange(row, 1, 1, r.length).setValues([r]); else s.appendRow(r);
+  return { ok: true, id: id };
+}
+function remove_(key, id) {
+  var s = sh_(key), vals = s.getDataRange().getValues();
+  for (var i = vals.length - 1; i >= 1; i--) if (String(vals[i][0]) === String(id)) { s.deleteRow(i + 1); return { ok: true }; }
+  return { ok: false, error: '見つかりません: ' + id };
+}
+function saveVehicle_(item, image, by) {
+  item = item || {};
+  if (!item.id && !String(item.name || '').trim()) return { ok: false, error: '車両の名前がありません' };
+  var r = upsert_('vehicles', 'id', 'V', item, by);
+  if (image) { var p = savePhoto_(image, r.id); upsert_('vehicles', 'id', 'V', { id: r.id, photoUrl: p.url, photoId: p.id }, by); r.photoUrl = p.url; }
+  return r;
+}
+function addRepair_(log, by) {   // 道具の修理の記録。「修理に出した」「修理から戻った」は道具の今どこも変える
+  log = log || {};
+  if (!log.toolId) return { ok: false, error: '道具がありません' };
+  var r = upsert_('toolRepair', 'logId', 'R', Object.assign({ date: ymd_(new Date()), by: by || '', at: now_() }, log), by);
+  if (log.type === '修理に出した') updateTool_(log.toolId, { status: '修理中', statusSite: log.shop || '', statusBy: by || '', statusAt: now_() }, by);
+  if (log.type === '修理から戻った') updateTool_(log.toolId, { status: '倉庫', statusSite: '', statusBy: by || '', statusAt: now_() }, by);
+  return r;
 }
 
 /* ================================================================
@@ -523,6 +580,8 @@ function organize_(b) {   // 順不同に話した段取りを「日付×現場�
     '休みの人：\n' + (b.holidays || []).map(function (h) { return h.date + '：' + h.title; }).join('\n') + '\n' +
     '名簿（正式な名前：呼び名）：\n' + (b.roster || (b.staff || []).join('、')) + '\n' +
     '現場マスタ（実際の現場名）：\n' + (b.masterSites || []).join('、') + '\n' +
+    (b.suppliers ? '取引先（正式名：呼び方。立ち寄り先 stops.place はこの正式名に直す。取引先の店・人はスタッフではない）：\n' + b.suppliers + '\n' : '') +
+    (b.vehicles ? '車両（vehicle はこの名前に合わせる）：\n' + b.vehicles + '\n' : '') +
     '道具・資材の辞書（呼び方→正式名）：\n' + (b.dict || '') + '\n\n' +
     '話した内容：\n' + b.text;
   var j = gemini_(prompt);
