@@ -16,7 +16,7 @@
  *    読めているかの確認：URLの後ろに ?app=dandori&action=colors を付けて開く
  ****************************************************************/
 
-var GEMINI_MODEL = 'gemini-3.8-flash';   // スクリプト プロパティ GEMINI_MODEL に書けば、コードを直さずに切り替えられる
+var GEMINI_MODEL = 'gemini-2.5-flash';   // スクリプト プロパティ GEMINI_MODEL に書けば、コードを直さずに切り替えられる
 var TZ = 'Asia/Tokyo';
 var PHOTO_FOLDER = '道具写真';
 var SHEET_NAME = '現場アプリデータ（段取り・道具・用語）';
@@ -118,7 +118,7 @@ function nextId_(key, col, prefix) {
 function withLock_(fn) { var l = LockService.getScriptLock(); l.waitLock(25000); try { return out_(fn()); } finally { l.releaseLock(); } }
 
 // 使うモデルの順番。混み合っている（503など）ときは少し待ってやり直し、だめなら次のモデルへ
-var GEMINI_FALLBACK = ['gemini-3.5-flash-lite', 'gemini-2.5-flash'];
+var GEMINI_FALLBACK = ['gemini-2.5-flash-lite', 'gemini-3.5-flash-lite'];
 function models_() {
   var list = [prop_('GEMINI_MODEL', GEMINI_MODEL)].concat(String(prop_('GEMINI_FALLBACK', GEMINI_FALLBACK.join(','))).split(','));
   return list.map(function (m) { return String(m).trim(); }).filter(function (m, i, a) { return m && a.indexOf(m) === i; });
