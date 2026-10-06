@@ -61,6 +61,10 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--leaf);outline-of
 .holline{background:#FBEDED;border:1px solid #EFCFCF;color:#7E2F2F;border-radius:10px;padding:8px 12px;font-size:13.5px;margin-bottom:10px}
 .sitecal{border:1px dashed var(--site);background:#FBF7F0;border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px}
 .sitecal .t{flex:1;font-weight:700}
+.sitecal.ask{border-style:dotted;background:#FFF;flex-wrap:wrap}
+.sitecal.ask .q{flex-basis:100%;font-size:12.5px;color:var(--bark);margin-top:-2px}
+.tag.time{background:#E8ECF4;color:#3D4B66}
+.undo{background:none;border:0;color:var(--bark);text-decoration:underline;font-size:12.5px;padding:2px 0;margin-bottom:10px}
 .plan{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-left:6px solid var(--site);border-radius:10px;padding:12px 14px;margin-bottom:10px;cursor:pointer;box-shadow:var(--shadow)}
 .plan .st{font-size:17px;font-weight:700}
 .plan .meta{font-size:13px;color:var(--bark);margin-top:2px}
@@ -152,7 +156,7 @@ const YOUGO_URL = GAS_URL;  // 用語集（app=yougo：言葉のマスタ）
 const DOUGU_URL = GAS_URL;  // 道具管理（app=dougu：保管場所・持ち出し状況）
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
 const DEMO = !GAS_URL || !YOUGO_URL || !DOUGU_URL;
-const LS = { me: 'dandori_me', cards: 'dandori_demo_v1', words: 'yougo_demo_v1', tools: 'dougu_demo_v3', cache: 'dandori_cache', draft: 'dandori_draft' };
+const LS = { me: 'dandori_me', cards: 'dandori_demo_v1', words: 'yougo_demo_v1', tools: 'dougu_demo_v3', cache: 'dandori_cache', draft: 'dandori_draft', timed: 'dandori_timed' };
 const NET_ERR = '電波を確認して、もう一度お試しください';
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 const DEMO_STAFF = ['持田', '樋上', '甲斐', '菱沼', '杉村', '佐藤'];
@@ -368,7 +372,8 @@ function demoCalendar() {   // 今日を起点にしたサンプルの予定（�
   site('中山建設 南区 須賀邸', 4, 6, [{ title: '須賀邸 植栽図.pdf', url: '#' }]);
   hol('樋上', 0, 2); hol('甲斐', 2, 2);
   for (let i = 0; i < 8; i++) if (parseYmd(D(i)).getDay() === 6) hol('@all', i, i);
-  return { sites, holidays: hols };
+  const timed = [{ id: 'T_岸邸', date: D(1), time: '16:00', title: '岸邸 打合せ', kind: 'site' }, { id: 'T_甲斐', date: D(1), time: '17:15', title: '甲斐', kind: 'holiday' }];
+  return { sites, holidays: hols, timed };
 }
 
 /* ============ データ ============ */
@@ -393,20 +398,20 @@ async function load() {
     if (DEMO) {
       CARDS = lsGet(LS.cards, []);
       NICK = lsGet(LS.me + '_nick', []);
-      CAL = demoCalendar();
+      CAL = demoCalendar(); applyTimed();
       const x = demoWordsAndTools(); WORDS = x.w; TOOLS = x.t;
     } else {
       const [c, cal, w, t] = await Promise.all([
         getJSON(GAS_URL + '?app=dandori&action=data'), getJSON(GAS_URL + '?app=dandori&action=calendar&from=' + addDays(TODAY, -1) + '&to=' + addDays(TODAY, 21)),
         getJSON(YOUGO_URL + '?app=yougo&action=data'), getJSON(DOUGU_URL + '?app=dougu&action=data')]);
       [c, cal, w, t].forEach(r => { if (!r.ok) throw new Error(r.error || '読み込み失敗'); });
-      CARDS = c.cards; NICK = c.nicknames || []; CAL = { sites: cal.sites, holidays: cal.holidays }; WORDS = { terms: w.terms, aliases: w.aliases }; TOOLS = t.tools;
+      CARDS = c.cards; NICK = c.nicknames || []; CAL = { sites: cal.sites, holidays: cal.holidays, timed: cal.timed || [] }; applyTimed(); WORDS = { terms: w.terms, aliases: w.aliases }; TOOLS = t.tools;
       lsSet(LS.cache, { CARDS, NICK, CAL, WORDS, TOOLS });
       moveDemoNicks();
     }
   } catch (e) {
     const c = lsGet(LS.cache, null);
-    if (c) { ({ CARDS, CAL, WORDS, TOOLS } = c); NICK = c.NICK || []; toast('前回のデータを表示しています（' + NET_ERR + '）'); }
+    if (c) { ({ CARDS, CAL, WORDS, TOOLS } = c); NICK = c.NICK || []; applyTimed(); toast('前回のデータを表示しています（' + NET_ERR + '）'); }
     else showError('データを読み込めませんでした。' + NET_ERR);
   }
   STAFF = staffList();   // 覚えている名簿ですぐ表示し、最新の名簿は裏で取る
@@ -727,16 +732,42 @@ function renderDays() {
 }
 function cardName(c) { return c.kind === 'task' ? '📌 ' + (c.title || 'やること') : (c.site || '（現場未定）'); }
 function dateLabel(c) { return (c.date ? md(c.date) : '日付未定') + (c.dateNote ? '（' + c.dateNote + '）' : ''); }
+/* ============ 時間の決まった予定（現場か・休みか、聞いてから使う） ============ */
+const timedKey = t => t.id + '|' + t.date;
+function applyTimed() {   // 「使う」と答えた時間の予定を、現場・休みに加える（答えはこの端末に覚える）
+  const dec = lsGet(LS.timed, {});
+  CAL.timed = CAL.timed || [];
+  CAL.sites = (CAL.sites || []).filter(s => !s.fromTimed); CAL.holidays = (CAL.holidays || []).filter(h => !h.fromTimed);
+  CAL.timed.forEach(t => {
+    if (dec[timedKey(t)] !== 'yes') return;
+    if (t.kind === 'site') CAL.sites.push({ id: t.id, date: t.date, title: t.title, attachments: [], time: t.time, fromTimed: true });
+    else CAL.holidays.push({ id: t.id, date: t.date, title: t.title, all: /@all|全員/i.test(t.title), time: t.time, fromTimed: true });
+  });
+}
+function decideTimed(key, v) {
+  const dec = lsGet(LS.timed, {});
+  if (v) dec[key] = v; else delete dec[key];
+  lsSet(LS.timed, dec); applyTimed(); render();
+}
+function timedHtml(date) {
+  const dec = lsGet(LS.timed, {}), list = (CAL.timed || []).filter(t => t.date === date);
+  const ask = list.filter(t => !dec[timedKey(t)]), hidden = list.filter(t => dec[timedKey(t)] === 'no');
+  return ask.map(t => '<div class="sitecal ask"><span class="tag time">🕘 ' + esc(t.time) + '</span><span class="t">' + esc(t.title) + '</span>' +
+      '<button class="btn sm" data-timed="' + esc(timedKey(t)) + '" data-v="yes">' + (t.kind === 'site' ? '現場にする' : '休みにする') + '</button>' +
+      '<button class="btn sm" data-timed="' + esc(timedKey(t)) + '" data-v="no">使わない</button>' +
+      '<div class="q">' + (t.kind === 'site' ? '現場カレンダーの時間の予定です。段取りの現場として使いますか？' : '出勤調整カレンダーの時間の予定です。この日の休みとして扱いますか？（早退・遅刻だけなら「使わない」）') + '</div></div>').join('') +
+    (hidden.length ? '<button class="undo" data-timed-undo="' + esc(date) + '">「使わない」にした時間の予定（' + hidden.length + '件）を元に戻す</button>' : '');
+}
 function holHtml(date) {
   const hs = holidaysOn(date);
   if (!hs.length) return '';
-  return '<div class="holline">🏖 ' + md(date) + ' の休み：' + hs.map(h => h.all ? '全員（' + esc(h.title) + '）' : esc(h.title)).join('、') + '</div>';
+  return '<div class="holline">🏖 ' + md(date) + ' の休み：' + hs.map(h => (h.all ? '全員（' + esc(h.title) + '）' : esc(h.title)) + (h.time ? '（' + esc(h.time) + '〜）' : '')).join('、') + '</div>';
 }
 function renderPlan() {
   $('holLine').innerHTML = holHtml(SEL);
   const cards = CARDS.filter(c => c.date === SEL);
   const evs = []; CAL.sites.filter(s => s.date === SEL).forEach(s => { if (!evs.some(e => e.title === s.title)) evs.push(s); });
-  $('calSites').innerHTML = evs.filter(e => !cards.some(c => c.site === e.title)).map(e => '<div class="sitecal"><span class="tag site">カレンダー</span><span class="t">' + esc(e.title) + '</span><button class="btn sm" data-new-site="' + esc(e.title) + '">＋段取り</button></div>').join('');
+  $('calSites').innerHTML = evs.filter(e => !cards.some(c => c.site === e.title)).map(e => '<div class="sitecal"><span class="tag site">カレンダー' + (e.time ? ' ' + esc(e.time) : '') + '</span><span class="t">' + esc(e.title) + '</span><button class="btn sm" data-new-site="' + esc(e.title) + '">＋段取り</button></div>').join('') + timedHtml(SEL);
   const undated = CARDS.filter(c => !c.date);
   $('plans').innerHTML = (cards.length ? cards.map(planHtml).join('') : (evs.length ? '' : '<div class="empty">' + md(SEL) + ' の段取りはまだありません。<br>下の「🎤 段取りを話す」から。</div>')) +
     (undated.length ? '<div class="sec">📌 日付未定のやること</div>' + undated.map(planHtml).join('') : '');
@@ -1047,6 +1078,8 @@ document.body.addEventListener('click', e => {
   const dy = e.target.closest('[data-day]'); if (dy) { SEL = dy.dataset.day; return render(); }
   const cd = e.target.closest('[data-card]'); if (cd) return openCard(cd.dataset.card);
   const ns = e.target.closest('[data-new-site]'); if (ns) return openCard(null, { cardId: '', date: SEL, site: ns.dataset.newSite, eventId: '', meetTime: '', staff: [], vehicle: '', stops: [], items: [], steps: [], notes: [], rawText: '' });
+  const tm = e.target.closest('[data-timed]'); if (tm) return decideTimed(tm.dataset.timed, tm.dataset.v);
+  const tu = e.target.closest('[data-timed-undo]'); if (tu) { const dec = lsGet(LS.timed, {}); (CAL.timed || []).filter(t => t.date === tu.dataset.timedUndo && dec[timedKey(t)] === 'no').forEach(t => delete dec[timedKey(t)]); lsSet(LS.timed, dec); applyTimed(); return render(); }
   const sh = e.target.closest('[data-shop]'); if (sh) return toggleShop(sh.dataset.shop);
   const ld = e.target.closest('[data-load]'); if (ld) return toggleLoad(ld.dataset.load);
 });
