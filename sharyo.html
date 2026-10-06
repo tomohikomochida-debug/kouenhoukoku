@@ -135,6 +135,13 @@ main{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 .dgroup .pages{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .dgroup .pages a{border:1px solid var(--line);border-radius:8px;padding:5px 10px;text-decoration:none;color:var(--leaf);font-weight:600;background:var(--card)}
 .dgroup .m{font-size:12px;color:var(--bark)}
+.dgroup .thumbs{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.dgroup .thumbs a{width:96px;height:72px;border-radius:8px;overflow:hidden;background:var(--leaf-soft);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--leaf);text-decoration:none;border:1px solid var(--line)}
+.dgroup .thumbs img{width:100%;height:100%;object-fit:cover}
+.need{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+.need button{font:inherit;font-size:12.5px;border-radius:999px;padding:4px 10px;cursor:pointer;border:1px dashed #D9A21B;background:#FFF8E6;color:#8A5A00}
+.need span{font-size:12.5px;border-radius:999px;padding:4px 10px;background:#EEF4EF;color:var(--leaf)}
+.readbtn{background:#EEF4EF;border-color:#CFE0D3;color:var(--leaf)}
 .until{font-size:12px;border-radius:6px;padding:1px 7px;background:#EEF4EF;color:var(--leaf)}
 .until.over{background:#FBE3DE;color:var(--danger);font-weight:700}
 details.past{margin-top:6px;font-size:13.5px}
@@ -166,8 +173,32 @@ const NET_ERR = '電波を確認して、もう一度お試しください';
 const OWN = ['自社', 'リース', 'レンタル'];
 const STATUS = ['使用中', '返却済', '廃車・売却'];
 const LOG_TYPES = ['点検', '修理', '車検', 'オイル交換', 'タイヤ', '事故・キズ', '給油', 'その他'];
-const DOC_TYPES = ['車検証', '自賠責保険', '任意保険', 'レンタル契約書', 'その他'];
-const DOC_REPLACE = ['車検証', '自賠責保険', '任意保険', 'レンタル契約書'];   // 新しく入れたら前のものは「過去」へ
+const DOC_TYPES = ['車検証', '自賠責保険', '任意保険', '写真（前）', '写真（後ろ）', '写真（側面の表示）', '年次点検の記録', '検査標章（シール）', 'レンタル契約書', 'その他'];
+const DOC_REPLACE = DOC_TYPES.filter(t => t !== 'その他');   // 新しく入れたら前のものは「過去」へ
+const DOC_INSPECT = ['年次点検の記録', '検査標章（シール）'];
+const isPhotoType = t => /^写真|シール/.test(t);
+const CATS = ['車・トラック', 'ユニック車（クレーン付き）', '重機（ユンボなど）', 'その他'];
+const DOC_TIPS = {
+  '車検証': '明るい所で平らに置き、真上から。影や指が入らないように。',
+  '写真（前）': 'ナンバーが読めるように、正面から車全体を。重機は全体が入るように。',
+  '写真（後ろ）': 'ナンバーが読めるように、後ろから車全体を。',
+  '写真（側面の表示）': '社名・「産業廃棄物収集運搬車」・許可番号の表示が読めるように。左右両方撮ってください。',
+  '年次点検の記録': '点検表（検査記録表）を平らに置いて真上から。複数ページは続けて撮れます。',
+  '検査標章（シール）': 'シール全体がはっきり写るよう、近づいて撮ってください。'
+};
+function needsOf(v) {   // そろえておきたい書類・写真
+  if (v.status && v.status !== '使用中') return [];
+  if (v.ownership === 'レンタル') return ['レンタル契約書'];
+  const cat = v.category || '車・トラック', out = [];
+  if (cat === '重機（ユンボなど）') { out.push('写真（前）', '年次点検の記録', '検査標章（シール）'); if (v.plate) out.unshift('車検証'); return out; }
+  out.push('車検証', '写真（前）', '写真（後ろ）');
+  if (v.waste) out.push('写真（側面の表示）');
+  if (cat === 'ユニック車（クレーン付き）') out.push('年次点検の記録');
+  return out;
+}
+const missingOf = v => needsOf(v).filter(t => !DOCS.some(x => x.vehicleId === v.id && x.type === t && x.state !== '過去'));
+const thumbOf = x => x.fileId ? 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(x.fileId) + '&sz=w400' : (x.url || '');
+const frontPhoto = v => { const x = DOCS.filter(d => d.vehicleId === v.id && d.type === '写真（前）' && d.state !== '過去').sort((a, b) => String(b.at).localeCompare(String(a.at)))[0]; return x ? thumbOf(x) : ''; };
 const SHAKEN_SOON = 45, INS_SOON = 30, RENT_SOON = 3;   // 何日前から知らせるか
 
 /* ============ 小道具 ============ */
@@ -250,6 +281,7 @@ function duesOf(v) {
   if (v.shakenDate) { const n = daysTo(v.shakenDate); out.push({ label: '車検', date: v.shakenDate, n, cls: n < 0 ? 'over' : n <= SHAKEN_SOON ? 'soon' : '' }); }
   if (v.insuranceDate) { const n = daysTo(v.insuranceDate); out.push({ label: '保険', date: v.insuranceDate, n, cls: n < 0 ? 'over' : n <= INS_SOON ? 'soon' : '' }); }
   if (v.ownership === 'レンタル' && v.rentalTo) { const n = daysTo(v.rentalTo); out.push({ label: '返却', date: v.rentalTo, n, cls: n < 0 ? 'over' : n <= RENT_SOON ? 'soon' : '' }); }
+  if (v.inspectDate) { const n = daysTo(v.inspectDate); out.push({ label: '年次点検', date: v.inspectDate, n, cls: n < 0 ? 'over' : n <= INS_SOON ? 'soon' : '' }); }
   return out;
 }
 const dueText = d => d.label + ' ' + md(d.date) + (d.n < 0 ? '（' + (-d.n) + '日過ぎ）' : d.n === 0 ? '（今日）' : '（あと' + d.n + '日）');
@@ -257,11 +289,11 @@ const dueText = d => d.label + ' ' + md(d.date) + (d.n < 0 ? '（' + (-d.n) + '�
 /* ============ 一覧 ============ */
 function vehHtml(v) {
   const ds = duesOf(v), gone = v.status && v.status !== '使用中';
-  return '<button type="button" class="veh' + (gone ? ' gone' : '') + '" data-id="' + esc(v.id) + '"><div class="ph">' + (v.photoUrl ? '<img src="' + esc(v.photoUrl) + '" alt="">' : '🚚') + '</div><div class="bd">' +
+  return '<button type="button" class="veh' + (gone ? ' gone' : '') + '" data-id="' + esc(v.id) + '"><div class="ph">' + (v.photoUrl || frontPhoto(v) ? '<img src="' + esc(v.photoUrl || frontPhoto(v)) + '" alt="" onerror="this.remove()">' : (v.category === '重機（ユンボなど）' ? '🚜' : '🚚')) + '</div><div class="bd">' +
     '<div class="nm">' + esc(v.name) + (v.plate ? ' <small style="font-weight:400;color:var(--bark)">' + esc(v.plate) + '</small>' : '') + '</div>' +
-    '<div class="sub">' + esc([v.ownership, v.model, v.ownership === 'レンタル' && v.rentalShop ? v.rentalShop : '', gone ? v.status : ''].filter(Boolean).join('・')) + '</div>' +
+    '<div class="sub">' + esc([v.ownership, v.category && v.category !== '車・トラック' ? v.category.replace(/（.*）/, '') : '', v.waste ? '収集運搬' : '', v.model, v.ownership === 'レンタル' && v.rentalShop ? v.rentalShop : '', gone ? v.status : ''].filter(Boolean).join('・')) + '</div>' +
     ds.map(d => '<span class="due ' + d.cls + '">' + esc(dueText(d)) + '</span>').join('') +
-    (needShaken(v) && !DOCS.some(x => x.vehicleId === v.id && x.type === '車検証') ? '<span class="due soon">車検証の写しがまだ</span>' : '') + '</div></button>';
+    (missingOf(v).length ? '<span class="due soon">足りない：' + esc(missingOf(v).join('・')) + '</span>' : '') + '</div></button>';
 }
 const needShaken = v => (!v.status || v.status === '使用中') && v.ownership !== 'レンタル';
 function render() {
@@ -285,7 +317,8 @@ function openVeh(id) {
     (v.photoUrl ? '<img class="detail-ph" src="' + esc(v.photoUrl) + '" alt="">' : '') +
     (ds.length ? '<div style="margin-bottom:10px">' + ds.map(d => '<span class="due ' + d.cls + '">' + esc(dueText(d)) + '</span>').join('') + '</div>' : '') +
     '<dl class="kv">' +
-    '<dt>種類</dt><dd>' + esc(v.ownership || '自社') + (v.status && v.status !== '使用中' ? '（' + esc(v.status) + '）' : '') + '</dd>' +
+    '<dt>種類</dt><dd>' + esc(v.ownership || '自社') + '・' + esc(v.category || '車・トラック') + (v.status && v.status !== '使用中' ? '（' + esc(v.status) + '）' : '') + (v.waste ? '<br><span class="due">産廃の収集運搬に使う</span>' : '') + '</dd>' +
+    (v.inspectDate ? '<dt>年次点検</dt><dd>' + md(v.inspectDate) + 'までに</dd>' : '') +
     '<dt>ナンバー</dt><dd>' + esc(v.plate || '—') + '</dd>' +
     '<dt>車種</dt><dd>' + esc(v.model || '—') + '</dd>' +
     '<dt>呼び方</dt><dd>' + esc(splitList(v.aliases).join('・') || '—') + '</dd>' +
@@ -305,7 +338,7 @@ function openVeh(id) {
       if (b.dataset.act === 'close') return closeModal();
       if (b.dataset.act === 'edit') return openEdit(v);
       if (b.dataset.act === 'log') return chooseName(false, () => openLog(v));
-      if (b.dataset.adddoc != null) return chooseName(false, () => openDocAdd(v, b.dataset.adddoc || '車検証'));
+      if (b.dataset.adddoc != null) return chooseName(false, () => openDocAdd(v, b.dataset.adddoc || (missingOf(v)[0] || '車検証')));
       if (b.dataset.until) return openUntil(id, b.dataset.until);
       if (b.dataset.delbatch) {
         const g = DOCS.filter(x => (x.batch || x.docId) === b.dataset.delbatch);
@@ -327,17 +360,18 @@ function batchHtml(g, latest) {
   const f = g[0];
   return '<div class="dgroup"><div class="hd"><b>' + esc(f.type) + '</b>' + untilTag(f.validUntil) +
     (latest ? '<button class="btn sm" data-until="' + esc(f.batch || f.docId) + '" title="有効期限を入れる・直す">期限</button>' : '') + '</div>' +
-    '<div class="pages">' + g.map((x, i) => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">📄 ' + (g.length > 1 ? (i + 1) + '枚目' : '開く') + (x.mime === 'application/pdf' ? '（PDF）' : '') + '</a>').join('') + '</div>' +
+    (isPhotoType(f.type) && f.mime !== 'application/pdf' ? '<div class="thumbs">' + g.map((x, i) => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener"><img src="' + esc(thumbOf(x)) + '" alt="' + esc(f.type) + '" onerror="this.replaceWith(\'📷 ' + (i + 1) + '\')"></a>').join('') + '</div>'
+      : '<div class="pages">' + g.map((x, i) => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">📄 ' + (g.length > 1 ? (i + 1) + '枚目' : '開く') + (x.mime === 'application/pdf' ? '（PDF）' : '') + '</a>').join('') + '</div>') +
     '<div class="m">' + esc(String(f.at || '').slice(0, 10).replace(/-/g, '/')) + ' ' + esc(f.by || '') + '　<button class="x" style="border:0;background:none;color:var(--bark);cursor:pointer;font-size:12px;text-decoration:underline" data-delbatch="' + esc(f.batch || f.docId) + '">消す</button></div></div>';
 }
 function docsHtml(v) {
   const mine = DOCS.filter(x => x.vehicleId === v.id);
   const latest = mine.filter(x => x.state !== '過去'), past = mine.filter(x => x.state === '過去');
-  const missing = needShaken(v) && !latest.some(x => x.type === '車検証');
+  const needs = needsOf(v), missing = false;
   const groups = DOC_TYPES.map(t => docBatches(latest.filter(x => x.type === t))).flat();
   const pastGroups = docBatches(past);
-  return '<div class="sec-title" style="display:flex;align-items:center;justify-content:space-between">📄 書類（車検証など）<button class="btn sm" data-adddoc="">＋撮る・入れる</button></div>' +
-    (missing ? '<div class="tip" style="background:#FFF1D6;color:#8A5A00">車検証の写しがまだありません。<button class="btn sm" style="margin-left:6px" data-adddoc="車検証">📷 車検証を撮る</button></div>' : '') +
+  return '<div class="sec-title" style="display:flex;align-items:center;justify-content:space-between">📄 書類・写真<button class="btn sm" data-adddoc="">＋撮る・入れる</button></div>' +
+    (needs.length ? '<div class="need">' + needs.map(t => latest.some(x => x.type === t) ? '<span>✓ ' + esc(t) + '</span>' : '<button type="button" data-adddoc="' + esc(t) + '">＋ ' + esc(t) + '</button>').join('') + '</div>' : '') +
     (groups.length ? groups.map(g => batchHtml(g, true)).join('') : (missing ? '' : '<div class="hint" style="margin-bottom:8px">まだありません</div>')) +
     (pastGroups.length ? '<details class="past"><summary>過去の書類（' + pastGroups.length + '件）</summary>' + pastGroups.map(g => batchHtml(g, false)).join('') + '</details>' : '') +
     (mine.length ? '<p class="hint">' + (v.docFolderId ? '<a href="https://drive.google.com/drive/folders/' + esc(v.docFolderId) + '" target="_blank" rel="noopener">📁 ドライブのフォルダを開く</a>（社内アプリ ＞ 車両の書類 ＞ ' + esc(v.name) + '）。' : '') +
@@ -361,18 +395,20 @@ function openDocAdd(v, type) {
   PAGES = [];
   const draw = () => {
     const t = (document.querySelector('#dType .chip.on') || {}).dataset;
-    const isShaken = t && t.dt === '車検証';
+    const dt = t ? t.dt : '', isShaken = dt === '車検証', isInsp = DOC_INSPECT.includes(dt);
+    $('dTip').textContent = DOC_TIPS[dt] || '平らに置いて真上から、影や指が入らないように。';
+    $('readTx').innerHTML = isShaken ? '車検証から <b>ナンバー・車名・車検の満了日</b> を読み取って、車両の情報と比べる（AI）' : '点検表・シールから <b>点検した日</b> を読み取り、<b>次の年次点検の期限</b>（1年後）を出す（AI）';
     $('pend').innerHTML = PAGES.map((p, i) => '<div class="pg">' + (p.thumb ? '<img src="' + p.thumb + '" alt="">' : '📄 PDF') + '</div>').join('') || '<span class="hint">まだ撮っていません</span>';
-    $('readBox').hidden = !isShaken;
+    $('readBox').hidden = !(isShaken || isInsp);
     $('dSave').disabled = !PAGES.length;
     $('dSave').textContent = PAGES.length ? PAGES.length + '枚を保存' : '保存';
   };
   openModal('<h3>📄 ' + esc(v.name) + ' の書類</h3>' +
     '<label class="lbl">何の書類？</label><div class="chips" id="dType">' + DOC_TYPES.map(t => '<button type="button" class="chip' + (t === type ? ' on' : '') + '" data-dt="' + esc(t) + '">' + esc(t) + '</button>').join('') + '</div>' +
-    '<div class="tip">📷 スマホで撮るときは、明るい所で平らに置き、真上から。影や指が入らないように。裏面・2枚目があれば続けて撮れます。<br>🖨 複合機でスキャンしたPDFは「ファイルを選ぶ」から入れられます。<br>🔁 車検証・保険などを新しく入れると、前のものは自動で「過去」に移ります。</div>' +
+    '<div class="tip">📷 <span id="dTip"></span>裏面・2枚目があれば続けて撮れます。<br>🖨 複合機でスキャンしたPDFは「ファイルを選ぶ」から入れられます。<br>🔁 同じ種類を新しく入れると、前のものは自動で「過去」に移ります。</div>' +
     '<div class="row2"><button class="btn" data-act="cam">📷 撮る</button><button class="btn" data-act="file">📁 ファイルを選ぶ</button></div>' +
     '<div class="pend" id="pend"></div>' +
-    '<label id="readBox" style="display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:6px 0"><input type="checkbox" id="dRead" checked style="margin-top:4px"><span>車検証から <b>ナンバー・車名・車検の満了日</b> を読み取って、車両の情報と比べる（AI）</span></label>' +
+    '<label id="readBox" style="display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:6px 0"><input type="checkbox" id="dRead" checked style="margin-top:4px"><span id="readTx"></span></label>' +
     '<div class="row2" style="margin-top:12px"><button class="btn" data-act="back">戻る</button><button class="btn primary" id="dSave" data-act="save">保存</button></div>',
     async e => {
       const b = e.target.closest('button'); if (!b) return;
@@ -381,19 +417,19 @@ function openDocAdd(v, type) {
       if (b.dataset.act === 'cam' || b.dataset.act === 'file') return pickDoc(b.dataset.act === 'cam', p => { PAGES.push(p); draw(); });
       if (b.dataset.act !== 'save' || !PAGES.length) return;
       const t = (document.querySelector('#dType .chip.on') || {}).dataset; const dtype = t ? t.dt : 'その他';
-      const wantRead = dtype === '車検証' && $('dRead').checked;
+      const wantRead = (dtype === '車検証' || DOC_INSPECT.includes(dtype)) && $('dRead').checked;
       b.disabled = true; let read = null, n = 0, until = '';
       const batch = 'B' + Date.now().toString(36);
       try {
         for (const [i, p] of PAGES.entries()) {
           b.innerHTML = '<span class="loading"></span> 保存中 ' + (i + 1) + '/' + PAGES.length + (wantRead && i === 0 ? '（読み取り中）' : '');
           const r = await addDoc({ vehicleId: v.id, type: dtype, data: p.b64, mime: p.mime, read: wantRead && i === 0, batch, page: i + 1, pages: PAGES.length, validUntil: until });
-          if (r.read && r.read.shakenDate) until = r.read.shakenDate;   // 2枚目以降にも同じ期限を付ける
+          if (r.read && (r.read.shakenDate || r.read.inspectDate)) until = r.read.shakenDate || r.read.inspectDate;   // 2枚目以降にも同じ期限を付ける
           if (r.read) read = r.read; if (r.readError) toast('読み取りはできませんでした（保存はできています）');
           n++;
         }
         PAGES = []; await load(); toast(n + '枚保存しました');
-        if (read && (read.plate || read.model || read.shakenDate)) return openReadResult(v.id, read);
+        if (read && (read.plate || read.model || read.shakenDate || read.inspectDate)) return openReadResult(v.id, read);
         openVeh(v.id);
       } catch (err) { toast((err.message || NET_ERR) + (n ? '（' + n + '枚は保存済み）' : '')); b.disabled = false; draw(); }
     });
@@ -401,10 +437,10 @@ function openDocAdd(v, type) {
 }
 function openReadResult(id, read) {   // 読み取った内容と、登録している内容を比べて、反映するか聞く
   const v = VEH.find(x => x.id === id); if (!v) return;
-  const rows = [['ナンバー', 'plate', read.plate], ['車名・型式', 'model', read.model], ['車検満了日', 'shakenDate', read.shakenDate]].filter(r => r[2]);
+  const rows = [['ナンバー', 'plate', read.plate], ['車名・型式', 'model', read.model], ['車検満了日', 'shakenDate', read.shakenDate], ['次の年次点検', 'inspectDate', read.inspectDate]].filter(r => r[2]);
   const diff = rows.filter(r => String(v[r[1]] || '') !== String(r[2]));
   openModal('<h3>🔍 車検証から読み取りました</h3>' +
-    '<dl class="kv">' + rows.map(r => '<dt>' + r[0] + '</dt><dd><b>' + esc(r[1] === 'shakenDate' ? md(r[2]) + '（' + r[2] + '）' : r[2]) + '</b>' + (String(v[r[1]] || '') !== String(r[2]) ? '<div class="hint">今の登録：' + esc(v[r[1]] ? (r[1] === 'shakenDate' ? md(v[r[1]]) : v[r[1]]) : 'なし') + '</div>' : '<div class="hint">登録と同じ</div>') + '</dd>').join('') + '</dl>' +
+    '<dl class="kv">' + rows.map(r => '<dt>' + r[0] + '</dt><dd><b>' + esc(/Date$/.test(r[1]) ? md(r[2]) + '（' + r[2] + '）' : r[2]) + '</b>' + (r[1] === 'inspectDate' && read.inspectedOn ? '<div class="hint">点検した日：' + esc(read.inspectedOn) + '</div>' : '') + (String(v[r[1]] || '') !== String(r[2]) ? '<div class="hint">今の登録：' + esc(v[r[1]] ? (/Date$/.test(r[1]) ? md(v[r[1]]) : v[r[1]]) : 'なし') + '</div>' : '<div class="hint">登録と同じ</div>') + '</dd>').join('') + '</dl>' +
     '<p class="hint">AIの読み取りなので、車検証の写しと見比べて確かめてください。</p>' +
     (diff.length ? '<div class="row2" style="margin-top:14px"><button class="btn" data-act="skip">反映しない</button><button class="btn primary" data-act="apply">車両に反映する</button></div>' : '<button class="btn primary block" style="margin-top:14px" data-act="skip">OK</button>'),
     async e => {
@@ -436,43 +472,71 @@ function shopList(kinds) { return '<datalist id="shopList">' + SUP.filter(s => !
 /* ============ 追加・直す ============ */
 let PHOTO = null;
 function openEdit(src) {
-  const v = Object.assign({ id: '', name: '', aliases: '', ownership: '自社', plate: '', model: '', shakenDate: '', insuranceDate: '', rentalShop: '', rentalFrom: '', rentalTo: '', status: '使用中', memo: '' }, src || {});
-  PHOTO = null;
+  const v = Object.assign({ id: '', name: '', aliases: '', ownership: '自社', category: '車・トラック', waste: '', inspectDate: '', firstReg: '', plate: '', model: '', shakenDate: '', insuranceDate: '', rentalShop: '', rentalFrom: '', rentalTo: '', status: '使用中', memo: '' }, src || {});
+  PHOTO = null; let SHAKEN = null, FIRST = v.firstReg || '';   // 読み取った車検証（保存のとき書類にも入れる）
   const draw = () => {
-    const own = $('fOwn') ? $('fOwn').value : v.ownership;
+    const own = $('fOwn') ? $('fOwn').value : v.ownership, cat = $('fCat') ? $('fCat').value : v.category;
     $('rentBox').hidden = own !== 'レンタル';
     $('shakenBox').hidden = own === 'レンタル';
+    $('inspBox').hidden = !/ユニック|重機/.test(cat);
+    $('wasteBox').hidden = own === 'レンタル' || /重機/.test(cat);
+  };
+  const readShaken = async p => {   // 車検証を撮って、ナンバー・車名・車検日を自動で入れる
+    $('readHint').innerHTML = '<span class="loading" style="border-color:var(--line);border-top-color:var(--leaf)"></span> 読み取り中…';
+    SHAKEN = { page: p, until: '' };
+    try {
+      const r = await readDocApi(p, 'shaken');
+      SHAKEN.until = r.shakenDate || '';
+      if (r.plate) $('fPlate').value = r.plate; if (r.model) $('fModel').value = r.model; if (r.shakenDate) $('fShaken').value = r.shakenDate; if (r.firstReg) FIRST = r.firstReg;
+      if (!$('fName').value.trim() && r.model) { const w = r.model.split(/[\s　]+/).filter(Boolean); $('fName').value = w.length >= 2 ? w[1] : w[0]; }
+      $('readHint').textContent = (r.plate || r.model || r.shakenDate) ? '✓ 読み取りました。内容を確かめ、名前を段取りで呼ぶ名前に直してから保存してください（車検証は書類にも入ります）。' : '読み取れませんでした。手で入れてください（車検証は書類として保存されます）。';
+    } catch (err) { $('readHint').textContent = '読み取れませんでした：' + (err.message || NET_ERR) + '（車検証は書類として保存されます）'; }
   };
   openModal('<h3>' + (v.id ? '車両を直す' : '車両を追加') + '</h3>' +
+    '<div class="row2"><button class="btn readbtn" data-act="readcam">📷 車検証を撮って自動で入れる</button><button class="btn sm readbtn" data-act="readfile" style="flex:none;width:auto">📁 PDF</button></div>' +
+    '<p class="hint" id="readHint" style="margin-bottom:12px">ナンバー・車名・車検の満了日をAIが読み取って入れます。</p>' +
     '<label class="lbl">名前（段取りで呼ぶ名前）</label><input type="text" id="fName" value="' + esc(v.name) + '" placeholder="例：2tダンプ、白い軽トラ">' +
     '<label class="lbl" style="margin-top:12px">呼び方（「、」で区切って）</label><input type="text" id="fAlias" value="' + esc(splitList(v.aliases).join('、')) + '" placeholder="例：2トン、ダンプ、にとん">' +
     '<label class="lbl" style="margin-top:12px">種類</label><div class="seg" id="ownSeg">' + OWN.map(o => '<button type="button" data-own="' + esc(o) + '"' + (o === v.ownership ? ' class="on"' : '') + '>' + esc(o) + '</button>').join('') + '</div><input type="hidden" id="fOwn" value="' + esc(v.ownership) + '">' +
-    '<div class="row2"><div><label class="lbl">ナンバー</label><input type="text" id="fPlate" value="' + esc(v.plate) + '" placeholder="川崎 400 あ 12-34"></div><div><label class="lbl">車種</label><input type="text" id="fModel" value="' + esc(v.model) + '" placeholder="キャンター など"></div></div>' +
+    '<label class="lbl">区分</label><select id="fCat">' + CATS.map(c => '<option' + (c === (v.category || '車・トラック') ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select>' +
+    '<label id="wasteBox" style="display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:10px 0 4px"><input type="checkbox" id="fWaste"' + (v.waste ? ' checked' : '') + ' style="margin-top:4px"><span>産業廃棄物の<b>収集運搬</b>に使う（許可に登録している車）<br><small style="color:var(--bark)">側面の表示（社名・許可番号）の写真も、そろえる書類に入ります</small></span></label>' +
+    '<div id="inspBox"><label class="lbl" style="margin-top:12px">次の年次点検（特定自主検査）の期限</label><input type="date" id="fInsp" value="' + esc(v.inspectDate) + '"><p class="hint">点検表やシールの写真を入れると、AIが読み取って1年後の期限を出します。</p></div>' +
+    '<div class="row2" style="margin-top:12px"><div><label class="lbl">ナンバー</label><input type="text" id="fPlate" value="' + esc(v.plate) + '" placeholder="川崎 400 あ 12-34"></div><div><label class="lbl">車種</label><input type="text" id="fModel" value="' + esc(v.model) + '" placeholder="キャンター など"></div></div>' +
     '<div id="shakenBox"><div class="row2" style="margin-top:12px"><div><label class="lbl">車検満了日</label><input type="date" id="fShaken" value="' + esc(v.shakenDate) + '"></div><div><label class="lbl">保険満了日</label><input type="date" id="fIns" value="' + esc(v.insuranceDate) + '"></div></div>' +
     '<p class="hint">車検は' + SHAKEN_SOON + '日前、保険は' + INS_SOON + '日前から、この画面と段取りアプリのお知らせに出ます。</p></div>' +
     '<div id="rentBox"><label class="lbl" style="margin-top:12px">借りた店</label><input type="text" id="fShop" value="' + esc(v.rentalShop) + '" list="shopList">' + shopList(['レンタル', '機械・修理']) +
     '<div class="row2" style="margin-top:12px"><div><label class="lbl">借りた日</label><input type="date" id="fFrom" value="' + esc(v.rentalFrom) + '"></div><div><label class="lbl">返す日</label><input type="date" id="fTo" value="' + esc(v.rentalTo) + '"></div></div>' +
     '<p class="hint">返す日の' + RENT_SOON + '日前から知らせます。</p></div>' +
     '<label class="lbl" style="margin-top:12px">状態</label><select id="fStatus">' + STATUS.map(s => '<option' + (s === (v.status || '使用中') ? ' selected' : '') + '>' + esc(s) + '</option>').join('') + '</select>' +
-    '<label class="lbl" style="margin-top:12px">写真（なくても可）</label><div class="row2"><button class="btn sm" data-act="cam">📷 撮影</button><button class="btn sm" data-act="lib">🖼 選ぶ</button></div><p class="hint" id="phHint"></p>' +
+    '<p class="hint" style="margin-top:10px">前・後ろなどの写真は、保存したあと「📄 書類・写真」から撮ります。</p>' +
     '<label class="lbl" style="margin-top:12px">メモ</label><textarea id="fMemo" placeholder="例：鍵は事務所の箱、ETCカードあり">' + esc(v.memo) + '</textarea>' +
     '<div class="row2" style="margin-top:16px"><button class="btn" data-act="back">' + (v.id ? '戻る' : 'やめる') + '</button><button class="btn primary" data-act="save">保存</button></div>',
     async e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.own) { $('fOwn').value = b.dataset.own; document.querySelectorAll('#ownSeg button').forEach(x => x.classList.toggle('on', x === b)); return draw(); }
-      if (b.dataset.act === 'cam' || b.dataset.act === 'lib') return pickPhoto(b.dataset.act === 'cam', p => { PHOTO = p; $('phHint').textContent = '✓ 写真を選びました'; });
+      if (b.dataset.act === 'readcam' || b.dataset.act === 'readfile') return pickDoc(b.dataset.act === 'readcam', p => readShaken(p));
       if (b.dataset.act === 'back') return v.id ? openVeh(v.id) : closeModal();
       if (b.dataset.act !== 'save') return;
       const own = $('fOwn').value;
       const item = { id: v.id, name: $('fName').value.trim(), aliases: splitList($('fAlias').value).join('、'), ownership: own, plate: $('fPlate').value.trim(), model: $('fModel').value.trim(),
         shakenDate: own === 'レンタル' ? '' : $('fShaken').value, insuranceDate: own === 'レンタル' ? '' : $('fIns').value,
         rentalShop: own === 'レンタル' ? $('fShop').value.trim() : '', rentalFrom: own === 'レンタル' ? $('fFrom').value : '', rentalTo: own === 'レンタル' ? $('fTo').value : '',
-        status: $('fStatus').value, memo: $('fMemo').value.trim() };
+        status: $('fStatus').value, memo: $('fMemo').value.trim(), category: $('fCat').value, waste: !$('wasteBox').hidden && $('fWaste').checked ? '1' : '',
+        inspectDate: $('inspBox').hidden ? '' : $('fInsp').value, firstReg: FIRST };
       if (!item.name) return toast('名前を入れてください');
       b.disabled = true; b.innerHTML = '<span class="loading"></span> 保存中…';
-      try { const id = await saveVeh(item, PHOTO && PHOTO.b64); PHOTO = null; render(); openVeh(id); toast('保存しました'); } catch (err) { toast(err.message || NET_ERR); b.disabled = false; b.textContent = '保存'; }
+      try {
+        const id = await saveVeh(item, PHOTO && PHOTO.b64); PHOTO = null;
+        if (SHAKEN) { b.innerHTML = '<span class="loading"></span> 車検証を保存中…'; await addDoc({ vehicleId: id, type: '車検証', data: SHAKEN.page.b64, mime: SHAKEN.page.mime, batch: 'B' + Date.now().toString(36), page: 1, pages: 1, validUntil: item.shakenDate || SHAKEN.until }); await load(); SHAKEN = null; }
+        render(); openVeh(id); toast('保存しました');
+      } catch (err) { toast(err.message || NET_ERR); b.disabled = false; b.textContent = '保存'; }
     });
+  $('fCat').addEventListener('change', draw);
   draw();
+}
+async function readDocApi(p, kind) {   // AIで読み取るだけ（保存はしない）
+  if (DEMO) return (window.DEMO_READ || {});
+  const r = await postJSON({ mode: 'readDoc', data: p.b64, mime: p.mime, kind }); if (!r.ok) throw new Error(r.error); return r.data || {};
 }
 function openLog(v) {
   openModal('<h3>🔧 ' + esc(v.name) + ' の記録</h3>' +

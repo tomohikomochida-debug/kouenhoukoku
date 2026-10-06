@@ -560,7 +560,7 @@ function vehicleAlerts() {   // 車検・保険・レンタル返却が近い車
   const out = [];
   VEH.filter(v => !v.status || v.status === '使用中').forEach(v => {
     const add = (label, date, soon) => { if (!date) return; const n = daysTo(date); if (n <= soon) out.push({ v, n, text: '🚚 ' + v.name + '：' + label + ' ' + md(date) + (n < 0 ? '（' + (-n) + '日過ぎています）' : n === 0 ? '（今日）' : '（あと' + n + '日）') }); };
-    if (v.ownership === 'レンタル') add('返却', v.rentalTo, 3); else { add('車検', v.shakenDate, 30); add('保険', v.insuranceDate, 30); }
+    if (v.ownership === 'レンタル') add('返却', v.rentalTo, 3); else { add('車検', v.shakenDate, 30); add('保険', v.insuranceDate, 30); add('年次点検', v.inspectDate, 30); }
   });
   return out.sort((a, b) => a.n - b.n);
 }

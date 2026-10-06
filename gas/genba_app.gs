@@ -33,7 +33,7 @@ var SHEETS = {
   cards:     { name: '段取りカード', head: ['cardId', 'date', 'site', 'eventId', 'meetTime', 'staff', 'vehicle', 'stops', 'items', 'steps', 'notes', 'rawText', 'createdBy', 'updatedAt', 'kind', 'title', 'dateNote', 'doneAt', 'doneBy'] },
   nicknames: { name: '呼び名',       head: ['name', 'nickname', 'addedBy', 'addedAt'] },
   suppliers: { name: '取引先',       head: ['id', 'name', 'kana', 'kind', 'aliases', 'phone', 'address', 'contact', 'items', 'memo', 'updatedBy', 'updatedAt'] },
-  vehicles:  { name: '車両',         head: ['id', 'name', 'aliases', 'ownership', 'plate', 'model', 'shakenDate', 'insuranceDate', 'rentalShop', 'rentalFrom', 'rentalTo', 'photoUrl', 'photoId', 'status', 'memo', 'updatedBy', 'updatedAt', 'docFolderId'] },
+  vehicles:  { name: '車両',         head: ['id', 'name', 'aliases', 'ownership', 'plate', 'model', 'shakenDate', 'insuranceDate', 'rentalShop', 'rentalFrom', 'rentalTo', 'photoUrl', 'photoId', 'status', 'memo', 'updatedBy', 'updatedAt', 'docFolderId', 'category', 'waste', 'inspectDate', 'firstReg'] },
   vehicleLog:{ name: '車両の記録',   head: ['logId', 'vehicleId', 'date', 'type', 'content', 'shop', 'cost', 'odometer', 'by', 'at'] },
   toolRepair:{ name: '修理履歴',     head: ['logId', 'toolId', 'date', 'type', 'content', 'shop', 'cost', 'by', 'at'] },
   vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at', 'batch', 'state', 'validUntil', 'page'] }
@@ -217,7 +217,7 @@ function doPost(e) {
       case 'sharyo:deleteLog': return withLock_(function () { return remove_('vehicleLog', b.logId); });
       case 'sharyo:addDoc':    return out_(addVehicleDoc_(b));
       case 'sharyo:deleteDoc': return withLock_(function () { return deleteVehicleDoc_(b.docId); });
-      case 'sharyo:readDoc':   return out_(readShaken_(b.data, b.mime));
+      case 'sharyo:readDoc':   return out_(b.kind === 'inspect' ? readInspect_(b.data, b.mime) : readShaken_(b.data, b.mime));
       case 'sharyo:docUntil':  return withLock_(function () { return setDocUntil_(b.batch, b.until); });
       /* 段取り */
       case 'dandori:organize':   return out_(organize_(b));
@@ -269,7 +269,8 @@ function saveVehicle_(item, image, by) {
    公開リンクにはせず、社内アプリのフォルダを共有しているスタッフだけが Google にログインして開ける */
 var DOCS_FOLDER = '車両の書類';
 var DOCS_FOLDER_DEFAULT_ID = '145jhqHrw_pCMpd97pwDIQcNyzRksAzFM';   // 社内アプリ ＞ 車両の書類
-var DOC_REPLACE = ['車検証', '自賠責保険', '任意保険', 'レンタル契約書'];   // 新しいものが入ったら前のものを「過去」へ
+var DOC_REPLACE = ['車検証', '自賠責保険', '任意保険', '写真（前）', '写真（後ろ）', '写真（側面の表示）', '年次点検の記録', '検査標章（シール）', 'レンタル契約書'];   // 新しいものが入ったら前のものを「過去」へ
+var DOC_INSPECT = ['年次点検の記録', '検査標章（シール）'];
 function docsFolder_() {
   var p = PropertiesService.getScriptProperties();
   var ids = [prop_('DOCS_FOLDER_ID', ''), DOCS_FOLDER_DEFAULT_ID];
@@ -297,8 +298,8 @@ function addVehicleDoc_(b) {
   var type = b.type || 'その他', mime = b.mime || 'image/jpeg', ext = mime === 'application/pdf' ? '.pdf' : '.jpg';
   var batch = String(b.batch || ('B' + Date.now())), page = Number(b.page) || 1;
   var read = null, readError = '';
-  if (b.read) { try { read = readShaken_(b.data, mime).data; } catch (e) { readError = String(e.message || e); } }
-  var until = b.validUntil || (read && read.shakenDate) || '';
+  if (b.read) { try { read = (DOC_INSPECT.indexOf(type) >= 0 ? readInspect_(b.data, mime) : readShaken_(b.data, mime)).data; } catch (e) { readError = String(e.message || e); } }
+  var until = b.validUntil || (read && (read.shakenDate || read.inspectDate)) || '';
   var folder = withLockRaw_(function () { return vehicleFolder_(v); });
   var name = type + '_' + Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd') + (until ? '（' + until + 'まで）' : '') + (b.pages > 1 || page > 1 ? '_' + page : '') + ext;
   var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), mime, name));
@@ -335,6 +336,19 @@ function readShaken_(b64, mime) {   // 車検証の写真・PDFから、ナン�
     '。読めない項目は空文字。推測で埋めない。';
   var j = gemini_([{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
   return { ok: true, data: { plate: j.plate || '', model: j.model || '', shakenDate: /^\d{4}-\d{2}-\d{2}$/.test(j.shakenDate || '') ? j.shakenDate : '', firstReg: j.firstReg || '', kind: j.kind || '' } };
+}
+function readInspect_(b64, mime) {   // 年次点検（特定自主検査）の記録表・検査標章（シール）から、検査した日と次の期限を読む
+  var prompt = 'これは建設機械（ユンボ・バックホウなど）の特定自主検査、またはクレーン付きトラック（ユニック車）の年次自主検査の、検査記録表か検査標章（シール）の写真です。' +
+    '次の項目を読み取り、JSONだけ返してください。{"inspectedOn":"検査した年月日 YYYY-MM-DD（シールで年月だけなら YYYY-MM）","machine":"機械の名前・型式","inspector":"検査した会社"}。令和n年＝2018+n年。読めない項目は空文字。推測で埋めない。';
+  var j = gemini_([{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
+  var on = String(j.inspectedOn || ''), next = '';
+  var m = on.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+  if (m) {   // 次の期限は1年後（年月だけのときは、その月の末日）
+    var y = Number(m[1]) + 1, mo = Number(m[2]);
+    var d = m[3] ? Math.min(Number(m[3]), new Date(y, mo, 0).getDate()) : new Date(y, mo, 0).getDate();
+    next = y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2);
+  }
+  return { ok: true, data: { inspectedOn: on, inspectDate: next, machine: j.machine || '', inspector: j.inspector || '' } };
 }
 function withLockRaw_(fn) { var l = LockService.getScriptLock(); l.waitLock(25000); try { return fn(); } finally { l.releaseLock(); } }
 function addRepair_(log, by) {   // 道具の修理の記録。「修理に出した」「修理から戻った」は道具の今どこも変える
