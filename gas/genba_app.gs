@@ -117,25 +117,47 @@ function nextId_(key, col, prefix) {
 }
 function withLock_(fn) { var l = LockService.getScriptLock(); l.waitLock(25000); try { return out_(fn()); } finally { l.releaseLock(); } }
 
+// 使うモデルの順番。混み合っている（503など）ときは少し待ってやり直し、だめなら次のモデルへ
+var GEMINI_FALLBACK = ['gemini-3.5-flash-lite', 'gemini-2.5-flash'];
+function models_() {
+  var list = [prop_('GEMINI_MODEL', GEMINI_MODEL)].concat(String(prop_('GEMINI_FALLBACK', GEMINI_FALLBACK.join(','))).split(','));
+  return list.map(function (m) { return String(m).trim(); }).filter(function (m, i, a) { return m && a.indexOf(m) === i; });
+}
 function gemini_(parts) {   // parts：文字列 または Gemini の parts 配列
   var key = prop_('GEMINI_API_KEY', '');
   if (!key) throw new Error('GEMINI_API_KEY が未設定です（スクリプト プロパティに登録してください）');
   if (typeof parts === 'string') parts = [{ text: parts }];
-  var model = prop_('GEMINI_MODEL', GEMINI_MODEL);
-  var cfg = { responseMimeType: 'application/json' };
-  if (/^gemini-[12]\./.test(model)) cfg.temperature = 0;   // Gemini 3 以降は既定の温度のまま使う（下げると答えが乱れることがある）
-  var res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key, {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    payload: JSON.stringify({ contents: [{ parts: parts }], generationConfig: cfg })
-  });
-  if (res.getResponseCode() !== 200) throw new Error('Gemini HTTP ' + res.getResponseCode() + '：' + res.getContentText().slice(0, 200));
-  var data = JSON.parse(res.getContentText());
-  var t = ((((data.candidates || [])[0] || {}).content || {}).parts || []).filter(function (p) { return !p.thought; }).map(function (p) { return p.text || ''; }).join('');
-  try { return JSON.parse(t); } catch (e) {
-    var a = t.indexOf('{'), z = t.lastIndexOf('}');
-    if (a < 0 || z < 0) throw new Error('AIの結果を解釈できませんでした');
-    return JSON.parse(t.slice(a, z + 1));
+  var models = models_(), started = Date.now(), last = '';
+  for (var m = 0; m < models.length; m++) {
+    var model = models[m];
+    var cfg = { responseMimeType: 'application/json' };
+    if (/^gemini-[12]\./.test(model)) cfg.temperature = 0;   // Gemini 3 以降は既定の温度のまま使う（下げると答えが乱れることがある）
+    for (var tryNo = 0; tryNo < 2; tryNo++) {
+      var res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key, {
+        method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+        payload: JSON.stringify({ contents: [{ parts: parts }], generationConfig: cfg })
+      });
+      var code = res.getResponseCode();
+      if (code === 200) {
+        var data = JSON.parse(res.getContentText());
+        var t = ((((data.candidates || [])[0] || {}).content || {}).parts || []).filter(function (p) { return !p.thought; }).map(function (p) { return p.text || ''; }).join('');
+        try { return JSON.parse(t); } catch (e) {
+          var a = t.indexOf('{'), z = t.lastIndexOf('}');
+          if (a >= 0 && z > a) { try { return JSON.parse(t.slice(a, z + 1)); } catch (e2) {} }
+          last = 'AIの結果を解釈できませんでした'; break;   // 次のモデルで試す
+        }
+      }
+      last = 'Gemini HTTP ' + code + '：' + res.getContentText().slice(0, 200);
+      if (code === 400 || code === 401 || code === 403) {   // キーや設定の問題はやり直しても同じ
+        throw new Error(code === 400 && /model/i.test(res.getContentText()) ? 'AIのモデル名「' + model + '」が使えません：' + last : 'AIのキーを確認してください（' + last + '）');
+      }
+      if (code === 404) break;   // モデルが無い → 次のモデル
+      if (Date.now() - started > 60000) break;
+      if (tryNo === 0 && typeof Utilities.sleep === 'function') Utilities.sleep(2000);   // 混み合い（429・500・503）は少し待ってもう一度
+    }
   }
+  if (/HTTP (429|500|503)/.test(last)) throw new Error('AIが混み合っていて使えませんでした。少し時間をおいて、もう一度押してください。（' + last.slice(0, 60) + '）');
+  throw new Error(last || 'AIに接続できませんでした');
 }
 
 /* ================================================================
