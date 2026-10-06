@@ -772,10 +772,11 @@ function renderPlan() {
   $('plans').innerHTML = (cards.length ? cards.map(planHtml).join('') : (evs.length ? '' : '<div class="empty">' + md(SEL) + ' の段取りはまだありません。<br>下の「🎤 段取りを話す」から。</div>')) +
     (undated.length ? '<div class="sec">📌 日付未定のやること</div>' + undated.map(planHtml).join('') : '');
 }
+const onCal = c => c.site ? CAL.sites.find(e => e.date === c.date && (e.id === c.eventId || e.title === c.site)) : null;   // カレンダーの予定から作ったカードか
 function planHtml(c) {
   const w = warningsOf(c);
   const stops = c.stops.map((s, i) => '①②③④⑤⑥⑦⑧⑨'[i] + esc(s.place) + (s.items.length ? '：' + s.items.map(it => esc(it.name) + (it.qty ? ' ' + it.qty + (it.unit || '') : '')).join('・') : '')).join('　');
-  return '<button type="button" class="plan" data-card="' + esc(c.cardId) + '"' + (c.kind === 'task' ? ' style="border-left-color:var(--tape)"' : '') + '><div class="st">' + esc(cardName(c)) + '</div>' +
+  return '<button type="button" class="plan" data-card="' + esc(c.cardId) + '"' + (c.kind === 'task' ? ' style="border-left-color:var(--tape)"' : '') + '><div class="st">' + esc(cardName(c)) + (onCal(c) ? '<span class="tag site">📅 カレンダー' + (onCal(c).time ? ' ' + esc(onCal(c).time) : '') + '</span>' : '') + '</div>' +
     (c.dateNote || !c.date ? '<div class="meta">🗓 ' + esc(dateLabel(c)) + '</div>' : '') +
     '<div class="meta">' + (c.meetTime ? '⏰ ' + esc(c.meetTime) + '　' : '') + (c.staff.length ? '👷 ' + esc(c.staff.join('・')) : '👷 メンバー未定') + (c.vehicle ? '　🚚 ' + esc(c.vehicle) : '') + '</div>' +
     (stops ? '<div class="ln">🛒 ' + stops + '</div>' : '') +
