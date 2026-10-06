@@ -116,6 +116,20 @@ input:focus{outline:none; border-bottom-color:var(--leaf)}
 .tabs2{display:flex; gap:8px; margin-top:10px; justify-content:center}
 .tabs2 button{flex:0 0 auto; background:rgba(255,255,255,.15); color:#fff; border:1px solid rgba(255,255,255,.32); border-radius:999px; padding:6px 20px; font-size:14px; font-weight:700; cursor:pointer}
 .tabs2 button.on{background:#fff; color:var(--leaf)}
+.whoami-bar{display:flex; align-items:center; justify-content:center; gap:8px; margin-top:8px; font-size:13px; color:#fff}
+.whoami-bar .nm{font-weight:800; text-decoration:underline}
+.whoami-bar button{background:rgba(255,255,255,.15); color:#fff; border:1px solid rgba(255,255,255,.32); border-radius:999px; padding:4px 12px; font-size:12px; font-weight:700; cursor:pointer}
+.rec-author{display:flex; align-items:center; gap:6px; margin:6px 0 2px}
+.rec-author label{font-size:12px; color:var(--bark); flex:0 0 auto}
+.rec-author input{flex:1; min-width:0; border:1px solid var(--line); background:var(--field); border-radius:8px; padding:6px 8px; font-size:14px}
+.badge-log{display:inline-block; background:var(--tape); color:#fff; border-radius:6px; padding:1px 7px; font-size:11px; font-weight:700; margin-left:6px}
+.ovl{position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; z-index:30; padding:20px}
+.ovl[hidden]{display:none}
+.ovl .box{background:#fff; border-radius:12px; padding:16px; max-width:360px; width:100%}
+.ovl h3{margin:0 0 10px; font-size:16px}
+.name-grid{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px}
+.name-grid button{border:1px solid var(--line); background:var(--field); border-radius:8px; padding:8px 12px; font-size:14px; font-weight:700; cursor:pointer}
+.name-grid button:active{background:var(--leaf-soft)}
 .alist{display:flex; flex-direction:column; gap:8px}
 .alist .mh{font-size:12.5px; font-weight:700; color:var(--bark); margin:12px 0 2px; padding-bottom:3px; border-bottom:1px solid var(--line)}
 .ar{display:flex; gap:9px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:10px; cursor:pointer}
@@ -143,6 +157,7 @@ input:focus{outline:none; border-bottom-color:var(--leaf)}
     <button id="tabInput" class="on">入力</button>
     <button id="tabList">一覧</button>
   </div>
+  <div class="whoami-bar">記入者：<span class="nm" id="whoName">—</span><button id="whoami">変更</button></div>
   <div class="month">
     <button id="prevM" aria-label="前の月">‹</button>
     <span class="lbl" id="monthLbl">―</span>
@@ -218,8 +233,19 @@ input:focus{outline:none; border-bottom-color:var(--leaf)}
   </section>
 
   <datalist id="staffList"></datalist>
+  <datalist id="memberList"></datalist>
   <p class="foot">庭乃持田園 経費・財布アプリ</p>
 </main>
+
+<div class="ovl" id="nameOvl" hidden><div class="box">
+  <h3>記入者をえらぶ</h3>
+  <div class="name-grid" id="nameGrid"></div>
+  <input class="allkw" id="nameInput" placeholder="名前を入力（新しい人）" style="margin-bottom:0">
+  <div style="display:flex; gap:8px; margin-top:10px">
+    <button class="btn ghost" id="nameCancel">とじる</button>
+    <button class="btn primary" id="nameOk">決定</button>
+  </div>
+</div></div>
 
 <div class="toast" id="toast"></div>
 
@@ -245,6 +271,22 @@ let pending = []; // {tempId, thumb, b64, status, errMsg}
 let staff = JSON.parse(localStorage.getItem("keihi_staff")||"[]");
 let stream=null, tempSeq=1;
 
+/* ===== 記入者（他アプリと共通の nippou_author を使用） ===== */
+let author = localStorage.getItem("nippou_author")||"";
+let members = JSON.parse(localStorage.getItem("keihi_members")||"[]");
+function renderMemberList(){ const dl=$("memberList"); if(dl) dl.innerHTML=members.map(n=>`<option value="${esc(n)}">`).join(""); }
+function setAuthor(n){
+  author=(n||"").trim();
+  if(author){ localStorage.setItem("nippou_author",author); if(!members.includes(author)){ members.push(author); localStorage.setItem("keihi_members",JSON.stringify(members)); } }
+  const el=$("whoName"); if(el) el.textContent=author||"（未選択）";
+  renderMemberList();
+}
+function renderNameGrid(){
+  $("nameGrid").innerHTML = members.length
+    ? members.map(n=>`<button data-nm="${esc(n)}">${esc(n)}</button>`).join("")
+    : '<span style="color:var(--bark);font-size:13px">まだ名前がありません。下に入力してください。</span>';
+}
+
 /* ===== 入力／一覧タブ ===== */
 let view="input";                 // "input" | "list"
 let listRows=[];                  // 一覧タブで集めた全明細
@@ -263,7 +305,7 @@ async function flushSaves(){
     try{ await p.fn(); }catch(e){}
   }
 }
-function saveRecAll(id){ const r=rec(id); if(!r) return; return saveRec(id,{store:r.store,amount:r.amount,date:r.date,who:r.who}); }
+function saveRecAll(id){ const r=rec(id); if(!r) return; return saveRec(id,{store:r.store,amount:r.amount,date:r.date,who:r.who,author:r.author}); }
 
 /* ===== API ===== */
 async function apiGet(params){
@@ -361,8 +403,10 @@ function recCardHTML(r){
     <div class="chips">${chipsHTML(r)}</div>
     <div class="pay-row">${payHTML(r)}</div>
     ${walletEffectHTML(r)}
+    <div class="rec-author"><label>記録者</label><input list="memberList" data-act="recauthor" data-id="${r.id}" value="${esc(r.author||author||"")}" placeholder="記録した人（代理ならその人の名前）"></div>
     <div class="why-row">${r.why?`<span class="why">${esc(r.why)}</span>`:`<span class="why"></span>`}
       ${r.pay==="advance"&&r.settled?`<span class="settled">清算済</span>`:""}
+      ${r.edited?`<span class="badge-log">変更履歴あり</span>`:""}
       <button class="del" data-act="delrec" data-id="${r.id}">削除</button></div>
   </div></div>`;
 }
@@ -454,6 +498,7 @@ document.addEventListener("input",(e)=>{
   else if(act==="store"){ const r=rec(id); if(r){ r.store=b.value; scheduleSave("rec:"+id, ()=>saveRecAll(id)); } }
   else if(act==="date"){ const r=rec(id); if(r){ r.date=b.value; scheduleSave("rec:"+id, ()=>saveRecAll(id)); } }
   else if(act==="who"){ const r=rec(id); if(r){r.who=b.value; renderOwed(); scheduleSave("rec:"+id, ()=>saveRecAll(id));} }
+  else if(act==="recauthor"){ const r=rec(id); if(r){ r.author=b.value; scheduleSave("rec:"+id, ()=>saveRecAll(id)); } }
   else if(act==="injedit"){ const x=inj(id); if(x){x.amount=Number(b.value.replace(/[^\d]/g,""))||0; renderWallet(); scheduleSave("inj:"+id, ()=>apiPost({mode:"updateInjection",id,amount:inj(id).amount}).catch(commErr));} }
   else if(b.id==="counted"){ state.counted=b.value===""?"":Number(b.value.replace(/[^\d]/g,"")); renderWallet(); }
 });
@@ -464,6 +509,7 @@ document.addEventListener("change", async (e)=>{
   else if(act==="store"){ await saveRec(id,{store:rec(id).store}); }
   else if(act==="date"){ await saveRec(id,{date:rec(id).date}); }
   else if(act==="who"){ rememberStaff(rec(id).who); await saveRec(id,{who:rec(id).who}); }
+  else if(act==="recauthor"){ const r=rec(id); if(r&&r.author&&!members.includes(r.author)){ members.push(r.author); localStorage.setItem("keihi_members",JSON.stringify(members)); renderMemberList(); } await saveRec(id,{author:rec(id).author}); }
   else if(act==="injedit"){ await apiPost({mode:"updateInjection",id,amount:inj(id).amount}).catch(commErr); }
 },true);
 
@@ -472,8 +518,8 @@ function inj(id){ return state.injections.find(x=>String(x.id)===String(id)); }
 function rememberStaff(n){ if(n&&!staff.includes(n)){ staff.push(n); localStorage.setItem("keihi_staff",JSON.stringify(staff)); renderStaff(); } }
 
 async function editRec(id,patch){ const r=rec(id); if(!r)return; Object.assign(r,patch); renderAll(); await saveRec(id,patch); }
-async function saveRec(id,patch){ try{ const d=await apiPost({mode:"updateRecord",id,patch}); if(!d.ok) throw 0; }catch(e){ commErr(); } }
-async function delRec(id){ state.records=state.records.filter(r=>String(r.id)!==String(id)); renderAll(); try{ await apiPost({mode:"deleteRecord",id}); }catch(e){ commErr(); } }
+async function saveRec(id,patch){ try{ const d=await apiPost({mode:"updateRecord",id,patch,editor:author}); if(!d.ok) throw 0; }catch(e){ commErr(); } }
+async function delRec(id){ state.records=state.records.filter(r=>String(r.id)!==String(id)); renderAll(); try{ await apiPost({mode:"deleteRecord",id,editor:author}); }catch(e){ commErr(); } }
 
 async function injDel(id){ state.injections=state.injections.filter(x=>String(x.id)!==String(id)); renderWallet(); try{ await apiPost({mode:"deleteInjection",id}); }catch(e){ commErr(); } }
 
@@ -515,9 +561,9 @@ async function settle(who){
 /* ===== 追加（手入力／撮影） ===== */
 async function addManual(){
   try{
-    const d=await apiPost({mode:"addRecord",row:{ym,pay:"cash"}});
+    const d=await apiPost({mode:"addRecord",row:{ym,pay:"cash",author}});
     if(!d.ok)throw 0;
-    state.records.unshift({id:d.id,ym,date:"",category:"",store:"",items:[],amount:0,pay:"cash",who:"",settled:false});
+    state.records.unshift({id:d.id,ym,date:"",category:"",store:"",items:[],amount:0,pay:"cash",who:"",settled:false,author});
     renderAll();
   }catch(e){ commErr(); }
 }
@@ -539,10 +585,10 @@ async function analyze(p){
     const d=await apiPost({mode:"analyze",image:p.b64});
     if(!d.ok) throw new Error(d.error||"読み取り失敗");
     const j=d.data;
-    const add=await apiPost({mode:"addRecord",row:{ym,date:j.date,category:j.category,store:j.store,items:j.items,amount:j.total,pay:j.pay,who:"",settled:false}});
+    const add=await apiPost({mode:"addRecord",row:{ym,date:j.date,category:j.category,store:j.store,items:j.items,amount:j.total,pay:j.pay,who:"",settled:false,author}});
     if(!add.ok) throw new Error("保存に失敗しました");
     pending=pending.filter(x=>x!==p); renderPending();
-    state.records.unshift({id:add.id,ym,date:j.date,category:j.category,store:j.store,items:j.items,amount:j.total,pay:j.pay,who:"",settled:false});
+    state.records.unshift({id:add.id,ym,date:j.date,category:j.category,store:j.store,items:j.items,amount:j.total,pay:j.pay,who:"",settled:false,author});
     renderAll();
   }catch(e){ p.status="error"; p.errMsg=String(e.message||e); renderPending(); }
 }
@@ -624,7 +670,14 @@ $("allKw").addEventListener("input",renderAllList);
 $("loadMore").onclick=()=>{ listMonths+=6; loadAllList(false); };
 document.addEventListener("click",(e)=>{ const b=e.target.closest('[data-act="openrec"]'); if(b) openFromList(b.dataset.ym,b.dataset.id); });
 
+/* ===== 記入者えらび ===== */
+$("whoami").onclick=()=>{ renderNameGrid(); $("nameInput").value=""; $("nameOvl").hidden=false; };
+$("nameCancel").onclick=()=>{ $("nameOvl").hidden=true; };
+$("nameOk").onclick=()=>{ const v=$("nameInput").value.trim(); if(v) setAuthor(v); $("nameOvl").hidden=true; if(view==="input") renderList(); };
+$("nameGrid").addEventListener("click",(e)=>{ const b=e.target.closest("[data-nm]"); if(!b) return; setAuthor(b.dataset.nm); $("nameOvl").hidden=true; if(view==="input") renderList(); });
+
 /* ===== 起動 ===== */
+setAuthor(author);
 if(GAS_URL.startsWith("http")) load();
 else { $("loading").textContent="GAS_URL が未設定です。コード冒頭の GAS_URL にウェブアプリのURLを貼ってください。"; }
 </script>
