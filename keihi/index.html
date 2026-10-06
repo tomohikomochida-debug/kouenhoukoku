@@ -113,6 +113,22 @@ input:focus{outline:none; border-bottom-color:var(--leaf)}
 .toast{position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 16px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .2s; z-index:20}
 .toast.show{opacity:.95}
 @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+.tabs2{display:flex; gap:8px; margin-top:10px; justify-content:center}
+.tabs2 button{flex:0 0 auto; background:rgba(255,255,255,.15); color:#fff; border:1px solid rgba(255,255,255,.32); border-radius:999px; padding:6px 20px; font-size:14px; font-weight:700; cursor:pointer}
+.tabs2 button.on{background:#fff; color:var(--leaf)}
+.alist{display:flex; flex-direction:column; gap:8px}
+.alist .mh{font-size:12.5px; font-weight:700; color:var(--bark); margin:12px 0 2px; padding-bottom:3px; border-bottom:1px solid var(--line)}
+.ar{display:flex; gap:9px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:10px; cursor:pointer}
+.ar:active{background:var(--field)}
+.ar .d{font-size:12px; color:var(--bark); min-width:52px; flex:0 0 auto; font-variant-numeric:tabular-nums}
+.ar .mid{flex:1; min-width:0}
+.ar .s{font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ar .sub{font-size:11.5px; color:var(--bark); display:flex; gap:6px; align-items:center; margin-top:2px}
+.ar .cdot{width:8px; height:8px; border-radius:50%; flex:0 0 auto}
+.ar .pay{font-size:11px}
+.ar .unset{color:var(--tape); font-weight:700}
+.ar .a{font-weight:800; color:var(--leaf); font-variant-numeric:tabular-nums; flex:0 0 auto}
+.allkw{width:100%; border:1px solid var(--line); background:var(--field); border-radius:8px; padding:10px; font-size:16px; margin-bottom:4px}
 .home-btn{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;color:#fff;text-decoration:none;font-family:inherit;font-size:13px;font-weight:700;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.32);border-radius:999px;padding:5px 11px 5px 9px;white-space:nowrap;line-height:1.2;vertical-align:middle}
 .home-btn:active{background:rgba(255,255,255,.28)}
 .home-btn{min-height:36px;box-sizing:border-box}
@@ -123,6 +139,10 @@ input:focus{outline:none; border-bottom-color:var(--leaf)}
 <body>
 <header class="hd">
   <div class="hd-t"><a class="home-btn" href="../index.html" title="アプリ一覧にもどる" aria-label="アプリ一覧（ホーム）にもどる" style="margin-right:8px"><span class="hb-ic">🏠</span><span class="hb-t">ホーム</span></a>経費・財布</div>
+  <div class="tabs2">
+    <button id="tabInput" class="on">入力</button>
+    <button id="tabList">一覧</button>
+  </div>
   <div class="month">
     <button id="prevM" aria-label="前の月">‹</button>
     <span class="lbl" id="monthLbl">―</span>
@@ -131,6 +151,12 @@ input:focus{outline:none; border-bottom-color:var(--leaf)}
 </header>
 
 <main class="main">
+  <section id="viewListSec" hidden>
+    <input id="allKw" class="allkw" placeholder="店・費目でしぼる">
+    <div id="allList" class="alist"></div>
+    <button class="btn ghost" id="loadMore" style="margin-top:12px">さらに前の月を読む</button>
+  </section>
+
   <section class="card" id="captureCard">
     <div class="col" id="captureIdle">
       <button class="btn primary big" id="pickFile">📷 レシートを撮る・選ぶ（複数OK）</button>
@@ -218,6 +244,12 @@ const THIS_YM = ym;   // 今月（財布を数えて合わせるのは「いま�
 let pending = []; // {tempId, thumb, b64, status, errMsg}
 let staff = JSON.parse(localStorage.getItem("keihi_staff")||"[]");
 let stream=null, tempSeq=1;
+
+/* ===== 入力／一覧タブ ===== */
+let view="input";                 // "input" | "list"
+let listRows=[];                  // 一覧タブで集めた全明細
+let listMonths=6;                 // 一覧で読み込む月数（初期6ヶ月、さらに前で増やす）
+const INPUT_SECS=["captureCard","loading","pendingList","recList","sumCard","walletCard","owedCard","monthTableCard","closeCard"];
 
 /* こまめな自動保存（入力中も保存。月移動の直前に必ず流し込む） */
 const pendingSaves={};
@@ -320,7 +352,7 @@ function walletEffectHTML(r){
   return `<div class="we nocash">カード（財布は変わりません）</div>`;
 }
 function recCardHTML(r){
-  return `<div class="rc"><div class="rc-body">
+  return `<div class="rc" data-recid="${esc(String(r.id))}"><div class="rc-body">
     <input class="store-in" data-act="store" data-id="${r.id}" value="${esc(r.store||"")}" placeholder="店名">
     <div class="amt-box"><span class="amt-lbl">金額</span><span class="yen-pre">¥</span>
       <input class="amt-big tnum" data-act="amt" data-id="${r.id}" inputmode="numeric" value="${r.amount||""}" placeholder="0"></div>
@@ -524,6 +556,73 @@ $("closeBtn").onclick=async ()=>{
 function shiftMonth(n){ if(document.activeElement&&document.activeElement.blur)document.activeElement.blur(); flushSaves().then(()=>{ const [y,m]=ym.split("-").map(Number); const d=new Date(y,m-1+n,1); ym=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2); pending=[]; load(); }); }
 $("prevM").onclick=()=>shiftMonth(-1);
 $("nextM").onclick=()=>shiftMonth(1);
+
+/* ===== 入力／一覧の切り替え ===== */
+function switchView(v){
+  view=v;
+  $("tabInput").classList.toggle("on",v==="input");
+  $("tabList").classList.toggle("on",v==="list");
+  // 入力系セクションは display 上書きで出し入れ（戻したときは各自の hidden 制御に任せる）
+  INPUT_SECS.forEach(idd=>{ const el=$(idd); if(el) el.style.display=(v==="input")?"":"none"; });
+  document.querySelector(".month").style.display=(v==="input")?"":"none";
+  $("viewListSec").hidden=(v!=="list");
+  if(v==="list") loadAllList(true);
+}
+$("tabInput").onclick=()=>{ if(view!=="input") switchView("input"); };
+$("tabList").onclick=()=>switchView("list");
+
+/* ===== 一覧（直近N月を集めて新しい順） ===== */
+function ymList(n){ const out=[]; const [y,m]=THIS_YM.split("-").map(Number);
+  for(let i=0;i<n;i++){ const d=new Date(y,m-1-i,1); out.push(d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)); } return out; }
+function dateKeyK(s){ const mm=String(s||"").match(/(\d{1,2})\D+(\d{1,2})/); return mm?(("0"+mm[1]).slice(-2)+("0"+mm[2]).slice(-2)):"0000"; }
+async function loadAllList(reset){
+  if(reset) listMonths=6;
+  $("allList").innerHTML='<div class="loading">読み込み中…</div>';
+  const yms=ymList(listMonths);
+  try{
+    const results=await Promise.all(yms.map(y=>apiGet({action:"month",ym:y}).catch(()=>null)));
+    const rows=[];
+    results.forEach((d,idx)=>{ if(d&&d.ok){ (d.records||[]).forEach(r=>{
+      if((Number(r.amount)||0)||r.store||r.category) rows.push(Object.assign({},r,{ym:yms[idx]}));
+    }); } });
+    listRows=rows; renderAllList();
+  }catch(e){ $("allList").innerHTML='<div class="loading">電波を確認して、もう一度お試しください</div>'; }
+}
+function renderAllList(){
+  const kw=($("allKw").value||"").trim();
+  let rows=listRows.slice();
+  if(kw) rows=rows.filter(r=>((r.store||"")+" "+(r.category||"")+" "+(r.who||"")).indexOf(kw)>=0);
+  rows.sort((a,b)=> a.ym!==b.ym ? b.ym.localeCompare(a.ym) : dateKeyK(b.date).localeCompare(dateKeyK(a.date)));
+  if(!rows.length){ $("allList").innerHTML='<div class="loading">明細がありません</div>'; return; }
+  let html="", curYm="";
+  rows.forEach(r=>{
+    if(r.ym!==curYm){ curYm=r.ym; const p=curYm.split("-"); html+=`<div class="mh">${p[0]}年${+p[1]}月</div>`; }
+    const c=CAT_C[r.category]||"#bbb";
+    const pay=PAY_LBL[r.pay]||""; const unset=(r.pay==="advance"&&!r.settled)?`<span class="unset">未精算</span>`:"";
+    html+=`<div class="ar" data-act="openrec" data-ym="${esc(r.ym)}" data-id="${esc(String(r.id))}">
+      <span class="d">${esc(r.date||"—")}</span>
+      <span class="mid"><div class="s">${esc(r.store||"（店名なし）")}</div>
+        <div class="sub">${r.category?`<span class="cdot" style="background:${c}"></span>${esc(r.category)}`:"費目なし"}<span class="pay">・${pay}</span>${unset}</div></span>
+      <span class="a">${yen(r.amount)}</span></div>`;
+  });
+  $("allList").innerHTML=html;
+}
+function scrollToRec(id){
+  const els=document.querySelectorAll('.rc[data-recid]');
+  for(const el of els){ if(el.getAttribute("data-recid")===String(id)){
+    el.scrollIntoView({behavior:"smooth",block:"center"});
+    el.style.transition="box-shadow .3s"; el.style.boxShadow="0 0 0 3px var(--leaf)";
+    setTimeout(()=>{ el.style.boxShadow=""; },1600); return true; } }
+  return false;
+}
+async function openFromList(ymv,id){
+  if(ymv && ymv!==ym){ if(document.activeElement&&document.activeElement.blur)document.activeElement.blur(); await flushSaves(); ym=ymv; pending=[]; await load(); }
+  switchView("input");
+  setTimeout(()=>scrollToRec(id),180);
+}
+$("allKw").addEventListener("input",renderAllList);
+$("loadMore").onclick=()=>{ listMonths+=6; loadAllList(false); };
+document.addEventListener("click",(e)=>{ const b=e.target.closest('[data-act="openrec"]'); if(b) openFromList(b.dataset.ym,b.dataset.id); });
 
 /* ===== 起動 ===== */
 if(GAS_URL.startsWith("http")) load();
