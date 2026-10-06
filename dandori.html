@@ -142,9 +142,10 @@ nav.tabs button.on{color:var(--leaf);font-weight:700}
 
 <script>
 /* ============ 設定 ============ */
-const GAS_URL = '';     // 段取りGAS（カード・カレンダー・AI整理）
-const YOUGO_URL = '';   // 用語集GAS（言葉のマスタ）
-const DOUGU_URL = '';   // 道具管理GAS（保管場所・持ち出し状況）
+// 現場アプリGAS（段取り・道具管理・用語集で共通の1本）のURL。空のままだと「お試しモード」
+const GAS_URL = '';         // 段取り（app=dandori：カード・カレンダー・AI整理）
+const YOUGO_URL = GAS_URL;  // 用語集（app=yougo：言葉のマスタ）
+const DOUGU_URL = GAS_URL;  // 道具管理（app=dougu：保管場所・持ち出し状況）
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
 const DEMO = !GAS_URL || !YOUGO_URL || !DOUGU_URL;
 const LS = { me: 'dandori_me', cards: 'dandori_demo_v1', words: 'yougo_demo_v1', tools: 'dougu_demo_v3', cache: 'dandori_cache', draft: 'dandori_draft' };
@@ -391,8 +392,8 @@ async function load() {
       const x = demoWordsAndTools(); WORDS = x.w; TOOLS = x.t;
     } else {
       const [c, cal, w, t] = await Promise.all([
-        getJSON(GAS_URL + '?action=data'), getJSON(GAS_URL + '?action=calendar&from=' + addDays(TODAY, -1) + '&to=' + addDays(TODAY, 21)),
-        getJSON(YOUGO_URL + '?action=data'), getJSON(DOUGU_URL + '?action=data')]);
+        getJSON(GAS_URL + '?app=dandori&action=data'), getJSON(GAS_URL + '?app=dandori&action=calendar&from=' + addDays(TODAY, -1) + '&to=' + addDays(TODAY, 21)),
+        getJSON(YOUGO_URL + '?app=yougo&action=data'), getJSON(DOUGU_URL + '?app=dougu&action=data')]);
       [c, cal, w, t].forEach(r => { if (!r.ok) throw new Error(r.error || '読み込み失敗'); });
       CARDS = c.cards; CAL = { sites: cal.sites, holidays: cal.holidays }; WORDS = { terms: w.terms, aliases: w.aliases }; TOOLS = t.tools;
       lsSet(LS.cache, { CARDS, CAL, WORDS, TOOLS });
@@ -414,17 +415,17 @@ async function saveCards(cards) {
     cards.forEach(c => { c.cardId = c.cardId || uid(); c.updatedAt = nowStr(); c.createdBy = c.createdBy || me(); const i = CARDS.findIndex(x => x.cardId === c.cardId); if (i >= 0) CARDS[i] = c; else CARDS.push(c); });
     lsSet(LS.cards, CARDS); return true;
   }
-  const r = await postJSON(GAS_URL, { mode: 'saveCards', cards, by: me() });
+  const r = await postJSON(GAS_URL, { app: 'dandori', mode: 'saveCards', cards, by: me() });
   if (!r.ok) throw new Error(r.error);
   await load(); return true;
 }
 async function deleteCard(id) {
   if (DEMO) { CARDS = CARDS.filter(c => c.cardId !== id); lsSet(LS.cards, CARDS); return; }
-  const r = await postJSON(GAS_URL, { mode: 'deleteCard', cardId: id }); if (!r.ok) throw new Error(r.error); await load();
+  const r = await postJSON(GAS_URL, { app: 'dandori', mode: 'deleteCard', cardId: id }); if (!r.ok) throw new Error(r.error); await load();
 }
 async function setToolStatus(toolId, patch) {   // 積み込み／戻し → 道具管理の持ち出し状況
   if (DEMO) { const t = TOOLS.find(x => x.id === toolId); if (t) Object.assign(t, patch); lsSet(LS.tools, TOOLS); return; }
-  const r = await postJSON(DOUGU_URL, { mode: 'updateTool', id: toolId, patch, by: me() }); if (!r.ok) throw new Error(r.error);
+  const r = await postJSON(DOUGU_URL, { app: 'dougu', mode: 'updateTool', id: toolId, patch, by: me() }); if (!r.ok) throw new Error(r.error);
 }
 
 /* ============ 言葉・道具の照合 ============ */
@@ -661,12 +662,12 @@ function openSpeak(fixed) {
       } catch (err) { toast(err.message || NET_ERR); b.disabled = false; b.textContent = '整理する'; }
     });
   $('spk').addEventListener('input', () => { if (!fixed) lsSet(LS.draft, $('spk').value); });
-  setTimeout(() => $('spk').focus(), 50);
+  setTimeout(() => { const el = $('spk'); if (el) el.focus(); }, 50);
 }
 async function organize(text, fixed) {
   const spokenAt = nowStr();
   if (DEMO) return demoOrganize(text, spokenAt, fixed);
-  const r = await postJSON(GAS_URL, { mode: 'organize', text, spokenAt, sites: CAL.sites.filter(s => s.date >= TODAY), holidays: CAL.holidays.filter(h => h.date >= TODAY), staff: STAFF, dict: dictText() });
+  const r = await postJSON(GAS_URL, { app: 'dandori', mode: 'organize', text, spokenAt, sites: CAL.sites.filter(s => s.date >= TODAY), holidays: CAL.holidays.filter(h => h.date >= TODAY), staff: STAFF, dict: dictText() });
   if (!r.ok) throw new Error(r.error || 'AIで整理できませんでした');
   return r.cards;
 }

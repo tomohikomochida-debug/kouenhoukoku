@@ -160,7 +160,7 @@ nav.tabs .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--
 
 <script>
 /* ============ 設定 ============ */
-// 用語集GASのURL。空のままだと「お試しモード」
+// 現場アプリGAS（段取り・道具管理・用語集で共通の1本）のURL。空のままだと「お試しモード」
 const GAS_URL = '';
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
 const DOUGU_PAGE = 'dougu.html';
@@ -684,11 +684,11 @@ const api = {
       lsSet(LS.demo, d);
       return Object.assign({ ok: true }, d);
     }
-    return (await fetch(GAS_URL + '?action=data', { cache: 'no-store' })).json();
+    return (await fetch(GAS_URL + '?app=yougo&action=data', { cache: 'no-store' })).json();
   },
   async post(body) {
     if (DEMO) return demoPost(body);
-    return (await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })).json();
+    return (await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ app: 'yougo' }, body)) })).json();
   }
 };
 function demoSave() { lsSet(LS.demo, DB) || toast('端末の保存容量がいっぱいです'); }

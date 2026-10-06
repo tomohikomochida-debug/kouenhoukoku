@@ -188,10 +188,10 @@ dl.kv dd{margin:0}
 
 <script>
 /* ============ 設定 ============ */
-// 道具管理GAS（保管場所・数量・写真）と、用語集GAS（名前・呼び方＝言葉のマスタ）のURL。
-// どちらかが空のままだと「お試しモード」（このスマホの中だけで動く）
+// 現場アプリGAS（段取り・道具管理・用語集で共通の1本）のURL。空のままだと「お試しモード」（このスマホの中だけで動く）
+// 道具（保管場所・数量・写真）は app=dougu、言葉（名前・呼び方＝言葉のマスタ）は app=yougo で同じURLに問い合わせる
 const GAS_URL = '';
-const YOUGO_URL = '';
+const YOUGO_URL = GAS_URL;
 const YOUGO_PAGE = 'yougo.html';
 // 名簿（スタッフ）を取る日報GAS
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
@@ -447,8 +447,8 @@ const api = {
   async load() {
     if (DEMO) { const w = demoWords(); return { ok: true, tools: demoTools(), terms: w.terms, aliases: w.aliases, locations: [] }; }
     const [a, b] = await Promise.all([
-      fetch(GAS_URL + '?action=data', { cache: 'no-store' }).then(r => r.json()),
-      fetch(YOUGO_URL + '?action=data', { cache: 'no-store' }).then(r => r.json())
+      fetch(GAS_URL + '?app=dougu&action=data', { cache: 'no-store' }).then(r => r.json()),
+      fetch(YOUGO_URL + '?app=yougo&action=data', { cache: 'no-store' }).then(r => r.json())
     ]);
     if (!a.ok) throw new Error(a.error || '道具データを読めません');
     if (!b.ok) throw new Error(b.error || '用語集を読めません');
@@ -456,7 +456,7 @@ const api = {
   },
   async post(target, body) {   // target: 'dougu'（道具管理GAS）／'yougo'（用語集GAS）
     if (DEMO) return demoPost(target, body);
-    const r = await fetch(target === 'yougo' ? YOUGO_URL : GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+    const r = await fetch(target === 'yougo' ? YOUGO_URL : GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ app: target }, body)) });
     return r.json();
   }
 };
@@ -762,9 +762,17 @@ function showMatch(t, ai) {
       if (ok) { closeModal(); resetRegItem(); }
     });
 }
+/* 話した名前が用語集の「道具・資材」の言葉（正式名・呼び方）と一致すれば、その正式名を使う（AIより優先） */
+function wordMatch(name) {
+  const n = norm(name), l = loose(name); if (!n) return null;
+  const tools = DB.terms.filter(t => TOOL_CATS.includes(t.category));
+  return tools.find(t => norm(t.term) === n) || tools.find(t => aliasesOf(t.termId).some(a => a.type !== '聞き間違い' && norm(a.alias) === n))
+    || tools.find(t => loose(t.term) === l) || tools.find(t => aliasesOf(t.termId).some(a => a.type !== '聞き間違い' && loose(a.alias) === l)) || null;
+}
 function showNew(ai) {
   ai = ai || {};
-  const name = ai.name || reg.name, common = ai.commonName && norm(ai.commonName) !== norm(name) ? ai.commonName : (reg.name && norm(reg.name) !== norm(name) ? reg.name : '');
+  const wm = wordMatch(reg.name);
+  const name = wm ? wm.term : (ai.name || reg.name), common = wm ? (norm(reg.name) !== norm(name) ? reg.name : '') : ai.commonName && norm(ai.commonName) !== norm(name) ? ai.commonName : (reg.name && norm(reg.name) !== norm(name) ? reg.name : '');
   const known = termByName(name);
   openModal('<h3>新しい道具として登録</h3>' +
     (reg.photo ? '<img class="detail-ph" src="' + reg.photo.dataUrl + '" alt="" style="max-height:180px">' : '') +
