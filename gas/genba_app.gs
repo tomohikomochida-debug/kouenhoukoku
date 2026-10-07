@@ -5,6 +5,7 @@
  *  ・道具管理（app=dougu） ：道具マスタ（用語IDでつなぐ）・番地・写真。登録時のAI照合
  *  ・積み込み（app=dandori）：積んだ・戻したを「持ち出し」シートに1回ずつ記録。道具の今どこ・未返却はここから計算
  *  ・段取り  （app=dandori）：段取りカード。Googleカレンダー（現場カレンダー・出勤調整カレンダー）の読み取り。AIで話を整理
+ *  ・現場ノート（app=note）：日報システムの「現場マスタ」（現場の一覧の本物）に住所・連絡先などを足して読み書き。現場の注意点（地図の位置・写真・メモ）
  *  ・要点まとめ（app=yoten）：まとまらないまま話した内容を、AIで要点・必要な道具・車両・送る文に整理。要点メモに残す
  *  返り値はすべて { ok:true/false, error?:"..." } 形式（社内アプリ共通ルール）
  *
@@ -41,6 +42,7 @@ var SHEETS = {
   toolRepair:{ name: '修理履歴',     head: ['logId', 'toolId', 'date', 'type', 'content', 'shop', 'cost', 'by', 'at'] },
   vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at', 'batch', 'state', 'validUntil', 'page'] },
   memos:     { name: '要点メモ',     head: ['memoId', 'at', 'by', 'to', 'kind', 'headline', 'points', 'needs', 'vehicles', 'site', 'when', 'people', 'missing', 'message', 'rawText', 'readBy', 'status', 'doneAt', 'doneBy', 'routes'] },
+  cautions:  { name: '現場の注意点', head: ['cautionId', 'siteId', 'site', 'kind', 'text', 'lat', 'lng', 'photoUrl', 'photoId', 'until', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },
   replies:   { name: '要点メモの返事', head: ['replyId', 'memoId', 'at', 'by', 'text', 'scope', 'showAt', 'actions', 'readBy'] }
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
@@ -185,12 +187,13 @@ function doGet(e) {
     if (app === 'sharyo' && a === 'list') return out_({ ok: true, vehicles: vehicleList_() });
     if (app === 'sharyo' && a === 'usage') return out_(vehicleUsage_(Number(p.months) || 13));
     if (app === 'sharyo' && a === 'data') return out_({ ok: true, vehicles: rows_('vehicles'), logs: rows_('vehicleLog'), docs: rows_('vehicleDocs'), suppliers: rows_('suppliers'), admins: admins_() });
+    if (app === 'note' && a === 'data') return out_({ ok: true, sites: siteList_(), cautions: rows_('cautions').filter(function (c) { return c.state !== '削除'; }), admins: admins_() });
     if (app === 'yoten' && a === 'list') { var ml = memoList_(Number(p.days) || 60); return out_({ ok: true, memos: ml, replies: replyList_(ml, p.me), admins: admins_(), repliers: repliers_(), now: now_() }); }
     if (app === 'yoten' && a === 'badge') return out_(badge_(p.me));
     if (app === 'yoten' && a === 'result') return out_(summaryResult_(p.id));
     if (app === 'dandori') {
       var today = ymd_(new Date());
-      if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles'), outs: openOuts_() });
+      if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles'), outs: openOuts_(), siteNotes: siteNotesForDandori_() });
       if (a === 'calendar') { var c = calendar_(p.from || today, p.to || addDays_(today, 14)); return out_({ ok: true, sites: c.sites, holidays: c.holidays, timed: c.timed }); }
       if (a === 'colors') return out_(Object.assign({ ok: true }, colors_(today, addDays_(today, 30))));
     }
@@ -239,6 +242,11 @@ function doPost(e) {
       case 'dandori:loadItem':   return withLock_(function () { return loadItem_(b); });
       case 'dandori:addNickname':    return withLock_(function () { return addNickname_(b.name, b.nickname, b.by); });
       case 'dandori:deleteNickname': return withLock_(function () { return deleteNickname_(b.name, b.nickname); });
+      /* 現場ノート */
+      case 'note:saveSite':      return withLock_(function () { return saveSite_(b.site, b.by); });
+      case 'note:importBukken':  return withLock_(function () { return importBukken_(b.by); });
+      case 'note:saveCaution':   return withLock_(function () { return saveCaution_(b.caution, b.image, b.by); });
+      case 'note:deleteCaution': return withLock_(function () { return upsert_('cautions', 'cautionId', 'K', { cautionId: b.cautionId, state: '削除', updatedBy: b.by, updatedAt: now_() }, b.by); });
       /* 要点まとめ */
       case 'yoten:summarize':  return out_(summarize_(b));
       case 'yoten:save':       return withLock_(function () { return upsert_('memos', 'memoId', 'M', Object.assign({}, b.memo, { by: b.by, at: now_() }), b.by); });
@@ -257,7 +265,7 @@ function doPost(e) {
 /* ================================================================
  *  削除できる人（親方）。スクリプト プロパティ ADMIN_NAMES に「親方,持田」のように書けば変えられる
  * ================================================================ */
-var ADMIN_ONLY = ['torihiki:delete', 'sharyo:delete', 'sharyo:deleteDoc', 'sharyo:deleteLog', 'dougu:deleteRepair'];
+var ADMIN_ONLY = ['note:deleteCaution', 'torihiki:delete', 'sharyo:delete', 'sharyo:deleteDoc', 'sharyo:deleteLog', 'dougu:deleteRepair'];
 function admins_() { return String(prop_('ADMIN_NAMES', '親方')).split(/[,、，\s]+/).map(function (x) { return x.trim(); }).filter(String); }
 function isAdmin_(name) { return admins_().indexOf(String(name || '').trim()) >= 0; }
 
@@ -846,6 +854,117 @@ function organize_(b) {   // 順不同に話した段取りを「日付×現場�
     '話した内容：\n' + b.text;
   var j = gemini_(prompt);
   return { ok: true, cards: j.cards || [] };
+}
+
+/* ================================================================
+ *  現場ノート
+ *  ・現場の一覧の本物は、日報システムの「現場マスタ」シート（日報・段取り・道具などが ?action=masters で読んでいる）
+ *    ここに住所・連絡先などの列を右側に足して使う（日報の読み取りは見出しの名前で読むので、列を足しても影響しない）
+ *  ・現場名・種類・委託名は日報の記録とつながっているので、ここでは直さない（新しい現場の追加だけ親方ができる）
+ *  ・注意点は、この共通スプレッドシートの「現場の注意点」に、位置（緯度・経度）・写真・メモで残す
+ * ================================================================ */
+var SITE_SHEET = '現場マスタ';
+var SITE_EXTRA = ['住所', '管理会社', '連絡先', '別名', '段取りメモ', '緯度', '経度', '備考', '更新者', '更新日時'];
+var SITE_KEYS = { '現場ID': 'id', '種類': 'kind', '委託名': 'contract', '現場名': 'name', '状態': 'state', '日報件数': 'count', '契約開始月': 'start',
+  '住所': 'address', '管理会社': 'company', '連絡先': 'contact', '別名': 'aliases', '段取りメモ': 'memo', '緯度': 'lat', '経度': 'lng', '備考': 'note', '更新者': 'updatedBy', '更新日時': 'updatedAt' };
+var BUKKEN_SHEET_ID = '1K0w0944OOzoyubm-NgRyGFcJ3OuKEs1YUvQq_A6PxxE';   // 庭乃持田園_物件マスタ（6月に作った、住所・連絡先の入った表）
+var SITE_PREFIX = { 'マンション': 'MS', '公共': 'PB', '法人': 'CP', '個人': 'PV', '寺院': 'TM', 'その他': 'OT' };
+function siteSheet_() {
+  var ss = SpreadsheetApp.openById(prop_('NIPPOU_SHEET_ID', NIPPOU_SHEET_ID)), sh = ss.getSheetByName(SITE_SHEET);
+  if (!sh) throw new Error('日報システムに「' + SITE_SHEET + '」シートがありません');
+  var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  var add = SITE_EXTRA.filter(function (h) { return head.indexOf(h) < 0; });
+  if (add.length) { sh.getRange(1, head.length + 1, 1, add.length).setValues([add]); head = head.concat(add); }
+  return { sh: sh, head: head };
+}
+function siteCols_(head) { var col = {}; head.forEach(function (h, c) { col[SITE_KEYS[h] || h] = c; }); return col; }
+function siteList_() {
+  var t = siteSheet_(), vals = t.sh.getDataRange().getValues(), out = [];
+  for (var i = 1; i < vals.length; i++) {
+    var o = {}, row = vals[i];
+    t.head.forEach(function (h, c) { var k = SITE_KEYS[h]; if (!k) return; var v = row[c]; if (v instanceof Date) v = Utilities.formatDate(v, TZ, 'yyyy-MM-dd HH:mm'); o[k] = v == null ? '' : v; });
+    if (o.name) out.push(o);
+  }
+  return out;
+}
+function saveSite_(site, by) {
+  site = site || {};
+  var t = siteSheet_(), vals = t.sh.getDataRange().getValues(), col = siteCols_(t.head), row = 0;
+  if (site.id) for (var i = 1; i < vals.length; i++) if (String(vals[i][col.id]) === String(site.id)) { row = i + 1; break; }
+  if (!row) {   // 新しい現場は親方だけ（日報の現場の一覧にも出るため）
+    if (!isAdmin_(by)) return { ok: false, error: '現場の追加は' + admins_().join('・') + 'だけができます' };
+    if (!site.name || !site.kind) return { ok: false, error: '現場名と種類を入れてください' };
+    if (vals.some(function (r, k) { return k && nameKey_(r[col.name]) === nameKey_(site.name); })) return { ok: false, error: '同じ名前の現場がもうあります' };
+    var pre = SITE_PREFIX[site.kind] || 'OT', max = 0, re = new RegExp('^' + pre + '-(\\d+)$');
+    vals.forEach(function (r) { var m = String(r[col.id]).match(re); if (m) max = Math.max(max, Number(m[1])); });
+    site.id = pre + '-' + ('00' + (max + 1)).slice(-3);
+    var blank = t.head.map(function () { return ''; });
+    blank[col.id] = site.id; blank[col.kind] = site.kind; blank[col.contract] = site.contract || ''; blank[col.name] = site.name; blank[col.state] = '稼働中';
+    t.sh.appendRow(blank); row = t.sh.getLastRow();
+  }
+  ['address', 'company', 'contact', 'aliases', 'memo', 'lat', 'lng', 'note'].forEach(function (k) {
+    if (site.hasOwnProperty(k) && col[k] != null) t.sh.getRange(row, col[k] + 1).setValue(cell_(site[k] == null ? '' : String(site[k])));
+  });
+  if (isAdmin_(by) && site.hasOwnProperty('state') && col.state != null && /^(稼働中|終了)$/.test(site.state)) t.sh.getRange(row, col.state + 1).setValue(site.state);
+  t.sh.getRange(row, col.updatedBy + 1).setValue(by || ''); t.sh.getRange(row, col.updatedAt + 1).setValue(now_());
+  return { ok: true, id: site.id };
+}
+function importBukken_(by) {   // 物件マスタの住所・管理会社・連絡先・別名・段取りメモ・備考を、名前（別名も）で照合して、空いている欄にだけ写す
+  if (!isAdmin_(by)) return { ok: false, error: '物件マスタから写すのは' + admins_().join('・') + 'だけができます' };
+  var src; try { src = SpreadsheetApp.openById(prop_('BUKKEN_SHEET_ID', BUKKEN_SHEET_ID)).getSheetByName('sites'); } catch (e) { return { ok: false, error: '物件マスタを開けません：' + e }; }
+  if (!src) return { ok: false, error: '物件マスタに sites シートがありません' };
+  var sv = src.getDataRange().getValues(), sh = sv[0].map(String), si = function (n) { return sh.indexOf(n); };
+  var t = siteSheet_(), vals = t.sh.getDataRange().getValues(), col = siteCols_(t.head), byKey = {};
+  for (var i = 1; i < vals.length; i++) {
+    var nm = vals[i][col.name]; if (!nm) continue;
+    [nm].concat(String(vals[i][col.aliases] || '').split(/[｜|、,，]/)).forEach(function (n) { var k = nameKey_(n); if (k && byKey[k] == null) byKey[k] = i; });
+  }
+  var map = { address: '住所', company: '管理会社', contact: '連絡先', aliases: '別名・表記ゆれ', memo: '段取りメモ', note: '備考' };
+  var matched = 0, filled = 0, unmatched = [];
+  for (var r = 1; r < sv.length; r++) {
+    var name = sv[r][si('現場名')]; if (!name) continue;
+    var keys = [name].concat(String(sv[r][si('別名・表記ゆれ')] || '').split(/[｜|、,，]/)).map(nameKey_).filter(String), hit = null;
+    for (var k = 0; k < keys.length && hit == null; k++) if (byKey[keys[k]] != null) hit = byKey[keys[k]];
+    if (hit == null) { if (unmatched.indexOf(String(name)) < 0) unmatched.push(String(name)); continue; }
+    matched++;
+    Object.keys(map).forEach(function (key) {
+      if (si(map[key]) < 0 || col[key] == null) return;
+      var v = sv[r][si(map[key])]; if (v === '' || v == null) return;
+      v = key === 'aliases' ? String(v).split(/[｜|]/).map(function (x) { return x.trim(); }).filter(String).join('、') : String(v).trim();
+      if (String(vals[hit][col[key]] || '') !== '') return;   // すでに入っている欄は上書きしない
+      t.sh.getRange(hit + 1, col[key] + 1).setValue(cell_(v)); vals[hit][col[key]] = v; filled++;
+    });
+  }
+  return { ok: true, matched: matched, filled: filled, unmatched: unmatched };
+}
+function noteFolder_() {   // 写真は「社内アプリ」フォルダの中の「現場の注意点写真」に入れる
+  var p = docsFolder_().getParents(), parent = p.hasNext() ? p.next() : DriveApp.getRootFolder();
+  return subFolder_(parent, '現場の注意点写真');
+}
+function saveCaution_(c, image, by) {
+  c = c || {};
+  if (!c.site && !c.siteId) return { ok: false, error: '現場がありません' };
+  if (!c.text && !image && !c.photoUrl) return { ok: false, error: '注意点のメモか写真を入れてください' };
+  var num = function (v) { return v === '' || v == null || isNaN(Number(v)) ? '' : Number(v); };
+  var obj = { cautionId: c.cautionId || '', siteId: c.siteId || '', site: c.site || '', kind: c.kind || 'その他', text: c.text || '', lat: num(c.lat), lng: num(c.lng),
+    until: c.until || '', state: c.state || '有効', updatedBy: by || '', updatedAt: now_() };
+  if (!obj.cautionId) { obj.by = by || ''; obj.at = now_(); }
+  if (image) {
+    var f = noteFolder_().createFile(Utilities.newBlob(Utilities.base64Decode(image), 'image/jpeg', (obj.site || 'site') + '_' + Date.now() + '.jpg'));
+    f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    obj.photoId = f.getId(); obj.photoUrl = 'https://drive.google.com/thumbnail?id=' + f.getId() + '&sz=w1200';
+  } else if (c.removePhoto) { obj.photoId = ''; obj.photoUrl = ''; }
+  return upsert_('cautions', 'cautionId', 'K', obj, by);
+}
+function siteNotesForDandori_() {   // 段取りカードに出す：有効な注意点と段取りメモ（カードの現場名と照合できるよう別名も渡す）
+  try {
+    var today = ymd_(new Date());
+    var cs = rows_('cautions').filter(function (c) { return (c.state || '有効') === '有効' && (!c.until || String(c.until) >= today); })
+      .map(function (c) { return { cautionId: c.cautionId, site: c.site, siteId: c.siteId, kind: c.kind, text: c.text, photoUrl: c.photoUrl }; });
+    var sites = siteList_().filter(function (s) { return s.memo || cs.some(function (c) { return c.siteId === s.id; }); })
+      .map(function (s) { return { id: s.id, name: s.name, aliases: s.aliases, memo: s.memo }; });
+    return { cautions: cs, sites: sites };
+  } catch (e) { return { cautions: [], sites: [], error: String(e) }; }
 }
 
 /* ================================================================

@@ -403,7 +403,7 @@ function demoCalendar() {   // 今日を起点にしたサンプルの予定（�
 }
 
 /* ============ データ ============ */
-let CARDS = [], CAL = { sites: [], holidays: [] }, STAFF = [], WORDS = { terms: [], aliases: [] }, TOOLS = [], SUP = [], VEH = [], OUTS = [];   // SUP：取引先、VEH：車両、OUTS：まだ戻っていない持ち出し（日付をまたいで全部）
+let CARDS = [], CAL = { sites: [], holidays: [] }, STAFF = [], WORDS = { terms: [], aliases: [] }, TOOLS = [], SUP = [], VEH = [], OUTS = [], SITE_NOTES = { cautions: [], sites: [] };   // SITE_NOTES：現場ノートの注意点・段取りメモ   // SUP：取引先、VEH：車両、OUTS：まだ戻っていない持ち出し（日付をまたいで全部）
 let SEL = new Date().getHours() >= 12 ? addDays(TODAY, 1) : TODAY;   // 午後は明日を開く（夕方の段取り用）
 let TAB = 'plan';
 
@@ -433,13 +433,13 @@ async function load() {
         getJSON(GAS_URL + '?app=dandori&action=data'), getJSON(GAS_URL + '?app=dandori&action=calendar&from=' + addDays(TODAY, -1) + '&to=' + addDays(TODAY, 21)),
         getJSON(YOUGO_URL + '?app=yougo&action=data'), getJSON(DOUGU_URL + '?app=dougu&action=data')]);
       [c, cal, w, t].forEach(r => { if (!r.ok) throw new Error(r.error || '読み込み失敗'); });
-      CARDS = c.cards; NICK = c.nicknames || []; SUP = c.suppliers || []; VEH = c.vehicles || []; CAL = { sites: cal.sites, holidays: cal.holidays, timed: cal.timed || [] }; applyTimed(); WORDS = { terms: w.terms, aliases: w.aliases }; TOOLS = t.tools; OUTS = c.outs || [];
-      lsSet(LS.cache, { CARDS, NICK, CAL, WORDS, TOOLS, SUP, VEH, OUTS });
+      CARDS = c.cards; NICK = c.nicknames || []; SUP = c.suppliers || []; VEH = c.vehicles || []; CAL = { sites: cal.sites, holidays: cal.holidays, timed: cal.timed || [] }; applyTimed(); WORDS = { terms: w.terms, aliases: w.aliases }; TOOLS = t.tools; OUTS = c.outs || []; SITE_NOTES = c.siteNotes || SITE_NOTES;
+      lsSet(LS.cache, { CARDS, NICK, CAL, WORDS, TOOLS, SUP, VEH, OUTS, SITE_NOTES });
       moveDemoNicks();
     }
   } catch (e) {
     const c = lsGet(LS.cache, null);
-    if (c) { ({ CARDS, CAL, WORDS, TOOLS } = c); NICK = c.NICK || []; SUP = c.SUP || []; VEH = c.VEH || []; OUTS = c.OUTS || []; applyTimed(); toast('前回のデータを表示しています（' + NET_ERR + '）'); }
+    if (c) { ({ CARDS, CAL, WORDS, TOOLS } = c); NICK = c.NICK || []; SUP = c.SUP || []; VEH = c.VEH || []; OUTS = c.OUTS || []; SITE_NOTES = c.SITE_NOTES || SITE_NOTES; applyTimed(); toast('前回のデータを表示しています（' + NET_ERR + '）'); }
     else showError('データを読み込めませんでした。' + NET_ERR);
   }
   STAFF = staffList();   // 覚えている名簿ですぐ表示し、最新の名簿は裏で取る
@@ -865,6 +865,7 @@ function planHtml(c) {
     (c.items.length ? '<div class="ln">🧰 ' + c.items.map(it => esc(it.name) + (it.qty ? ' ' + it.qty + (it.unit || '') : '')).join('、') + '</div>' : '') +
     (c.steps.length ? '<div class="ln">🔨 ' + esc(c.steps.join(' → ')) + '</div>' : '') +
     (c.notes.length ? '<div class="ln">⚠️ ' + esc(c.notes.join('／')) + '</div>' : '') +
+    (siteNotesOf(c.site).cautions.length ? '<div class="ln" style="color:var(--danger)">📒 現場の注意点 ' + siteNotesOf(c.site).cautions.length + '件（開くと見られます）</div>' : '') +
     w.map(x => '<div class="warn">● ' + esc(x) + '</div>').join('') + '</button>';
 }
 
@@ -1000,7 +1001,7 @@ function drawCard() {
   if (EDIT.kind === 'notice') return drawNotice();
   const c = EDIT, off = offNames(c.date);
   const evs = CAL.sites.filter(e => e.date === c.date), ev = CAL.sites.find(e => e.title === c.site && e.attachments && e.attachments.length);
-  const h = '<h3>' + (c.kind === 'task' ? 'やることカード' : '段取りカード') + '</h3>' +
+  const h = '<h3>' + (c.kind === 'task' ? 'やることカード' : '段取りカード') + '</h3>' + siteNotesHtml(c.site) +
     '<div class="row2"><div><label class="lbl" style="margin-top:4px">日付（空欄＝未定）</label><input type="date" id="cDate" value="' + esc(c.date) + '"></div><div><label class="lbl" style="margin-top:4px">集合</label><input type="text" id="cMeet" value="' + esc(c.meetTime) + '" placeholder="7:30"></div></div>' +
     '<label class="lbl">日付の条件</label><input type="text" id="cDateNote" value="' + esc(c.dateNote || '') + '" placeholder="例：厳しければ別の日">' +
     (c.kind === 'task' ? '<label class="lbl">やること</label><input type="text" id="cTitle" value="' + esc(c.title || '') + '" placeholder="例：残土処分">' : '') +
@@ -1056,6 +1057,20 @@ async function saveEdit(silent) {
   const ev = CAL.sites.find(e => e.date === EDIT.date && e.title === EDIT.site); EDIT.eventId = ev ? ev.id : '';
   try { await saveCards([EDIT]); return true; } catch (err) { if (!silent) toast(err.message || NET_ERR); return false; }
 }
+/* 現場ノートの注意点・段取りメモ（カードの現場名を、現場ノートの現場名・別名と照合して出す） */
+function siteNotesOf(site) {
+  const k = norm(site || ''); if (!k) return { site: null, memo: '', cautions: [] };
+  const hit = (SITE_NOTES.sites || []).find(s => norm(s.name) === k || String(s.aliases || '').split(/[、,，｜|]/).some(a => a && norm(a) === k)) || null;
+  const cautions = (SITE_NOTES.cautions || []).filter(x => (hit && x.siteId === hit.id) || norm(x.site) === k);
+  return { site: hit, memo: hit ? String(hit.memo || '') : '', cautions };
+}
+function siteNotesHtml(site) {
+  const sn = siteNotesOf(site); if (!sn.memo && !sn.cautions.length) return '';
+  return '<div class="warnbox" style="margin:6px 0 10px"><b>📒 この現場の注意点（現場ノート）</b>' +
+    (sn.memo ? '<div style="white-space:pre-wrap;margin-top:4px">📝 ' + esc(sn.memo) + '</div>' : '') +
+    sn.cautions.map(x => '<div style="margin-top:4px">⚠ <b>' + esc(x.kind || 'その他') + '</b>：' + esc(x.text || '（写真）') + (x.photoUrl ? ' <a href="' + esc(x.photoUrl) + '" target="_blank" rel="noopener">📷写真</a>' : '') + '</div>').join('') +
+    '<a class="btn sm block" style="margin-top:8px" href="genba_note.html?site=' + encodeURIComponent(sn.site ? sn.site.id : site) + '">現場ノートで地図・写真を見る</a></div>';
+}
 function cardText(c) {
   if (c.kind === 'notice') return '【お知らせ】' + (c.date ? '（' + md(c.date) + 'まで）' : '') + '\n' + c.title;
   const L = ['【' + (c.kind === 'task' ? 'やること' : '段取り') + '】' + dateLabel(c) + ' ' + (c.kind === 'task' ? (c.title || '') + (c.site ? '（' + c.site + '）' : '') : (c.site || '現場未定'))];
@@ -1065,6 +1080,7 @@ function cardText(c) {
   if (c.items.length) { L.push('■持ち物'); c.items.forEach(it => { const t = TOOLS.find(x => x.id === it.toolId); L.push('・' + it.name + (it.qty ? ' ' + it.qty + (it.unit || '') : '') + (t ? '（' + t.location + '）' : '')); }); }
   if (c.steps.length) { L.push('■作業'); L.push(c.steps.join(' → ')); }
   if (c.notes.length) { L.push('■注意'); c.notes.forEach(n => L.push('・' + n)); }
+  { const sn = siteNotesOf(c.site); if (sn.memo || sn.cautions.length) { L.push('■現場の注意点'); if (sn.memo) L.push('・' + sn.memo.replace(/\n/g, ' ')); sn.cautions.forEach(x => L.push('・【' + (x.kind || 'その他') + '】' + (x.text || '写真あり'))); } }
   return L.join('\n');
 }
 function shareCard(c) { shareText(cardText(c)); }

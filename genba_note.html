@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="現場ノート">
+<meta name="theme-color" content="#214A37">
+<title>現場ノート｜庭乃持田園</title>
+<style>
+:root{
+  --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7; --ok:#2E7D55;
+  --tape:#C77C30; --bark:#5B5750; --ink:#22231F; --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F;
+  --radius:10px; --shadow:0 1px 0 rgba(34,35,31,.04), 0 8px 24px -16px rgba(34,35,31,.25);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif;-webkit-text-size-adjust:100%;line-height:1.6}
+header{background:var(--leaf);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:20;padding-top:calc(12px + env(safe-area-inset-top))}
+header .row{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;flex:1;letter-spacing:.04em}
+header .me{font-size:13px;background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:999px;padding:5px 12px;font-family:inherit}
+.home-btn{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;color:#fff;text-decoration:none;font-size:13px;font-weight:700;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.32);border-radius:999px;padding:5px 11px 5px 9px;white-space:nowrap;line-height:1.2}
+.home-btn .hb-ic{font-size:15px;line-height:1}
+@media (max-width:400px){ .home-btn{padding:5px 8px} .home-btn .hb-t{display:none} }
+.error-banner{display:none;background:var(--danger);color:#fff;padding:10px 16px;font-size:13px}
+main{max-width:680px;margin:0 auto;padding:12px 16px calc(40px + env(safe-area-inset-bottom))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+h2{font-size:18px;margin:0 0 4px;color:var(--leaf)}
+.hint{font-size:12.5px;color:var(--bark);margin:4px 0 0}
+.sec{font-size:13px;font-weight:700;color:var(--bark);margin:14px 0 6px}
+label.lbl{display:block;font-size:13px;font-weight:700;color:var(--bark);margin:12px 0 5px}
+input[type=text],input[type=search],input[type=date],input[type=tel],textarea,select{width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink)}
+textarea{min-height:90px;resize:vertical;line-height:1.7}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--leaf);outline-offset:1px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-size:15px;font-weight:700;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:10px 16px;min-height:46px;cursor:pointer;text-decoration:none}
+.btn.primary{background:var(--leaf);color:#fff;border-color:var(--leaf)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.block{width:100%}
+.btn.sm{min-height:34px;padding:5px 11px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:default}
+.row2{display:flex;gap:8px}.row2>*{flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{border:1px solid var(--line);background:var(--field);border-radius:999px;padding:6px 13px;font-size:14px;cursor:pointer;color:var(--ink);font-family:inherit}
+.chip.on{background:var(--leaf-soft);border-color:var(--leaf);color:var(--leaf);font-weight:700}
+.tag{display:inline-block;font-size:11.5px;border-radius:6px;padding:1px 7px;margin-left:4px;vertical-align:1px;white-space:nowrap;background:#EEE;color:var(--bark)}
+.tag.warn{background:#F6DCDC;color:#9A3A3A}
+.tag.memo{background:#FFF3D6;color:#7A5B12}
+.tag.done{background:var(--leaf-soft);color:var(--leaf)}
+/* 一覧 */
+.search{display:flex;gap:8px;margin-bottom:10px}
+.site{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:8px;cursor:pointer;box-shadow:var(--shadow)}
+.site .nm{font-size:16px;font-weight:700}
+.site .sub{font-size:12.5px;color:var(--bark);margin-top:2px}
+.site.end{opacity:.55}
+.toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--bark);margin:8px 2px 10px}
+.toggle input{width:18px;height:18px}
+/* 現場 */
+.back{background:none;border:0;color:var(--leaf);font:inherit;font-weight:700;font-size:14px;padding:4px 0;margin-bottom:6px;cursor:pointer}
+dl.info{display:grid;grid-template-columns:74px 1fr;gap:6px 10px;margin:10px 0 0;font-size:14.5px}
+dl.info dt{color:var(--bark);font-size:13px;padding-top:1px}
+dl.info dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.memo-box{background:#FFF8E6;border:1px solid #F0DDB0;border-radius:8px;padding:8px 10px;white-space:pre-wrap;font-size:14.5px}
+.caution{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+.caution:last-child{border-bottom:0}
+.caution .no{flex:none;width:26px;height:26px;border-radius:50%;background:var(--danger);color:#fff;font-weight:700;font-size:13px;display:grid;place-items:center}
+.caution .no.nopos{background:#B9B4AA}
+.caution .grow{flex:1;min-width:0}
+.caution .tx{white-space:pre-wrap;font-size:15px}
+.caution .mt{font-size:12px;color:var(--bark);margin-top:3px}
+.caution img{width:76px;height:76px;object-fit:cover;border-radius:8px;flex:none;border:1px solid var(--line);background:var(--field)}
+.caution.resolved{opacity:.55}
+/* 地図（国土地理院の地図をタイルで並べる） */
+.tmap{position:relative;width:100%;height:260px;overflow:hidden;border-radius:10px;border:1px solid var(--line);background:#E8E6DF;touch-action:none;user-select:none;-webkit-user-select:none}
+.tmap.tall{height:min(52vh,380px)}
+.tmap .layer{position:absolute;left:0;top:0;transform-origin:0 0}
+.tmap .layer img{position:absolute;width:256px;height:256px;max-width:none;pointer-events:none}
+.tmap .pin{position:absolute;transform:translate(-50%,-100%);background:none;border:0;padding:0;cursor:pointer}
+.tmap .pin span{display:grid;place-items:center;width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--danger);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.tmap .pin b{transform:rotate(45deg);color:#fff;font-size:12px}
+.tmap .pin.sel span{background:var(--tape)}
+.tmap .site-dot{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:var(--leaf);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.tmap .me-dot{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:#2F6FDE;border:3px solid #fff;box-shadow:0 0 0 6px rgba(47,111,222,.2)}
+.tmap .cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);pointer-events:none}
+.tmap .cross span{display:grid;place-items:center;width:34px;height:34px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--tape);border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.4)}
+.tmap .ctl{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px}
+.tmap .ctl button{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.95);font-size:18px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--ink)}
+.tmap .ctl button.txt{font-size:11px}
+.tmap .credit{position:absolute;left:6px;bottom:4px;font-size:10px;color:#333;background:rgba(255,255,255,.75);padding:0 4px;border-radius:3px}
+.photo-pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.photo-pick img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.modal-bg{position:fixed;inset:0;background:rgba(34,35,31,.45);z-index:50;display:none;align-items:flex-end;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--paper);width:100%;max-width:680px;max-height:94vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.modal h3{margin:0 0 6px;font-size:18px;color:var(--leaf)}
+.toast{position:fixed;left:50%;bottom:calc(30px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%}
+.toast.show{opacity:1}
+.loading{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{color:var(--bark);text-align:center;padding:18px 10px;font-size:14px}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="error-banner" id="errBanner"></div>
+<header><div class="row"><a class="home-btn" href="index.html" title="アプリ一覧にもどる" aria-label="アプリ一覧（ホーム）にもどる"><span class="hb-ic">🏠</span><span class="hb-t">ホーム</span></a><h1>📒 現場ノート</h1><button class="me" id="meBtn" type="button">名前を選ぶ</button></div></header>
+
+<main>
+  <section id="listView">
+    <div class="search"><input type="search" id="q" placeholder="現場名・住所・別名で探す"></div>
+    <div class="chips" id="kindChips"></div>
+    <label class="toggle"><input type="checkbox" id="showEnd">終わった現場も出す</label>
+    <div id="siteList"><div class="empty">読み込み中…</div></div>
+    <div id="adminTools" hidden style="margin-top:16px">
+      <button class="btn block" type="button" id="addSiteBtn">＋ 新しい現場を追加</button>
+      <button class="btn block" type="button" id="importBtn" style="margin-top:8px">📥 物件マスタから住所・連絡先を写す</button>
+    </div>
+  </section>
+
+  <section id="siteView" hidden>
+    <button class="back" type="button" id="backBtn">‹ 現場の一覧</button>
+    <div id="siteBody"></div>
+  </section>
+</main>
+
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ 設定 ============ */
+// 現場アプリGAS（段取り・道具管理・要点まとめ・現場ノートなどで共通の1本）
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
+const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';   // 名簿
+const LS = { me: 'dandori_me', cache: 'note_cache', kind: 'note_kind', layer: 'note_layer' };
+const NET_ERR = '電波を確認して、もう一度お試しください';
+const KINDS = ['マンション', '公共', '法人', '個人', '寺院', 'その他'];
+const CAUTION_KINDS = ['危険', '駐車', '搬入', '近隣', 'お客さんの要望', '設備・埋設物', 'その他'];
+const HOME = { lat: 35.6007, lng: 139.6110 };   // 位置が分からないときに最初に出す場所（川崎市高津区あたり）
+
+/* ============ 小道具 ============ */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function lsGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+function rawGet(k) { try { const v = localStorage.getItem(k); if (v == null) return ''; try { const j = JSON.parse(v); return typeof j === 'string' ? j : ''; } catch (e) { return v; } } catch (e) { return ''; } }
+function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2800); }
+function showError(m) { const b = $('errBanner'); b.textContent = '⚠️ ' + m; b.style.display = 'block'; }
+const p2 = n => String(n).padStart(2, '0');
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+function md(s) { if (!/^\d{4}-\d{2}-\d{2}/.test(s || '')) return s || ''; const a = s.slice(0, 10).split('-').map(Number), d = new Date(a[0], a[1] - 1, a[2]); return (d.getMonth() + 1) + '/' + d.getDate() + '(' + WD[d.getDay()] + ')'; }
+const TODAY = (d => d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()))(new Date());
+function norm(s) { return String(s || '').normalize('NFKC').toLowerCase().replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)).replace(/[\s・･,，、。.\-－_/／（）()「」『』ヶケが之の]/g, ''); }
+async function getJSON(url, ms) { const ac = new AbortController(), tm = setTimeout(() => ac.abort(), ms || 20000); try { return await (await fetch(url, { cache: 'no-store', signal: ac.signal })).json(); } finally { clearTimeout(tm); } }
+async function postJSON(url, body) { return (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })).json(); }
+
+/* ============ データ ============ */
+let SITES = [], CAUTIONS = [], ADMINS = ['親方'], CUR = null, KIND = lsGet(LS.kind, '');
+const me = () => lsGet(LS.me, '') || rawGet('nippou_author');
+const isAdmin = () => ADMINS.includes(me());
+async function load() {
+  try {
+    const r = await getJSON(GAS_URL + '?app=note&action=data');
+    if (!r.ok) throw new Error(/unknown action/.test(r.error || '') ? '共通GASの更新がまだです（数分で反映されます）' : r.error);
+    SITES = r.sites || []; CAUTIONS = r.cautions || []; if (r.admins) ADMINS = r.admins;
+    lsSet(LS.cache, { SITES, CAUTIONS, ADMINS });
+  } catch (e) {
+    const c = lsGet(LS.cache, null);
+    if (c) { ({ SITES, CAUTIONS } = c); ADMINS = c.ADMINS || ADMINS; toast('前回のデータを表示しています（' + NET_ERR + '）'); }
+    else showError('現場の一覧を読み込めませんでした。' + (e.message && !/fetch|abort/i.test(e.message) ? e.message : NET_ERR));
+  }
+  if (CUR) CUR = SITES.find(s => s.id === CUR.id) || CUR;
+  render();
+}
+const cautionsOf = s => CAUTIONS.filter(c => c.siteId === s.id || (!c.siteId && norm(c.site) === norm(s.name)));
+const activeCautions = s => cautionsOf(s).filter(c => (c.state || '有効') === '有効');
+function findSite(key) {
+  if (!key) return null;
+  const k = norm(key);
+  return SITES.find(s => s.id === key) || SITES.find(s => norm(s.name) === k) || SITES.find(s => String(s.aliases || '').split(/[、,，｜|]/).some(a => a && norm(a) === k)) || null;
+}
+
+/* ============ 一覧 ============ */
+function render() {
+  $('adminTools').hidden = !isAdmin();
+  if (CUR) return renderSite();
+  $('listView').hidden = false; $('siteView').hidden = true;
+  $('kindChips').innerHTML = ['', ...KINDS].map(k => '<button type="button" class="chip' + (k === KIND ? ' on' : '') + '" data-kind="' + k + '">' + (k || '全部') + '</button>').join('');
+  const q = norm($('q').value), showEnd = $('showEnd').checked;
+  const list = SITES.filter(s => (!KIND || s.kind === KIND) && (showEnd || !/終了/.test(s.state)) &&
+    (!q || [s.name, s.address, s.aliases, s.contract, s.company].some(v => norm(v).includes(q))));
+  $('siteList').innerHTML = list.length ? list.map(s => {
+    const n = activeCautions(s).length;
+    return '<button type="button" class="site' + (/終了/.test(s.state) ? ' end' : '') + '" data-site="' + esc(s.id) + '"><div class="nm">' + esc(s.name) +
+      (n ? '<span class="tag warn">⚠ 注意点 ' + n + '</span>' : '') + (s.memo ? '<span class="tag memo">📝 段取りメモ</span>' : '') + (/終了/.test(s.state) ? '<span class="tag">終了</span>' : '') + '</div>' +
+      '<div class="sub">' + esc([s.kind, s.contract, s.address].filter(Boolean).join('・') || '　') + '</div></button>';
+  }).join('') : '<div class="empty">' + (SITES.length ? '当てはまる現場がありません' : '現場がまだ読み込めていません') + '</div>';
+}
+
+/* ============ 現場の詳細 ============ */
+let MAP = null, SHOW_RESOLVED = false;
+function openSite(id) { CUR = SITES.find(s => s.id === id) || null; SHOW_RESOLVED = false; history.replaceState(null, '', '?site=' + encodeURIComponent(id)); window.scrollTo(0, 0); render(); }
+function closeSite() { CUR = null; MAP = null; history.replaceState(null, '', location.pathname); render(); }
+function telOf(s) { const m = String(s || '').match(/0\d{1,4}[-‐－ ]?\d{1,4}[-‐－ ]?\d{3,4}/); return m ? m[0].replace(/[^\d]/g, '') : ''; }
+function renderSite() {
+  const s = CUR; $('listView').hidden = true; $('siteView').hidden = false;
+  const all = cautionsOf(s), act = all.filter(c => (c.state || '有効') === '有効'), done = all.filter(c => c.state === '解決');
+  const posList = act.filter(c => c.lat !== '' && c.lat != null && c.lng !== '' && c.lng != null);
+  const tel = telOf(s.contact);
+  $('siteBody').innerHTML =
+    '<div class="card"><h2>' + esc(s.name) + '</h2><div class="hint">' + esc([s.id, s.kind, s.contract, s.state, s.count ? '日報 ' + s.count + '件' : ''].filter(Boolean).join('・')) + '</div>' +
+    '<dl class="info">' +
+      '<dt>住所</dt><dd>' + (s.address ? esc(s.address) + ' <a class="tag" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s.address) + '" target="_blank" rel="noopener">🗺 地図アプリ</a>' : '<span class="hint">未登録</span>') + '</dd>' +
+      '<dt>管理会社</dt><dd>' + (esc(s.company) || '<span class="hint">—</span>') + '</dd>' +
+      '<dt>連絡先</dt><dd>' + (esc(s.contact) || '<span class="hint">—</span>') + (tel ? ' <a class="tag" href="tel:' + tel + '">📞 電話</a>' : '') + '</dd>' +
+      (s.aliases ? '<dt>別名</dt><dd>' + esc(s.aliases) + '</dd>' : '') +
+      (s.note ? '<dt>備考</dt><dd>' + esc(s.note) + '</dd>' : '') +
+    '</dl>' +
+    '<div class="sec">📝 段取りメモ（段取りカードに出ます）</div>' + (s.memo ? '<div class="memo-box">' + esc(s.memo) + '</div>' : '<p class="hint" style="margin:0">駐車場所・鍵・集合場所など、毎回伝えたいことを書いておけます。</p>') +
+    '<button class="btn block sm" type="button" data-act="editSite" style="margin-top:10px">✏️ 現場の情報を直す</button></div>' +
+    '<div class="card"><div class="row2" style="align-items:center"><div class="sec" style="margin:0">⚠ 注意点 ' + act.length + '件</div><button class="btn primary sm" type="button" data-act="addCaution" style="flex:none">＋ 注意点を追加</button></div>' +
+    '<div class="hint" style="margin:4px 0 8px">段取りでこの現場のカードを開くと、一番上に出ます。</div>' +
+    '<div id="siteMap"></div>' +
+    (act.length ? act.map(c => cautionRow(c, posList.indexOf(c))).join('') : '<div class="empty">まだ注意点はありません</div>') +
+    (done.length ? '<button class="btn block sm" type="button" data-act="toggleResolved" style="margin-top:8px">' + (SHOW_RESOLVED ? '解決済みを隠す' : '解決済み ' + done.length + '件を見る') + '</button>' + (SHOW_RESOLVED ? done.map(c => cautionRow(c, -1)).join('') : '') : '') +
+    '</div>';
+  const center = siteCenter(s), own = sitePos(s);
+  MAP = new TileMap($('siteMap'), { lat: center.lat, lng: center.lng, z: center.known ? 18 : 15, pins: posList.map((c, i) => ({ lat: Number(c.lat), lng: Number(c.lng), label: i + 1, id: c.cautionId })),
+    site: own, onPin: id => { const c = CAUTIONS.find(x => x.cautionId === id); if (c) openCaution(c); } });
+  if (!own && s.address) geocodeSite(s).then(p => { if (p && CUR === s && MAP) { MAP.setSite(p); if (!center.known) MAP.setCenter(p.lat, p.lng, 18); } });
+}
+function cautionRow(c, idx) {
+  return '<div class="caution' + (c.state === '解決' ? ' resolved' : '') + '"><span class="no' + (idx < 0 ? ' nopos' : '') + '">' + (idx < 0 ? '・' : idx + 1) + '</span><div class="grow">' +
+    '<div><span class="tag warn" style="margin-left:0">' + esc(c.kind || 'その他') + '</span>' + (c.state === '解決' ? '<span class="tag done">解決済み</span>' : '') + (c.until ? '<span class="tag">' + esc(md(c.until)) + 'まで</span>' : '') + '</div>' +
+    '<div class="tx">' + esc(c.text || '（写真のみ）') + '</div>' +
+    '<div class="mt">' + esc([c.by, c.at ? md(String(c.at).slice(0, 10)) : ''].filter(Boolean).join('・')) + (c.updatedBy && c.updatedBy !== c.by ? '（' + esc(c.updatedBy) + 'が直した）' : '') + '</div>' +
+    '<button class="btn sm" type="button" data-edit-caution="' + esc(c.cautionId) + '" style="margin-top:6px">✏️ 見る・直す</button></div>' +
+    (c.photoUrl ? '<a href="' + esc(c.photoUrl) + '" target="_blank" rel="noopener"><img src="' + esc(c.photoUrl) + '" alt="注意点の写真" loading="lazy"></a>' : '') + '</div>';
+}
+function sitePos(s) { return s.lat !== '' && s.lat != null && s.lng !== '' && s.lng != null && !isNaN(Number(s.lat)) ? { lat: Number(s.lat), lng: Number(s.lng) } : null; }   // 現場そのものの位置（住所から出したもの）
+function siteCenter(s) {
+  if (s.lat !== '' && s.lat != null && s.lng !== '' && s.lng != null && !isNaN(Number(s.lat))) return { lat: Number(s.lat), lng: Number(s.lng), known: true };
+  const c = activeCautions(s).find(x => x.lat !== '' && x.lat != null);
+  if (c) return { lat: Number(c.lat), lng: Number(c.lng), known: true };
+  return { lat: HOME.lat, lng: HOME.lng, known: false };
+}
+async function geocodeSite(s) {   // 住所から位置を出す（国土地理院の住所検索）。出たら現場マスタに覚えておく
+  try {
+    const r = await (await fetch('https://msearch.gsi.go.jp/address-search/AddressSearch?q=' + encodeURIComponent(s.address))).json();
+    const g = r && r[0] && r[0].geometry && r[0].geometry.coordinates; if (!g) return null;
+    const p = { lat: Number(g[1]), lng: Number(g[0]) };
+    s.lat = p.lat; s.lng = p.lng;
+    postJSON(GAS_URL, { app: 'note', mode: 'saveSite', site: { id: s.id, lat: p.lat, lng: p.lng }, by: me() || '自動' }).catch(() => { });
+    return p;
+  } catch (e) { return null; }
+}
+
+/* ============ 地図（国土地理院の地図。外部の部品は使わず、タイルを並べて表示） ============ */
+const TILES = { std: 'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', photo: 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg' };
+const WS = z => 256 * Math.pow(2, z);
+const lon2x = (lon, z) => (lon + 180) / 360 * WS(z);
+const lat2y = (lat, z) => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * WS(z); };
+const x2lon = (x, z) => x / WS(z) * 360 - 180;
+const y2lat = (y, z) => { const n = Math.PI - 2 * Math.PI * y / WS(z); return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))); };
+class TileMap {
+  constructor(el, o) {
+    this.el = el; this.lat = o.lat; this.lng = o.lng; this.z = Math.max(5, Math.min(18, o.z || 17)); this.pins = o.pins || []; this.site = o.site || null; this.me = null;
+    this.onPin = o.onPin; this.onMove = o.onMove; this.layer = lsGet(LS.layer, 'std');
+    el.className = 'tmap' + (o.tall ? ' tall' : '');
+    el.innerHTML = '<div class="layer"></div>' + (o.cross ? '<div class="cross"><span></span></div>' : '') +
+      '<div class="ctl"><button type="button" data-z="1" aria-label="大きく">＋</button><button type="button" data-z="-1" aria-label="小さく">－</button><button type="button" class="txt" data-layer>' + (this.layer === 'std' ? '写真' : '地図') + '</button><button type="button" data-gps aria-label="現在地">📍</button></div><div class="credit">地理院タイル</div>';
+    this.lay = el.querySelector('.layer');
+    this.ptr = new Map(); this.moved = false;
+    el.addEventListener('pointerdown', e => this.down(e));
+    el.addEventListener('pointermove', e => this.move(e));
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => el.addEventListener(t, e => this.up(e)));
+    el.addEventListener('wheel', e => { e.preventDefault(); this.zoomBy(e.deltaY < 0 ? 1 : -1); }, { passive: false });
+    el.querySelector('.ctl').addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return; e.stopPropagation();
+      if (b.dataset.z) return this.zoomBy(Number(b.dataset.z));
+      if (b.hasAttribute('data-layer')) { this.layer = this.layer === 'std' ? 'photo' : 'std'; lsSet(LS.layer, this.layer); b.textContent = this.layer === 'std' ? '写真' : '地図'; return this.render(); }
+      if (b.hasAttribute('data-gps')) return this.locate();
+    });
+    this.lay.addEventListener('click', e => { const p = e.target.closest('.pin'); if (p && !this.moved && this.onPin) this.onPin(p.dataset.id); });
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => this.render()).observe(el);
+    this.render();
+  }
+  center() { return { lat: this.lat, lng: this.lng }; }
+  setCenter(lat, lng, z) { this.lat = lat; this.lng = lng; if (z) this.z = Math.max(5, Math.min(18, z)); this.render(); }
+  setSite(p) { this.site = p; this.render(); }
+  zoomBy(d) { this.z = Math.max(5, Math.min(18, this.z + d)); this.render(); }
+  locate() {
+    if (!navigator.geolocation) return toast('この端末では現在地が使えません');
+    toast('現在地を調べています…');
+    navigator.geolocation.getCurrentPosition(p => { this.me = { lat: p.coords.latitude, lng: p.coords.longitude }; this.setCenter(this.me.lat, this.me.lng, Math.max(this.z, 18)); toast('現在地に動かしました（誤差 約' + Math.round(p.coords.accuracy) + 'm）'); },
+      () => toast('現在地が取れませんでした。位置情報の許可を確かめてください'), { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+  }
+  down(e) { if (e.target.closest('.ctl')) return; this.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY }); this.moved = false; this.start = { lat: this.lat, lng: this.lng, z: this.z, pts: [...this.ptr.values()].map(p => ({ ...p })) }; }
+  move(e) {
+    if (!this.ptr.has(e.pointerId)) return;
+    this.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = [...this.ptr.values()], st = this.start;
+    if (pts.length === 1 && st.pts.length === 1) {
+      const dx = pts[0].x - st.pts[0].x, dy = pts[0].y - st.pts[0].y;
+      if (!this.moved && Math.hypot(dx, dy) < 6) return;
+      if (!this.moved) { this.moved = true; try { this.el.setPointerCapture(e.pointerId); } catch (er) { } }
+      this.lng = x2lon(lon2x(st.lng, st.z) - dx, st.z); this.lat = y2lat(lat2y(st.lat, st.z) - dy, st.z);
+      this.render();
+    } else if (pts.length === 2) {   // 2本指：広げると大きく、つまむと小さく（指を離したときに段階をそろえる）
+      if (st.pts.length !== 2) { this.start = { lat: this.lat, lng: this.lng, z: this.z, pts: pts.map(p => ({ ...p })) }; return; }
+      this.moved = true;
+      const d0 = Math.hypot(st.pts[0].x - st.pts[1].x, st.pts[0].y - st.pts[1].y), d1 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      this.scale = Math.max(0.25, Math.min(4, d1 / (d0 || 1)));
+      this.lay.style.transform = this.baseTf + ' scale(' + this.scale + ')';
+      const r = this.el.getBoundingClientRect(); this.lay.style.transformOrigin = (r.width / 2 - this.off.x) + 'px ' + (r.height / 2 - this.off.y) + 'px';
+    }
+  }
+  up(e) {
+    if (!this.ptr.has(e.pointerId)) return;
+    this.ptr.delete(e.pointerId);
+    if (this.scale && this.ptr.size < 2) { const dz = Math.round(Math.log2(this.scale)); this.scale = 0; this.lay.style.transformOrigin = '0 0'; this.z = Math.max(5, Math.min(18, this.z + dz)); this.render(); }
+    if (this.ptr.size === 1) this.start = { lat: this.lat, lng: this.lng, z: this.z, pts: [...this.ptr.values()].map(p => ({ ...p })) };
+    if (this.moved && this.onMove) this.onMove(this.center());
+    setTimeout(() => { this.moved = false; }, 0);
+  }
+  xy(lat, lng) { return { x: lon2x(lng, this.z) - this.x0, y: lat2y(lat, this.z) - this.y0 }; }
+  render() {
+    const w = this.el.clientWidth || 340, h = this.el.clientHeight || 260, z = this.z, n = Math.pow(2, z);
+    const cx = lon2x(this.lng, z), cy = lat2y(this.lat, z); this.x0 = cx - w / 2; this.y0 = cy - h / 2;
+    const ox = Math.floor(this.x0), oy = Math.floor(this.y0); this.off = { x: -0, y: -0 };
+    this.baseTf = 'translate(0px,0px)'; this.lay.style.transform = this.baseTf;
+    const tx0 = Math.floor(this.x0 / 256), tx1 = Math.floor((this.x0 + w) / 256), ty0 = Math.max(0, Math.floor(this.y0 / 256)), ty1 = Math.min(n - 1, Math.floor((this.y0 + h) / 256));
+    let html = '';
+    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+      const wx = ((tx % n) + n) % n, url = TILES[this.layer].replace('{z}', z).replace('{x}', wx).replace('{y}', ty);
+      html += '<img src="' + url + '" style="left:' + (tx * 256 - ox) + 'px;top:' + (ty * 256 - oy) + 'px" alt="">';
+    }
+    const at = p => { const q = this.xy(p.lat, p.lng); return 'left:' + (q.x + (this.x0 - ox)) + 'px;top:' + (q.y + (this.y0 - oy)) + 'px'; };
+    if (this.site) html += '<div class="site-dot" style="' + at(this.site) + '" title="現場の位置"></div>';
+    if (this.me) html += '<div class="me-dot" style="' + at(this.me) + '"></div>';
+    this.pins.forEach(p => { html += '<button type="button" class="pin' + (p.sel ? ' sel' : '') + '" data-id="' + esc(p.id) + '" style="' + at(p) + '"><span><b>' + esc(p.label) + '</b></span></button>'; });
+    this.lay.style.left = (ox - this.x0) + 'px'; this.lay.style.top = (oy - this.y0) + 'px';
+    this.off = { x: ox - this.x0, y: oy - this.y0 };
+    this.lay.innerHTML = html;
+  }
+}
+
+/* ============ 注意点を追加・直す ============ */
+let ED = null, EMAP = null;
+function openCaution(c) {
+  const s = CUR; if (!s) return;
+  if (!me()) return chooseName(() => openCaution(c));
+  ED = c ? Object.assign({}, c, { hasPos: c.lat !== '' && c.lat != null }) : { cautionId: '', siteId: s.id, site: s.name, kind: '危険', text: '', until: '', state: '有効', hasPos: true };
+  ED.image = null; ED.preview = ED.photoUrl || '';
+  drawCaution();
+}
+function drawCaution() {
+  const c = ED, isNew = !c.cautionId;
+  openModal('<h3>' + (isNew ? '注意点を追加' : '注意点') + '<span class="tag" style="font-size:12px">' + esc(CUR.name) + '</span></h3>' +
+    '<label class="lbl" style="margin-top:6px">場所（地図を動かして、オレンジのピンを注意する場所に合わせる）</label>' +
+    '<div id="cMap"></div>' +
+    '<label class="toggle" style="margin:6px 2px 0"><input type="checkbox" id="cNoPos"' + (c.hasPos ? '' : ' checked') + '>場所は決めない（現場全体のこと）</label>' +
+    '<label class="lbl">種類</label><div class="chips">' + CAUTION_KINDS.map(k => '<button type="button" class="chip' + (c.kind === k ? ' on' : '') + '" data-ckind="' + esc(k) + '">' + esc(k) + '</button>').join('') + '</div>' +
+    '<label class="lbl">メモ</label><textarea id="cText" placeholder="例：池があるので足元注意／駐車は管理棟の裏、8時前は入れない">' + esc(c.text) + '</textarea>' +
+    '<p class="hint">🎤 iPhone・iPad はキーボードのマイクで話して入力できます。</p>' +
+    '<label class="lbl">写真</label><div class="photo-pick">' + (c.preview ? '<img src="' + esc(c.preview) + '" alt="写真">' : '') +
+      '<label class="btn sm">📷 撮る<input type="file" accept="image/*" capture="environment" id="cCam" hidden></label><label class="btn sm">🖼 選ぶ<input type="file" accept="image/*" id="cLib" hidden></label>' +
+      (c.preview ? '<button type="button" class="btn sm danger" data-act="rmPhoto">写真を外す</button>' : '') + '</div>' +
+    '<label class="lbl">いつまで（工事中など、期間がある注意点だけ）</label><input type="date" id="cUntil" value="' + esc(c.until || '') + '">' +
+    '<div class="row2" style="margin-top:16px"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="save" style="flex:2">' + (isNew ? '登録する' : '保存する') + '</button></div>' +
+    (isNew ? '' : '<div class="row2" style="margin-top:8px"><button class="btn" data-act="resolve">' + (c.state === '解決' ? '↩ 有効に戻す' : '✓ 解決した（一覧から外す）') + '</button>' + (isAdmin() ? '<button class="btn danger" data-act="del">削除</button>' : '') + '</div>'),
+    async e => {
+      const k = e.target.closest('[data-ckind]'); if (k) { keepCaution(); ED.kind = k.dataset.ckind; document.querySelectorAll('[data-ckind]').forEach(x => x.classList.toggle('on', x === k)); return; }
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      if (b.dataset.act === 'cancel') return closeModal();
+      if (b.dataset.act === 'rmPhoto') { keepCaution(); ED.image = null; ED.preview = ''; ED.removePhoto = true; return drawCaution(); }
+      if (b.dataset.act === 'del') { if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'もう一度押すと削除'; return; } return deleteCaution(b); }
+      if (b.dataset.act === 'resolve') { keepCaution(); ED.state = ED.state === '解決' ? '有効' : '解決'; return saveCaution(b); }
+      if (b.dataset.act === 'save') { keepCaution(); return saveCaution(b); }
+    });
+  const start = c.hasPos && c.lat !== '' && c.lat != null && c.lat !== undefined ? { lat: Number(c.lat), lng: Number(c.lng), known: true } : (EMAP ? Object.assign(EMAP.center(), { known: true }) : siteCenter(CUR));
+  const others = activeCautions(CUR).filter(x => x.cautionId !== c.cautionId && x.lat !== '' && x.lat != null).map((x, i) => ({ lat: Number(x.lat), lng: Number(x.lng), label: '・', id: x.cautionId }));
+  EMAP = new TileMap($('cMap'), { lat: start.lat, lng: start.lng, z: start.known ? 19 : 16, cross: true, tall: true, pins: others, site: sitePos(CUR) });
+  $('cNoPos').addEventListener('change', e => { ED.hasPos = !e.target.checked; $('cMap').style.opacity = ED.hasPos ? 1 : .4; });
+  $('cMap').style.opacity = c.hasPos ? 1 : .4;
+  ['cCam', 'cLib'].forEach(id => $(id).addEventListener('change', async ev => { const f = ev.target.files[0]; if (!f) return; keepCaution(); try { const b64 = await shrink(f); ED.image = b64; ED.preview = 'data:image/jpeg;base64,' + b64; ED.removePhoto = false; drawCaution(); } catch (er) { toast('写真を読み込めませんでした'); } }));
+}
+function keepCaution() {
+  if (!ED) return;
+  if ($('cText')) ED.text = $('cText').value.trim();
+  if ($('cUntil')) ED.until = $('cUntil').value;
+  if (EMAP && ED.hasPos) { const p = EMAP.center(); ED.lat = +p.lat.toFixed(7); ED.lng = +p.lng.toFixed(7); }
+}
+async function saveCaution(btn) {
+  if (!ED.text && !ED.image && !ED.preview) return toast('メモか写真を入れてください');
+  btn.disabled = true; const label = btn.textContent; btn.innerHTML = '<span class="loading"></span> 保存中…';
+  const c = { cautionId: ED.cautionId, siteId: CUR.id, site: CUR.name, kind: ED.kind, text: ED.text, until: ED.until, state: ED.state, lat: ED.hasPos ? ED.lat : '', lng: ED.hasPos ? ED.lng : '', removePhoto: !!ED.removePhoto, photoUrl: ED.image ? '' : ED.preview };
+  try {
+    const r = await postJSON(GAS_URL, { app: 'note', mode: 'saveCaution', caution: c, image: ED.image || '', by: me() });
+    if (!r.ok) throw new Error(/unknown mode/.test(r.error || '') ? '共通GASの更新がまだです（数分で反映されます）' : r.error);
+    closeModal(); toast(c.state === '解決' ? '解決済みにしました' : '保存しました'); ED = null; EMAP = null; await load();
+  } catch (e) { toast(e.message || NET_ERR); btn.disabled = false; btn.textContent = label; }
+}
+async function deleteCaution(btn) {
+  btn.disabled = true;
+  try { const r = await postJSON(GAS_URL, { app: 'note', mode: 'deleteCaution', cautionId: ED.cautionId, by: me() }); if (!r.ok) throw new Error(r.error); closeModal(); toast('削除しました'); await load(); }
+  catch (e) { toast(e.message || NET_ERR); btn.disabled = false; }
+}
+function shrink(file) {   // 写真は長い辺 1600px の JPEG にして送る（通信量を抑える）
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', 0.82).split(',')[1]); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('img')); };
+    img.src = url;
+  });
+}
+
+/* ============ 現場の情報を直す・追加する ============ */
+function editSite(isNew) {
+  if (!me()) return chooseName(() => editSite(isNew));
+  const s = isNew ? { id: '', name: '', kind: '個人', contract: '', address: '', company: '', contact: '', aliases: '', memo: '', note: '', state: '稼働中' } : CUR;
+  openModal('<h3>' + (isNew ? '新しい現場を追加' : '現場の情報を直す') + '</h3>' +
+    (isNew ? '<label class="lbl" style="margin-top:6px">現場名</label><input type="text" id="sName" placeholder="例：〇〇邸">' +
+      '<label class="lbl">種類</label><select id="sKind">' + KINDS.map(k => '<option' + (k === s.kind ? ' selected' : '') + '>' + k + '</option>').join('') + '</select>' +
+      '<label class="lbl">委託名（公共の委託のときだけ）</label><input type="text" id="sContract">' +
+      '<p class="hint">追加した現場は、数分で日報・段取りなどの現場の一覧にも出ます。</p>'
+      : '<p class="hint" style="margin-bottom:6px">現場名・種類は日報の記録とつながっているので、ここでは直せません。</p>') +
+    '<label class="lbl">住所</label><input type="text" id="sAddr" value="' + esc(s.address) + '" placeholder="例：川崎市高津区上作延1075-1">' +
+    '<label class="lbl">管理会社・お客さん</label><input type="text" id="sCompany" value="' + esc(s.company) + '">' +
+    '<label class="lbl">連絡先（担当者・電話）</label><input type="text" id="sContact" value="' + esc(s.contact) + '" placeholder="例：渡邊さん 045-000-0000">' +
+    '<label class="lbl">別名・呼び方（、で区切る）</label><input type="text" id="sAliases" value="' + esc(s.aliases) + '" placeholder="例：ふじのき、ふじの木台">' +
+    '<label class="lbl">📝 段取りメモ（段取りカードに出ます）</label><textarea id="sMemo" placeholder="例：駐車は管理棟の裏。鍵は管理人室で借りる">' + esc(s.memo) + '</textarea>' +
+    '<label class="lbl">備考</label><input type="text" id="sNote" value="' + esc(s.note) + '">' +
+    (!isNew && isAdmin() ? '<label class="lbl">状態</label><select id="sState"><option' + (!/終了/.test(s.state) ? ' selected' : '') + '>稼働中</option><option' + (/終了/.test(s.state) ? ' selected' : '') + '>終了</option></select>' : '') +
+    '<div class="row2" style="margin-top:16px"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="save" style="flex:2">保存する</button></div>',
+    async e => {
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      if (b.dataset.act === 'cancel') return closeModal();
+      const v = { id: s.id, address: $('sAddr').value.trim(), company: $('sCompany').value.trim(), contact: $('sContact').value.trim(), aliases: $('sAliases').value.trim(), memo: $('sMemo').value.trim(), note: $('sNote').value.trim() };
+      if (isNew) { v.name = $('sName').value.trim(); v.kind = $('sKind').value; v.contract = $('sContract').value.trim(); if (!v.name) return toast('現場名を入れてください'); }
+      if ($('sState')) v.state = $('sState').value;
+      if (v.address !== (s.address || '')) { v.lat = ''; v.lng = ''; }   // 住所を変えたら位置は出し直す
+      b.disabled = true; b.innerHTML = '<span class="loading"></span> 保存中…';
+      try {
+        const r = await postJSON(GAS_URL, { app: 'note', mode: 'saveSite', site: v, by: me() });
+        if (!r.ok) throw new Error(/unknown mode/.test(r.error || '') ? '共通GASの更新がまだです（数分で反映されます）' : r.error);
+        closeModal(); toast(isNew ? '現場を追加しました' : '保存しました');
+        await load(); if (isNew) openSite(r.id);
+      } catch (err) { toast(err.message || NET_ERR); b.disabled = false; b.textContent = '保存する'; }
+    });
+}
+function importBukken() {
+  openModal('<h3>物件マスタから写す</h3><p>6月に作った「庭乃持田園_物件マスタ」の住所・管理会社・連絡先・別名・段取りメモ・備考を、現場名（別名も）で照合して写します。</p>' +
+    '<p class="hint">すでに入っている欄は上書きしません。何回押しても同じ内容が重なることはありません。</p>' +
+    '<div class="row2" style="margin-top:14px"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="go">写す</button></div>',
+    async e => {
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      if (b.dataset.act === 'cancel' || b.dataset.act === 'close') return closeModal();
+      b.disabled = true; b.innerHTML = '<span class="loading"></span> 写しています…';
+      try {
+        const r = await postJSON(GAS_URL, { app: 'note', mode: 'importBukken', by: me() });
+        if (!r.ok) throw new Error(/unknown mode/.test(r.error || '') ? '共通GASの更新がまだです（数分で反映されます）' : r.error);
+        $('modal').innerHTML = '<h3>写しました</h3><p>照合できた現場：<b>' + r.matched + '件</b>（写した欄：' + r.filled + 'か所）</p>' +
+          (r.unmatched.length ? '<p class="hint">現場マスタに見つからなかった現場（' + r.unmatched.length + '件）：<br>' + r.unmatched.map(esc).join('、') + '</p><p class="hint">名前が違うだけなら、現場ノートで「別名」に入れてからもう一度押すと写せます。</p>' : '') +
+          '<button class="btn primary block" data-act="close" style="margin-top:12px">閉じる</button>';
+        await load();
+      } catch (err) { toast(err.message || NET_ERR); b.disabled = false; b.textContent = '写す'; }
+    });
+}
+
+/* ============ 名前・モーダル ============ */
+let STAFF = lsGet(LS.me + '_staff', null) || [];
+async function fetchStaff() { try { const r = await getJSON(MASTERS_URL + '?action=masters', 10000); const s = (r.staff || []).map(x => typeof x === 'string' ? x : (x.name || '')).filter(Boolean); if (s.length) { STAFF = s; lsSet(LS.me + '_staff', s); } } catch (e) { } }
+function chooseName(then) {
+  openModal('<h3>あなたの名前</h3><p class="hint" style="margin:4px 0 12px">最初の1回だけ選びます（日報・段取りアプリと同じ名前です）。</p>' +
+    '<div class="chips" style="margin-bottom:12px">' + STAFF.map(s => '<button type="button" class="chip" data-nm="' + esc(s) + '">' + esc(s) + '</button>').join('') + '</div>' +
+    '<input type="text" id="nmIn" placeholder="一覧にないときは名前を入力" value="' + esc(me()) + '">' +
+    '<div class="row2" style="margin-top:12px"><button class="btn" data-act="later">あとで</button><button class="btn primary" data-act="ok">決定</button></div>',
+    e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.act === 'later') return closeModal();
+      const v = b.dataset.nm || (b.dataset.act === 'ok' ? $('nmIn').value.trim() : ''); if (!v) return;
+      lsSet(LS.me, v); $('meBtn').textContent = '👤 ' + v; closeModal(); render(); if (then) then();
+    });
+}
+let modalHandler = null;
+function openModal(html, handler) { $('modal').innerHTML = html; modalHandler = handler; $('modalBg').classList.add('show'); $('modal').scrollTop = 0; }
+function closeModal() { $('modalBg').classList.remove('show'); $('modal').innerHTML = ''; modalHandler = null; EMAP = null; }
+$('modal').addEventListener('click', e => { if (modalHandler) modalHandler(e); });
+$('modalBg').addEventListener('click', e => { if (e.target === $('modalBg')) closeModal(); });
+
+/* ============ イベント ============ */
+$('q').addEventListener('input', render);
+$('showEnd').addEventListener('change', render);
+$('kindChips').addEventListener('click', e => { const c = e.target.closest('[data-kind]'); if (!c) return; KIND = c.dataset.kind; lsSet(LS.kind, KIND); render(); });
+$('siteList').addEventListener('click', e => { const s = e.target.closest('[data-site]'); if (s) openSite(s.dataset.site); });
+$('backBtn').addEventListener('click', closeSite);
+$('siteBody').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (b && b.dataset.act === 'editSite') return editSite(false);
+  if (b && b.dataset.act === 'addCaution') return openCaution(null);
+  if (b && b.dataset.act === 'toggleResolved') { SHOW_RESOLVED = !SHOW_RESOLVED; return renderSite(); }
+  const ec = e.target.closest('[data-edit-caution]'); if (ec) { const c = CAUTIONS.find(x => x.cautionId === ec.dataset.editCaution); if (c) openCaution(c); }
+});
+$('addSiteBtn').addEventListener('click', () => editSite(true));
+$('importBtn').addEventListener('click', importBukken);
+$('meBtn').addEventListener('click', () => chooseName());
+
+(function init() {
+  if (me()) $('meBtn').textContent = '👤 ' + me();
+  const c = lsGet(LS.cache, null); if (c) { SITES = c.SITES || []; CAUTIONS = c.CAUTIONS || []; ADMINS = c.ADMINS || ADMINS; }
+  const want = new URLSearchParams(location.search).get('site');
+  if (want) { const s = findSite(want); if (s) CUR = s; }
+  render();
+  load().then(() => { if (want && !CUR) { const s = findSite(want); if (s) openSite(s.id); else toast('「' + want + '」は現場ノートに見つかりませんでした'); } });
+  fetchStaff();
+})();
+</script>
+</body>
+</html>
