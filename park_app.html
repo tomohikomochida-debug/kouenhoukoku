@@ -288,6 +288,36 @@ body.ui-new[data-nuview="prep"] #nuOpts,body.ui-new[data-nuview="prep"] #nuKinds
 body.ui-new[data-nuview="prep"] #nuTools{display:none}
 .g-prep #cloudOpen,.g-prep #openJson{margin-bottom:7px}
 .g-prep #secMap{margin-top:12px}
+
+/* スマホ（iPhone）：地図を広く */
+.nu-phone{display:none}
+@media(max-width:600px){
+  body.ui-new .nu-phone{display:block;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+  body.ui-new header{flex-wrap:nowrap;gap:6px;padding:5px 8px;min-height:0}
+  body.ui-new header .park,body.ui-new #nuSave,body.ui-new #uiBack{display:none!important}
+  body.ui-new header .sp{display:none}
+  body.ui-new .home-btn{padding:5px 8px}
+  body.ui-new .nu-tabs{flex:1 1 auto;justify-content:space-between;padding:2px}
+  body.ui-new .nu-tab{padding:7px 8px;font-size:13px;flex:1}
+  body.ui-new #undoBtn,body.ui-new #redoBtn{padding:6px 8px;margin:0}
+  body.ui-new #nuSideBtn{padding:7px 9px}
+  body.ui-new #nuSideBtn .nu-t{display:none}
+  body.ui-new .mapctl{gap:5px}
+  body.ui-new .mapctl button{width:38px;height:38px;font-size:16px}
+  body.ui-new #mIn,body.ui-new #mOut{display:none}
+  body.ui-new #nuTools .btn{width:52px;padding:8px 0}
+  body.ui-new #nuTools .btn::after{font-size:12px}
+  body.ui-new .hint{left:70px;max-width:calc(100% - 120px);font-size:11px}
+  #nuOpts{padding:4px 8px 0;gap:8px}
+  #nuOpts #rankLegend>div:last-child{flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+  #nuOpts #rankLegend{max-width:100%;overflow:hidden}
+  #nuOpts #rankLegend::before{display:none}
+  #nuOpts [data-band]{white-space:nowrap}
+  #nuKinds{padding:6px 8px;gap:5px}
+  .nu-chip{min-height:44px;padding:4px 10px}
+  .nu-chip b{font-size:13px}
+  #nuAll{bottom:64px;max-height:70%}
+}
 .nu-hide{display:none!important}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
@@ -355,7 +385,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
     <button id="undoBtn" title="元に戻す (Ctrl+Z)" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px 10px;font-size:13px;cursor:pointer;margin-right:6px">↶<span class="blbl"> 戻る</span></button>
     <button id="redoBtn" title="やり直す (Ctrl+Y)" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px 10px;font-size:13px;cursor:pointer;margin-right:10px">↷<span class="blbl"> 進む</span></button>
     <button class="nu-only nu-hbtn" id="nuSave">☁️ 保存</button>
-    <button class="nu-only nu-hbtn" id="nuSideBtn">☰ パネル</button>
+    <button class="nu-only nu-hbtn" id="nuSideBtn">☰<span class="nu-t"> パネル</span></button>
     <button class="nu-only nu-hbtn back" id="uiBack" title="今までの画面にもどします（データはそのまま）">旧画面に戻す</button>
     <button class="ui-try old-only" id="uiTry" title="入力と仕上げに分けた、すっきりした画面（データはそのまま・いつでも戻せます）">✨ 新しい画面を試す</button>
   </header>
@@ -3348,7 +3378,15 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     ['低木内除草清掃','植込み地'],['樹木撤去','実生木（C=10cm程度）'],['樹木撤去','支障木'],['軽剪定（落葉木）','落葉木'],['基本剪定（落葉木）','落葉木']];
   const $=id=>document.getElementById(id);
   const ls={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
-  let built=false, moved=[], view='input', lastKey='', poll=null;
+  let built=false, moved=[], view='input', lastKey='', poll=null, hidLegend=false, hintObs=null, hintTimer=null;
+  const isPhone=()=>window.matchMedia('(max-width:600px)').matches;
+  // スマホでは説明の吹き出しを数秒で隠す（地図を広く使う）。タップでもすぐ消える
+  function watchHint(){
+    const h=$('hint'); if(!h||hintObs)return;
+    const arm=()=>{ clearTimeout(hintTimer); if(!isPhone())return; hintTimer=setTimeout(()=>{ if(isPhone()&&document.body.classList.contains('ui-new')&&state.img) h.style.display='none'; },4500); };
+    hintObs=new MutationObserver(arm); hintObs.observe(h,{childList:true,characterData:true,subtree:true}); arm();
+    h.addEventListener('click',()=>{ if(isPhone()&&document.body.classList.contains('ui-new'))h.style.display='none'; });
+  }
 
   // 部品を新しい場所へ。元の場所には目印を残して、旧画面に戻す時にそこへ帰す
   function move(el,to){ if(!el||!to)return; const mk=document.createComment('nu'); el.parentNode.insertBefore(mk,el); moved.push([el,mk]); to.appendChild(el); }
@@ -3362,7 +3400,9 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     const main=document.createElement('div'); main.id='nuMain';
     main.innerHTML='<div id="nuAll"></div><div id="nuOpts"></div><div id="nuKinds"></div>';
     const side=document.createElement('div'); side.id='nuSide';
-    side.innerHTML='<button id="nuSideClose">閉じる ✕</button>';
+    side.innerHTML='<button id="nuSideClose">閉じる ✕</button>'+
+      '<div class="nu-phone" id="nuPhoneTop"><label class="fld" style="margin-top:0">公園名</label><input class="txt" id="nuPark" placeholder="公園名（例：久地さくら緑地）">'+
+      '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" id="nuSave2" style="margin:0">☁️ クラウドに保存</button><button class="btn ghost" id="uiBack2" style="margin:0;width:auto;white-space:nowrap">旧画面に戻す</button></div></div>';
     app.appendChild(main); app.appendChild(side);
     side.dataset.view=view;
   }
@@ -3405,10 +3445,14 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     setView(ls.get(VIEW_KEY)||(!state.img?'prep':'input'), true);
     if(!state.img) setView('prep',true);
     wasDone=prepDone(); poll=setInterval(tick,600);
+    if(isPhone()&&legend.show){ $('legendToggle').onclick(); hidLegend=true; }   // スマホは地図を広く：凡例は最初は隠す
+    watchHint();
     afterLayout();
   }
   function leave(){
     clearInterval(poll); poll=null;
+    if(hidLegend&&!legend.show){ $('legendToggle').onclick(); } hidLegend=false;
+    if(hintObs){hintObs.disconnect();hintObs=null;} clearTimeout(hintTimer); $('hint').style.display='';
     const sh=secOf('sansha'); if(sh){const h=sh.querySelector('h3'); if(h&&h.dataset.old){h.textContent=h.dataset.old;delete h.dataset.old;}}
     document.body.classList.remove('ui-new','nu-open'); delete document.body.dataset.nuview;
     restoreAll();
@@ -3437,6 +3481,7 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     wasDone=done;
     const key=$('catSel').value+'\u0000'+$('kindSel').value+'\u0000'+state.features.length;
     if(key!==lastKey){ lastKey=key; renderKinds(); }
+    const np=$('nuPark'); if(np&&document.activeElement!==np&&np.value!==$('parkName').value) np.value=$('parkName').value;
     syncOpts();
   }
   function syncOpts(){
@@ -3500,7 +3545,11 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     $('nuSideBtn').onclick=()=>document.body.classList.toggle('nu-open');
     $('uiBack').onclick=()=>{ ls.set(UI_KEY,'old'); leave(); };
     $('uiTry').onclick=()=>{ ls.set(UI_KEY,'new'); enter(); };
-    document.addEventListener('click',e=>{ if(e.target&&e.target.id==='nuSideClose')document.body.classList.remove('nu-open'); });
+    document.addEventListener('click',e=>{ const id=e.target&&e.target.id;
+      if(id==='nuSideClose')document.body.classList.remove('nu-open');
+      if(id==='nuSave2')$('cloudSave').click();
+      if(id==='uiBack2')$('uiBack').click(); });
+    document.addEventListener('input',e=>{ if(e.target&&e.target.id==='nuPark'){const pn=$('parkName');pn.value=e.target.value;pn.dispatchEvent(new Event('input',{bubbles:true}));pn.dispatchEvent(new Event('change',{bubbles:true}));} });
   }
   window.parkUI={enter,leave,setView,pick,get view(){return view;}};
   bind();
