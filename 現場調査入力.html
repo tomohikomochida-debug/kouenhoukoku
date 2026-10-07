@@ -219,6 +219,32 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
 #cph .cth{width:40px;height:54px;object-fit:cover;border-radius:6px;border:3px solid #FB8C00}#cph .cth.ok{border-color:#43A047}#cph .cth.ng{border-color:#E53935}
 #cph .cshut{width:78px;height:78px;border-radius:50%;background:#fff;border:6px solid #fff8;box-shadow:0 0 0 3px #000 inset}#cph .cshut:active{transform:scale(.92)}
 #cph .cstd{width:96px;height:54px;background:#0009;color:#fff;border:1px solid #fff6;border-radius:12px;font-size:13px;white-space:pre-line}
+  /* 数字のテンキー（高さ・幹周・株立ち） */
+  .numin{ cursor:pointer; caret-color:transparent; }
+  .numin.npon,.stem.npon{ outline:3px solid #1E88E5; outline-offset:1px; }
+  .kabubtn{ float:right; border:1px solid var(--accent); background:#fff; color:var(--accent); border-radius:999px; padding:1px 10px; font-size:12px; font-weight:700; margin-top:-3px; }
+  .kabubtn.on{ background:var(--accent); color:#fff; }
+  .kabufld{ grid-column:1/-1; }
+  .stems{ display:flex; flex-wrap:wrap; gap:6px; }
+  .stem{ min-width:64px; height:50px; border:1px solid var(--line); background:var(--input); border-radius:8px; font-size:18px; font-weight:700; color:var(--ink); display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.1; padding:0 8px; }
+  .stem small{ font-size:10px; font-weight:400; color:var(--sub); }
+  .stem.add{ background:#fff; border-style:dashed; color:var(--accent); font-size:14px; }
+  .kabusum{ font-size:13px; color:var(--sub); margin-top:6px; }
+  .kabusum b{ font-size:17px; color:var(--ink); }
+  .np{ position:fixed; right:12px; bottom:12px; width:min(340px,calc(100vw - 24px)); background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.25); z-index:150; padding:10px; touch-action:manipulation; }
+  .nph{ display:flex; align-items:baseline; gap:8px; margin:0 2px 8px; }
+  .nph #npTitle{ flex:1; font-size:13px; color:var(--sub); font-weight:700; }
+  .npv{ font-size:30px; font-weight:700; font-variant-numeric:tabular-nums; min-width:80px; text-align:right; }
+  .npv.fresh{ color:#9a958b; }
+  .npk{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .npk button,.npa button{ height:54px; border:1px solid var(--line); background:#F6F5F0; border-radius:10px; font-size:24px; font-weight:700; color:var(--ink); }
+  .npk button:active,.npa button:active{ background:#E5EDE7; }
+  .npk button:disabled{ opacity:.3; }
+  .npa{ display:flex; gap:6px; margin-top:6px; }
+  .npa button{ flex:1; font-size:15px; }
+  .npa button.pri{ flex:1.4; background:var(--accent); color:#fff; border-color:var(--accent); font-size:17px; }
+  body.npopen main{ padding-bottom:400px; }
+  @media (max-width:560px){ .np{ left:0; right:0; bottom:0; width:auto; border-radius:14px 14px 0 0; padding-bottom:calc(10px + env(safe-area-inset-bottom)); } }
 </style>
 </head>
 <body>
@@ -325,6 +351,16 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   <p class="hint">一度つないだら、次からはiPhoneで同じページを開くだけでつながります（iPhoneで「ホーム画面に追加」しておくと便利です）。iPadとiPhoneの両方がネットにつながっている必要があります。</p>
   <div class="row"><button type="button" class="warn hidden" id="camStop">iPhoneカメラをやめる</button><span style="flex:1"></span><button type="button" class="pri" onclick="document.getElementById('dlgCam').close()">閉じる</button></div>
 </dialog>
+<div id="np" class="np noprint" style="display:none">
+  <div class="nph"><span id="npTitle"></span><span id="npVal" class="npv">—</span></div>
+  <div class="npk">
+    <button type="button" onclick="npKey('7')">7</button><button type="button" onclick="npKey('8')">8</button><button type="button" onclick="npKey('9')">9</button>
+    <button type="button" onclick="npKey('4')">4</button><button type="button" onclick="npKey('5')">5</button><button type="button" onclick="npKey('6')">6</button>
+    <button type="button" onclick="npKey('1')">1</button><button type="button" onclick="npKey('2')">2</button><button type="button" onclick="npKey('3')">3</button>
+    <button type="button" id="npDot" onclick="npKey('.')">.</button><button type="button" onclick="npKey('0')">0</button><button type="button" onclick="npKey('del')">⌫</button>
+  </div>
+  <div class="npa"><button type="button" onclick="npClose()">閉じる</button><button type="button" id="npStem" onclick="npNextStem()">＋ 次の幹</button><button type="button" class="pri" onclick="npNext()">次へ ▶</button></div>
+</div>
 <button id="toMapBtn" class="tomap noprint" onclick="toMap()" style="display:none">🗺 地図へ</button>
 <div class="bar noprint">
   <button id="xlsxBtn" class="solid" onclick="exportExcel()">Excel書き出し</button>
@@ -3402,8 +3438,8 @@ function fieldsHTML(t,i){
      <div class="grid3">
        <div class="fld"><label>樹種</label><input list="splist" class="yellow" value="${esc(t.species)}" oninput="upd(${i},'species',this.value)" placeholder="樹種"></div>
        <div class="fld"><label>作業方針</label><select class="yellow" onchange="upd(${i},'work',this.value)">${opts(WORKS,t.work)}</select></div>
-       <div class="fld"><label>高さ (m)</label><input class="yellow" inputmode="decimal" value="${esc(t.h)}" oninput="upd(${i},'h',this.value)" placeholder="例 12"></div>
-       <div class="fld"><label>胸高周囲 (cm)</label><input class="yellow" value="${esc(t.c)}" oninput="upd(${i},'c',this.value)" placeholder="例 160（93・97）"></div>
+       <div class="fld"><label>高さ (m)</label><input class="yellow numin" id="np-${i}-h" readonly inputmode="none" value="${esc(t.h)}" onclick="npOpen(${i},'h')" placeholder="タップで入力"></div>
+       ${girthHTML(t,i)}
        <div class="fld"><label>単価(円)</label><input class="yellow" inputmode="numeric" value="${esc(t.up)}" oninput="upd(${i},'up',this.value)" placeholder="任意"></div>
      </div>
      <div class="fld" style="margin-top:8px"><label>メモ（任意）</label><input value="${esc(t.memo)}" oninput="upd(${i},'memo',this.value)" placeholder="キノコ・空洞 など"></div>`;
@@ -3426,7 +3462,11 @@ function renderTrees(){
   renderMap();
   const box=document.getElementById("trees");
   if(!state.trees.length){ box.innerHTML='<div class="empty">「＋ 木を追加」から1本ずつ登録します。</div>'; camAfterRender(); return; }
-  box.innerHTML=state.trees.map((t,i)=>`
+  box.innerHTML=state.trees.map(treeCardHTML).join("");
+  if(typeof updateToMap==="function") updateToMap();
+  camAfterRender();
+}
+function treeCardHTML(t,i){ return `
    <div class="tree">
      <div class="top"><div class="no">${i+1}</div><button class="iconbtn drag" onpointerdown="rowDown(event,${i})" title="ドラッグで並べ替え">⠿</button>
        <div class="typ"><button class="tbtn ${t.type!=='exterior'?'on':''}" onclick="setType(${i},'tree')">樹木</button><button class="tbtn ${t.type==='exterior'?'on':''}" onclick="setType(${i},'exterior')">外構</button></div>
@@ -3438,17 +3478,14 @@ function renderTrees(){
      ${photosHTML(t,i)}
      ${geoRowHTML(t,i)}
      ${fieldsHTML(t,i)}
-   </div>`).join("");
-  if(typeof updateToMap==="function") updateToMap();
-  camAfterRender();
-}
+   </div>`; }
 
 /* 描画：写真帳（地図ページ＋3枚/ページ） */
 function pageHead(sub){ return `<div class="pghead"><h2>${esc(state.bookTitle||"写真帳")}　${esc(state.caseName)}</h2><div class="m">${esc(state.caseDate)}　全${state.trees.length}件${sub?"　"+esc(sub):""}</div></div>`; }
 function frameHTML(fr){ const t=fr.t, no=fr.no;
    var cap = t.type==="exterior"
      ? `<span class="bn">No.${no}</span><br><b>${esc(t.item)||"（品名未入力）"}</b><br>数量：${esc(t.qty)||"-"} ${esc(t.unit)}${t.memo?`<br>仕様：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`
-     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>胸高周囲：${esc(t.c)||"-"} cm${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
+     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>幹周：${esc(t.c)||"-"} cm${t.kabu&&numsOf(t.stems).length?`（株立ち ${numsOf(t.stems).length}本）`:""}${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
    return `<div class="pbitem"><div class="p">${fr.img?`<img src="${fr.img}">`:'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
 }
 function renderBook(){
@@ -3799,6 +3836,95 @@ async function camPhone(hostId){
     connect();
   });
 }
+
+/* ---------- 数字の入力（高さ・幹周・株立ちの幹）：画面のテンキーで次々に ----------
+   マスをタップするとテンキーが出る（キーボードは出さない）。最初に押した数字で今の値を置きかえる。
+   「次へ ▶」で 高さ → 幹周（株立ちなら 幹1・幹2…）→ 次の番号の高さ へ進む。
+   株立ち：各幹の幹周の総和 × 0.7 を幹周とする（樹木の規格の一般的な決まり）。 */
+const KABU_RATE=0.7;
+const NP={ i:-1, f:"", buf:"", fresh:true, undo:false };
+const numsOf=a=>(a||[]).map(v=>parseFloat(v)).filter(v=>isFinite(v)&&v>0);
+function kabuC(t){ const n=numsOf(t.stems); return n.length?String(Math.round(n.reduce((a,b)=>a+b,0)*KABU_RATE)):""; }
+function kabuText(t){ const n=numsOf(t.stems); if(!n.length) return "各幹の幹周を入れると、総和×0.7で幹周を出します"; return "（"+n.join("＋")+"）×0.7 ＝ <b>"+kabuC(t)+"</b> cm"; }
+function girthHTML(t,i){   // 幹周のマス（株立ちなら、幹ごとのマスと計算結果）
+  const kb=`<button type="button" class="kabubtn ${t.kabu?"on":""}" onclick="toggleKabu(${i})">${t.kabu?"✓ 株立ち":"株立ち"}</button>`;
+  if(!t.kabu) return `<div class="fld"><label>幹周 (cm)${kb}</label><input class="yellow numin" id="np-${i}-c" readonly inputmode="none" value="${esc(t.c)}" onclick="npOpen(${i},'c')" placeholder="タップで入力"></div>`;
+  const st=t.stems||[];
+  return `<div class="fld kabufld"><label>幹周 (cm)　株立ち：<span id="kabun-${i}">${numsOf(st).length}</span>本${kb}</label><div class="stems">`+
+    st.map((v,k)=>`<button type="button" class="stem" id="np-${i}-s${k}" onclick="npOpen(${i},'s${k}')"><small>幹${k+1}</small>${esc(v)||"—"}</button>`).join("")+
+    `<button type="button" class="stem add" onclick="npOpen(${i},'s${st.length}')">＋幹</button></div><div class="kabusum" id="kabusum-${i}">${kabuText(t)}</div></div>`;
+}
+function refreshCard(i){ const el=document.querySelectorAll("#trees .tree")[i]; if(!el){ renderTrees(); return; } el.outerHTML=treeCardHTML(state.trees[i],i); camAfterRender(); }
+function toggleKabu(i){ const t=state.trees[i]; if(!t) return; pushUndo("kabu"+i);
+  t.kabu=!t.kabu; t.stems=t.stems||[];
+  if(t.kabu&&numsOf(t.stems).length) t.c=kabuC(t);
+  markDirty(); refreshCard(i);
+  if(t.kabu) npOpen(i,"s"+(numsOf(t.stems).length?t.stems.length:0)); else npClose(); }
+function npVal(t,f){ if(f[0]==="s") return (t.stems||[])[+f.slice(1)]||""; return t[f]||""; }
+function npLabel(t,i,f){ return (i+1)+"番　"+(f==="h"?"高さ (m)":f==="c"?"幹周 (cm)":"株立ち　幹"+(+f.slice(1)+1)+" の幹周 (cm)"); }
+function npOpen(i,f){
+  const t=state.trees[i]; if(!t) return;
+  if(f[0]==="s"){ t.stems=t.stems||[]; const k=+f.slice(1); if(k>=t.stems.length){ t.stems.push(""); refreshCard(i); } }
+  NP.i=i; NP.f=f; NP.buf=String(npVal(t,f)); NP.fresh=true; NP.undo=false;
+  document.getElementById("np").style.display="block"; document.body.classList.add("npopen");
+  npPaint();
+  const el=document.getElementById("np-"+i+"-"+f); if(el&&el.scrollIntoView) el.scrollIntoView({block:"center",behavior:"smooth"});
+}
+function npPaint(){
+  const t=state.trees[NP.i]; if(!t) return npClose();
+  document.getElementById("npTitle").textContent=npLabel(t,NP.i,NP.f);
+  document.getElementById("npVal").textContent=NP.buf===""?"—":NP.buf;
+  document.getElementById("npVal").classList.toggle("fresh",NP.fresh&&NP.buf!=="");
+  document.getElementById("npDot").disabled=NP.f!=="h";
+  document.getElementById("npStem").style.display=t.kabu&&NP.f[0]==="s"?"":"none";
+  document.querySelectorAll(".numin.npon,.stem.npon").forEach(e=>e.classList.remove("npon"));
+  const el=document.getElementById("np-"+NP.i+"-"+NP.f); if(el) el.classList.add("npon");
+}
+function npSet(v){   // 押したらすぐ反映（カードは描き直さず、そのマスだけ書きかえる）
+  const t=state.trees[NP.i]; if(!t) return;
+  if(!NP.undo){ pushUndo("np:"+NP.i+":"+NP.f); NP.undo=true; }
+  NP.buf=v;
+  if(NP.f[0]==="s"){ t.stems[+NP.f.slice(1)]=v; t.c=kabuC(t); const s=document.getElementById("kabusum-"+NP.i); if(s) s.innerHTML=kabuText(t); const kn=document.getElementById("kabun-"+NP.i); if(kn) kn.textContent=numsOf(t.stems).length;
+    const el=document.getElementById("np-"+NP.i+"-"+NP.f); if(el) el.innerHTML="<small>幹"+(+NP.f.slice(1)+1)+"</small>"+(esc(v)||"—"); }
+  else { t[NP.f]=v; const el=document.getElementById("np-"+NP.i+"-"+NP.f); if(el) el.value=v; }
+  markDirty(); npPaint();
+}
+function npKey(k){
+  if(NP.i<0) return;
+  if(k==="del"){ npSet(NP.fresh?"":NP.buf.slice(0,-1)); NP.fresh=false; npPaint(); return; }
+  if(k==="."&&(NP.f!=="h"||(!NP.fresh&&NP.buf.includes(".")))) return;
+  let v=NP.fresh?"":NP.buf; NP.fresh=false;
+  if(k==="."&&v==="") v="0";
+  v+=k; if(/^0\d/.test(v)) v=v.slice(1);
+  if(v.replace(".","").length>5) return;
+  npSet(v);
+}
+function npTidy(i){   // 株立ちの空いた幹のマスを片づける
+  const t=state.trees[i]; if(!t||!t.kabu||!t.stems) return false;
+  const n=t.stems.filter(v=>String(v).trim()!==""); if(n.length===t.stems.length) return false;
+  t.stems=n; t.c=kabuC(t); return true;
+}
+function npGo(i,f){ const prev=NP.i; if(prev!==i||f[0]!=="s"){ if(npTidy(prev)) refreshCard(prev); } npOpen(i,f); }
+function npNext(){
+  const i=NP.i, t=state.trees[i]; if(!t) return npClose();
+  if(NP.f==="h") return npGo(i,t.kabu?"s0":"c");
+  if(NP.f[0]==="s"){ const k=+NP.f.slice(1); if(k+1<t.stems.length&&String(t.stems[k+1]).trim()!=="") return npGo(i,"s"+(k+1)); }
+  for(let j=i+1;j<state.trees.length;j++) if(state.trees[j].type!=="exterior") return npGo(j,"h");   // 次の番号の高さへ
+  npClose(); toast("最後の番号まで入れました");
+}
+function npNextStem(){ const t=state.trees[NP.i]; if(!t||!t.kabu) return; const k=+NP.f.slice(1);
+  if(String(t.stems[k]||"").trim()==="") return toast("この幹の数字を入れてから");
+  const nx=t.stems.findIndex((v,j)=>j>k&&String(v).trim()==="");
+  npOpen(NP.i,"s"+(nx>=0?nx:t.stems.length)); }
+function npClose(){ const i=NP.i; NP.i=-1; document.getElementById("np").style.display="none"; document.body.classList.remove("npopen");
+  document.querySelectorAll(".npon").forEach(e=>e.classList.remove("npon")); if(npTidy(i)) refreshCard(i); }
+document.addEventListener("keydown",e=>{   // パソコンのキーボードでも打てる
+  if(NP.i<0) return;
+  if(/^[0-9]$/.test(e.key)||e.key===".") { npKey(e.key); e.preventDefault(); }
+  else if(e.key==="Backspace"){ npKey("del"); e.preventDefault(); }
+  else if(e.key==="Enter"||e.key==="Tab"){ npNext(); e.preventDefault(); }
+  else if(e.key==="Escape") npClose();
+});
 
 /* 起動 */
 document.getElementById("caseName").addEventListener("input",e=>{ state.caseName=e.target.value; markDirty(); });
