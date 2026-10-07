@@ -264,6 +264,10 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   .ocnt{ margin-left:auto; color:var(--sub); }
   .pleg{ display:flex; gap:12px; justify-content:center; font-size:13px; margin-top:6px; }
   .pleg i{ display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:4px; vertical-align:-1px; }
+  /* 書き出す前の入力漏れ */
+  .miss{ outline:3px solid #D62828 !important; outline-offset:1px; background:#FDECEC !important; }
+  .tree.missflash{ animation:missflash 1.6s ease-out; }
+  @keyframes missflash{ 0%,40%{ box-shadow:0 0 0 4px #D62828; } 100%{ box-shadow:0 0 0 0 rgba(214,40,40,0); } }
 </style>
 </head>
 <body>
@@ -3541,18 +3545,18 @@ function photosHTML(t,i){ const ph=(state.trees[i].photos)||[];
 function fieldsHTML(t,i){
   if(t.type==="exterior"){
     return `<div class="grid3">
-       <div class="fld" style="grid-column:1/3"><label>品名</label><input list="ilist" class="yellow" value="${esc(t.item)}" oninput="upd(${i},'item',this.value)" placeholder="例 土間コンクリート"></div>
-       <div class="fld"><label>数量</label><input class="yellow" inputmode="decimal" value="${esc(t.qty)}" oninput="upd(${i},'qty',this.value)" placeholder="例 25"></div>
-       <div class="fld"><label>単位</label><select class="yellow" onchange="upd(${i},'unit',this.value)">${opts([""].concat(UNITS),t.unit)}</select></div>
+       <div class="fld" style="grid-column:1/3"><label>品名</label><input list="ilist" class="yellow${mc(t,'item')}" value="${esc(t.item)}" oninput="upd(${i},'item',this.value)" placeholder="例 土間コンクリート"></div>
+       <div class="fld"><label>数量</label><input class="yellow${mc(t,'qty')}" inputmode="decimal" value="${esc(t.qty)}" oninput="upd(${i},'qty',this.value)" placeholder="例 25"></div>
+       <div class="fld"><label>単位</label><select class="yellow${mc(t,'unit')}" onchange="upd(${i},'unit',this.value)">${opts([""].concat(UNITS),t.unit)}</select></div>
        <div class="fld"><label>単価(円)</label><input class="yellow" inputmode="numeric" value="${esc(t.up)}" oninput="upd(${i},'up',this.value)" placeholder="任意"></div>
      </div>
      <div class="fld" style="margin-top:8px"><label>仕様・メモ</label><input value="${esc(t.memo)}" oninput="upd(${i},'memo',this.value)" placeholder="材料・寸法・仕上げ など"></div>`;
   }
   return `<div style="text-align:right;margin-bottom:6px"><button class="mic" onclick="voice(${i},this)">🎤音声</button></div>
      <div class="grid3">
-       <div class="fld"><label>樹種</label><input list="splist" class="yellow" value="${esc(t.species)}" oninput="upd(${i},'species',this.value)" placeholder="樹種"></div>
-       <div class="fld"><label>作業方針</label><select class="yellow" onchange="upd(${i},'work',this.value)">${opts(WORKS,t.work)}</select></div>
-       <div class="fld"><label>高さ (m)</label><input class="yellow numin" id="np-${i}-h" readonly inputmode="none" value="${esc(t.h)}" onclick="npOpen(${i},'h')" placeholder="タップで入力"></div>
+       <div class="fld"><label>樹種</label><input list="splist" class="yellow${mc(t,'species')}" value="${esc(t.species)}" oninput="upd(${i},'species',this.value)" placeholder="樹種"></div>
+       <div class="fld"><label>作業方針</label><select class="yellow${mc(t,'work')}" onchange="upd(${i},'work',this.value)">${opts(WORKS,t.work)}</select></div>
+       <div class="fld"><label>高さ (m)</label><input class="yellow numin${mc(t,'h')}" id="np-${i}-h" readonly inputmode="none" value="${esc(t.h)}" onclick="npOpen(${i},'h')" placeholder="タップで入力"></div>
        ${girthHTML(t,i)}
        <div class="fld"><label>単価(円)</label><input class="yellow" inputmode="numeric" value="${esc(t.up)}" oninput="upd(${i},'up',this.value)" placeholder="任意"></div>
      </div>
@@ -4027,9 +4031,9 @@ function kabuC(t){ const n=numsOf(t.stems), v=kabuSum(t); return v==null?"":v+"�
 function kabuText(t){ const n=numsOf(t.stems); if(!n.length) return "各幹の幹周を入れると、総和×0.7で幹周を出します"; return "（"+n.join("＋")+"）×0.7 ＝ "+kabuSum(t)+"　→　幹周 <b>"+esc(kabuC(t))+"</b>"; }
 function girthHTML(t,i){   // 幹周のマス（株立ちなら、幹ごとのマスと計算結果）
   const kb=`<button type="button" class="kabubtn ${t.kabu?"on":""}" onclick="toggleKabu(${i})">${t.kabu?"✓ 株立ち":"株立ち"}</button>`;
-  if(!t.kabu) return `<div class="fld"><label>幹周 (cm)${kb}</label><input class="yellow numin" id="np-${i}-c" readonly inputmode="none" value="${esc(t.c)}" onclick="npOpen(${i},'c')" placeholder="タップで入力"></div>`;
+  if(!t.kabu) return `<div class="fld"><label>幹周 (cm)${kb}</label><input class="yellow numin${mc(t,'c')}" id="np-${i}-c" readonly inputmode="none" value="${esc(t.c)}" onclick="npOpen(${i},'c')" placeholder="タップで入力"></div>`;
   const st=t.stems||[];
-  return `<div class="fld kabufld"><label>幹周 (cm)　株立ち：<span id="kabun-${i}">${numsOf(st).length}</span>本${kb}</label><div class="stems">`+
+  return `<div class="fld kabufld"><label>幹周 (cm)　株立ち：<span id="kabun-${i}">${numsOf(st).length}</span>本${kb}</label><div class="stems${mc(t,'c')}">`+
     st.map((v,k)=>`<button type="button" class="stem" id="np-${i}-s${k}" onclick="npOpen(${i},'s${k}')"><small>幹${k+1}</small>${esc(v)||"—"}</button>`).join("")+
     `<button type="button" class="stem add" onclick="npOpen(${i},'s${st.length}')">＋幹</button></div><div class="kabusum" id="kabusum-${i}">${kabuText(t)}</div></div>`;
 }
@@ -4066,7 +4070,7 @@ function npSet(v){   // 押したらすぐ反映（カードは描き直さず�
   NP.buf=v;
   if(NP.f[0]==="s"){ t.stems[+NP.f.slice(1)]=v; t.c=kabuC(t); const s=document.getElementById("kabusum-"+NP.i); if(s) s.innerHTML=kabuText(t); const kn=document.getElementById("kabun-"+NP.i); if(kn) kn.textContent=numsOf(t.stems).length;
     const el=document.getElementById("np-"+NP.i+"-"+NP.f); if(el) el.innerHTML="<small>幹"+(+NP.f.slice(1)+1)+"</small>"+(esc(v)||"—"); }
-  else { t[NP.f]=v; const el=document.getElementById("np-"+NP.i+"-"+NP.f); if(el) el.value=v; }
+  else { t[NP.f]=v; const el=document.getElementById("np-"+NP.i+"-"+NP.f); if(el){ el.value=v; if(v) el.classList.remove("miss"); } }
   markDirty(); npPaint();
 }
 function npKey(k){
@@ -4118,7 +4122,7 @@ function mkColor(t){ const p=prioOf(t); return p?PRIO_COLORS[p-1]:(anyPrio()?PRI
 function outFilter(){ const f=state.outFilter||{}; return { p:Array.isArray(f.p)?f.p:[1,2,3,0], renum:f.renum!==false }; }
 function outTrees(){
   const f=outFilter(), list=state.trees.map((t,i)=>({t,i})).filter(x=>f.p.includes(prioOf(x.t)));
-  return list.map((x,k)=>Object.assign({},x.t,{ __no:f.renum?k+1:x.i+1 }));
+  return list.map((x,k)=>Object.assign({},x.t,{ __no:f.renum?k+1:x.i+1, __i:x.i }));
 }
 const outAll=()=>outFilter().p.length===4;
 function outSuffix(){ if(outAll()) return ""; const n=prioNames(); return "_"+outFilter().p.slice().sort().map(p=>p?n[p-1]:"未設定").join(""); }
@@ -4158,6 +4162,29 @@ function prioLegendHTML(OT){   // 位置図の下の色の説明
   return `<div class="pleg">${used.map(k=>`<span><i style="background:${PRIO_COLORS[k-1]}"></i>優先度 ${esc(n[k-1])}</span>`).join("")}${OT.some(t=>!prioOf(t))?`<span><i style="background:${PRIO_NONE}"></i>未設定</span>`:""}</div>`;
 }
 
+/* ---------- 書き出す前の入力漏れチェック ----------
+   樹木：樹種・作業方針・高さ・幹周、外構：品名・数量・単位。単価は後から付けることが多いので見ない。
+   出力に選んだ番号だけを見る。抜けがあれば知らせ、「キャンセル」なら最初の番号へ移動して抜けたマスを赤く囲む。 */
+let SHOW_MISS=false;
+const MISS_LABEL={ species:"樹種", work:"作業方針", h:"高さ", c:"幹周", item:"品名", qty:"数量", unit:"単位" };
+const filled=x=>String(x==null?"":x).trim()!=="";
+function missingOf(t){ return (t.type==="exterior"?["item","qty","unit"]:["species","work","h","c"]).filter(k=>!filled(t[k])); }
+function mc(t,k){ return SHOW_MISS&&missingOf(t).includes(k)?" miss":""; }
+function checkBeforeExport(kind){
+  const list=outTrees().map(t=>({ t, m:missingOf(t) })).filter(x=>x.m.length);
+  if(!list.length){ if(SHOW_MISS){ SHOW_MISS=false; renderTrees(); } return true; }
+  const lines=list.slice(0,15).map(x=>"・"+x.t.__no+"番："+x.m.map(k=>MISS_LABEL[k]).join("・"));
+  if(list.length>15) lines.push("　ほか "+(list.length-15)+"件");
+  if(confirm(kind+"に書き出す前の確認\n入っていない項目があります（単価は確認していません）。\n\n"+lines.join("\n")+"\n\nこのまま書き出しますか？\n「キャンセル」で、入っていない番号へ移動します。")) return true;
+  SHOW_MISS=true; showTab("input"); renderTrees();
+  const el=document.querySelectorAll("#trees .tree")[list[0].t.__i];
+  if(el){ el.scrollIntoView({behavior:"smooth",block:"center"}); el.classList.remove("missflash"); void el.offsetWidth; el.classList.add("missflash"); }
+  toast("赤く囲んだマスが入っていません（"+list.length+"件）");
+  return false;
+}
+document.addEventListener("input",e=>{ if(e.target&&e.target.classList&&filled(e.target.value)) e.target.classList.remove("miss"); },true);
+document.addEventListener("change",e=>{ if(e.target&&e.target.classList&&filled(e.target.value)) e.target.classList.remove("miss"); },true);
+
 /* 起動 */
 document.getElementById("caseName").addEventListener("input",e=>{ state.caseName=e.target.value; markDirty(); });
 document.getElementById("caseDate").addEventListener("input",e=>{ state.caseDate=e.target.value; markDirty(); });
@@ -4192,6 +4219,7 @@ async function exportExcel(){
     state.caseName=document.getElementById('caseName').value;
     state.caseDate=document.getElementById('caseDate').value;
     if(!window.ExcelJS || !window.buildTreeWorkbook){ alert('Excel生成ライブラリを読み込めませんでした。'); return; }
+    if(!checkBeforeExport('Excel')) return;
     if(btn){ btn.textContent='作成中…'; btn.disabled=true; }
     var OT=outTrees(); if(!OT.length){ alert('出力に選んだ優先度の項目がありません。「出力」で選び直してください。'); if(btn){ btn.textContent='Excel書き出し'; btn.disabled=false; } return; }
     var stCopy = Object.assign({}, state); stCopy.trees = [];
@@ -4343,6 +4371,7 @@ async function exportPdf(){
   try{
     state.caseName=document.getElementById("caseName").value; state.caseDate=document.getElementById("caseDate").value;
     if(!window.surveyText){ alert("PDFの部品を読み込めませんでした。"); return; }
+    if(!checkBeforeExport("PDF")) return;
     if(btn){ btn.disabled=true; btn.textContent="PDF作成中…"; }
     const name=state.caseName||"", date=(state.caseDate||"").replace(/-/g,"/"), plan=pdfLayout(name,date), pages=[];
     const cv=document.createElement("canvas"); cv.width=PDF_W; cv.height=PDF_H;
