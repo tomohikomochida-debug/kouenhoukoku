@@ -95,6 +95,8 @@ dl.facts dd{margin:0}
 .route .sub{font-size:13px;color:var(--bark)}
 .route .btn{flex:none}
 .route.done .btn{background:var(--leaf-soft);color:var(--leaf);border-color:var(--leaf-soft)}
+.route{flex-wrap:wrap}
+.route .rdate{width:auto;flex:none;font-size:14px;padding:6px 8px}
 /* 履歴 */
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:10px}
 .seg button{flex:1;border:0;background:var(--card);font:inherit;font-size:14px;padding:8px 0;cursor:pointer;color:var(--bark)}
@@ -508,6 +510,7 @@ function renderResult(noScroll) {
   if (!noScroll) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function routeLine(x) {
+  if (x.type === 'calendar') return { ic: '📅', to: 'あなたのカレンダー（標準）', what: '【' + (x.kind || '期限') + '】' + (x.title || ''), sub: (x.whenText ? x.whenText + ' → ' : '') + (x.date ? md(x.date) : '日付を入れてください') + '（1週間前に通知）' };
   if (x.type === 'shop') return { ic: '🛒', to: '段取りの買い出し', what: (x.place || '店は未定') + '：' + x.items.map(i => i.name + (i.qty ? ' ' + i.qty + (i.unit || '') : '')).join('・'), sub: x.date ? md(x.date) + 'までに' : '日にちは仮で明日に入れます' };
   return { ic: '🗓', to: '段取りカード', what: (x.site || x.title || '予定') + (x.steps.length ? '：' + x.steps.join('、') : ''),
     sub: [x.date ? md(x.date) : (x.dateNote || '日にち未定'), x.members.length ? x.members.join('・') : '', x.items.length ? '持ち物 ' + x.items.map(i => i.name).join('・') : ''].filter(Boolean).join('　') };
@@ -515,10 +518,17 @@ function routeLine(x) {
 function routeRow(x, i) {
   const L = routeLine(x);
   return '<div class="route' + (x.done ? ' done' : '') + '"><span class="ic">' + L.ic + '</span><div class="grow"><div class="to">' + L.to + '</div><div class="what">' + esc(L.what) + '</div><div class="sub">' + esc(L.sub) + '</div></div>' +
-    '<button type="button" class="btn sm' + (x.done ? '' : ' primary') + '" data-route="' + i + '"' + (x.done ? ' disabled' : '') + '>' + (x.done ? '✓ 入れました' : (x.type === 'shop' ? '買い出しに入れる' : '段取りカードにする')) + '</button></div>';
+    (x.type === 'calendar' && !x.done ? '<input type="date" class="rdate" data-rdate="' + i + '" value="' + esc(x.date || '') + '" aria-label="日付">' : '') +
+    '<button type="button" class="btn sm' + (x.done ? '' : ' primary') + '" data-route="' + i + '"' + (x.done ? ' disabled' : '') + '>' + (x.done ? '✓ 入れました' : routeVerb(x)) + '</button></div>';
+}
+function routeVerb(x) { return x.type === 'shop' ? '買い出しに入れる' : x.type === 'calendar' ? 'カレンダーに入れる' : '段取りカードにする'; }
+function routeDateChanged(el) {
+  const x = RESULT && RESULT.routes[Number(el.dataset.rdate)]; if (!x) return;
+  x.date = el.value; const sub = el.closest('.route').querySelector('.sub'); if (sub) sub.textContent = routeLine(x).sub; keepResult();
 }
 async function doRoute(i, btn) {
   const x = RESULT.routes[i]; if (!x || x.done) return;
+  if (x.type === 'calendar' && !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '')) return toast('日付を入れてください');
   if (!me()) return chooseName(true, () => doRoute(i));
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loading"></span>'; }
   const items = x.items.map(it => { const w = matchWord(it.name, toolWords(true)); const t = w && termById(w.termId); const tool = t && toolOfTerm(t.termId); return { name: t ? t.term : it.name, termId: t ? t.termId : '', toolId: tool ? tool.id : '', qty: it.qty || '', unit: it.unit || '' }; });
@@ -526,10 +536,10 @@ async function doRoute(i, btn) {
     const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'route', route: Object.assign({}, x, { items }), by: me(), memoBy: me() });
     if (!r.ok) throw new Error(r.error);
     x.done = r.date || 'ok'; x.cardId = r.cardId;
-    toast(x.type === 'shop' ? '段取りの買い出しに入れました' : (r.merged ? '段取りの同じ日のカードに足しました' : '段取りカードを作りました'));
+    toast(x.type === 'calendar' ? 'カレンダー「' + (r.calendar || '') + '」に入れました（' + md(x.date) + '）' : x.type === 'shop' ? '段取りの買い出しに入れました' : (r.merged ? '段取りの同じ日のカードに足しました' : '段取りカードを作りました'));
     renderResult();
     if (RESULT.savedId) { RESULT._quiet = true; save(false).finally(() => { RESULT._quiet = false; }); }   // 記録済みなら、どこに入れたかも記録に残す
-  } catch (e) { toast(/unknown mode/.test(e.message || '') ? '共通GASの更新後に使えます' : (e.message || NET_ERR)); if (btn) { btn.disabled = false; btn.textContent = x.type === 'shop' ? '買い出しに入れる' : '段取りカードにする'; } }
+  } catch (e) { toast(/unknown mode/.test(e.message || '') ? '共通GASの更新後に使えます' : (e.message || NET_ERR)); if (btn) { btn.disabled = false; btn.textContent = routeVerb(x); } }
 }
 function busyBtn() {   // まとめ中の経過秒数を出す（長いときは混み合いを知らせる）
   const b = $('goBtn'), t0 = Date.now(); b.disabled = true;
@@ -549,9 +559,9 @@ function applyResult(r, text, previous) {
     r.needs = r.needs.map(n => typeof n === 'string' ? { name: n } : n).filter(n => n && n.name);
     r.words = r.words.filter(w => w && w.said && w.term && norm(w.said) !== norm(w.term));
     const official = it => { const w = matchWord(it.name, toolWords(true)); const t = w && termById(w.termId); return Object.assign({}, it, { name: t ? t.term : it.name }); };   // 社内の呼び方を正式名に
-    r.routes = arr(r.routes).filter(x => x && (x.type === 'plan' || x.type === 'shop'))
+    r.routes = arr(r.routes).filter(x => x && (x.type === 'plan' || x.type === 'shop' || (x.type === 'calendar' && isAdmin())))   // カレンダーは親方だけ
       .map(x => Object.assign({ items: [], steps: [], notes: [], members: [] }, x, { items: arr(x.items).filter(i => i && i.name).map(official), steps: arr(x.steps), notes: arr(x.notes), members: arr(x.members), done: '' }))
-      .filter(x => x.type === 'plan' || x.items.length);
+      .filter(x => x.type !== 'shop' || x.items.length);
     const keep = previous && RESULT ? { savedId: RESULT.savedId || '', localId: RESULT.localId || '' } : { savedId: '', localId: '' };   // 聞き返しに答えたときは、同じ記録を上書きする
     if (previous && RESULT) (RESULT.routes || []).filter(x => x.done).forEach(x => { if (!r.routes.some(y => y.type === x.type && routeLine(y).what === routeLine(x).what)) r.routes.push(x); else r.routes.find(y => y.type === x.type && routeLine(y).what === routeLine(x).what).done = x.done; });
     RESULT = Object.assign(r, keep, { rawText: text, to: TO, savedMsg: null });
@@ -912,6 +922,9 @@ $('result').addEventListener('click', e => {
   if (e.target.closest('#saveBtn')) return save();
   if (e.target.closest('#moreBtn')) return openAnswer('');
   const rt = e.target.closest('[data-route]'); if (rt) return doRoute(Number(rt.dataset.route), rt);
+});
+$('result').addEventListener('change', e => {
+  const d = e.target.closest('[data-rdate]'); if (d) routeDateChanged(d);
 });
 $('listSeg').addEventListener('click', e => { const b = e.target.closest('[data-seg]'); if (!b) return; SEG = b.dataset.seg; document.querySelectorAll('#listSeg button').forEach(x => x.classList.toggle('on', x === b)); renderList(); });
 $('memoList').addEventListener('click', e => {

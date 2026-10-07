@@ -896,11 +896,12 @@ function summarizeCore_(b) {
     '・routes は、話の中で「ほかのアプリに入れるとよいもの」を行き先ごとに分けたもの（なければ空の配列）：\n' +
     '  - type "plan"：これからやる予定（「金曜に続きをやりたい」「明日は〇〇公園で剪定」）。段取りカードになる。date（YYYY-MM-DD、分からなければ空）、dateNote（「金曜あたり」「今週中に」など話した言い方）、site（現場マスタの名前。現場のない用事なら空にして title に短い名前）、members（名簿の名前。話に出た人だけ）、steps（作業を順に短く）、items（持って行く道具・資材、辞書の正式名）、notes（注意点）。済んだことや今日やったことは入れない\n' +
     '  - type "shop"：買う・取ってくる・補充する物（「土のう袋が足りない」「竹を10本買っておいて」）。date（いつまでに必要か、分からなければ空）、place（取引先の正式名、分からなければ空）、items [{name, qty, unit}]（辞書の正式名）\n' +
+    '  - type "calendar"：お客さんとの時期の約束（「この仕事は10月頃にやりましょう」）や見積の期限（「見積は20日までに欲しい」）など、親方が覚えておくべき先の日付。kind（"時期の約束"・"見積期限"・"期限" のどれか）、title（お客さん・現場と内容を短く。例：「〇〇邸 生垣の刈込」）、whenText（話した言い方そのまま。例：「10月頃」「10月下旬」「20日まで」）、date（YYYY-MM-DD。「〇月頃」「〇月中」「〇月上旬」はその月の1日、「中旬」は11日、「下旬」は21日、日付が言われたらその日。過ぎた月なら来年）、note（話の中の補足）\n' +
     '  - 1つの話に予定や買う物がいくつもあれば、日付・現場・店ごとに分ける。話に出ていないことは入れない\n' +
     '・message は宛先にそのまま送れる文。' + (to === '自分用メモ' ? '自分用のメモなので、短い箇条書き（「・」で始める）' : 'LINEで送る短い文。です・ます調で3〜6行。最初の1行で用件が分かるように。宛先が親方なら「親方、」、みんななら「みなさん、」で始める') + '。missing の内容は勝手に埋めない\n' +
     'JSONだけ返す：{"kind":"","headline":"","points":[""],"needs":[{"name":"正式名","qty":数または空,"unit":"","why":""}],"vehicles":["車両名"],' +
     '"site":"","when":"YYYY-MM-DD または空","whenNote":"","people":["名簿の名前"],"missing":["質問"],"words":[{"said":"","term":""}],"corrections":[""],"message":"",' +
-    '"routes":[{"type":"plan","date":"","dateNote":"","site":"","title":"","members":[],"steps":[],"items":[{"name":"","qty":"","unit":""}],"notes":[]},{"type":"shop","date":"","place":"","items":[{"name":"","qty":"","unit":""}]}]}\n\n' +
+    '"routes":[{"type":"calendar","kind":"","title":"","whenText":"","date":"","note":""},{"type":"plan","date":"","dateNote":"","site":"","title":"","members":[],"steps":[],"items":[{"name":"","qty":"","unit":""}],"notes":[]},{"type":"shop","date":"","place":"","items":[{"name":"","qty":"","unit":""}]}]}\n\n' +
     '名簿（正式な名前（呼び名））：\n' + (b.roster || '') + '\n' +
     '現場マスタ：\n' + (b.masterSites || []).join('、') + '\n' +
     (b.vehicles ? '車両一覧（名前：呼び方）：\n' + b.vehicles + '\n' : '') +
@@ -916,13 +917,14 @@ function summarizeCore_(b) {
     kind: MEMO_KINDS.indexOf(j.kind) >= 0 ? j.kind : 'その他', headline: String(j.headline || ''), points: arr(j.points).map(String),
     needs: arr(j.needs), vehicles: arr(j.vehicles).map(String), site: String(j.site || ''), when: String(j.when || ''), whenNote: String(j.whenNote || ''),
     people: arr(j.people).map(String), missing: arr(j.missing).map(String).slice(0, 4), words: arr(j.words), corrections: arr(j.corrections).map(String), message: String(j.message || ''),
-    routes: arr(j.routes).filter(function (r) { return r && (r.type === 'plan' || (r.type === 'shop' && arr(r.items).length)); })
+    routes: arr(j.routes).filter(function (r) { return r && (r.type === 'plan' || r.type === 'calendar' || (r.type === 'shop' && arr(r.items).length)); })
   } };
 }
 /* 行き先ごとに入れる：予定 → 段取りカード、買う物 → 段取りの買い出し（立ち寄り先つきの「買い出し」カード）
    同じ日・同じ現場（または同じ名前の用事）のカードがすでにあれば、そこに追記する */
 function route_(r, by, memoBy) {
   r = r || {};
+  if (r.type === 'calendar') return calendarRoute_(r, by);
   var today = ymd_(new Date()), date = /^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? r.date : '';
   var from = '（要点まとめ：' + (memoBy || by || '') + 'より）';
   var list = cards_(), card;
@@ -949,6 +951,19 @@ function route_(r, by, memoBy) {
   }
   var res = saveCards_([card], by);
   return { ok: true, cardId: (res.cardIds || [])[0] || '', date: card.date, merged: !!card.cardId && list.some(function (c) { return c.cardId === card.cardId; }) };
+}
+/* 親方の標準カレンダー（マイカレンダーの「持田智彦」＝青）に、時期の約束・見積期限を終日の予定で入れる。
+   現場カレンダー・出勤調整カレンダー（みんなが見る）には入れない。入れられるのは親方だけ。
+   別のカレンダーにしたいときは、スクリプト プロパティ MEMO_CALENDAR にカレンダーの名前を書く */
+function calendarRoute_(r, by) {
+  if (!isAdmin_(by)) return { ok: false, error: 'カレンダーに入れられるのは' + admins_().join('・') + 'だけです' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) return { ok: false, error: '日付がありません' };
+  var name = prop_('MEMO_CALENDAR', ''), cal = name ? (CalendarApp.getCalendarsByName(name)[0] || null) : CalendarApp.getDefaultCalendar();
+  if (!cal) return { ok: false, error: 'カレンダー「' + name + '」が見つかりません' };
+  var kind = r.kind || '期限', title = '【' + kind + '】' + (r.title || '') + (r.whenText ? '（' + r.whenText + '）' : '');
+  var ev = cal.createAllDayEvent(title, day_(r.date), { description: [r.note || '', '要点まとめから登録（' + now_() + '・' + (by || '') + '）'].filter(String).join('\n') });
+  try { ev.removeAllReminders(); ev.addPopupReminder(Number(prop_('MEMO_REMIND_DAYS', '7')) * 24 * 60); } catch (e) {}
+  return { ok: true, eventId: ev.getId(), date: r.date, calendar: cal.getName() };
 }
 function memoList_(days) {
   var from = Utilities.formatDate(new Date(Date.now() - days * 86400000), TZ, 'yyyy-MM-dd');
