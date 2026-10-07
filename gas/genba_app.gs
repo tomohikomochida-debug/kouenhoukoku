@@ -1972,12 +1972,21 @@ var SEED_ALIASES = [["手入れ","ていれ","Y0001","別名"],
  *  手がかり：用語集（正式名と社内の呼び方）・現場名・これまでの日報の業務内容
  * ================================================================ */
 function fixVocab_() {
-  var cache = CacheService.getScriptCache(), hit = cache.get('fixvocab_v1');
+  var cache = CacheService.getScriptCache(), hit = cache.get('fixvocab_v2');
   if (hit) return JSON.parse(hit);
   var al = {};
   rows_('aliases').forEach(function (a) { if (String(a.state || '') === '却下') return; (al[a.termId] = al[a.termId] || []).push(String(a.alias)); });
   var terms = rows_('terms').map(function (t) { var a = al[t.termId] || []; return String(t.term) + (a.length ? '（' + a.slice(0, 6).join('/') + '）' : ''); }).join('、');
-  var sites = ''; try { sites = siteList_().map(function (s) { return String(s.name); }).join('、'); } catch (e) {}
+  var sites = ''; try { sites = siteList_().map(function (s) { return String(s.name) + (s.aliases ? '（' + String(s.aliases).split(/[｜|、,，]/).slice(0, 4).join('/') + '）' : ''); }).join('、'); } catch (e) {}
+  // 道具・資材（道具マスタ：用語集の正式名と社内の呼び方）
+  var tn = {}; rows_('terms').forEach(function (t) { tn[t.termId] = String(t.term); });
+  var tools = [], seenT = {};
+  rows_('tools').forEach(function (t) { var n = tn[t.termId]; if (!n || seenT[n]) return; seenT[n] = 1; var a = al[t.termId] || []; tools.push(n + (a.length ? '（' + a.slice(0, 6).join('/') + '）' : '')); });
+  // 取引先（正式名（読み・呼び方））と扱う品
+  var sups = rows_('suppliers').filter(function (x) { return x && x.name; }).map(function (x) {
+    var a = [x.kana].concat(String(x.aliases || '').split(/[、,，]/)).map(function (v) { return String(v || '').trim(); }).filter(String);
+    return String(x.name) + (a.length ? '（' + a.slice(0, 5).join('/') + '）' : '') + (x.items ? '：' + String(x.items).slice(0, 40) : '');
+  });
   var works = [];
   try {   // これまでの日報の業務内容（よく使う書き方の見本。新しい順・重ならないもの）
     var ss = SpreadsheetApp.openById(prop_('NIPPOU_SHEET_ID', NIPPOU_SHEET_ID)), sh = ss.getSheetByName('日報データ');
@@ -1989,8 +1998,8 @@ function fixVocab_() {
       }
     }
   } catch (e) {}
-  var v = { terms: terms.slice(0, 30000), sites: sites.slice(0, 8000), works: works.join('／').slice(0, 9000) };
-  try { cache.put('fixvocab_v1', JSON.stringify(v), 600); } catch (e) {}
+  var v = { terms: terms.slice(0, 26000), sites: sites.slice(0, 8000), tools: tools.join('、').slice(0, 8000), suppliers: sups.join('\n').slice(0, 8000), works: works.join('／').slice(0, 9000) };
+  try { cache.put('fixvocab_v2', JSON.stringify(v), 600); } catch (e) {}
   return v;
 }
 function fixText_(b) {
@@ -2004,12 +2013,15 @@ function fixText_(b) {
     '・「えー」「あの」「えっと」などの言いよどみと、同じ言葉のくり返しは取る\n' +
     '・造園の用語・社内の呼び方は、下の用語集の正式な書き方に直す（音の近い聞き間違いも直す。例：「女装」→「除草」、「周層」→「集草」、「未消木」→「実生木」）\n' +
     '・現場名は現場の一覧の書き方に合わせる\n' +
+    '・道具・機械・資材の名前は道具の一覧の正式名に、お店・業者・処分場などの名前は取引先の一覧の正式名に直す（呼び方・聞き間違いも）\n' +
     '・数字は半角。句読点は日報らしく最小限\n' +
     '・自信がない所は直さずそのまま\n' +
     'JSONだけ返す：{"text":"直した文","changes":[{"from":"元の言葉","to":"直した言葉"}]}（changes は直した所だけ。言いよどみを取っただけの所は入れない）\n\n' +
     (b.site ? 'この日報の現場：' + b.site + '\n' : '') +
     '用語集（正式名（社内の呼び方））：\n' + v.terms + '\n\n' +
-    '現場の一覧：\n' + v.sites + '\n\n' +
+    '現場の一覧（正式名（別名））：\n' + v.sites + '\n\n' +
+    (v.tools ? '道具・資材の一覧（正式名（社内の呼び方））：\n' + v.tools + '\n\n' : '') +
+    (v.suppliers ? '取引先の一覧（正式名（読み・呼び方）：扱う品）：\n' + v.suppliers + '\n\n' : '') +
     'これまでの日報の業務内容（書き方の見本）：\n' + v.works + '\n\n' +
     '音声入力した文：\n' + text;
   var j = gemini_(prompt, { fast: true, models: ['gemini-2.5-flash-lite', 'gemini-2.5-flash'] });
