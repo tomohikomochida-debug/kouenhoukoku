@@ -102,6 +102,17 @@ a.tag{text-decoration:none}
 .load-row .grow{flex:1;min-width:0}
 .tg{border:1px solid var(--line);background:var(--field);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;color:var(--bark);min-width:70px}
 .tg.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.tg.part{background:#FBEDED;border-color:var(--danger);color:var(--danger)}
+.tg.sm{min-width:0;padding:4px 9px;font-size:12px;font-weight:600}
+.outband{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font:inherit;background:var(--danger);color:#fff;border:0;border-radius:10px;padding:11px 14px;margin-bottom:12px;cursor:pointer;font-size:15px;font-weight:700}
+.outband span{margin-left:auto;font-size:13px;font-weight:400;opacity:.9}
+.outcard{border-left:6px solid var(--danger)}
+.outcard h2{color:var(--danger)}
+.vehhd{font-size:13px;font-weight:700;color:var(--bark);margin:8px 0 0;padding-top:8px;border-top:1px dashed var(--line)}
+.vehhd:first-of-type{border-top:0;padding-top:0}
+.tag.use{background:#EEE9DF;color:var(--bark)}
+.numgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}
+.numgrid .btn{height:48px;font-size:18px;padding:0}
 .steps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:14.5px}
 .steps span.s{background:var(--leaf-soft);color:var(--leaf);border-radius:8px;padding:3px 10px;font-weight:700}
 .raw{font-size:13px;color:var(--bark);white-space:pre-wrap;background:var(--field);border-radius:8px;padding:10px}
@@ -171,7 +182,7 @@ const YOUGO_URL = GAS_URL;  // 用語集（app=yougo：言葉のマスタ）
 const DOUGU_URL = GAS_URL;  // 道具管理（app=dougu：保管場所・持ち出し状況）
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
 const DEMO = !GAS_URL || !YOUGO_URL || !DOUGU_URL;
-const LS = { me: 'dandori_me', cards: 'dandori_demo_v1', words: 'yougo_demo_v1', tools: 'dougu_demo_v3', cache: 'dandori_cache', draft: 'dandori_draft', timed: 'dandori_timed' };
+const LS = { me: 'dandori_me', cards: 'dandori_demo_v1', words: 'yougo_demo_v1', tools: 'dougu_demo_v3', cache: 'dandori_cache', draft: 'dandori_draft', timed: 'dandori_timed', outs: 'dandori_outs_demo' };
 const NET_ERR = '電波を確認して、もう一度お試しください';
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 const DEMO_STAFF = ['持田', '樋上', '甲斐', '菱沼', '杉村', '佐藤'];
@@ -392,7 +403,7 @@ function demoCalendar() {   // 今日を起点にしたサンプルの予定（�
 }
 
 /* ============ データ ============ */
-let CARDS = [], CAL = { sites: [], holidays: [] }, STAFF = [], WORDS = { terms: [], aliases: [] }, TOOLS = [], SUP = [], VEH = [];   // SUP：取引先、VEH：車両
+let CARDS = [], CAL = { sites: [], holidays: [] }, STAFF = [], WORDS = { terms: [], aliases: [] }, TOOLS = [], SUP = [], VEH = [], OUTS = [];   // SUP：取引先、VEH：車両、OUTS：まだ戻っていない持ち出し（日付をまたいで全部）
 let SEL = new Date().getHours() >= 12 ? addDays(TODAY, 1) : TODAY;   // 午後は明日を開く（夕方の段取り用）
 let TAB = 'plan';
 
@@ -416,18 +427,19 @@ async function load() {
       CAL = demoCalendar(); applyTimed();
       SUP = lsGet('torihiki_demo_v1', []); VEH = (lsGet('sharyo_demo_v1', { vehicles: [] }) || {}).vehicles || [];
       const x = demoWordsAndTools(); WORDS = x.w; TOOLS = x.t;
+      OUTS = lsGet(LS.outs, []).filter(o => o.state === '持ち出し');
     } else {
       const [c, cal, w, t] = await Promise.all([
         getJSON(GAS_URL + '?app=dandori&action=data'), getJSON(GAS_URL + '?app=dandori&action=calendar&from=' + addDays(TODAY, -1) + '&to=' + addDays(TODAY, 21)),
         getJSON(YOUGO_URL + '?app=yougo&action=data'), getJSON(DOUGU_URL + '?app=dougu&action=data')]);
       [c, cal, w, t].forEach(r => { if (!r.ok) throw new Error(r.error || '読み込み失敗'); });
-      CARDS = c.cards; NICK = c.nicknames || []; SUP = c.suppliers || []; VEH = c.vehicles || []; CAL = { sites: cal.sites, holidays: cal.holidays, timed: cal.timed || [] }; applyTimed(); WORDS = { terms: w.terms, aliases: w.aliases }; TOOLS = t.tools;
-      lsSet(LS.cache, { CARDS, NICK, CAL, WORDS, TOOLS, SUP, VEH });
+      CARDS = c.cards; NICK = c.nicknames || []; SUP = c.suppliers || []; VEH = c.vehicles || []; CAL = { sites: cal.sites, holidays: cal.holidays, timed: cal.timed || [] }; applyTimed(); WORDS = { terms: w.terms, aliases: w.aliases }; TOOLS = t.tools; OUTS = c.outs || [];
+      lsSet(LS.cache, { CARDS, NICK, CAL, WORDS, TOOLS, SUP, VEH, OUTS });
       moveDemoNicks();
     }
   } catch (e) {
     const c = lsGet(LS.cache, null);
-    if (c) { ({ CARDS, CAL, WORDS, TOOLS } = c); NICK = c.NICK || []; SUP = c.SUP || []; VEH = c.VEH || []; applyTimed(); toast('前回のデータを表示しています（' + NET_ERR + '）'); }
+    if (c) { ({ CARDS, CAL, WORDS, TOOLS } = c); NICK = c.NICK || []; SUP = c.SUP || []; VEH = c.VEH || []; OUTS = c.OUTS || []; applyTimed(); toast('前回のデータを表示しています（' + NET_ERR + '）'); }
     else showError('データを読み込めませんでした。' + NET_ERR);
   }
   STAFF = staffList();   // 覚えている名簿ですぐ表示し、最新の名簿は裏で取る
@@ -446,10 +458,6 @@ async function saveCards(cards) {
 async function deleteCard(id) {
   if (DEMO) { CARDS = CARDS.filter(c => c.cardId !== id); lsSet(LS.cards, CARDS); return; }
   const r = await postJSON(GAS_URL, { app: 'dandori', mode: 'deleteCard', cardId: id }); if (!r.ok) throw new Error(r.error); await load();
-}
-async function setToolStatus(toolId, patch) {   // 積み込み／戻し → 道具管理の持ち出し状況
-  if (DEMO) { const t = TOOLS.find(x => x.id === toolId); if (t) Object.assign(t, patch); lsSet(LS.tools, TOOLS); return; }
-  const r = await postJSON(DOUGU_URL, { app: 'dougu', mode: 'updateTool', id: toolId, patch, by: me() }); if (!r.ok) throw new Error(r.error);
 }
 
 /* ============ 言葉・道具の照合 ============ */
@@ -832,7 +840,7 @@ function noticeHtml() {   // お知らせ：日付に関係なく、期限まで
       esc([c.createdBy, c.updatedAt ? md(String(c.updatedAt).slice(0, 10)) : ''].filter(Boolean).join('・')) + (c.date ? '　' + md(c.date) + 'まで' : '') + '</div></button>').join('') + '</div>';
 }
 function renderPlan() {
-  $('notices').innerHTML = noticeHtml();
+  $('notices').innerHTML = outBand() + noticeHtml();
   $('holLine').innerHTML = holHtml(SEL);
   const cards = CARDS.filter(c => c.date === SEL && c.kind !== 'notice');
   const evs = []; CAL.sites.filter(s => s.date === SEL).forEach(s => { if (!evs.some(e => e.title === s.title)) evs.push(s); });
@@ -999,8 +1007,8 @@ function drawCard() {
     '<label class="lbl">現場' + (c.kind === 'task' ? '（あれば）' : '') + '</label><input type="text" id="cSite" value="' + esc(c.site) + '" list="siteList"><datalist id="siteList">' + Array.from(new Set(evs.map(e => e.title).concat(masterSites()))).map(t => '<option value="' + esc(t) + '">').join('') + '</datalist>' +
     holHtml(c.date).replace('holline', 'holline" style="margin-top:10px') +
     '<label class="lbl">メンバー</label><div class="chips">' + STAFF.map(n => '<button type="button" class="chip' + (c.staff.includes(n) ? ' on' : '') + (off.includes(n) ? ' off' : '') + '" data-mem="' + esc(n) + '">' + esc(n) + (off.includes(n) ? '（休）' : '') + '</button>').join('') + '</div>' +
-    '<label class="lbl">車両</label><input type="text" id="cVeh" value="' + esc(c.vehicle) + '" placeholder="例：2tダンプ" list="vehList"><datalist id="vehList">' + activeVehicles(c.date).map(v => '<option value="' + esc(v.name) + '">').join('') + '</datalist>' +
-    (activeVehicles(c.date).length ? '<div class="chips" style="margin-top:6px">' + activeVehicles(c.date).map(v => '<button type="button" class="chip' + (c.vehicle === v.name ? ' on' : '') + '" data-veh="' + esc(v.name) + '">' + esc(v.name) + (v.ownership === 'レンタル' ? '（レ）' : '') + '</button>').join('') + '</div>' : '') +
+    '<label class="lbl">車両（2台以上なら全部選ぶ）</label><input type="text" id="cVeh" value="' + esc(c.vehicle) + '" placeholder="例：2tダンプ・軽トラ" list="vehList"><datalist id="vehList">' + activeVehicles(c.date).map(v => '<option value="' + esc(v.name) + '">').join('') + '</datalist>' +
+    (activeVehicles(c.date).length ? '<div class="chips" style="margin-top:6px">' + activeVehicles(c.date).map(v => '<button type="button" class="chip' + (vehList(c).includes(v.name) ? ' on' : '') + '" data-veh="' + esc(v.name) + '">' + esc(v.name) + (v.ownership === 'レンタル' ? '（レ）' : '') + '</button>').join('') + '</div>' : '') +
     '<label class="lbl">🛒 立ち寄り・買い出し（順番）</label><div class="card" style="padding:4px 12px">' + (c.stops.length ? c.stops.map((s, i) => '<div class="list-row"><div class="grow"><b>' + '①②③④⑤⑥⑦⑧⑨'[i] + ' ' + esc(s.place) + '</b><div class="hint">' + (s.items.map(it => esc(it.name) + (it.qty ? ' ' + it.qty + (it.unit || '') : '')).join('・') || '—') + '</div></div><button class="x" data-del-stop="' + i + '">✕</button></div>').join('') : '<div class="empty" style="padding:10px">なし</div>') + '</div>' +
     '<div class="row2"><input type="text" id="addStop" placeholder="例：竹屋 竹15本"><button class="btn sm" data-act="addStop" style="flex:none">追加</button></div>' +
     '<label class="lbl">🧰 持ち物</label><div class="card" style="padding:4px 12px">' + (c.items.length ? c.items.map((it, i) => { const t = TOOLS.find(x => x.id === it.toolId); return '<div class="list-row"><div class="grow">' + esc(it.name) + (t ? '<span class="tag loc">' + esc(t.location) + '</span>' : '<a class="tag warn" href="dougu.html?add=' + encodeURIComponent(it.name) + '" target="_blank" rel="noopener">' + (it.termId ? '未登録 → 道具管理で登録' : '用語集にない → 道具管理で登録') + '</a>') + '</div><div class="q"><button data-q="' + i + '" data-d="-1">－</button><span class="tnum" style="min-width:28px;text-align:center">' + (it.qty || '—') + '</span><button data-q="' + i + '" data-d="1">＋</button></div><button class="x" data-del-item="' + i + '">✕</button></div>'; }).join('') : '<div class="empty" style="padding:10px">なし</div>') + '</div>' +
@@ -1016,13 +1024,13 @@ function drawCard() {
   openModal(h, async e => {
     const b = e.target.closest('button'); if (!b) return;
     collect();
-    if (b.dataset.veh) { EDIT.vehicle = EDIT.vehicle === b.dataset.veh ? '' : b.dataset.veh; return drawCard(); }
+    if (b.dataset.veh) { const vs = vehList(EDIT), n = b.dataset.veh; EDIT.vehicle = (vs.includes(n) ? vs.filter(x => x !== n) : vs.concat(n)).join('・'); return drawCard(); }
     if (b.dataset.mem) { const n = b.dataset.mem; EDIT.staff = EDIT.staff.includes(n) ? EDIT.staff.filter(x => x !== n) : EDIT.staff.concat(n); if (offNames(EDIT.date).includes(n) && EDIT.staff.includes(n)) toast(n + 'さんはこの日休みです'); return drawCard(); }
     if (b.dataset.delStop) { EDIT.stops.splice(Number(b.dataset.delStop), 1); EDIT.stops.forEach((s, i) => { s.order = i + 1; }); return drawCard(); }
     if (b.dataset.delItem) { EDIT.items.splice(Number(b.dataset.delItem), 1); return drawCard(); }
     if (b.dataset.q) { const it = EDIT.items[Number(b.dataset.q)]; it.qty = Math.max(0, (Number(it.qty) || (Number(b.dataset.d) > 0 ? 0 : 1)) + Number(b.dataset.d)) || ''; return drawCard(); }
     if (b.dataset.act === 'addStop') { const v = $('addStop').value.trim(); if (!v) return; const [place, ...rest] = v.split(/[\s　]+/); EDIT.stops.push({ order: EDIT.stops.length + 1, place, done: false, items: rest.join(' ') ? findItemsLoose(rest.join(' ')) : [] }); return drawCard(); }
-    if (b.dataset.act === 'addItem') { const v = $('addItem').value.trim(); if (!v) return; v.split(/[、,，]/).map(s => s.trim()).filter(Boolean).forEach(s => { const m = s.match(/^(.+?)\s*(\d+)?\s*(本|個|台|束|枚)?$/); const name = m[1], w = matchWord(name), t = w && toolOfTerm(w.termId); EDIT.items.push({ name: w ? termById(w.termId).term : name, termId: w ? w.termId : '', toolId: t ? t.id : '', qty: m[2] ? Number(m[2]) : '', unit: m[3] || '', loaded: false, returned: false }); }); return drawCard(); }
+    if (b.dataset.act === 'addItem') { const v = $('addItem').value.trim(); if (!v) return; parseItems(v).forEach(it => EDIT.items.push(it)); return drawCard(); }
     if (b.dataset.act === 'share') return shareCard(EDIT);
     if (b.dataset.act === 'done') {
       if (EDIT.doneAt) { EDIT.doneAt = ''; EDIT.doneBy = ''; } else { EDIT.doneAt = nowStr(); EDIT.doneBy = me() || ''; }
@@ -1059,8 +1067,8 @@ function cardText(c) {
   if (c.notes.length) { L.push('■注意'); c.notes.forEach(n => L.push('・' + n)); }
   return L.join('\n');
 }
-function shareCard(c) {
-  const text = cardText(c);
+function shareCard(c) { shareText(cardText(c)); }
+function shareText(text) {
   if (navigator.share) navigator.share({ text }).catch(() => { });
   else location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent(text);
 }
@@ -1128,26 +1136,225 @@ async function toggleShop(key) {
   try { await saveCards([c]); } catch (e) { toast(NET_ERR); }
 }
 
-/* ============ 積み込み／戻し ============ */
-function renderLoad() {
-  const cards = CARDS.filter(c => c.date === SEL && c.items.length);
-  $('loadList').innerHTML = cards.length ? '<p class="hint" style="margin:0 2px 10px">積んだら「積んだ」、帰って片付けたら「戻した」。道具管理の「今どこ」に反映されます。</p>' + cards.map(c => '<div class="card"><h2>' + esc(c.site || '現場未定') + '<span class="tag site">' + md(c.date) + '</span></h2>' +
-    c.items.map((it, i) => { const t = TOOLS.find(x => x.id === it.toolId); return '<div class="load-row"><div class="grow"><b>' + esc(it.name) + '</b>' + (it.qty ? ' <span class="tnum">' + it.qty + (it.unit || '') + '</span>' : '') + '<div class="hint">' + (t ? '📍 ' + esc(t.location) + (t.status && t.status !== '倉庫' ? '　<span class="tag warn">' + esc(t.statusSite || '持ち出し中') + '</span>' : '') : '道具管理に未登録') + '</div></div>' +
-      '<button class="tg' + (it.loaded ? ' on' : '') + '" data-load="' + esc(c.cardId) + '|' + i + '|loaded">積んだ</button><button class="tg' + (it.returned ? ' on' : '') + '" data-load="' + esc(c.cardId) + '|' + i + '|returned">戻した</button></div>'; }).join('') + '</div>').join('')
-    : '<div class="empty">' + md(SEL) + ' の持ち物はありません</div>';
+/* ============ 積み込み／戻し ============
+ * 積んだ1回を「持ち出し」として記録し、戻した数と照合する（GAS：dandori:loadItem）。
+ * 道具管理の「今どこ」と、日付をまたいだ未返却の警告は、この記録から出す。
+ *  ・戻す道具：積んだ数だけ戻るまで「未返却」に残る
+ *  ・使い切り：積むだけ。余って戻ってきたら「余りを戻す」で数を入れる（警告は出さない）
+ */
+const KIND_USE = '使い切り', KIND_BACK = '戻す';
+function itemKind(it) {   // 道具管理で決めた管理方法 → なければ用語集の分類（資材は使い切り）
+  if (it.kind) return it.kind;
+  const t = it.toolId && TOOLS.find(x => x.id === it.toolId); if (t && t.kind) return t.kind;
+  const w = it.termId && termById(it.termId); if (w && w.category === '資材') return KIND_USE;
+  return KIND_BACK;
 }
-async function toggleLoad(key) {
-  const [id, i, f] = key.split('|'), c = CARDS.find(x => x.cardId === id); if (!c) return;
-  const it = c.items[Number(i)]; it[f] = !it[f];
-  if (f === 'returned' && it.returned) it.loaded = true;
-  renderLoad();
-  try {
-    if (it.toolId) {
-      if (f === 'loaded' && it.loaded && !it.returned) await setToolStatus(it.toolId, { status: '持ち出し', statusSite: c.site + '（' + md(c.date) + '）', statusBy: me(), statusAt: nowStr() });
-      if ((f === 'returned' && it.returned) || (f === 'loaded' && !it.loaded)) await setToolStatus(it.toolId, { status: '倉庫', statusSite: '', statusBy: me(), statusAt: nowStr() });
-    }
-    await saveCards([c]); renderLoad();
-  } catch (e) { toast(NET_ERR); }
+const ikey = () => 'K' + Date.now().toString(36) + Math.floor(Math.random() * 1e5).toString(36);
+const vehList = c => String((c && c.vehicle) || '').split(/[・、,，\/]/).map(s => s.trim()).filter(Boolean);
+function parseItems(v) {   // 「パチン、三脚 2、土のう 20袋」→ 持ち物の一覧
+  return String(v || '').split(/[、,，]/).map(s => s.trim()).filter(Boolean).map(s => {
+    const m = s.match(/^(.+?)\s*(\d+)?\s*(本|個|台|束|枚|袋|巻|丁)?$/); const name = m[1], w = matchWord(name), t = w && toolOfTerm(w.termId);
+    return { name: w ? termById(w.termId).term : name, termId: w ? w.termId : '', toolId: t ? t.id : '', qty: m[2] ? Number(m[2]) : '', unit: m[3] || '', loaded: false, returned: false };
+  });
+}
+function outBand() {   // 段取り画面の一番上：日付をまたいで、戻っていない道具があれば赤帯
+  return OUTS.length ? '<button type="button" class="outband" data-goload="1">⚠️ 未返却の道具 ' + OUTS.length + '件<span>確認する ›</span></button>' : '';
+}
+function renderLoad() {
+  const cards = CARDS.filter(c => c.date === SEL && c.kind !== 'notice' && (c.items.length || c.site));
+  const here = new Set(); cards.forEach(c => c.items.forEach(it => { if (it.outId) here.add(it.outId); }));
+  const others = OUTS.filter(o => !here.has(o.outId)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  let h = '';
+  if (OUTS.length) h += '<div class="card outcard"><h2>⚠️ 未返却 ' + OUTS.length + '件</h2>' +
+    (others.length ? '<p class="hint" style="margin:0 0 2px">ほかの日に積んで、まだ戻していない物です。戻したら「戻した」を押してください。</p>' + others.map(outRow).join('')
+      : '<p class="hint" style="margin:0">' + md(SEL) + ' の現場の分です。下の一覧で「戻した」を押してください。</p>') + '</div>';
+  h += '<button class="btn block" data-homecheck="1" style="margin-bottom:12px">✅ 帰社確認（未返却をLINEで送る）</button>';
+  h += cards.length ? '<p class="hint" style="margin:0 2px 10px">積んだら「積んだ」、帰って片付けたら「戻した」。数が足りないときは、戻った数を選びます。使い切りの資材は、余ったときだけ「余りを戻す」。</p>' + cards.map(loadCard).join('')
+    : '<div class="empty">' + md(SEL) + ' の持ち物はありません</div>';
+  $('loadList').innerHTML = h;
+}
+function outRow(o) {
+  const left = o.qty - o.backQty, u = o.unit || '個';
+  return '<div class="load-row"><div class="grow"><b>' + esc(o.name) + '</b> <span class="tnum">' + left + esc(u) + (o.backQty ? '（' + o.qty + esc(u) + '中）' : '') + '</span>' +
+    '<div class="hint">' + esc(o.site || '現場未定') + (o.date ? ' ' + md(o.date) : '') + (o.vehicle ? '・🚚 ' + esc(o.vehicle) : '') + (o.outBy ? '・積んだ人 ' + esc(o.outBy) : '') + '</div></div>' +
+    '<button class="tg" data-outback="' + esc(o.outId) + '">戻した</button></div>';
+}
+function loadCard(c) {
+  const vs = vehList(c);
+  let body;
+  if (!c.items.length) body = '<div class="hint" style="padding:6px 0">段取りの持ち物はありません</div>';
+  else if (vs.length > 1) body = vs.map(v => {
+    const rows = c.items.map((it, i) => ({ it, i })).filter(x => (vs.includes(x.it.vehicle) ? x.it.vehicle : vs[0]) === v);
+    return '<div class="vehhd">🚚 ' + esc(v) + '（' + rows.length + '）</div>' + (rows.length ? rows.map(x => loadRow(c, x.it, x.i, vs)).join('') : '<div class="hint" style="padding:6px 0">この車に積む物はまだありません</div>');
+  }).join('');
+  else body = c.items.map((it, i) => loadRow(c, it, i, vs)).join('');
+  return '<div class="card"><h2>' + esc(c.site || c.title || '現場未定') + '<span class="tag site">' + md(c.date) + '</span>' + (vs.length === 1 ? '<span class="tag loc">🚚 ' + esc(vs[0]) + '</span>' : '') + '</h2>' + body +
+    '<button class="btn block sm" style="margin-top:10px" data-extra="' + esc(c.cardId) + '">＋ 段取りにない物を追加で積んだ</button></div>';
+}
+function loadRow(c, it, i, vs) {
+  const t = it.toolId && TOOLS.find(x => x.id === it.toolId), kind = itemKind(it), q = Number(it.qty) || 1, u = it.unit || '個', k = esc(c.cardId) + '|' + i, back = Number(it.backQty) || 0;
+  const other = it.toolId ? OUTS.filter(o => o.toolId === it.toolId && o.outId !== it.outId) : [];
+  let sub = t ? '📍 ' + esc(t.location || '場所未設定') : '道具管理に未登録';
+  if (other.length) sub += '　<span class="tag warn">ほかで持ち出し中：' + other.map(o => esc(o.site || '現場未定') + ' ' + (o.qty - o.backQty) + esc(o.unit || '個')).join('・') + '</span>';
+  if (kind === KIND_BACK && it.loaded && back > 0 && back < q) sub += '　<span class="tag warn">未返却 ' + (q - back) + esc(u) + '</span>';
+  const vb = vs.length > 1 ? '<div style="margin-top:4px"><button class="tg sm" data-vmove="' + k + '">🚚 ' + esc(vs.includes(it.vehicle) ? it.vehicle : vs[0]) + ' → 別の車へ</button></div>' : '';
+  const bk = kind === KIND_USE
+    ? '<button class="tg' + (back > 0 ? ' on' : '') + '" data-back="' + k + '">' + (back > 0 ? '余り ' + back + esc(u) : '余りを戻す') + '</button>'
+    : '<button class="tg' + (it.returned ? ' on' : (it.loaded && back > 0 ? ' part' : '')) + '" data-back="' + k + '">' + (q > 1 && back > 0 && !it.returned ? '戻した ' + back + '/' + q : '戻した') + '</button>';
+  return '<div class="load-row"><div class="grow"><b>' + esc(it.name) + '</b> <span class="tnum">' + q + esc(u) + '</span>' + (kind === KIND_USE ? ' <span class="tag use">使い切り</span>' : '') + (it.extra ? ' <span class="tag new">追加</span>' : '') +
+    '<div class="hint">' + sub + '</div>' + vb + '</div>' +
+    '<button class="tg' + (it.loaded ? ' on' : '') + '" data-load="' + k + '">積んだ</button>' + bk + '</div>';
+}
+function findItem(key) { const [id, i] = String(key).split('|'), c = CARDS.find(x => x.cardId === id); return c ? { c, it: c.items[Number(i)] } : {}; }
+async function loadItem(b) {   // 1回分を記録して、返ってきたカードと未返却の一覧に入れ替える
+  b.by = me();
+  const r = DEMO ? demoLoadItem(b) : await postJSON(GAS_URL, Object.assign({ app: 'dandori', mode: 'loadItem' }, b));
+  if (!r.ok) throw new Error(r.error || NET_ERR);
+  if (r.card) { r.card.items = r.card.items || []; const i = CARDS.findIndex(c => c.cardId === r.card.cardId); if (i >= 0) CARDS[i] = r.card; else CARDS.push(r.card); }
+  if (r.outs) OUTS = r.outs;
+  if (!DEMO) { const cc = lsGet(LS.cache, null); if (cc) { cc.CARDS = CARDS; cc.OUTS = OUTS; lsSet(LS.cache, cc); } }
+  return r;
+}
+async function doLoad(c, it, b, local) {   // 押したらすぐ画面を変え（local）、記録が終わったら正しい状態で描き直す
+  if (!it.key) it.key = ikey();
+  const body = Object.assign({ cardId: c.cardId, key: it.key, index: c.items.indexOf(it), name: it.name, kind: itemKind(it), qty: Number(it.qty) || 1 }, b);
+  if (local) { local(); renderLoad(); }
+  try { await loadItem(body); }
+  catch (e) { toast(e.message || NET_ERR); await load(); return; }
+  render();
+}
+function tapLoad(key) {
+  const { c, it } = findItem(key); if (!c || !it) return;
+  if (!me()) return chooseName(false, () => tapLoad(key));
+  if (it.loaded) {
+    if ((it.returned || Number(it.backQty) > 0) && !confirm('「積んだ」を取り消すと「戻した」も消えます。よろしいですか？')) return;
+    return doLoad(c, it, { action: 'unload' }, () => { Object.assign(it, { loaded: false, returned: false, backQty: '' }); });
+  }
+  doLoad(c, it, { action: 'load' }, () => { it.loaded = true; });
+}
+function tapBack(key) {
+  const { c, it } = findItem(key); if (!c || !it) return;
+  if (!me()) return chooseName(false, () => tapBack(key));
+  const kind = itemKind(it), q = Number(it.qty) || 1, back = Number(it.backQty) || 0, u = it.unit || '個';
+  if (kind === KIND_USE) return askNumber(it.name + ' の余り', '余って倉庫に戻した数を選んでください。全部使ったら「使い切り」。', q, u, back, n => n > 0
+    ? doLoad(c, it, { action: 'back', backQty: n }, () => { Object.assign(it, { loaded: true, backQty: n, returned: true }); })
+    : doLoad(c, it, { action: 'unback' }, () => { Object.assign(it, { returned: false, backQty: '' }); }), '使い切り（余りなし）', true);
+  if (it.returned) return doLoad(c, it, { action: 'unback' }, () => { Object.assign(it, { returned: false, backQty: '' }); });
+  if (q > 1) return askNumber(it.name + ' を何' + u + '戻しましたか', q + u + '積んでいます。戻った数を選んでください。足りない分は未返却として残ります。', q, u, back || q,
+    n => doLoad(c, it, { action: 'back', backQty: n }, () => { Object.assign(it, { loaded: true, backQty: n, returned: n >= q }); }));
+  doLoad(c, it, { action: 'back', backQty: 1 }, () => { Object.assign(it, { loaded: true, backQty: 1, returned: true }); });
+}
+function askNumber(title, hint, max, unit, cur, cb, zeroLabel, free) {   // 数を選ぶ（free：上限なしで入力もできる）
+  const top = free ? Math.max(max, 10) : max, nums = [];
+  for (let n = 1; n <= Math.min(top, 30); n++) nums.push(n);
+  openModal('<h3>' + esc(title) + '</h3><p class="hint">' + esc(hint) + '</p>' +
+    (zeroLabel ? '<button class="btn block" style="margin-top:12px" data-n="0">' + esc(zeroLabel) + '</button>' : '') +
+    '<div class="numgrid">' + nums.map(n => '<button class="btn' + (n === cur ? ' primary' : '') + '" data-n="' + n + '">' + n + '</button>').join('') + '</div>' +
+    (free || top > 30 ? '<div class="row2" style="margin-top:10px"><input type="number" id="numIn" inputmode="numeric" min="0" placeholder="ほかの数（' + esc(unit) + '）"><button class="btn sm" data-act="num" style="flex:none">決定</button></div>' : '') +
+    '<button class="btn block" style="margin-top:12px" data-act="close">やめる</button>', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.act === 'close') return closeModal();
+    let n = b.dataset.n != null ? Number(b.dataset.n) : (b.dataset.act === 'num' ? Number($('numIn').value) : NaN);
+    if (!(n >= 0) || ($('numIn') && b.dataset.act === 'num' && $('numIn').value === '')) return;
+    if (!free) n = Math.min(max, n);
+    closeModal(); cb(n);
+  });
+}
+function moveVeh(key) {   // 2台以上で行く日：この持ち物を次の車へ
+  const { c, it } = findItem(key); if (!c || !it) return;
+  const vs = vehList(c); if (vs.length < 2) return;
+  const cur = vs.includes(it.vehicle) ? it.vehicle : vs[0], next = vs[(vs.indexOf(cur) + 1) % vs.length];
+  doLoad(c, it, { action: 'vehicle', vehicle: next }, () => { it.vehicle = next; });
+}
+function outBack(outId) {   // ほかの日の未返却を「戻した」
+  const o = OUTS.find(x => x.outId === outId); if (!o) return;
+  if (!me()) return chooseName(false, () => outBack(outId));
+  const left = o.qty - o.backQty, u = o.unit || '個';
+  const go = async n => {
+    const total = o.backQty + n;
+    if (total >= o.qty) OUTS = OUTS.filter(x => x.outId !== outId); else o.backQty = total;
+    renderLoad();
+    try { await loadItem({ outId, cardId: o.cardId, key: o.itemKey, action: 'back', backQty: total }); }
+    catch (e) { toast(e.message || NET_ERR); await load(); return; }
+    render(); toast('戻しました');
+  };
+  if (left > 1) return askNumber(o.name + ' を何' + u + '戻しましたか', 'まだ ' + left + u + '戻っていません。今戻した数を選んでください。', left, u, left, go);
+  go(1);
+}
+function addExtra(cardId) {   // 段取りに出てこなかった物を、その場で積んだ
+  const c0 = CARDS.find(x => x.cardId === cardId); if (!c0) return;
+  if (!me()) return chooseName(false, () => addExtra(cardId));
+  const vs = vehList(c0); let veh = vs[0] || '';
+  const draw = keep => {
+    openModal('<h3>＋ 追加で積んだ物</h3><p class="hint">段取りに出てこなかった道具・資材を積んだときに入れます。戻しのチェックの対象になります。</p>' +
+      '<label class="lbl">品名と数</label><input type="text" id="exIn" placeholder="例：ブロワー 2、土のう 20袋" autocomplete="off">' +
+      (vs.length > 1 ? '<label class="lbl">積んだ車</label><div class="chips">' + vs.map(v => '<button type="button" class="chip' + (v === veh ? ' on' : '') + '" data-v="' + esc(v) + '">' + esc(v) + '</button>').join('') + '</div>' : '') +
+      '<div class="row2" style="margin-top:16px"><button class="btn" data-act="close">やめる</button><button class="btn primary" data-act="ok">積んだ</button></div>', async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.v) { const v = $('exIn').value; veh = b.dataset.v; return draw(v); }
+      if (b.dataset.act === 'close') return closeModal();
+      if (b.dataset.act !== 'ok') return;
+      const list = parseItems($('exIn').value); if (!list.length) return toast('品名を入れてください');
+      closeModal();
+      for (const it of list) {
+        const c = CARDS.find(x => x.cardId === cardId); if (!c) break;
+        Object.assign(it, { extra: true, vehicle: veh, key: ikey() }); it.kind = itemKind(it);
+        const item = Object.assign({}, it);
+        c.items.push(Object.assign(it, { loaded: true })); renderLoad();
+        try { await loadItem({ cardId, key: it.key, index: c.items.length - 1, name: it.name, item, kind: it.kind, qty: Number(it.qty) || 1, action: 'load' }); }
+        catch (err) { toast(err.message || NET_ERR); await load(); return; }
+      }
+      render(); toast('追加しました');
+    });
+    if (keep) $('exIn').value = keep;
+    setTimeout(() => { const x = $('exIn'); if (x) x.focus(); }, 50);
+  };
+  draw();
+}
+async function homeCheck() {   // 帰社確認：最新の未返却を取り直して、LINEで送れる文にする
+  if (!me()) return chooseName(false, homeCheck);
+  if (!DEMO) { try { const r = await getJSON(GAS_URL + '?app=dandori&action=data'); if (r.ok) { CARDS = r.cards; OUTS = r.outs || []; render(); } } catch (e) { toast('最新を読めませんでした。前回の内容で表示します'); } }
+  const list = OUTS.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const L = ['【帰社確認】' + md(TODAY) + ' ' + nowStr().slice(11) + '　確認：' + me()];
+  if (!list.length) L.push('未返却の道具はありません。');
+  else { L.push('⚠ 未返却 ' + list.length + '件'); list.forEach(o => L.push('・' + o.name + ' ' + (o.qty - o.backQty) + (o.unit || '個') + '（' + [(o.site || '現場未定') + (o.date ? ' ' + md(o.date) : ''), o.vehicle, o.outBy ? '積んだ人 ' + o.outBy : ''].filter(Boolean).join('・') + '）')); }
+  const text = L.join('\n');
+  openModal('<h3>✅ 帰社確認</h3><div class="raw">' + esc(text) + '</div>' +
+    '<div class="row2" style="margin-top:14px"><button class="btn" data-act="close">閉じる</button><button class="btn primary" data-act="send">📤 LINEで送る</button></div>', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.act === 'send') shareText(text);
+    closeModal();
+  });
+}
+function demoLoadItem(b) {   // お試しモード：GAS の loadItem_ と同じ動きを、この端末の中だけで
+  const all = lsGet(LS.outs, []).map(o => Object.assign(o, { qty: Number(o.qty) || 1, backQty: Number(o.backQty) || 0 }));
+  const act = b.action, card = CARDS.find(c => c.cardId === b.cardId) || null; let it = null;
+  if (card) {
+    it = card.items.find(x => x.key && x.key === b.key) || null;
+    if (!it && b.index != null && card.items[b.index] && card.items[b.index].name === b.name) it = card.items[b.index];
+    if (!it && b.item && act === 'load') { it = b.item; card.items.push(it); }
+    if (it && !it.key) it.key = b.key || ikey();
+  }
+  let o = all.find(x => x.outId === (b.outId || (it && it.outId))) || null;
+  if (!it && !o) return { ok: false, error: '持ち物が見つかりません' };
+  const st = x => x.kind === KIND_USE ? '使い切り' : (x.backQty >= x.qty ? '戻した' : '持ち出し');
+  if (act === 'load' || (act === 'back' && !o)) {
+    const q = Number(b.qty || (it && it.qty)) || 1;
+    if (!o) { o = { outId: 'O' + Date.now().toString(36) + Math.floor(Math.random() * 1e5).toString(36), toolId: it.toolId || '', name: it.name || '', kind: it.kind || b.kind || KIND_BACK, date: card ? card.date : '', site: card ? (card.site || card.title || '') : '', cardId: card ? card.cardId : '', itemKey: it.key, vehicle: it.vehicle || b.vehicle || '', qty: q, unit: it.unit || '', backQty: 0, outBy: b.by, outAt: nowStr(), backBy: '', backAt: '' }; all.push(o); }
+    else { o.qty = q; if (b.vehicle != null) o.vehicle = b.vehicle; }
+    o.state = st(o);
+    if (it) { Object.assign(it, { loaded: true, outId: o.outId, kind: o.kind }); if (!it.qty) it.qty = o.qty; }
+  }
+  if (act === 'unload') { if (o) all.splice(all.indexOf(o), 1); if (it) Object.assign(it, { loaded: false, returned: false, outId: '', backQty: '' }); }
+  if (act === 'back') {
+    let n = b.backQty == null || b.backQty === '' ? o.qty : Math.max(0, Number(b.backQty) || 0); if (o.kind !== KIND_USE) n = Math.min(o.qty, n);
+    Object.assign(o, { backQty: n, backBy: b.by, backAt: nowStr() }); o.state = st(o);
+    if (it) Object.assign(it, { loaded: true, backQty: n, returned: o.kind === KIND_USE ? n > 0 : n >= o.qty });
+  }
+  if (act === 'unback') { if (o) { Object.assign(o, { backQty: 0, backBy: '', backAt: '' }); o.state = st(o); } if (it) Object.assign(it, { returned: false, backQty: '' }); }
+  if (act === 'vehicle') { if (it) it.vehicle = b.vehicle || ''; if (o) o.vehicle = b.vehicle || ''; }
+  lsSet(LS.outs, all); if (card) lsSet(LS.cards, CARDS);
+  return { ok: true, card, outs: all.filter(x => x.state === '持ち出し') };
 }
 
 /* ============ 名前・モーダル ============ */
@@ -1209,7 +1416,13 @@ document.body.addEventListener('click', e => {
   const tm = e.target.closest('[data-timed]'); if (tm) return decideTimed(tm.dataset.timed, tm.dataset.v);
   const tu = e.target.closest('[data-timed-undo]'); if (tu) { const dec = lsGet(LS.timed, {}); (CAL.timed || []).filter(t => t.date === tu.dataset.timedUndo && dec[timedKey(t)] === 'no').forEach(t => delete dec[timedKey(t)]); lsSet(LS.timed, dec); applyTimed(); return render(); }
   const sh = e.target.closest('[data-shop]'); if (sh) return toggleShop(sh.dataset.shop);
-  const ld = e.target.closest('[data-load]'); if (ld) return toggleLoad(ld.dataset.load);
+  const ld = e.target.closest('[data-load]'); if (ld) return tapLoad(ld.dataset.load);
+  const bk = e.target.closest('[data-back]'); if (bk) return tapBack(bk.dataset.back);
+  const ob = e.target.closest('[data-outback]'); if (ob) return outBack(ob.dataset.outback);
+  const vm = e.target.closest('[data-vmove]'); if (vm) return moveVeh(vm.dataset.vmove);
+  const ex = e.target.closest('[data-extra]'); if (ex) return addExtra(ex.dataset.extra);
+  if (e.target.closest('[data-homecheck]')) return homeCheck();
+  if (e.target.closest('[data-goload]')) return document.querySelector('nav.tabs button[data-tab="load"]').click();
 });
 $('fab').addEventListener('click', () => chooseName(false, () => openSpeak()));
 $('meBtn').addEventListener('click', () => chooseName(true));

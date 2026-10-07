@@ -166,7 +166,8 @@ dl.kv dd{margin:0}
     <div class="seg" id="dictSeg">
       <button type="button" class="on" data-v="kana">名前順</button>
       <button type="button" data-v="loc">場所ごと</button>
-      <button type="button" data-v="mis">間違えやすい言葉</button>
+      <button type="button" data-v="mis">間違えやすい</button>
+      <button type="button" data-v="out">持ち出し中</button>
     </div>
     <div id="dictList"></div>
   </section>
@@ -204,6 +205,7 @@ const DEMO = !GAS_URL || !YOUGO_URL;
 const LS = { me: 'dougu_me', admin: 'dougu_admin', draft: 'dougu_draft', tools: 'dougu_demo_v3', words: 'yougo_demo_v1', cache: 'dougu_cache' };
 const NET_ERR = '電波を確認して、もう一度お試しください';
 const TOOL_CATS = ['道具', '資材'];
+const KIND_BACK = '戻す', KIND_USE = '使い切り';   // 管理方法：帰ったら戻す道具／使い切りの資材（段取りの積み込みで使う）
 
 /* ============ 小道具 ============ */
 const $ = id => document.getElementById(id);
@@ -409,7 +411,7 @@ const SEED_TOOLS = [["T0001","Y0153","1F-A-2段",6],
 
 /* ============ データ ============ */
 // tools＝道具マスタ（termId で用語集とつながる）、terms・aliases＝用語集の言葉
-let DB = { tools: [], terms: [], aliases: [], locations: [], repairs: [], suppliers: [] };
+let DB = { tools: [], terms: [], aliases: [], locations: [], repairs: [], suppliers: [], outs: [] };   // outs：まだ戻っていない持ち出し（段取りの積み込みで記録）
 let ADMINS = ['親方'];
 const canDelete = () => ADMINS.includes(me());
 let TOOLS = [];   // 表示用：道具マスタに用語集の名前・読み・意味を合わせたもの
@@ -424,7 +426,8 @@ function commonOf(termId) {
 function buildTools() {
   TOOLS = DB.tools.map(t => {
     const w = termById(t.termId) || {};
-    return Object.assign({}, t, { qty: Number(t.qty) || 0, name: w.term || '（用語集に名前がありません）', kana: w.kana || '', feature: w.meaning || '', category: w.category || '', commonName: commonOf(t.termId) });
+    const outs = (DB.outs || []).filter(o => String(o.toolId) === String(t.id)).map(o => Object.assign({}, o, { left: (Number(o.qty) || 1) - (Number(o.backQty) || 0) }));
+    return Object.assign({}, t, { outs, kind: t.kind || (w.category === '資材' ? KIND_USE : KIND_BACK), qty: Number(t.qty) || 0, name: w.term || '（用語集に名前がありません）', kana: w.kana || '', feature: w.meaning || '', category: w.category || '', commonName: commonOf(t.termId) });
   });
 }
 
@@ -451,14 +454,14 @@ function demoSave() {
 /* ---- 通信：道具は道具管理GAS、言葉は用語集GAS ---- */
 const api = {
   async load() {
-    if (DEMO) { const w = demoWords(); return { ok: true, tools: demoTools(), terms: w.terms, aliases: w.aliases, locations: [], repairs: lsGet('dougu_repairs_demo', []), suppliers: lsGet('torihiki_demo_v1', []) }; }
+    if (DEMO) { const w = demoWords(); return { ok: true, tools: demoTools(), terms: w.terms, aliases: w.aliases, locations: [], repairs: lsGet('dougu_repairs_demo', []), suppliers: lsGet('torihiki_demo_v1', []), outs: lsGet('dandori_outs_demo', []).filter(o => o.state === '持ち出し') }; }
     const [a, b] = await Promise.all([
       fetch(GAS_URL + '?app=dougu&action=data', { cache: 'no-store' }).then(r => r.json()),
       fetch(YOUGO_URL + '?app=yougo&action=data', { cache: 'no-store' }).then(r => r.json())
     ]);
     if (!a.ok) throw new Error(a.error || '道具データを読めません');
     if (!b.ok) throw new Error(b.error || '用語集を読めません');
-    return { ok: true, tools: a.tools || [], locations: a.locations || [], repairs: a.repairs || [], suppliers: a.suppliers || [], admins: a.admins, terms: b.terms || [], aliases: b.aliases || [] };
+    return { ok: true, tools: a.tools || [], locations: a.locations || [], repairs: a.repairs || [], suppliers: a.suppliers || [], admins: a.admins, outs: a.outs || [], terms: b.terms || [], aliases: b.aliases || [] };
   },
   async post(target, body) {   // target: 'dougu'（道具管理GAS）／'yougo'（用語集GAS）
     if (DEMO) return demoPost(target, body);
@@ -534,7 +537,7 @@ function demoPost(target, b) {
 async function load() {
   try {
     const r = await api.load();
-    DB = { tools: r.tools, terms: r.terms, aliases: r.aliases, locations: r.locations || [], repairs: r.repairs || [], suppliers: r.suppliers || [] };
+    DB = { tools: r.tools, terms: r.terms, aliases: r.aliases, locations: r.locations || [], repairs: r.repairs || [], suppliers: r.suppliers || [], outs: r.outs || [] };
     if (r.admins && r.admins.length) { ADMINS = r.admins; lsSet('dougu_admins', ADMINS); }
     if (!DEMO) lsSet(LS.cache, DB);
   } catch (e) {
@@ -620,10 +623,15 @@ function toolRow(t, why) {
 }
 
 /* ============ 道具の詳細 ============ */
-function whereTag(t) {
-  if (!t.status || t.status === '倉庫') return '';
+function whereTag(t) {   // 今どこ：修理中／段取りの積み込みで記録した、まだ戻っていない持ち出し
   if (t.status === '修理中') return '<span class="tag out">🔧 修理中' + (t.statusSite ? '（' + esc(t.statusSite) + '）' : '') + '</span>';
-  return '<span class="tag out">' + esc(t.statusSite || '持ち出し中') + '</span>';
+  if (!t.outs || !t.outs.length) return '';
+  const n = t.outs.reduce((a, o) => a + o.left, 0), rest = t.qty - n;
+  return '<span class="tag out">' + t.outs.map(o => esc(o.site || '現場未定') + ' ' + o.left + esc(o.unit || '個')).join('・') + '</span>' + (t.qty ? ' <span class="tag loc">倉庫に' + Math.max(0, rest) + '</span>' : '');
+}
+function outDetail(t) {   // 道具の詳細：誰がいつどの車で持ち出したか
+  if (!t.outs || !t.outs.length) return '';
+  return t.outs.map(o => '<div style="font-size:13px;color:var(--bark)">・' + esc(o.site || '現場未定') + ' ' + o.left + esc(o.unit || '個') + '（' + esc([String(o.date || '').slice(5).replace('-', '/'), o.vehicle, o.outBy].filter(Boolean).join('・')) + '）</div>').join('');
 }
 const REPAIR_TYPES = ['修理に出した', '修理から戻った', '修理・メンテ', '故障の報告'];
 function repairHtml(t) {
@@ -670,13 +678,14 @@ function openTool(id, fromSearch) {
   h += t.photoUrl ? '<img class="detail-ph" src="' + esc(t.photoUrl) + '" alt="">' : '<div class="big-ph">🧰</div>';
   h += '<dl class="kv"><dt>保管場所</dt><dd><b>' + esc(t.location || '未設定') + '</b></dd>' +
     '<dt>数量</dt><dd class="tnum">' + t.qty + '個</dd>' +
-    '<dt>今どこ</dt><dd>' + (whereTag(t) || '倉庫') + '</dd>' +
+    '<dt>今どこ</dt><dd>' + (whereTag(t) || '倉庫') + outDetail(t) + '</dd>' +
+    '<dt>管理方法</dt><dd>' + (t.kind === KIND_USE ? '使い切りの資材（戻しのチェックなし）' : '帰ったら戻す道具') + '</dd>' +
     (t.feature ? '<dt>どんな道具</dt><dd>' + esc(t.feature) + '</dd>' : '') +
     '<dt>呼び方</dt><dd><div class="chips">' + (al.length ? al.map(a => '<span class="chip" style="cursor:default">' + esc(a.alias) +
       (a.type === '聞き間違い' ? '<span class="tag mis">聞き間違い</span>' : '') + (a.state !== '承認済' ? '<span class="tag wait">承認待ち</span>' : '') + '</span>').join('') : '<span class="hint">まだありません</span>') + '</div></dd>' +
     '<dt>登録</dt><dd style="font-size:12.5px;color:var(--bark)">' + esc(t.registeredBy || '') + (t.reviewState === '未確認' ? '<span class="tag wait">未確認</span>' : '') + '</dd></dl>';
   h += repairHtml(t);
-  h += '<div class="row2" style="margin-top:12px"><button class="btn" data-act="alias">＋呼び方</button><button class="btn" data-act="edit">場所・数量を直す</button></div>' +
+  h += '<div class="row2" style="margin-top:12px"><button class="btn" data-act="alias">＋呼び方</button><button class="btn" data-act="edit">場所・数量・管理方法</button></div>' +
     '<a class="btn block" style="margin-top:8px;text-decoration:none" href="' + YOUGO_PAGE + '?q=' + encodeURIComponent(t.name) + '">📗 用語集で名前・意味を見る</a>' +
     '<button class="btn block" style="margin-top:8px" data-act="close">閉じる</button>';
   openModal(h, async e => {
@@ -713,21 +722,25 @@ function openAliasForm(id) {
 let edPhoto = null;
 function openEditForm(id) {
   const t = toolById(id);
-  let qty = t.qty;
-  openModal('<h3>場所・数量を直す</h3>' +
+  let qty = t.qty, kind = t.kind;
+  const kindChips = () => [[KIND_BACK, '帰ったら戻す道具'], [KIND_USE, '使い切りの資材']].map(([k, l]) => '<button type="button" class="chip' + (kind === k ? ' on' : '') + '" data-kind="' + k + '">' + l + '</button>').join('');
+  openModal('<h3>場所・数量・管理方法</h3>' +
     '<label class="lbl">保管場所</label><input type="text" id="edLoc" value="' + esc(t.location) + '" list="locList">' + locDatalist() +
     '<label class="lbl" style="margin-top:12px">数量</label><div class="qty"><button class="btn" data-q="-1">－</button><span class="n tnum" id="edQ">' + qty + '</span><button class="btn" data-q="1">＋</button></div>' +
+    '<label class="lbl" style="margin-top:12px">管理方法</label><div class="chips" id="edKind">' + kindChips() + '</div>' +
+    '<p class="hint">「使い切り」は土のう袋・縄などの資材。積み込みで戻しのチェックをせず、余ったときだけ戻した数を入れます。</p>' +
     '<label class="lbl" style="margin-top:12px">写真を撮り直す</label><div class="row2"><button class="btn" data-act="cam">📷 撮影</button><button class="btn" data-act="lib">🖼 選ぶ</button></div><p class="hint" id="edPhHint"></p>' +
     '<p class="hint">名前や意味を直すときは用語集アプリで直します。</p>' +
     '<div class="row2" style="margin-top:16px"><button class="btn" data-act="back">戻る</button><button class="btn primary" data-act="save">保存する</button></div>',
     async e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.q) { qty = Math.max(0, qty + Number(b.dataset.q)); $('edQ').textContent = qty; return; }
+      if (b.dataset.kind) { kind = b.dataset.kind; $('edKind').innerHTML = kindChips(); return; }
       if (b.dataset.act === 'cam' || b.dataset.act === 'lib') { pickPhoto(b.dataset.act === 'cam', p => { edPhoto = p; $('edPhHint').textContent = '✓ 新しい写真を選びました'; }); return; }
       if (b.dataset.act === 'back') { edPhoto = null; return openTool(id); }
       if (b.dataset.act === 'save') {
         b.disabled = true;
-        const patch = { location: $('edLoc').value.trim(), qty };
+        const patch = { location: $('edLoc').value.trim(), qty, kind };
         if (edPhoto) patch.image = edPhoto.b64;
         await post('dougu', { mode: 'updateTool', id, patch, by: me() }, '保存しました');
         edPhoto = null; openTool(id);
@@ -887,6 +900,16 @@ async function post(target, body, okMsg) {
 let dictView = 'kana';
 function renderDict() {
   const box = $('dictList');
+  if (dictView === 'out') {   // 段取りの積み込みで記録した、まだ戻っていない物（現場ごと）
+    const g = {};
+    (DB.outs || []).forEach(o => { const k = (o.site || '現場未定') + (o.date ? '　' + String(o.date).slice(5).replace('-', '/') : ''); (g[k] = g[k] || []).push(o); });
+    const ks = Object.keys(g);
+    box.innerHTML = ks.length ? '<p class="hint" style="margin:0 2px 10px">段取りアプリの「積み込み」で積んだまま、まだ戻していない物です。</p>' + ks.map(k => '<div class="sec-title">🚚 ' + esc(k) + '（' + g[k].length + '）</div>' + g[k].map(o => {
+      const t = toolById(o.toolId), left = (Number(o.qty) || 1) - (Number(o.backQty) || 0), why = left + (o.unit || '個') + (o.vehicle ? '・' + o.vehicle : '') + (o.outBy ? '・' + o.outBy : '');
+      return t ? toolRow(t, [o.vehicle, o.outBy ? '積んだ人 ' + o.outBy : ''].filter(Boolean).join('・')) : '<div class="tool" style="cursor:default"><div class="ph">🧰</div><div><div class="nm">' + esc(o.name) + '</div><div class="sub">' + esc(why) + '　<span class="tag wait">道具管理に未登録</span></div></div></div>';
+    }).join('')).join('') : '<div class="empty">持ち出し中の物はありません</div>';
+    return;
+  }
   if (!TOOLS.length) { box.innerHTML = '<div class="empty">まだ道具が登録されていません</div>'; return; }
   if (dictView === 'kana') {
     box.innerHTML = TOOLS.slice().sort((a, b) => String(a.kana || a.name).localeCompare(String(b.kana || b.name), 'ja')).map(t => toolRow(t, aliasesOf(t.termId).map(a => a.alias).slice(0, 4).join('・'))).join('');

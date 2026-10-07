@@ -3,6 +3,7 @@
  *
  *  ・用語集  （app=yougo） ：言葉のマスタ。用語／呼び方／聞き間違い。AIで探す・意味の下書き
  *  ・道具管理（app=dougu） ：道具マスタ（用語IDでつなぐ）・番地・写真。登録時のAI照合
+ *  ・積み込み（app=dandori）：積んだ・戻したを「持ち出し」シートに1回ずつ記録。道具の今どこ・未返却はここから計算
  *  ・段取り  （app=dandori）：段取りカード。Googleカレンダー（現場カレンダー・出勤調整カレンダー）の読み取り。AIで話を整理
  *  ・要点まとめ（app=yoten）：まとまらないまま話した内容を、AIで要点・必要な道具・車両・送る文に整理。要点メモに残す
  *  返り値はすべて { ok:true/false, error?:"..." } 形式（社内アプリ共通ルール）
@@ -28,9 +29,10 @@ var ALIAS_TYPES = ['社内呼び', '別名', '略称', '聞き間違い'];
 var SHEETS = {
   terms:     { name: '用語',         head: ['termId', 'term', 'kana', 'category', 'meaning', 'usage', 'related', 'toolId', 'source', 'photoUrl', 'reviewState', 'addedBy', 'updatedAt'] },
   aliases:   { name: '呼び方',       head: ['alias', 'kana', 'termId', 'type', 'state', 'addedBy', 'addedAt'] },
-  tools:     { name: '道具マスタ',   head: ['id', 'termId', 'location', 'qty', 'photoUrl', 'photoId', 'status', 'statusSite', 'statusBy', 'statusAt', 'registeredBy', 'reviewState', 'createdAt', 'updatedAt'] },
+  tools:     { name: '道具マスタ',   head: ['id', 'termId', 'location', 'qty', 'photoUrl', 'photoId', 'status', 'statusSite', 'statusBy', 'statusAt', 'registeredBy', 'reviewState', 'createdAt', 'updatedAt', 'kind'] },   // kind：戻す（帰ったら戻す道具）／使い切り（土嚢袋・縄などの資材）
   locations: { name: '番地',         head: ['code', 'floor', 'area', 'place', 'container', 'mapX', 'mapY'] },
-  toolLog:   { name: '持ち出し履歴', head: ['at', 'toolId', 'action', 'site', 'by'] },
+  toolLog:   { name: '持ち出し履歴', head: ['at', 'toolId', 'action', 'site', 'by', 'name', 'qty', 'vehicle'] },
+  outs:      { name: '持ち出し',     head: ['outId', 'toolId', 'name', 'kind', 'date', 'site', 'cardId', 'itemKey', 'vehicle', 'qty', 'unit', 'backQty', 'state', 'outBy', 'outAt', 'backBy', 'backAt'] },   // 積んだ1回＝1行。「今どこ」「未返却」はここから計算
   cards:     { name: '段取りカード', head: ['cardId', 'date', 'site', 'eventId', 'meetTime', 'staff', 'vehicle', 'stops', 'items', 'steps', 'notes', 'rawText', 'createdBy', 'updatedAt', 'kind', 'title', 'dateNote', 'doneAt', 'doneBy'] },
   nicknames: { name: '呼び名',       head: ['name', 'nickname', 'addedBy', 'addedAt'] },
   suppliers: { name: '取引先',       head: ['id', 'name', 'kana', 'kind', 'aliases', 'phone', 'address', 'contact', 'items', 'memo', 'updatedBy', 'updatedAt'] },
@@ -178,7 +180,7 @@ function doGet(e) {
   try {
     if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL) });
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
-    if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair'), suppliers: rows_('suppliers'), admins: admins_() });
+    if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair'), suppliers: rows_('suppliers'), admins: admins_(), outs: openOuts_() });
     if (app === 'torihiki' && a === 'data') return out_({ ok: true, suppliers: rows_('suppliers'), history: supplierHistory_(), admins: admins_() });
     if (app === 'sharyo' && a === 'list') return out_({ ok: true, vehicles: vehicleList_() });
     if (app === 'sharyo' && a === 'usage') return out_(vehicleUsage_(Number(p.months) || 13));
@@ -188,7 +190,7 @@ function doGet(e) {
     if (app === 'yoten' && a === 'result') return out_(summaryResult_(p.id));
     if (app === 'dandori') {
       var today = ymd_(new Date());
-      if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles') });
+      if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles'), outs: openOuts_() });
       if (a === 'calendar') { var c = calendar_(p.from || today, p.to || addDays_(today, 14)); return out_({ ok: true, sites: c.sites, holidays: c.holidays, timed: c.timed }); }
       if (a === 'colors') return out_(Object.assign({ ok: true }, colors_(today, addDays_(today, 30))));
     }
@@ -234,6 +236,7 @@ function doPost(e) {
       case 'dandori:saveCards':  return withLock_(function () { return saveCards_(b.cards, b.by); });
       case 'dandori:updateCard': return withLock_(function () { return updateCard_(b.cardId, b.patch); });
       case 'dandori:deleteCard': return withLock_(function () { return deleteCard_(b.cardId); });
+      case 'dandori:loadItem':   return withLock_(function () { return loadItem_(b); });
       case 'dandori:addNickname':    return withLock_(function () { return addNickname_(b.name, b.nickname, b.by); });
       case 'dandori:deleteNickname': return withLock_(function () { return deleteNickname_(b.name, b.nickname); });
       /* 要点まとめ */
@@ -598,6 +601,78 @@ function identify_(text, image, loc, catalog) {   // 写真と話した名前か
   var j = gemini_(parts);
   return { ok: true, data: { matchId: j.matchId && j.matchId !== 'null' ? String(j.matchId) : null, matchConfidence: Number(j.matchConfidence) || 0,
     name: j.name || '', kana: toHira_(j.kana || ''), commonName: j.commonName || '', feature: j.feature || '', why: j.why || '' } };
+}
+
+/* ================================================================
+ *  積み込み・戻し（積んだ1回を「持ち出し」シートに1行で記録）
+ *   ・戻す道具  ：積んだ数と戻した数を照合。足りなければ「持ち出し」のまま残り、未返却として警告が出る
+ *   ・使い切り  ：積むだけ。余って戻ってきたら戻した数を入れる（入れなければ使い切り）。警告は出さない
+ *   ・道具管理の「今どこ」（status／statusSite）は、まだ戻っていない持ち出しから計算して書き直す
+ * ================================================================ */
+var OUT_OPEN = '持ち出し', OUT_BACK = '戻した', OUT_USE = '使い切り', KIND_USE = '使い切り', KIND_BACK = '戻す';
+function numOut_(o) { o.qty = Number(o.qty) || 1; o.backQty = Number(o.backQty) || 0; return o; }
+function openOuts_() { return rows_('outs').filter(function (o) { return o.state === OUT_OPEN; }).map(numOut_); }
+function outById_(id) { if (!id) return null; var o = rows_('outs').filter(function (x) { return String(x.outId) === String(id); })[0]; return o ? numOut_(o) : null; }
+function saveOut_(o) {   // outId が同じ行を上書き、なければ追加
+  var s = sh_('outs'), head = SHEETS.outs.head, vals = s.getDataRange().getValues(), row = 0;
+  if (o.outId) for (var i = 1; i < vals.length; i++) if (String(vals[i][0]) === String(o.outId)) { row = i + 1; break; }
+  if (!o.outId) o.outId = 'O' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+  var r = head.map(function (h) { return cell_(o[h] == null ? '' : o[h]); });
+  if (row) s.getRange(row, 1, 1, r.length).setValues([r]); else s.appendRow(r);
+  return o;
+}
+function outState_(o) { return o.kind === KIND_USE ? OUT_USE : (o.backQty >= o.qty ? OUT_BACK : OUT_OPEN); }
+function newKey_() { return 'K' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36); }
+function toolStatus_(toolId, by) {   // 道具管理の「今どこ」を、まだ戻っていない持ち出しから書き直す（修理中はそのまま）
+  if (!toolId) return;
+  var list = openOuts_().filter(function (o) { return String(o.toolId) === String(toolId); });
+  var s = sh_('tools'), head = SHEETS.tools.head, vals = s.getDataRange().getValues();
+  for (var i = 1; i < vals.length; i++) {
+    if (String(vals[i][0]) !== String(toolId)) continue;
+    if (vals[i][head.indexOf('status')] === '修理中') return;
+    var site = list.map(function (o) { return (o.site || '現場未定') + ' ' + (o.qty - o.backQty) + (o.unit || '個'); }).join('・');
+    var patch = { status: list.length ? '持ち出し' : '倉庫', statusSite: site, statusBy: by || '', statusAt: now_(), updatedAt: now_() };
+    Object.keys(patch).forEach(function (h) { s.getRange(i + 1, head.indexOf(h) + 1).setValue(patch[h]); });
+    return;
+  }
+}
+function toolLog_(o, action, n, by) { sh_('toolLog').appendRow([now_(), o.toolId || '', action, o.site || '', by || '', o.name || '', n, o.vehicle || '']); }
+/* 積み込みタブのボタン1回分。b = { cardId, key, index, name, item?, outId?, action, qty?, backQty?, vehicle?, by }
+ *  action：load（積んだ）／unload（積んだを取り消す）／back（戻した。backQty で数）／unback（戻したを取り消す）／vehicle（車を変える） */
+function loadItem_(b) {
+  var by = b.by || '', act = b.action || '', card = null, it = null;
+  if (b.cardId) card = cards_().filter(function (c) { return String(c.cardId) === String(b.cardId); })[0] || null;
+  if (card) {
+    card.items = card.items || [];
+    if (b.key) it = card.items.filter(function (x) { return x.key === b.key; })[0] || null;
+    if (!it && b.index != null && card.items[b.index] && card.items[b.index].name === b.name) it = card.items[b.index];
+    if (!it && b.item && act === 'load') { it = b.item; card.items.push(it); }   // 「＋追加で積んだ」
+    if (it && !it.key) it.key = b.key || newKey_();
+  }
+  var o = outById_(b.outId || (it && it.outId));
+  if (!it && !o) return { ok: false, error: '持ち物が見つかりません。画面を下に引いて読み込み直してください' };
+  if (act === 'load' || ((act === 'back') && !o)) {   // 積まずに「戻した」を押したときも、積んだことにしてから戻す
+    var q = Number(b.qty || (it && it.qty)) || 1;
+    if (!o) o = { outId: '', toolId: it.toolId || '', name: it.name || '', kind: it.kind || b.kind || KIND_BACK, date: card ? card.date : '', site: card ? (card.site || card.title || '') : '',
+      cardId: card ? card.cardId : '', itemKey: it.key, vehicle: it.vehicle || b.vehicle || '', qty: q, unit: it.unit || '', backQty: 0, state: '', outBy: by, outAt: now_(), backBy: '', backAt: '' };
+    else { o.qty = q; if (b.vehicle != null) o.vehicle = b.vehicle; }
+    o.state = outState_(o); saveOut_(o); toolLog_(o, '積んだ', o.qty, by);
+    if (it) { it.loaded = true; it.outId = o.outId; it.kind = o.kind; if (!it.qty) it.qty = o.qty; }
+  }
+  if (act === 'unload' && o) { remove_('outs', o.outId); toolLog_(o, '積んだを取り消し', o.qty, by); }
+  if (act === 'unload' && it) { it.loaded = false; it.returned = false; it.outId = ''; it.backQty = ''; }
+  if (act === 'back') {
+    var n = b.backQty == null || b.backQty === '' ? o.qty : Math.max(0, Number(b.backQty) || 0);
+    if (o.kind !== KIND_USE) n = Math.min(o.qty, n);   // 使い切りの資材は、積んだ数が分からないこともあるので上限なし
+    o.backQty = n; o.backBy = by; o.backAt = now_(); o.state = outState_(o); saveOut_(o); toolLog_(o, o.kind === KIND_USE ? '余りを戻した' : '戻した', n, by);
+    if (it) { it.loaded = true; it.backQty = n; it.returned = o.kind === KIND_USE ? n > 0 : n >= o.qty; }
+  }
+  if (act === 'unback' && o) { o.backQty = 0; o.backBy = ''; o.backAt = ''; o.state = outState_(o); saveOut_(o); toolLog_(o, '戻したを取り消し', 0, by); }
+  if (act === 'unback' && it) { it.returned = false; it.backQty = ''; }
+  if (act === 'vehicle') { if (it) it.vehicle = b.vehicle || ''; if (o) { o.vehicle = b.vehicle || ''; saveOut_(o); } }
+  if (card) saveCards_([card], by);
+  if (o && o.toolId) toolStatus_(o.toolId, by);
+  return { ok: true, card: card, outs: openOuts_() };
 }
 
 /* ================================================================
