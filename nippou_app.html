@@ -83,6 +83,17 @@
   .addable input{flex:1;min-width:140px}
   .mini-btn{border:1px dashed var(--leaf);background:var(--leaf-soft);color:var(--leaf);border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
   .mini-btn:hover{background:#dbe6dd}
+  /* 音声入力（業務内容）：話す → AIが用語集で誤字を直して入れる */
+  .vbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:7px}
+  .vbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--leaf);background:#fff;color:var(--leaf);border-radius:999px;padding:9px 15px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;touch-action:manipulation}
+  .vbtn.rec{background:#c0392b;border-color:#c0392b;color:#fff;animation:vpulse 1.2s ease-in-out infinite}
+  .vbtn.sub{border-style:dashed;font-weight:600}
+  .vbtn:disabled{opacity:.5}
+  @keyframes vpulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.35)}50%{box-shadow:0 0 0 6px rgba(192,57,43,0)}}
+  .vlive{font-size:13px;color:#7a705c;flex:1 1 160px;min-width:0}
+  .vfix{margin-top:7px;font-size:12.5px;line-height:1.6;background:#f4f1e6;border:1px solid #e3dccb;border-radius:8px;padding:7px 10px;color:#5d5444}
+  .vfix b{color:var(--leaf)}
+  .vfix button{margin-left:6px;border:none;background:none;color:#a0522d;text-decoration:underline;font-size:12.5px;cursor:pointer;font-family:inherit;padding:0}
   .taglist{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px}
   .tag{background:#fff;border:1px solid var(--tape);color:var(--tape);border-radius:999px;padding:5px 10px;font-size:13px;display:flex;align-items:center;gap:7px}
   .tag button{border:none;background:none;color:var(--tape);cursor:pointer;font-size:15px;line-height:1;padding:0}
@@ -642,6 +653,7 @@ function wireCard(id){
 
   // 業務内容・クレーム
   q('[data-work]').value=d.work; q('[data-work]').oninput=()=>{ d.work=q('[data-work]').value; };
+  voiceBox(q('[data-work]'), ()=>d.site);   // 🎤 話して入力・✨ 誤字を直す
   q('[data-claim]').value=d.claim; q('[data-claim]').oninput=()=>{ d.claim=q('[data-claim]').value; };
 
   // 状態
@@ -1036,6 +1048,7 @@ function fillEditForm(r){
   set('ed_weather',r.weather); set('ed_done',r.done); set('ed_learn',r.learn);
   document.getElementById('edFormHint').textContent=(isOwnerName(author)&&r.author!==author)?(r.author+'さんの日報を直しています'):'';
 }
+voiceBox(document.getElementById('ed_work'), ()=>document.getElementById('ed_site').value);
 document.getElementById('ed_addsite').onclick=()=>{ addAnotherSiteForDay(document.getElementById('ed_date').value, edRecAuthor); };
 document.getElementById('ed_cat').onchange=function(){ const c=this.value; edFillContracts(c,''); const con=edIsContract(c)?document.getElementById('ed_contract').value:''; edFillSites(c,con,''); };
 document.getElementById('ed_contract').onchange=function(){ edFillSites(document.getElementById('ed_cat').value,this.value,''); };
@@ -1206,6 +1219,60 @@ async function renderOutbox(){
     if(!confirm('この日報を送らずに取り消します。よろしいですか？\n（取り消すと元に戻せません）')) return;
     await obxDel(b.dataset.id); await updateOutboxBadge(); renderOutbox();
   });
+}
+
+/* ===== 業務内容の音声入力：話す → Gemini（Flash-Lite）が用語集・現場名をもとに誤字脱字を直して入れる ===== */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+async function fixWorkText(text, site){
+  const res=await fetchT(GENBA_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({app:'nippou',mode:'fixText',field:'業務内容',text,site:site||''})},25000);
+  const j=await res.json(); if(!j.ok) throw new Error(j.error||'直せませんでした'); return j;
+}
+function voiceBox(ta, getSite){
+  if(!ta||ta._voice) return; ta._voice=true;
+  const bar=document.createElement('div'); bar.className='vbar';
+  bar.innerHTML='<button type="button" class="vbtn" data-v-mic>🎤 話して入力</button><button type="button" class="vbtn sub" data-v-fix>✨ 誤字を直す</button><span class="vlive" data-v-live></span>';
+  const note=document.createElement('div'); note.className='vfix'; note.style.display='none';
+  ta.after(bar); bar.after(note);
+  const mic=bar.querySelector('[data-v-mic]'), fixB=bar.querySelector('[data-v-fix]'), live=bar.querySelector('[data-v-live]');
+  const setVal=v=>{ ta.value=v; ta.dispatchEvent(new Event('input',{bubbles:true})); };
+  let rec=null, finals=[], busy=false;
+  const showFix=(j, before, rawAfter)=>{
+    const ch=(j.changes||[]).map(c=>esc(c.from)+' → <b>'+esc(c.to)+'</b>').join('　');
+    note.innerHTML=(ch?'直した所：'+ch:'直す所はありませんでした')+(ch?'<button type="button">元に戻す</button>':'');
+    note.style.display='';
+    const u=note.querySelector('button'); if(u) u.onclick=()=>{ setVal(rawAfter); note.style.display='none'; toast('直す前の文に戻しました'); };
+  };
+  async function run(text, mode){   // mode: add=話した分を足す／all=今の文全体を直す
+    const before=ta.value, sep=before.trim()?'　':'';
+    const rawAfter=mode==='add'?before.replace(/\s+$/,'')+sep+text:text;
+    busy=true; fixB.disabled=true; mic.disabled=true; live.textContent='✨ 用語集で誤字を直しています…';
+    try{
+      const j=await fixWorkText(text, getSite&&getSite());
+      setVal(mode==='add'?before.replace(/\s+$/,'')+sep+j.text:j.text);
+      showFix(j, before, rawAfter);
+      live.textContent='';
+    }catch(e){
+      if(mode==='add') setVal(rawAfter);
+      live.textContent=''; toast('誤字を直せませんでした（'+(e.name==='AbortError'?'時間切れ':'通信できません')+'）。話した文はそのまま入れました');
+    }finally{ busy=false; fixB.disabled=false; mic.disabled=false; }
+  }
+  fixB.onclick=()=>{ const t=ta.value.trim(); if(!t){ toast('先に業務内容を入れてください'); return; } if(!busy) run(t,'all'); };
+  const stop=()=>{ if(rec){ try{ rec.stop(); }catch(e){} } };
+  mic.onclick=()=>{
+    if(busy) return;
+    if(rec){ stop(); return; }
+    if(!SR){ ta.focus(); toast('この端末ではアプリの音声入力が使えません。キーボードのマイクで話して、終わったら「✨ 誤字を直す」を押してください'); return; }
+    finals=[]; rec=new SR(); rec.lang='ja-JP'; rec.continuous=true; rec.interimResults=true;
+    mic.classList.add('rec'); mic.textContent='■ 話し終わったら押す'; live.textContent='🎙 聞いています… 業務内容を話してください';
+    rec.onresult=e=>{ let interim=''; for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) finals.push(r[0].transcript); else interim+=r[0].transcript; }
+      live.textContent='🎙 '+(finals.join('')+interim).slice(-60); };
+    rec.onerror=e=>{ if(e.error==='not-allowed'||e.error==='service-not-allowed') toast('マイクが使えません。設定でマイクを許可してください'); };
+    rec.onend=()=>{ rec=null; mic.classList.remove('rec'); mic.textContent='🎤 話して入力';
+      const text=finals.join('').trim(); finals=[];
+      if(text) run(text,'add'); else live.textContent=''; };
+    try{ rec.start(); }catch(e){ rec=null; mic.classList.remove('rec'); mic.textContent='🎤 話して入力'; toast('音声入力を始められませんでした'); }
+  };
 }
 function toast(msg){
   const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');

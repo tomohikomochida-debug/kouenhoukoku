@@ -144,7 +144,7 @@ function gemini_(parts, opt) {   // parts：文字列 または Gemini の parts
   var key = prop_('GEMINI_API_KEY', '');
   if (!key) throw new Error('GEMINI_API_KEY が未設定です（スクリプト プロパティに登録してください）');
   if (typeof parts === 'string') parts = [{ text: parts }];
-  var models = models_(), started = Date.now(), last = '';
+  var models = (opt && opt.models) ? opt.models : models_(), started = Date.now(), last = '';
   for (var m = 0; m < models.length; m++) {
     var model = models[m];
     var cfg = { responseMimeType: 'application/json' };
@@ -252,6 +252,8 @@ function doPost(e) {
       case 'dandori:addNickname':    return withLock_(function () { return addNickname_(b.name, b.nickname, b.by); });
       case 'dandori:deleteNickname': return withLock_(function () { return deleteNickname_(b.name, b.nickname); });
       /* 現場ノート */
+      /* 日報：音声入力の文を、用語集・現場名で直す */
+      case 'nippou:fixText':   return out_(fixText_(b));
       case 'note:saveSite':      return withLock_(function () { return saveSite_(b.site, b.by); });
       case 'note:importBukken':  return withLock_(function () { return importBukken_(b.by); });
       case 'note:saveCaution':   return withLock_(function () { return saveCaution_(b.caution, b.image, b.by); });
@@ -1937,4 +1939,55 @@ var SEED_ALIASES = [["手入れ","ていれ","Y0001","別名"],
   ["丸木","まるき","Y0197","社内呼び"],
   ["マル","まる","Y0197","略称"],
   ["竹","たけ","Y0198","略称"]];
+
+/* ================================================================
+ *  日報：音声入力した業務内容の誤変換・誤字脱字を直す（Gemini Flash-Lite）
+ *  手がかり：用語集（正式名と社内の呼び方）・現場名・これまでの日報の業務内容
+ * ================================================================ */
+function fixVocab_() {
+  var cache = CacheService.getScriptCache(), hit = cache.get('fixvocab_v1');
+  if (hit) return JSON.parse(hit);
+  var al = {};
+  rows_('aliases').forEach(function (a) { if (String(a.state || '') === '却下') return; (al[a.termId] = al[a.termId] || []).push(String(a.alias)); });
+  var terms = rows_('terms').map(function (t) { var a = al[t.termId] || []; return String(t.term) + (a.length ? '（' + a.slice(0, 6).join('/') + '）' : ''); }).join('、');
+  var sites = ''; try { sites = siteList_().map(function (s) { return String(s.name); }).join('、'); } catch (e) {}
+  var works = [];
+  try {   // これまでの日報の業務内容（よく使う書き方の見本。新しい順・重ならないもの）
+    var ss = SpreadsheetApp.openById(prop_('NIPPOU_SHEET_ID', NIPPOU_SHEET_ID)), sh = ss.getSheetByName('日報データ');
+    if (sh && sh.getLastRow() > 1) {
+      var vals = sh.getDataRange().getValues(), cW = vals[0].map(String).indexOf('業務内容'), seen = {};
+      for (var i = vals.length - 1; i >= 1 && works.length < 150; i--) {
+        var w = String(vals[i][cW] || '').replace(/\s+/g, ' ').trim();
+        if (!w || seen[w] || w.length > 60) continue; seen[w] = 1; works.push(w);
+      }
+    }
+  } catch (e) {}
+  var v = { terms: terms.slice(0, 30000), sites: sites.slice(0, 8000), works: works.join('／').slice(0, 9000) };
+  try { cache.put('fixvocab_v1', JSON.stringify(v), 600); } catch (e) {}
+  return v;
+}
+function fixText_(b) {
+  var text = String(b.text || '').trim();
+  if (!text) return { ok: false, error: '直す文がありません' };
+  var v = fixVocab_();
+  var prompt =
+    'あなたは造園会社（植木屋）の日報の清書係です。スタッフが音声入力した「' + (b.field || '業務内容') + '」の文を、聞き間違い・誤変換・誤字脱字だけ直してください。\n' +
+    'ルール：\n' +
+    '・内容を足さない・削らない・言い換えない。話した順番もそのまま\n' +
+    '・「えー」「あの」「えっと」などの言いよどみと、同じ言葉のくり返しは取る\n' +
+    '・造園の用語・社内の呼び方は、下の用語集の正式な書き方に直す（音の近い聞き間違いも直す。例：「女装」→「除草」、「周層」→「集草」、「未消木」→「実生木」）\n' +
+    '・現場名は現場の一覧の書き方に合わせる\n' +
+    '・数字は半角。句読点は日報らしく最小限\n' +
+    '・自信がない所は直さずそのまま\n' +
+    'JSONだけ返す：{"text":"直した文","changes":[{"from":"元の言葉","to":"直した言葉"}]}（changes は直した所だけ。言いよどみを取っただけの所は入れない）\n\n' +
+    (b.site ? 'この日報の現場：' + b.site + '\n' : '') +
+    '用語集（正式名（社内の呼び方））：\n' + v.terms + '\n\n' +
+    '現場の一覧：\n' + v.sites + '\n\n' +
+    'これまでの日報の業務内容（書き方の見本）：\n' + v.works + '\n\n' +
+    '音声入力した文：\n' + text;
+  var j = gemini_(prompt, { fast: true, models: ['gemini-2.5-flash-lite', 'gemini-2.5-flash'] });
+  var out = String(j.text || '').trim() || text;
+  var ch = (Array.isArray(j.changes) ? j.changes : []).filter(function (c) { return c && c.from && c.to && String(c.from) !== String(c.to); }).slice(0, 20);
+  return { ok: true, text: out, raw: text, changes: ch };
+}
 
