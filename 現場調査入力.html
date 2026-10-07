@@ -417,8 +417,8 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   function qtyOf(t) { return ty(t) === "exterior" ? (t.qty || "") : 1; }
   function unitOf(t) { return ty(t) === "exterior" ? (t.unit || "") : "本"; }
   function kubun(t) { return ty(t) === "exterior" ? "外構" : "樹木"; }
-  // 優先度（1＝高 2＝中 3＝小）。呼び方は案件ごとに選べる
-  var PRIO_SETS = { hml: ["高", "中", "小"], abc: ["早急", "推奨", "経過観察"], qnl: ["急ぐ", "普通", "後で"], num: ["優先1", "優先2", "優先3"] };
+  // 優先度（1＝高 2＝中 3＝低）。呼び方は案件ごとに選べる
+  var PRIO_SETS = { hml: ["高", "中", "低"], abc: ["早急", "推奨", "経過観察"], qnl: ["急ぐ", "普通", "後で"], num: ["優先1", "優先2", "優先3"] };
   var prioSet = "hml";
   function setPrio(k) { prioSet = PRIO_SETS[k] ? k : "hml"; }
   function prioName(t) { var p = Number(t && t.prio); return (p >= 1 && p <= 3) ? PRIO_SETS[prioSet][p - 1] : ""; }
@@ -4111,7 +4111,7 @@ document.addEventListener("keydown",e=>{   // パソコンのキーボードで�
 });
 
 /* ---------- 優先度（3段階）と、出力する項目の絞り込み ----------
-   t.prio：1＝高 2＝中 3＝小（呼び方は案件ごとに state.prioSet で切りかえ）。未設定は 0。
+   t.prio：1＝高 2＝中 3＝低（呼び方は案件ごとに state.prioSet で切りかえ）。未設定は 0。
    state.outFilter：{ p:[出す優先度（0＝未設定）], renum:true＝選んだものだけで1から連番／false＝元の番号のまま }
    写真帳プレビュー・Excel・PDF は outTrees() の並び・番号で出す。 */
 const PRIO_COLORS=["#D62828","#E8890C","#2E7D55"], PRIO_NONE="#8a8a8a";
