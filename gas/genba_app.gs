@@ -44,6 +44,8 @@ var SHEETS = {
   memos:     { name: '要点メモ',     head: ['memoId', 'at', 'by', 'to', 'kind', 'headline', 'points', 'needs', 'vehicles', 'site', 'when', 'people', 'missing', 'message', 'rawText', 'readBy', 'status', 'doneAt', 'doneBy', 'routes'] },
   cautions:  { name: '現場の注意点', head: ['cautionId', 'siteId', 'site', 'kind', 'text', 'lat', 'lng', 'photoUrl', 'photoId', 'until', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },
   replies:   { name: '要点メモの返事', head: ['replyId', 'memoId', 'at', 'by', 'text', 'scope', 'showAt', 'actions', 'readBy'] },
+  chosa:     { name: '現場調査の案件', head: ['id', 'name', 'date', 'mode', 'n', 'photos', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 中身は Drive の「現場調査データ」、写真は1枚1ファイルで「現場調査データ ＞ 写真」
+  chosaPhotos:{ name: '現場調査の写真', head: ['hash', 'fileId', 'mime', 'size', 'at'] },
   parks:     { name: '公園報告',     head: ['id', 'park', 'contract', 'order', 'date', 'figures', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] }   // 中身（図面・図形）は Drive の「公園報告データ」に1件1ファイルで置く
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
@@ -182,6 +184,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {}, app = p.app || '', a = p.action || '';
   try {
     if (app === 'park') return out_(parkGet_(a, p));
+    if (app === 'chosa') return out_(chosaGet_(a, p));
     if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL) });
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
     if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair'), suppliers: rows_('suppliers'), admins: admins_(), outs: openOuts_() });
@@ -249,6 +252,11 @@ function doPost(e) {
       case 'note:importBukken':  return withLock_(function () { return importBukken_(b.by); });
       case 'note:saveCaution':   return withLock_(function () { return saveCaution_(b.caution, b.image, b.by); });
       case 'note:deleteCaution': return withLock_(function () { return upsert_('cautions', 'cautionId', 'K', { cautionId: b.cautionId, state: '削除', updatedBy: b.by, updatedAt: now_() }, b.by); });
+      /* 現場調査 */
+      case 'chosa:have':       return out_(chosaHave_(b.hashes));
+      case 'chosa:photo':      return withLock_(function () { return chosaPhoto_(b.hash, b.data); });
+      case 'chosa:save':       return withLock_(function () { return chosaSave_(b); });
+      case 'chosa:delete':     return withLock_(function () { return chosaDelete_(b.id, b.by); });
       /* 公園報告 */
       case 'park:save':        return withLock_(function () { return parkSave_(b); });
       case 'park:delete':      return withLock_(function () { return parkDelete_(b.id, b.by); });
@@ -1039,6 +1047,92 @@ function parkDelete_(id, by) {   // 消すのは、作った人か親方だけ�
   if (!isAdmin_(by) && (!by || by !== String(r.by || '').trim())) return { ok: false, error: '消せるのは、この記録を作った人（' + (r.by || '不明') + '）か' + admins_().join('・') + 'だけです' };
   if (r.fileId) { try { DriveApp.getFileById(r.fileId).setTrashed(true); } catch (e) {} }
   upsert_('parks', 'id', 'P', { id: r.id, state: '削除' }, by);
+  return { ok: true };
+}
+
+/* ================================================================
+ *  現場調査（現場調査入力.html）の案件をみんなで共有する（端末が自動で送る）
+ *  ・案件の番号は端末で付けたもの（c＋時刻）をそのまま使う
+ *  ・写真は中身から作った番号（hash）で1枚1ファイル。同じ写真は2度送らない
+ *  ・案件の中身（.json）は写真を「gcimg:番号」に置きかえたもの。保存し直すたびに新しいファイル、前のはゴミ箱へ
+ *  ・ほかの端末が先に保存し直していたら上書きしない（conflict を返し、端末側で別の案件として残す）
+ * ================================================================ */
+function chosaFolder_(sub) {
+  var id = prop_('CHOSA_FOLDER_ID', ''), folder = null;
+  if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) folder = f; } catch (e) {} }
+  if (!folder) {
+    var p = docsFolder_().getParents(), parent = p.hasNext() ? p.next() : DriveApp.getRootFolder();
+    folder = subFolder_(parent, '現場調査データ');
+    PropertiesService.getScriptProperties().setProperty('CHOSA_FOLDER_ID', folder.getId());
+  }
+  return sub ? subFolder_(folder, sub) : folder;
+}
+function chosaRow_(id) { var list = rows_('chosa'); for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i]; return null; }
+function chosaItem_(r) { return { id: r.id, name: r.name, date: r.date, mode: r.mode, n: Number(r.n) || 0, photos: Number(r.photos) || 0, ver: Number(r.ver) || 1, by: r.by, updatedBy: r.updatedBy || r.by, updated: r.updatedAt }; }
+function chosaPhotoMap_() { var m = {}; rows_('chosaPhotos').forEach(function (r) { if (r.hash && !m[r.hash]) m[r.hash] = r; }); return m; }
+function chosaGet_(a, p) {
+  if (a === 'list') {
+    var items = rows_('chosa').filter(function (r) { return r.state !== '削除'; }).map(chosaItem_);
+    items.sort(function (x, y) { return String(y.updated).localeCompare(String(x.updated)); });
+    return { ok: true, items: items, admins: admins_() };
+  }
+  if (a === 'get') {
+    var r = chosaRow_(p.id);
+    if (!r || r.state === '削除') return { ok: false, error: 'この案件は見つかりませんでした（消されたかもしれません）' };
+    try { return { ok: true, data: DriveApp.getFileById(r.fileId).getBlob().getDataAsString('UTF-8'), item: chosaItem_(r) }; }
+    catch (e) { return { ok: false, error: '中身のファイルを開けませんでした：' + e }; }
+  }
+  if (a === 'photos') {   // h=番号,番号,…（数枚ずつ）→ { 番号: dataURL }
+    var map = chosaPhotoMap_(), out = {}, miss = [];
+    String(p.h || '').split(',').filter(String).slice(0, 8).forEach(function (h) {
+      var r = map[h];
+      if (!r) { miss.push(h); return; }
+      try { var b = DriveApp.getFileById(r.fileId).getBlob(); out[h] = 'data:' + (r.mime || 'image/jpeg') + ';base64,' + Utilities.base64Encode(b.getBytes()); }
+      catch (e) { miss.push(h); }
+    });
+    return { ok: true, photos: out, missing: miss };
+  }
+  return { ok: false, error: 'unknown action' };
+}
+function chosaHave_(hashes) {
+  var map = chosaPhotoMap_();
+  return { ok: true, missing: (hashes || []).filter(function (h, i, a) { return h && !map[h] && a.indexOf(h) === i; }) };
+}
+function chosaPhoto_(hash, data) {
+  hash = String(hash || '').replace(/[^0-9a-z]/gi, '');
+  var m = String(data || '').match(/^data:(image\/[a-z+]+);base64,(.+)$/);
+  if (!hash || !m) return { ok: false, error: '写真の形がちがいます' };
+  if (chosaPhotoMap_()[hash]) return { ok: true, had: true };
+  var ext = m[1] === 'image/png' ? '.png' : '.jpg';
+  var f = chosaFolder_('写真').createFile(Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], hash + ext));
+  sh_('chosaPhotos').appendRow([hash, f.getId(), m[1], Math.round(m[2].length * 3 / 4 / 1024) + 'KB', now_()]);
+  return { ok: true };
+}
+function chosaSave_(b) {
+  var id = String(b.id || '').replace(/[^0-9a-zA-Z_-]/g, '').slice(0, 40), json = String(b.json || '');
+  if (!id || !json) return { ok: false, error: '案件の番号か中身がありません' };
+  if (json.length > 45 * 1024 * 1024) return { ok: false, error: '大きすぎて保存できません' };
+  var by = String(b.by || '').trim(), old = chosaRow_(id);
+  if (old && old.state !== '削除' && Number(b.base || 0) !== (Number(old.ver) || 1))   // 開いたあとに誰かが保存し直していた
+    return { ok: false, conflict: true, ver: Number(old.ver) || 1, updatedBy: old.updatedBy || old.by, updated: old.updatedAt };
+  var live = old && old.state !== '削除';
+  var obj = { id: id, name: String(b.name || '').trim() || '（無題）', date: b.date || '', mode: b.caseMode || '', n: Number(b.n) || 0, photos: Number(b.photos) || 0,
+    ver: live ? (Number(old.ver) || 1) + 1 : 1, state: '有効' };
+  if (!live) { obj.by = by; obj.at = now_(); }
+  var name = [obj.name, obj.date || '日付なし', id].join('_').replace(/[\\\/:*?"<>|]/g, '') + '.json';
+  var file = chosaFolder_().createFile(Utilities.newBlob(json, 'application/json', name));
+  if (old && old.fileId) { try { DriveApp.getFileById(old.fileId).setTrashed(true); } catch (e) {} }
+  obj.fileId = file.getId(); obj.size = Math.round(json.length / 1024) + 'KB';
+  upsert_('chosa', 'id', 'C', obj, by);
+  return { ok: true, id: id, ver: obj.ver, updated: now_() };
+}
+function chosaDelete_(id, by) {   // みんなの共有から消すのは、作った人か親方だけ（ファイルはゴミ箱に30日）
+  var r = chosaRow_(id);
+  if (!r || r.state === '削除') return { ok: true };
+  by = String(by || '').trim();
+  if (!isAdmin_(by) && (!by || by !== String(r.by || '').trim())) return { ok: false, error: 'みんなの共有から消せるのは、作った人（' + (r.by || '不明') + '）か' + admins_().join('・') + 'だけです' };
+  if (r.fileId) { try { DriveApp.getFileById(r.fileId).setTrashed(true); } catch (e) {} }
+  upsert_('chosa', 'id', 'C', { id: r.id, state: '削除' }, by);
   return { ok: true };
 }
 

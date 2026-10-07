@@ -4496,6 +4496,260 @@ async function exportPdf(){
 
 </script>
 <!-- Excel出力用ライブラリ（画面を先に出すため、いちばん最後に読む） -->
+<script>/* ===== みんなの共有（自動）：案件と写真を共通GAS経由でGoogleドライブ「社内アプリ ＞ 現場調査データ」へ =====
+ * ・この端末の保存（IndexedDB）はこれまでどおり。直したら少し待って、電波があれば自動で送る
+ * ・ほかの人の案件は、案件の選択に「☁️」で出る。選ぶとこの端末に取り込む
+ * ・同じ案件をほかの人が先に直していたら上書きしない（自分の変更は「（名前の変更）」として別の案件に残す）
+ * ・写真は中身の番号で1枚ずつ送り、同じ写真は2度送らない */
+(function(){
+  if(typeof CAM_MODE!=="undefined" && CAM_MODE) return;   // iPhoneのカメラ画面では動かさない
+  const GAS="https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec";
+  const WAIT=20000;            // 直してから送るまで（ms）
+  let meta={};                 // 案件ごとの { ver:共有の版, dirty:未送信の変更あり, seq:変更の回数 }
+  let cloud=[], admins=["親方"], busy=false, timer=null, lastList=0, status={t:"",cls:""}, progress="";
+  const $=id=>document.getElementById(id);
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+  /* ---- 名前（ほかのアプリと同じ） ---- */
+  function me(ask){
+    let n="";
+    try{ for(const k of ["dandori_me","nippou_author"]){ const v=localStorage.getItem(k); if(v){ try{ const j=JSON.parse(v); n=typeof j==="string"?j:""; }catch(e){ n=v; } } if(n) break; } }catch(e){}
+    n=String(n||"").trim();
+    if(!n&&ask){ let asked=false; try{ asked=localStorage.getItem("gc_asked_name")==="1"; localStorage.setItem("gc_asked_name","1"); }catch(e){}
+      if(!asked){ const v=prompt("みんなの共有に送ります。あなたの名前を入れてください（だれの案件か一覧に出ます）",""); n=String(v||"").trim(); if(n){ try{ localStorage.setItem("dandori_me",JSON.stringify(n)); }catch(e){} } } }
+    return n;
+  }
+  const isAdmin=()=>admins.includes(me());
+
+  /* ---- 写真の番号（中身から作る。同じ写真なら同じ番号） ---- */
+  function cyrb(str,seed){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
+    for(let i=0;i<str.length;i++){ const c=str.charCodeAt(i); h1=Math.imul(h1^c,2654435761); h2=Math.imul(h2^c,1597334677); }
+    h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909); h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
+    return (h2>>>0).toString(16).padStart(8,"0")+(h1>>>0).toString(16).padStart(8,"0"); }
+  const hashCache=new Map();
+  function hashOf(s){ let h=hashCache.get(s); if(!h){ h=cyrb(s,1)+cyrb(s,7)+s.length.toString(16); hashCache.set(s,h); } return h; }
+  const isImg=v=>typeof v==="string"&&v.length>500&&/^data:image\/[a-z+]+;base64,/.test(v);
+  // 中の写真（data:image…）を「gcimg:番号」に置きかえた写しを作る
+  function pack(st){ const imgs={};
+    const walk=v=>{ if(isImg(v)){ const h=hashOf(v); imgs[h]=v; return "gcimg:"+h; }
+      if(Array.isArray(v)) return v.map(walk);
+      if(v&&typeof v==="object"){ const o={}; for(const k in v) o[k]=walk(v[k]); return o; }
+      return v; };
+    return { data:walk(st), imgs }; }
+  function refsOf(v,out){ out=out||new Set();
+    if(typeof v==="string"){ if(v.startsWith("gcimg:")) out.add(v.slice(6)); }
+    else if(Array.isArray(v)) v.forEach(x=>refsOf(x,out));
+    else if(v&&typeof v==="object") for(const k in v) refsOf(v[k],out);
+    return out; }
+  function unpack(v,map){ if(typeof v==="string") return v.startsWith("gcimg:")?(map[v.slice(6)]||""):v;
+    if(Array.isArray(v)) return v.map(x=>unpack(x,map));
+    if(v&&typeof v==="object"){ const o={}; for(const k in v) o[k]=unpack(v[k],map); return o; }
+    return v; }
+
+  /* ---- 通信 ---- */
+  async function get(q,ms){ const ac=new AbortController(), tm=setTimeout(()=>ac.abort(),ms||30000);
+    try{ const r=await (await fetch(GAS+"?app=chosa&"+q,{cache:"no-store",signal:ac.signal})).json(); return r; } finally{ clearTimeout(tm); } }
+  async function post(body,ms){ const ac=new AbortController(), tm=setTimeout(()=>ac.abort(),ms||90000);
+    try{ return await (await fetch(GAS,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(Object.assign({app:"chosa",by:me()},body)),signal:ac.signal})).json(); } finally{ clearTimeout(tm); } }
+  const notUpdated=e=>/unknown/.test(String(e||""))?"共通GASの更新がまだです（数分で反映されます）":String(e||"");
+
+  /* ---- 記録の出し入れ ---- */
+  async function loadMeta(){ try{ meta=(await idbGet("gcsync"))||{}; }catch(e){ meta={}; } }
+  async function saveMeta(){ try{ await idbSet("gcsync",meta); }catch(e){} }
+  const M=id=>(meta[id]=meta[id]||{ver:0,dirty:false,seq:0});
+  async function refreshList(force){
+    if(!force && Date.now()-lastList<60000) return;
+    try{ const r=await get("action=list",20000); if(!r.ok) throw new Error(r.error); cloud=r.items||[]; if(r.admins) admins=r.admins; lastList=Date.now(); renderCaseBar(); }
+    catch(e){ setStatus(navigator.onLine===false?"☁️ 電波なし（あとで送ります）":"☁️ 共有につながりません", "ng"); throw e; }
+  }
+
+  /* ---- 送る ---- */
+  async function upload(id){
+    const st=await idbGet("case_"+id); if(!st) return;
+    const m=M(id), seq=m.seq, info=casesIndex.find(c=>c.id===id)||{};
+    if(!m.ver && !String(st.caseName||"").trim() && !(st.trees||[]).length && !st.mapImage){ m.dirty=false; await saveMeta(); return; }   // 空の案件は送らない
+    const p=pack(st), hs=Object.keys(p.imgs);
+    if(hs.length){
+      const h=await post({mode:"have",hashes:hs}); if(!h.ok) throw new Error(notUpdated(h.error));
+      const miss=h.missing||[];
+      for(let i=0;i<miss.length;i++){
+        progress="写真 "+(i+1)+"/"+miss.length; paint();
+        const r=await post({mode:"photo",hash:miss[i],data:p.imgs[miss[i]]}); if(!r.ok) throw new Error(r.error);
+      }
+    }
+    progress="案件"; paint();
+    const r=await post({mode:"save",id,base:m.ver||0,name:st.caseName||info.name||"",date:st.caseDate||"",caseMode:st.mode||"",n:(st.trees||[]).length,photos:hs.length,json:JSON.stringify(p.data)});
+    if(r.conflict){ await fork(id,r); return; }
+    if(!r.ok) throw new Error(notUpdated(r.error));
+    m.ver=r.ver; if(m.seq===seq) m.dirty=false;   // 送っている間にまた直したら、もう一度送る
+    await saveMeta();
+  }
+  // ほかの人が先に保存し直していた：自分の変更は新しい番号の別案件にして送る（元の番号はほかの人の版として残る）
+  async function fork(id,r){
+    const st=await idbGet("case_"+id); if(!st) return;
+    const nid=newId(), who=me()||"この端末";
+    st.caseName=(st.caseName||"(無題)")+"（"+who+"の変更）";
+    await idbSet("case_"+nid,st); await idbDel("case_"+id);
+    const e=casesIndex.find(c=>c.id===id); if(e){ e.id=nid; e.name=st.caseName; e.updatedAt=Date.now(); }
+    if(caseId===id){ caseId=nid; state.caseName=st.caseName; const cn=$("caseName"); if(cn) cn.value=st.caseName; await idbSet("current",nid); }
+    await idbSet("cases",casesIndex);
+    meta[nid]={ver:0,dirty:true,seq:1}; delete meta[id]; await saveMeta();
+    renderCaseBar();
+    alert("「"+(r.updatedBy||"ほかの人")+"」さんが同じ案件を先に直していました（"+(r.updated||"")+"）。\n上書きしないよう、あなたの変更は\n「"+st.caseName+"」\nとして別の案件で残しました。\n\n元の案件は案件の選択の「☁️ みんなの案件」から開けます。見くらべて片方を消してください。");
+  }
+  async function syncNow(force){
+    if(busy) return; busy=true; clearTimeout(timer);
+    try{
+      if(navigator.onLine===false){ setStatus("☁️ 電波なし（あとで送ります）","ng"); return; }
+      if(caseId&&meta[caseId]&&meta[caseId].dirty){ clearTimeout(saveTimer); await save(); }   // 書きかけを先にこの端末へ保存
+      const tried=new Set();
+      for(let pass=0;pass<3;pass++){   // 衝突で別案件にしたものも、続けて送る
+        const ids=Object.keys(meta).filter(id=>meta[id].dirty && !tried.has(id) && casesIndex.some(c=>c.id===id));
+        if(!ids.length) break;
+        if(!me()) me(true);
+        ids.sort((a,b)=>(a===caseId?-1:b===caseId?1:0));   // 開いている案件を先に
+        for(let i=0;i<ids.length;i++){
+          tried.add(ids[i]);
+          setStatus("☁️ 共有中…"+(ids.length>1?(" "+(i+1)+"/"+ids.length+"件"):""),"run");
+          await upload(ids[i]);
+        }
+      }
+      progress="";
+      await refreshList(true);
+      await pullCurrent();
+      const left=Object.keys(meta).filter(id=>meta[id].dirty && casesIndex.some(c=>c.id===id)).length;
+      if(left){ setStatus("☁️ 共有待ち "+left+"件","wait"); schedule(); }
+      else setStatus("☁️ 共有済 "+new Date().toTimeString().slice(0,5),"ok");
+    }catch(e){
+      progress="";
+      setStatus((navigator.onLine===false?"☁️ 電波なし（あとで送ります）":"☁️ 送れませんでした（あとでもう一度）"),"ng");
+      status.err=String(e&&e.message||e); schedule(60000);
+    }finally{ busy=false; paint(); }
+  }
+  function schedule(ms){ clearTimeout(timer); timer=setTimeout(()=>syncNow(),ms||WAIT); }
+
+  /* ---- 取り込む ---- */
+  async function download(id){
+    const g=await get("action=get&id="+encodeURIComponent(id),60000);
+    if(!g.ok) throw new Error(notUpdated(g.error));
+    const seq0=meta[id]?meta[id].seq:0;
+    const data=JSON.parse(g.data), need=[...refsOf(data)], have={};
+    // この端末にもう同じ写真があれば使う（単価だけ直した、などのとき写真を取り直さない）
+    try{ const old=await idbGet("case_"+id); if(old) Object.values(pack(old).imgs).forEach(v=>{ have[hashOf(v)]=v; }); }catch(e){}
+    if(typeof state==="object") Object.values(pack(state).imgs).forEach(v=>{ have[hashOf(v)]=v; });
+    const miss=need.filter(h=>!have[h]);
+    for(let i=0;i<miss.length;i+=4){
+      progress="写真 "+Math.min(i+4,miss.length)+"/"+miss.length; paint();
+      const r=await get("action=photos&h="+miss.slice(i,i+4).join(","),60000);
+      if(!r.ok) throw new Error(r.error);
+      Object.assign(have,r.photos||{});
+    }
+    progress="";
+    const st=unpack(data,have);
+    if(meta[id]&&meta[id].seq!==seq0&&meta[id].dirty) return null;   // 取り込み中にこの端末で直した → 取り込まない（送るときに別案件として残る）
+    await idbSet("case_"+id,st);
+    const it=g.item||{}, e=casesIndex.find(c=>c.id===id), row={id,name:st.caseName||it.name||"(無題)",date:st.caseDate||"",updatedAt:Date.now(),n:(st.trees||[]).length};
+    if(e) Object.assign(e,row); else casesIndex.unshift(row);
+    await idbSet("cases",casesIndex);
+    meta[id]={ver:it.ver||1,dirty:false,seq:0}; await saveMeta();
+    return st;
+  }
+  function showCase(st){
+    state=st; undoStack=[]; redoStack=[]; normalize();
+    try{ if(window.surveyText&&window.surveyText.setPrio) window.surveyText.setPrio(state.prioSet); }catch(e){}
+    syncMode(); renderTrees(); renderMap(); renderCaseBar(); updUndoBtn();
+  }
+  // 開いている案件が、ほかの端末で新しくなっていたら取り込む（この端末で直していないときだけ）
+  async function pullCurrent(){
+    const id=caseId, it=cloud.find(c=>c.id===id), m=meta[id];
+    if(!it||!m||m.dirty||!(it.ver>(m.ver||0))) return;
+    setStatus("☁️ 新しい版を取り込み中…","run");
+    const st=await download(id);
+    if(st && caseId===id && !(meta[id]&&meta[id].dirty)) { showCase(st); toast("「"+(it.updatedBy||"ほかの人")+"」さんの変更を取り込みました"); }
+  }
+  function toast(t){ let el=$("gcToast"); if(!el){ el=document.createElement("div"); el.id="gcToast"; el.style.cssText="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1f6f43;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:9999;box-shadow:0 4px 14px rgba(0,0,0,.25);max-width:90vw"; document.body.appendChild(el); }
+    el.textContent=t; el.style.display="block"; clearTimeout(el._t); el._t=setTimeout(()=>{ el.style.display="none"; },4000); }
+
+  /* ---- 表示 ---- */
+  function setStatus(t,cls){ status.t=t; status.cls=cls; paint(); }
+  function paint(){
+    let el=$("gcSync");
+    if(!el){ const bar=document.querySelector(".casebar2"); if(!bar) return;
+      el=document.createElement("button"); el.id="gcSync"; el.className="iconbtn"; el.type="button"; el.style.cssText="white-space:nowrap";
+      el.onclick=()=>{ if(status.cls==="ng"&&status.err) alert("前回うまく送れなかった理由：\n"+status.err+"\n\nもう一度送ります。"); Object.keys(meta).forEach(id=>{ if(!meta[id].ver) meta[id].dirty=true; }); syncNow(true); };
+      bar.insertBefore(el,bar.firstChild); }
+    const col={ok:"#1f7a46",run:"#1f5f9a",wait:"#8a6d00",ng:"#b03a2e"}[status.cls]||"";
+    el.textContent=(status.t||"☁️ 共有")+(progress&&status.cls==="run"?"（"+progress+"）":"");
+    el.style.color=col; el.title="押すと、今すぐ共有します";
+  }
+
+  /* ---- もとの関数にひと手間足す ---- */
+  const _markDirty=markDirty;
+  markDirty=function(){ const r=_markDirty.apply(this,arguments);
+    if(caseId){ const m=M(caseId); m.dirty=true; m.seq++; saveMeta(); setStatus("☁️ 共有待ち","wait"); schedule(); }
+    return r; };
+  const _render=renderCaseBar;
+  renderCaseBar=function(){ _render.apply(this,arguments);
+    const sel=$("caseSel"); if(!sel) return;
+    const only=cloud.filter(c=>!casesIndex.some(x=>x.id===c.id));
+    if(only.length){
+      const g=document.createElement("optgroup"); g.label="☁️ みんなの案件（選ぶとこの端末に取り込みます）";
+      g.innerHTML=only.map(c=>`<option value="cloud:${esc(c.id)}">☁️ ${esc(c.name||"(無題)")}｜${esc(c.date||"")}（${c.n||0}件・${esc(c.updatedBy||c.by||"")}）</option>`).join("");
+      sel.appendChild(g);
+    }
+    sel.value=caseId||sel.value;
+  };
+  const _switch=switchCase;
+  switchCase=async function(id){
+    if(id&&String(id).startsWith("cloud:")){
+      const cid=id.slice(6), it=cloud.find(c=>c.id===cid)||{};
+      setStatus("☁️ 取り込み中…","run");
+      try{ await save(); await download(cid); setStatus("☁️ 共有済","ok"); }
+      catch(e){ progress=""; setStatus("☁️ 取り込めませんでした","ng"); alert("「"+(it.name||"案件")+"」を取り込めませんでした。\n"+(e&&e.message||e)+"\n\n電波の届くところで、もう一度選んでください。"); renderCaseBar(); return; }
+      return _switch(cid);
+    }
+    // ほかの端末で新しくなっていたら、開く前に取り込む
+    const it=cloud.find(c=>c.id===id), m=meta[id];
+    if(it&&m&&!m.dirty&&it.ver>(m.ver||0)){ try{ setStatus("☁️ 新しい版を取り込み中…","run"); await download(id); setStatus("☁️ 共有済","ok"); }catch(e){ setStatus("☁️ 取り込めませんでした","ng"); } }
+    return _switch(id);
+  };
+  const _del=deleteCase;
+  deleteCase=async function(){
+    const id=caseId, it=cloud.find(c=>c.id===id);
+    await _del.apply(this,arguments);
+    if(casesIndex.some(c=>c.id===id)) return;   // 消すのをやめた
+    delete meta[id]; await saveMeta();
+    if(it){
+      const mine=isAdmin()||(me()&&me()===String(it.by||"").trim());
+      if(mine && confirm("みんなの共有からも消しますか？\n（消さなければ、案件の選択の「☁️ みんなの案件」に残り、またいつでも開けます）")){
+        try{ const r=await post({mode:"delete",id}); if(!r.ok) throw new Error(r.error); }catch(e){ alert("みんなの共有からは消せませんでした。\n"+(e&&e.message||e)); }
+      }
+      await refreshList(true).catch(()=>{});
+    }
+    renderCaseBar();
+  };
+
+  /* ---- 起動 ---- */
+  async function start(){
+    for(let i=0;i<50 && !(casesIndex&&casesIndex.length);i++) await sleep(100);   // もとの起動が終わるのを待つ
+    await loadMeta();
+    // まだ一度も共有していない案件は、送る対象にする（これまで端末にだけあった案件も、みんなの共有へ）
+    let add=false; casesIndex.forEach(c=>{ if(!meta[c.id]){ meta[c.id]={ver:0,dirty:true,seq:1}; add=true; } });
+    if(add) await saveMeta();
+    paint();
+    try{ await refreshList(true); }catch(e){}
+    syncNow();
+    setInterval(()=>{ if(!busy && Object.values(meta).some(m=>m.dirty)) syncNow(); },120000);
+    window.addEventListener("online",()=>syncNow());
+    document.addEventListener("visibilitychange",()=>{
+      if(document.visibilityState==="hidden"){ if(Object.values(meta).some(m=>m.dirty)) syncNow(); }   // アプリを切りかえるときに送っておく
+      else refreshList().then(pullCurrent).catch(()=>{});
+    });
+  }
+  window.gcSync={ syncNow, refreshList, meta:()=>meta, cloud:()=>cloud };
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",start); else start();
+})();
+</script>
 <script>/* ExcelJS (bundled) */
 /*! ExcelJS 19-10-2023 */
 
