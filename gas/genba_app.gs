@@ -132,7 +132,7 @@ function models_() {
   var list = [prop_('GEMINI_MODEL', GEMINI_MODEL)].concat(String(prop_('GEMINI_FALLBACK', GEMINI_FALLBACK.join(','))).split(','));
   return list.map(function (m) { return String(m).trim(); }).filter(function (m, i, a) { return m && a.indexOf(m) === i; });
 }
-function gemini_(parts) {   // parts：文字列 または Gemini の parts 配列
+function gemini_(parts, opt) {   // parts：文字列 または Gemini の parts 配列。opt.fast：考える時間を使わず速く答える（要点まとめ用）
   var key = prop_('GEMINI_API_KEY', '');
   if (!key) throw new Error('GEMINI_API_KEY が未設定です（スクリプト プロパティに登録してください）');
   if (typeof parts === 'string') parts = [{ text: parts }];
@@ -141,6 +141,7 @@ function gemini_(parts) {   // parts：文字列 または Gemini の parts 配�
     var model = models[m];
     var cfg = { responseMimeType: 'application/json' };
     if (/^gemini-[12]\./.test(model)) cfg.temperature = 0;   // Gemini 3 以降は既定の温度のまま使う（下げると答えが乱れることがある）
+    if (opt && opt.fast && /^gemini-2\.5-flash/.test(model)) cfg.thinkingConfig = { thinkingBudget: 0 };   // 2.5 Flash は既定で「考えてから答える」ので、速さ優先のときは切る
     for (var tryNo = 0; tryNo < 2; tryNo++) {
       var res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key, {
         method: 'post', contentType: 'application/json', muteHttpExceptions: true,
@@ -184,6 +185,7 @@ function doGet(e) {
     if (app === 'sharyo' && a === 'data') return out_({ ok: true, vehicles: rows_('vehicles'), logs: rows_('vehicleLog'), docs: rows_('vehicleDocs'), suppliers: rows_('suppliers'), admins: admins_() });
     if (app === 'yoten' && a === 'list') { var ml = memoList_(Number(p.days) || 60); return out_({ ok: true, memos: ml, replies: replyList_(ml, p.me), admins: admins_(), repliers: repliers_(), now: now_() }); }
     if (app === 'yoten' && a === 'badge') return out_(badge_(p.me));
+    if (app === 'yoten' && a === 'result') return out_(summaryResult_(p.id));
     if (app === 'dandori') {
       var today = ymd_(new Date());
       if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles') });
@@ -776,7 +778,25 @@ function organize_(b) {   // 順不同に話した段取りを「日付×現場�
  *  まとまらないまま話した内容 →「一言でいうと」「要点」「必要な道具・資材」「車両」「足りない情報（聞き返し）」「送る文」
  * ================================================================ */
 var MEMO_KINDS = ['報告', '相談', 'お願い', '連絡', '困りごと', 'その他'];
-function summarize_(b) {
+function summarize_(b) {   // 結果は reqId で10分間預かる（まとめ中にスマホで別のアプリに移っても、戻ってから受け取れる）
+  var cache = b.reqId ? CacheService.getScriptCache() : null, key = 'yoten_' + b.reqId;
+  if (cache) cache.put(key, JSON.stringify({ pending: true }), 600);
+  try {
+    var out = summarizeCore_(b);
+    if (cache) cache.put(key, JSON.stringify({ result: out.result }), 600);
+    return out;
+  } catch (e) {
+    if (cache) cache.put(key, JSON.stringify({ error: String(e && e.message || e) }), 600);
+    throw e;
+  }
+}
+function summaryResult_(id) {
+  var v = id ? CacheService.getScriptCache().get('yoten_' + id) : null;
+  if (!v) return { ok: true, none: true };
+  var o = JSON.parse(v);
+  return o.error ? { ok: false, error: o.error } : o.pending ? { ok: true, pending: true } : { ok: true, result: o.result };
+}
+function summarizeCore_(b) {
   var to = b.to || '親方へ';
   var prompt =
     'あなたは造園会社（植木屋）の、話を聞いてまとめる係です。言葉にするのが苦手なスタッフが、順番もばらばらに、まとまらないまま話した内容を、聞く人にすぐ伝わる形に整理してください。\n' +
@@ -810,11 +830,12 @@ function summarize_(b) {
     '現場マスタ：\n' + (b.masterSites || []).join('、') + '\n' +
     (b.vehicles ? '車両一覧（名前：呼び方）：\n' + b.vehicles + '\n' : '') +
     (b.suppliers ? '取引先（正式名：呼び方。店・業者はスタッフではない）：\n' + b.suppliers + '\n' : '') +
-    '道具・資材の辞書（呼び方→正式名）：\n' + (b.dict || '') + '\n' +
+    '道具・資材の辞書（話に出た呼び方→正式名）：\n' + (b.dict || '') + '\n' +
+    (b.toolNames ? '道具・資材の正式名（聞き間違いはこの中の近い名前に直す）：\n' + b.toolNames + '\n' : '') +
     (b.terms ? 'その他の用語（正式名）：\n' + b.terms + '\n' : '') + '\n' +
     (b.previous ? '前にまとめた結果（今回の話は、これへの付け足し・答え。合わせて1つにまとめ直す）：\n' + JSON.stringify(b.previous) + '\n\n' : '') +
     '話した内容：\n' + b.text;
-  var j = gemini_(prompt);
+  var j = gemini_(prompt, { fast: true });
   var arr = function (v) { return Array.isArray(v) ? v : (v ? [v] : []); };
   return { ok: true, result: {
     kind: MEMO_KINDS.indexOf(j.kind) >= 0 ? j.kind : 'その他', headline: String(j.headline || ''), points: arr(j.points).map(String),
@@ -915,7 +936,7 @@ function interpretReply_(b) {   // 返事から「反映の案」を作る（実
     '取引先一覧（正式名：呼び方）：\n' + (b.suppliers || '') + '\n\n' +
     'スタッフ（' + (m.by || '') + '）の相談：' + (m.headline || '') + '\n' + [].concat(m.points || []).join('\n') + '\n必要なもの：' + JSON.stringify(m.needs || []) + '\n\n' +
     '親方の返事：\n' + b.text;
-  var j = gemini_(prompt);
+  var j = gemini_(prompt, { fast: true });
   var acts = (Array.isArray(j.actions) ? j.actions : []).filter(function (x) { return x && (x.type === 'repair' || x.type === 'notice'); });
   return { ok: true, actions: acts, done: !!j.done };
 }

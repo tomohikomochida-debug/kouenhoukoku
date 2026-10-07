@@ -194,7 +194,7 @@ nav.tabs button.on{color:var(--leaf);font-weight:700}
 // 現場アプリGAS（段取り・道具管理・用語集・車両・取引先・要点まとめで共通の1本）
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';   // 名簿・現場マスタ
-const LS = { me: 'dandori_me', to: 'yoten_to', draft: 'yoten_draft', cache: 'yoten_cache', local: 'yoten_local_v1', read: 'yoten_read' };
+const LS = { me: 'dandori_me', to: 'yoten_to', draft: 'yoten_draft', cache: 'yoten_cache', local: 'yoten_local_v1', read: 'yoten_read', pending: 'yoten_pending', result: 'yoten_result' };
 const TO_LIST = ['親方へ', 'みんなへ', '自分用メモ'];
 const NET_ERR = '電波を確認して、もう一度お試しください';
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
@@ -265,7 +265,12 @@ function matchWord(name, list) {
   const ws = list || allWords();
   return ws.find(x => norm(x.w) === n) || ws.find(x => loose(x.w) === l) || null;
 }
-function dictText() { return toolWords(true).filter(x => x.type !== '正式名').map(x => x.w + '→' + (termById(x.termId) || {}).term).join('\n'); }
+function dictText(text) {   // AIに渡す辞書は、話の中に出てきた呼び方だけに絞る（全部渡すと遅くなる）
+  const t = loose(text || '');
+  return allWords().filter(x => x.type !== '正式名' && loose(x.w).length >= 2 && t.includes(loose(x.w)))
+    .map(x => x.w + '→' + (termById(x.termId) || {}).term).filter((v, i, a) => a.indexOf(v) === i).join('\n');
+}
+function toolNamesText() { return WORDS.terms.filter(t => t.category === '道具' || t.category === '資材').map(t => t.term).join('、'); }
 function termsText() { return WORDS.terms.filter(t => t.category !== '道具' && t.category !== '資材').map(t => t.term).join('、'); }
 function vehText() { return VEH.filter(v => !v.status || v.status === '使用中').map(v => v.name + (v.aliases ? '：' + splitAl(v.aliases).join('・') : '')).join('\n'); }
 function supText() { return SUP.map(s => s.name + (s.aliases ? '：' + splitAl(s.aliases).join('・') : '')).join('\n'); }
@@ -335,18 +340,53 @@ function stopListen() {
 
 /* ============ まとめる ============ */
 let RESULT = null, PREV = null;   // PREV：聞き返しに答えたときの、前回のまとめ
-async function summarize(text, previous) {
-  const body = { app: 'yoten', mode: 'summarize', text, previous, to: TO, spokenAt: nowStr(), speaker: me() || 'スタッフ', roster: rosterText(), masterSites: SITES, vehicles: vehText(), suppliers: supText(), dict: dictText(), terms: termsText() };
+/* まとめ中にスマホで別のアプリに移ると、iPhoneは通信を止めることがある。
+   そこで毎回「受付番号（reqId）」を付けて送り、共通GASに結果を10分間預けてもらう。
+   通信が切れたり、画面に戻ってきたりしたら、受付番号で結果を取りに行く */
+let INFLIGHT = null;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function fetchResult(reqId) {   // 'pending'：まだまとめ中／null：預かりなし・通信できない／{result}／{error}
   try {
-    const r = await postJSON(GAS_URL, body);
-    if (r.ok && r.result) { info(''); return r.result; }
-    if (/unknown mode/.test(r.error || '')) { info('AIの準備がまだのため、簡易版でまとめています（共通GASの更新後はAIがまとめます）'); return localSummarize(text); }
-    throw new Error(r.error || 'AIでまとめられませんでした');
-  } catch (e) {
-    if (e.name === 'TypeError') { info('電波が弱いため、簡易版でまとめています'); return localSummarize(text); }
-    throw e;
-  }
+    const r = await getJSON(GAS_URL + '?app=yoten&action=result&id=' + encodeURIComponent(reqId), 10000);
+    if (!r.ok) return { error: r.error || 'AIでまとめられませんでした' };
+    return r.result ? { result: r.result } : r.pending ? 'pending' : null;
+  } catch (e) { return null; }
 }
+async function pollResult(reqId, ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    const r = await fetchResult(reqId);
+    if (r && r !== 'pending') return r;
+    await sleep(3000);
+  }
+  return null;
+}
+function summarize(text, previous) {
+  const reqId = 'Q' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+  const body = { app: 'yoten', mode: 'summarize', reqId, text, previous, to: TO, spokenAt: nowStr(), speaker: me() || 'スタッフ', roster: rosterText(), masterSites: SITES, vehicles: vehText(), suppliers: supText(), dict: dictText(text), toolNames: toolNamesText(), terms: termsText() };
+  lsSet(LS.pending, { reqId, text, previous, to: TO, at: Date.now() });
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const fin = (v, err) => { if (settled) return; settled = true; INFLIGHT = null; lsSet(LS.pending, null); if (err) reject(err); else resolve(v); };
+    INFLIGHT = { reqId, fin };
+    postJSON(GAS_URL, body).then(r => {
+      if (r.ok && r.result) { info(''); return fin(r.result); }
+      if (/unknown mode/.test(r.error || '')) { info('AIの準備がまだのため、簡易版でまとめています（共通GASの更新後はAIがまとめます）'); return fin(localSummarize(text)); }
+      fin(null, new Error(r.error || 'AIでまとめられませんでした'));
+    }).catch(async () => {
+      // 通信が切れた（別のアプリに移った・電波が弱い）→ 預かってもらった結果を取りに行く
+      const got = await pollResult(reqId, 75000);
+      if (got && got.result) { info(''); return fin(got.result); }
+      if (got && got.error) return fin(null, new Error(got.error));
+      info('電波が弱いため、簡易版でまとめています'); fin(localSummarize(text));
+    });
+  });
+}
+document.addEventListener('visibilitychange', async () => {   // 画面に戻ってきたら、まとめ中の結果がもう出ていないか見に行く
+  if (document.visibilityState !== 'visible' || !INFLIGHT) return;
+  const cur = INFLIGHT, r = await fetchResult(cur.reqId);
+  if (r && r.result && INFLIGHT === cur) { info(''); cur.fin(r.result); }
+});
 /* 簡易版（AIが使えないとき）：口ぐせを取り、辞書で道具・車両・現場を拾う */
 const FILLER = /(えー+と?|ええと|えっと|あのー*|そのー+|うーん|んー+|まあ|なんか|なんて言うか|みたいな(感じ)?|ていうか|っていうか)[、。,\s]*/g;
 function clauses(text) {
@@ -439,9 +479,9 @@ function needRow(n, i) {
   return '<div class="need"><div class="grow"><div class="nm">' + esc(term ? term.term : n.name) + (n.qty ? ' <span>' + esc(n.qty) + esc(n.unit || '') + '</span>' : '') + where + '</div>' +
     (n.why ? '<div class="sub">' + esc(n.why) + '</div>' : '') + (tool && tool.qty ? '<div class="sub">会社にある数：' + esc(tool.qty) + '</div>' : '') + '</div></div>';
 }
-function renderResult() {
+function renderResult(noScroll) {
   const r = RESULT, box = $('result');
-  if (!r) { box.innerHTML = ''; return; }
+  if (!r) { box.innerHTML = ''; keepResult(); return; }
   const facts = [];
   if (r.site) facts.push(['現場', esc(r.site)]);
   if (r.when || r.whenNote) facts.push(['いつ', esc(md(r.when)) + (r.whenNote ? '（' + esc(r.whenNote) + '）' : '')]);
@@ -463,9 +503,9 @@ function renderResult() {
     '<p class="hint" id="saveHint">' + (r.to === '自分用メモ' ? '送ると、自分の記録にも自動で残ります' : '送ると、記録にも自動で残ります（' + (r.to === '親方へ' ? '親方' : 'みんな') + 'がアプリで見られます）') + '</p>' +
     '<button class="btn block" type="button" id="saveBtn" style="margin-top:8px"></button>' +
     '<button class="btn block" type="button" id="moreBtn" style="margin-top:8px">🎤 言い足りないことを話す</button></div>';
-  $('msg').addEventListener('input', saveBtnState);
-  saveBtnState();
-  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('msg').addEventListener('input', () => { saveBtnState(); keepResult(); });
+  saveBtnState(); keepResult();
+  if (!noScroll) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function routeLine(x) {
   if (x.type === 'shop') return { ic: '🛒', to: '段取りの買い出し', what: (x.place || '店は未定') + '：' + x.items.map(i => i.name + (i.qty ? ' ' + i.qty + (i.unit || '') : '')).join('・'), sub: x.date ? md(x.date) + 'までに' : '日にちは仮で明日に入れます' };
@@ -491,10 +531,20 @@ async function doRoute(i, btn) {
     if (RESULT.savedId) { RESULT._quiet = true; save(false).finally(() => { RESULT._quiet = false; }); }   // 記録済みなら、どこに入れたかも記録に残す
   } catch (e) { toast(/unknown mode/.test(e.message || '') ? '共通GASの更新後に使えます' : (e.message || NET_ERR)); if (btn) { btn.disabled = false; btn.textContent = x.type === 'shop' ? '買い出しに入れる' : '段取りカードにする'; } }
 }
+function busyBtn() {   // まとめ中の経過秒数を出す（長いときは混み合いを知らせる）
+  const b = $('goBtn'), t0 = Date.now(); b.disabled = true;
+  const tick = () => { const sec = Math.round((Date.now() - t0) / 1000); b.innerHTML = '<span class="loading"></span> まとめ中… ' + sec + '秒' + (sec >= 30 ? '（混み合っています）' : ''); };
+  tick(); const iv = setInterval(tick, 1000);
+  return () => { clearInterval(iv); b.disabled = false; b.textContent = '✨ まとめる'; };
+}
 async function runSummarize(text, previous) {
-  const b = $('goBtn'); b.disabled = true; b.innerHTML = '<span class="loading"></span> まとめ中…';
-  try {
-    const r = await summarize(text, previous);
+  const done = busyBtn();
+  try { applyResult(await summarize(text, previous), text, previous); }
+  catch (e) { toast(e.message || NET_ERR); }
+  finally { done(); }
+}
+function applyResult(r, text, previous) {
+  {
     ['points', 'needs', 'vehicles', 'people', 'missing', 'words', 'corrections'].forEach(k => { r[k] = arr(r[k]); });
     r.needs = r.needs.map(n => typeof n === 'string' ? { name: n } : n).filter(n => n && n.name);
     r.words = r.words.filter(w => w && w.said && w.term && norm(w.said) !== norm(w.term));
@@ -506,8 +556,27 @@ async function runSummarize(text, previous) {
     if (previous && RESULT) (RESULT.routes || []).filter(x => x.done).forEach(x => { if (!r.routes.some(y => y.type === x.type && routeLine(y).what === routeLine(x).what)) r.routes.push(x); else r.routes.find(y => y.type === x.type && routeLine(y).what === routeLine(x).what).done = x.done; });
     RESULT = Object.assign(r, keep, { rawText: text, to: TO, savedMsg: null });
     renderResult();
-  } catch (e) { toast(e.message || NET_ERR); }
-  finally { b.disabled = false; b.textContent = '✨ まとめる'; }
+  }
+}
+/* まとめた結果は端末にも保存する（iPhoneがページを読み直しても、結果がそのまま戻る） */
+function keepResult() { if (!RESULT) return lsSet(LS.result, null); lsSet(LS.result, { at: Date.now(), r: RESULT, msg: $('msg') ? $('msg').value : RESULT.message }); }
+function restoreResult() {
+  const k = lsGet(LS.result, null);
+  if (!k || !k.r || Date.now() - k.at > 12 * 3600 * 1000) return false;
+  RESULT = k.r; renderResult(true);
+  if ($('msg') && k.msg != null) { $('msg').value = k.msg; saveBtnState(); }
+  return true;
+}
+async function resumePending() {   // 前にまとめ中のまま閉じた（読み直された）ときは、預けた結果を受け取る
+  const p = lsGet(LS.pending, null);
+  if (!p || !p.reqId || Date.now() - p.at > 10 * 60 * 1000) { lsSet(LS.pending, null); return; }
+  const done = busyBtn();
+  try {
+    const got = await pollResult(p.reqId, 60000);
+    if (got && got.result) { if (p.to && TO_LIST.includes(p.to)) { TO = p.to; drawTo(); } applyResult(got.result, p.text, null); toast('まとめを受け取りました'); }
+    else if (got && got.error) toast(got.error);
+    else toast('前のまとめを受け取れませんでした。もう一度「まとめる」を押してください');
+  } finally { lsSet(LS.pending, null); done(); }
 }
 function go() {
   if (LISTENING) stopListen();
@@ -602,7 +671,7 @@ async function save(auto, keepalive) {
   } catch (e) {
     RESULT.savedMsg = msg;
     toast((auto ? '送りました。' : '') + (/unknown mode/.test(e.message || '') ? 'この端末に残しました（共通GASの更新後はみんなと共有できます）' : 'この端末に残しました（' + NET_ERR + '）'));
-  } finally { SAVING = false; saveBtnState(); }
+  } finally { SAVING = false; saveBtnState(); keepResult(); }
 }
 
 /* ============ まとめた記録・返事 ============ */
@@ -860,9 +929,15 @@ $('meBtn').addEventListener('click', () => chooseName(true));
   $('raw').value = lsGet(LS.draft, '') || '';
   if (!LIVE) $('micStatus').textContent = 'まとまらなくて大丈夫。🎤を押して、キーボードのマイクで話してください';
   const q = new URLSearchParams(location.search);
-  if (q.get('from') === 'dandori' && $('raw').value.trim()) { TO = '親方へ'; drawTo(); setTimeout(go, 400); }
+  const fromDandori = q.get('from') === 'dandori' && !!$('raw').value.trim();
+  if (fromDandori) { TO = '親方へ'; drawTo(); }
   if (q.get('tab') === 'list' || q.get('memo')) { if (q.get('memo')) OPEN_ID = q.get('memo'); if (q.get('seg')) { SEG = q.get('seg'); document.querySelectorAll('#listSeg button').forEach(x => x.classList.toggle('on', x.dataset.seg === SEG)); } switchTab('list'); }
-  load();
+  load().then(() => {
+    if (fromDandori) return go();
+    const p = lsGet(LS.pending, null), k = lsGet(LS.result, null);
+    if (p && (!k || p.at > k.at)) resumePending();   // まとめ中のほうが新しければ、そちらを受け取る
+    else restoreResult();
+  });   // 用語集などを読んでから、前の結果を戻す
 })();
 </script>
 </body>
