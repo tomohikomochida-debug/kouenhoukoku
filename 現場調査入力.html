@@ -3535,7 +3535,9 @@ function camStart(){
   const p=new Peer(CAM.id,peerOpts()); CAM.peer=p;
   p.on("open",()=>{ CAM.status="ready"; camUI(); });
   p.on("connection",c=>{
-    c.on("open",()=>{ CAM.conns.add(c); camUI(); camSync(); toast("📱 iPhoneカメラがつながりました"); renderTrees(); });
+    c.on("open",()=>{ CAM.conns.add(c); camUI(); camSync(); renderTrees();
+      const x=camItem(CAM.target); toast("📱 iPhoneカメラがつながりました"+(x?"。次の写真は"+(x.i+1)+"番に入ります":""));
+      if(CAM.closeOnJoin){ CAM.closeOnJoin=false; const d=document.getElementById("dlgCam"); setTimeout(()=>{ if(d.open) d.close(); },1200); } });   // 番号の「つなぐ」から開いたときは、つながったら閉じる
     c.on("data",d=>camData(c,d).catch(e=>{ console.error(e); try{ c.send({type:"ack",id:d&&d.id,ok:false,msg:"受け取れませんでした"}); }catch(_){} }));
     const gone=()=>{ if(CAM.conns.delete(c)){ camUI(); renderTrees(); } };
     c.on("close",gone); c.on("error",gone);
@@ -3596,12 +3598,14 @@ async function camData(c,d){
 }
 function camFlash(i){ const el=document.querySelectorAll("#trees .tree")[i]; if(!el) return; el.classList.remove("camin"); void el.offsetWidth; el.classList.add("camin"); }
 // 写真欄の「📱」ボタン（つながっているときだけ）
-function camPhotoBtn(i){
-  if(!camOn()) return "";
+function camPhotoBtn(i){   // 写真欄の「📱」ボタン：つながっていなければ「つなぐ」、つながっていれば送り先にする
+  const t=state.trees[i];
+  if(!camOn()) return `<button type="button" class="addph cam" onclick="camConnectFor('${itemCid(t)}')">📱 iPhone<br>とつなぐ</button>`;
   camFixTarget();
-  const t=state.trees[i], on=!!t.cid&&t.cid===CAM.target;
+  const on=!!t.cid&&t.cid===CAM.target;
   return `<button type="button" class="addph cam ${on?"on":""}" onclick="camSetTarget('${itemCid(t)}')">${on?"📱 次の写真<br>はここ":"📱 iPhoneで<br>ここへ"}</button>`;
 }
+function camConnectFor(cid){ CAM.target=cid; CAM.closeOnJoin=true; openCamDialog(); }   // 押した番号を送り先にして、つなぐ画面を出す
 function camAfterRender(){   // 描き直すたびに、送り先の番号を目立たせて iPhone に知らせる
   if(CAM.status==="off") return;
   camFixTarget();
