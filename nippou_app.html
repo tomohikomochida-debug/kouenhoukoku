@@ -392,6 +392,39 @@ async function loadMasters(){
   try{ applyMasters(await fetchMasters()); }
   catch(e){ console.warn('マスタ取得に失敗。仮マスタで動作します。',e); }
 }
+/* ===== 使用車両・使用機械の選択肢：車両アプリ（現場アプリGAS）の一覧から =====
+   車両アプリに登録した車（重機は「使用機械」）を先に並べ、まだ登録していない今までの名前も残す。
+   車両アプリの「呼び方」に今までの名前（例：2t、ダンプ）を入れると、そちらにまとまる */
+const GENBA_URL='https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
+const VEH_KEY='nippou_vehicles';
+let BASE_VEHICLES=null, BASE_MACHINES=null;   // 今までの選択肢（MASTER ができてから覚える）
+const vkey=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/[\s・･,，、。\-－_/／（）()]/g,'');
+function applyVehicles(list){
+  if(!Array.isArray(list)||!list.length) return false;
+  if(!BASE_VEHICLES){ BASE_VEHICLES=[...MASTER.vehicles]; BASE_MACHINES=[...MASTER.machines]; }
+  const known=new Set(); list.forEach(v=>[v.name].concat(String(v.aliases||'').split(/[、,，]/)).forEach(n=>{ const k=vkey(n); if(k) known.add(k); }));
+  const heavy=v=>/重機/.test(v.category||'');
+  const veh=list.filter(v=>!heavy(v)).map(v=>v.name), mac=list.filter(heavy).map(v=>v.name);
+  const nv=[...new Set(veh.concat(BASE_VEHICLES.filter(n=>!known.has(vkey(n)))))];
+  const nm=[...new Set(BASE_MACHINES.filter(n=>!known.has(vkey(n))).concat(mac))];
+  const changed=JSON.stringify(nv)!==JSON.stringify(MASTER.vehicles)||JSON.stringify(nm)!==JSON.stringify(MASTER.machines);
+  MASTER.vehicles=nv; MASTER.machines=nm; return changed;
+}
+function refreshVehiclePicks(){   // 開いている現場カードの選択肢を作り直す（選んだものは残す）
+  Object.keys(sites).forEach(id=>{ const d=sites[id], el=document.getElementById('site-'+id); if(!el) return;
+    d.vehicleList=[...new Set(MASTER.vehicles.concat(d.vehicles))]; d.machineList=[...new Set(MASTER.machines.concat(d.machines))];
+    const pv=el.querySelector('[data-vehicles]'), pm=el.querySelector('[data-machines]');
+    if(pv) renderPick(pv, d.vehicleList, d.vehicles,'tape'); if(pm) renderPick(pm, d.machineList, d.machines,'tape'); });
+}
+function loadVehicles(){
+  try{ applyVehicles(JSON.parse(localStorage.getItem(VEH_KEY)||'null')); }catch(e){}
+  fetchT(GENBA_URL+'?app=sharyo&action=list', null, 15000).then(r=>r.json()).then(r=>{
+    if(!r||!r.ok) return;
+    try{ localStorage.setItem(VEH_KEY, JSON.stringify(r.vehicles||[])); }catch(e){}
+    if(applyVehicles(r.vehicles||[])) refreshVehiclePicks();
+  }).catch(()=>{});   // 取れなくても今までの選択肢で入力できる
+}
+
 /* 裏で最新マスタを取り、変わっていれば名前ボタン等を作り直す */
 function refreshMastersInBackground(){
   fetchMasters().then(m=>{
@@ -876,6 +909,7 @@ document.getElementById('draftDiscard').onclick=()=>{ clearDraft(); document.get
   document.getElementById('date').value=todayStr();
   document.getElementById('addSite').onclick=()=>addSite();
   // 前回のマスタが端末にあれば、待たずにすぐ表示（最新は裏で取りに行く）
+  loadVehicles();
   if(loadCachedMasters()) refreshMastersInBackground();
   else await loadMasters();   // 初回だけはスプレッドシートのマスタを待つ（失敗時は仮マスタ）
   loadCustom();

@@ -117,6 +117,16 @@ main{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 .due.over{background:#FBE3DE;color:var(--danger);font-weight:700}
 .alert{background:#FFF8E6;border:1px solid #F0DDB0;border-left:6px solid #D9A21B;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px}
 .alert b{display:block;margin-bottom:4px}
+.unm{background:#F1F4F8;border:1px solid #D5DDE8;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px}
+.unm .r{display:flex;align-items:center;gap:6px;padding:5px 0;border-top:1px solid #E3E8EF}
+.unm .r:first-of-type{border-top:0}
+.unm .r b{flex:1}
+.bars{display:flex;align-items:flex-end;gap:3px;height:70px;margin:6px 0 2px}
+.bars div{flex:1;background:var(--leaf-soft);border-radius:3px 3px 0 0;position:relative;min-height:2px}
+.bars div.on{background:var(--leaf)}
+.bars div span{position:absolute;top:-16px;left:0;right:0;text-align:center;font-size:10.5px;color:var(--bark)}
+.barx{display:flex;gap:3px;font-size:10px;color:var(--bark)}
+.barx span{flex:1;text-align:center}
 .log{border-top:1px solid var(--line);padding:8px 0;font-size:14px}
 .log .h{display:flex;gap:8px;align-items:baseline}
 .log .h b{flex:1}
@@ -222,7 +232,7 @@ async function getJSON(url) { return (await fetch(url, { cache: 'no-store' })).j
 async function postJSON(body) { return (await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ app: 'sharyo', by: me() }, body)) })).json(); }
 
 /* ============ データ ============ */
-let VEH = [], LOGS = [], SUP = [], DOCS = [], ADMINS = ['親方'];
+let VEH = [], LOGS = [], SUP = [], DOCS = [], ADMINS = ['親方'], USAGE = null;   // USAGE：日報から数えた使った日
 const canDelete = () => ADMINS.includes(me());
 async function load() {
   try {
@@ -233,7 +243,15 @@ async function load() {
     if (c) { ({ VEH, LOGS, SUP } = c); DOCS = c.DOCS || []; ADMINS = c.ADMINS || ADMINS; toast('前回のデータを表示しています（' + NET_ERR + '）'); } else showError('車両を読み込めませんでした。' + NET_ERR);
   }
   render();
+  loadUsage();
 }
+async function loadUsage() {   // 日報の実績（重いので後から）
+  try {
+    const r = DEMO ? (window.DEMO_USAGE || null) : await getJSON(GAS_URL + '?app=sharyo&action=usage');
+    if (r && r.ok) { USAGE = r; lsSet('sharyo_usage', r); render(); }
+  } catch (e) { const c = lsGet('sharyo_usage', null); if (c) { USAGE = c; render(); } }
+}
+const thisMonth = () => TODAY.slice(0, 7);
 function demoSave() { lsSet(LS.demo, { vehicles: VEH, logs: LOGS, docs: DOCS }); }
 const nextId = (list, col, p) => p + String(list.reduce((m, x) => Math.max(m, Number(String(x[col]).replace(/\D/g, '')) || 0), 0) + 1).padStart(4, '0');
 async function saveVeh(item, image) {
@@ -294,6 +312,7 @@ function vehHtml(v) {
     '<div class="nm">' + esc(v.name) + (v.plate ? ' <small style="font-weight:400;color:var(--bark)">' + esc(v.plate) + '</small>' : '') + '</div>' +
     '<div class="sub">' + esc([v.ownership, v.category && v.category !== '車・トラック' ? v.category.replace(/（.*）/, '') : '', v.waste ? '収集運搬' : '', v.model, v.ownership === 'レンタル' && v.rentalShop ? v.rentalShop : '', gone ? v.status : ''].filter(Boolean).join('・')) + '</div>' +
     ds.map(d => '<span class="due ' + d.cls + '">' + esc(dueText(d)) + '</span>').join('') +
+    (USAGE && USAGE.usage[v.id] ? '<span class="due">今月 ' + (USAGE.usage[v.id].months[thisMonth()] || 0) + '日・最後 ' + md(USAGE.usage[v.id].last) + '</span>' : '') +
     (missingOf(v).length ? '<span class="due soon">足りない：' + esc(missingOf(v).join('・')) + '</span>' : '') + '</div></button>';
 }
 const needShaken = v => (!v.status || v.status === '使用中') && v.ownership !== 'レンタル';
@@ -302,11 +321,49 @@ function render() {
   VEH.forEach(v => duesOf(v).filter(d => d.cls).forEach(d => alerts.push({ v, d })));
   alerts.sort((a, b) => a.d.n - b.d.n);
   $('alerts').innerHTML = alerts.length ? '<div class="alert"><b>⚠️ 期限が近いもの</b>' + alerts.map(a => '・' + esc(a.v.name) + '：' + esc(dueText(a.d))).join('<br>') + '</div>' : '';
+  $('alerts').innerHTML += unmatchedHtml();
   const groups = [['自社', v => (v.ownership || '自社') === '自社'], ['リース', v => v.ownership === 'リース'], ['レンタル', v => v.ownership === 'レンタル']];
   const active = VEH.filter(v => !v.status || v.status === '使用中'), gone = VEH.filter(v => v.status && v.status !== '使用中');
   let h = groups.map(([t, f]) => { const l = active.filter(f); return l.length ? '<div class="sec-title">' + esc(t) + '（' + l.length + '台）</div>' + l.map(vehHtml).join('') : ''; }).join('');
   if (gone.length) h += '<div class="sec-title">返却済・廃車</div>' + gone.map(vehHtml).join('');
   $('list').innerHTML = h || '<div class="empty">まだ車両がありません。<br>右下の「＋ 車両を追加」から、会社の車とレンタルの車を登録してください。</div>';
+}
+
+/* ============ 日報との突き合わせ ============ */
+function unmatchedHtml() {
+  const list = (USAGE && USAGE.unmatched || []).filter(u => u.days > 0 && !lsGet('sharyo_unm_skip', []).includes(u.name)).slice(0, 8);
+  if (!list.length) return '';
+  return '<div class="unm"><b>📝 日報に出てくるのに、車両アプリにない名前</b><p class="hint" style="margin:2px 0 6px">新しい車として登録するか、登録済みの車の「呼び方」にすると、日報の実績がその車に数えられます。</p>' +
+    list.map(u => '<div class="r"><b>' + esc(u.name) + '</b><span class="hint" style="margin:0">' + u.days + '日</span>' +
+      '<button class="btn sm" data-unm-new="' + esc(u.name) + '">＋車</button>' + (VEH.length ? '<button class="btn sm" data-unm-alias="' + esc(u.name) + '">呼び方に</button>' : '') +
+      '<button class="btn sm" data-unm-skip="' + esc(u.name) + '" title="車ではない（今後出さない）">✕</button></div>').join('') + '</div>';
+}
+function openAliasPick(name) {
+  openModal('<h3>「' + esc(name) + '」はどの車？</h3><p class="hint" style="margin-bottom:10px">選んだ車の呼び方に「' + esc(name) + '」を足します。日報で今までこの名前で書いた日も、その車の実績に数えられます。</p>' +
+    '<div class="chips">' + VEH.filter(v => !v.status || v.status === '使用中').map(v => '<button type="button" class="chip" data-pick="' + esc(v.id) + '">' + esc(v.name) + '</button>').join('') + '</div>' +
+    '<button class="btn block" style="margin-top:14px" data-act="close">やめる</button>',
+    async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.act === 'close') return closeModal();
+      if (!b.dataset.pick) return;
+      const v = VEH.find(x => x.id === b.dataset.pick);
+      b.disabled = true;
+      try { await saveVeh({ id: v.id, aliases: splitList(v.aliases).concat(name).filter((x, i, a) => a.indexOf(x) === i).join('、') }); closeModal(); toast('「' + v.name + '」の呼び方に足しました'); loadUsage(); }
+      catch (err) { toast(err.message || NET_ERR); b.disabled = false; }
+    });
+}
+function usageHtml(v) {
+  const u = USAGE && USAGE.usage[v.id];
+  if (!USAGE) return '';
+  if (!u) return '<div class="sec-title">📊 使った日（日報から）</div><div class="hint" style="margin-bottom:8px">日報にまだ出てきません。今までの日報の書き方（例：「2t」）があれば、「呼び方」に足すと数えられます。</div>';
+  const ms = []; const d0 = parseYmd(TODAY); for (let i = 11; i >= 0; i--) { const d = new Date(d0.getFullYear(), d0.getMonth() - i, 1); ms.push(d.getFullYear() + '-' + pad(d.getMonth() + 1)); }
+  const max = Math.max(1, ...ms.map(m => u.months[m] || 0));
+  const fy = (() => { const d = parseYmd(TODAY), y = d.getMonth() < 3 ? d.getFullYear() - 1 : d.getFullYear(); return Object.keys(u.months).filter(m => m >= y + '-04').reduce((t, m) => t + u.months[m], 0); })();
+  return '<div class="sec-title">📊 使った日（日報から）</div>' +
+    '<p class="hint" style="margin:0">今月 <b>' + (u.months[thisMonth()] || 0) + '日</b>・今年度 <b>' + fy + '日</b>・最後に使った日 ' + md(u.last) + '</p>' +
+    '<div class="bars">' + ms.map(m => { const n = u.months[m] || 0; return '<div' + (m === thisMonth() ? ' class="on"' : '') + ' style="height:' + Math.round(n / max * 100) + '%">' + (n ? '<span>' + n + '</span>' : '') + '</div>'; }).join('') + '</div>' +
+    '<div class="barx">' + ms.map(m => '<span>' + Number(m.slice(5)) + '</span>').join('') + '</div>' +
+    (u.sites.length ? '<p class="hint" style="margin:8px 0 4px">よく行く現場：' + u.sites.slice(0, 5).map(x => esc(x.site) + '（' + x.n + '）').join('、') + '</p>' : '');
 }
 
 /* ============ 詳細 ============ */
@@ -327,7 +384,7 @@ function openVeh(id) {
     '<dt>車検満了</dt><dd>' + (v.shakenDate ? md(v.shakenDate) : '—') + '</dd>' +
     '<dt>保険満了</dt><dd>' + (v.insuranceDate ? md(v.insuranceDate) : '—') + '</dd>' +
     '<dt>メモ</dt><dd style="white-space:pre-wrap">' + esc(v.memo || '—') + '</dd></dl>' +
-    docsHtml(v) +
+    docsHtml(v) + usageHtml(v) +
     '<div class="sec-title" style="display:flex;align-items:center;justify-content:space-between">🔧 点検・修理の記録<button class="btn sm" data-act="log">＋記録を足す</button></div>' +
     (logs.length ? logs.map(l => '<div class="log"><div class="h"><b>' + esc(l.type || '記録') + '</b><span class="m">' + esc(l.date ? md(l.date) : '') + '</span>' + (canDelete() ? '<button class="x" data-dellog="' + esc(l.logId) + '" aria-label="記録を消す">✕</button>' : '') + '</div>' +
       (l.content ? '<div style="white-space:pre-wrap">' + esc(l.content) + '</div>' : '') +
@@ -620,6 +677,11 @@ $('modalBg').addEventListener('click', e => { if (e.target === $('modalBg') && !
 
 /* ============ イベント・起動 ============ */
 $('list').addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (b) openVeh(b.dataset.id); });
+$('alerts').addEventListener('click', e => {
+  const n = e.target.closest('[data-unm-new]'); if (n) return chooseName(false, () => openEdit({ name: n.dataset.unmNew, aliases: n.dataset.unmNew }));
+  const a = e.target.closest('[data-unm-alias]'); if (a) return chooseName(false, () => openAliasPick(a.dataset.unmAlias));
+  const k = e.target.closest('[data-unm-skip]'); if (k) { lsSet('sharyo_unm_skip', lsGet('sharyo_unm_skip', []).concat(k.dataset.unmSkip)); render(); }
+});
 $('fab').addEventListener('click', () => chooseName(false, () => openEdit(null)));
 $('meBtn').addEventListener('click', () => chooseName(true));
 (function init() {

@@ -176,6 +176,8 @@ function doGet(e) {
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
     if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair'), suppliers: rows_('suppliers'), admins: admins_() });
     if (app === 'torihiki' && a === 'data') return out_({ ok: true, suppliers: rows_('suppliers'), history: supplierHistory_(), admins: admins_() });
+    if (app === 'sharyo' && a === 'list') return out_({ ok: true, vehicles: vehicleList_() });
+    if (app === 'sharyo' && a === 'usage') return out_(vehicleUsage_(Number(p.months) || 13));
     if (app === 'sharyo' && a === 'data') return out_({ ok: true, vehicles: rows_('vehicles'), logs: rows_('vehicleLog'), docs: rows_('vehicleDocs'), suppliers: rows_('suppliers'), admins: admins_() });
     if (app === 'dandori') {
       var today = ymd_(new Date());
@@ -372,6 +374,58 @@ function readInspect_(b64, mime) {   // 年次点検（特定自主検査）の�
   return { ok: true, data: { inspectedOn: on, inspectDate: next, machine: j.machine || '', inspector: j.inspector || '' } };
 }
 function withLockRaw_(fn) { var l = LockService.getScriptLock(); l.waitLock(25000); try { return fn(); } finally { l.releaseLock(); } }
+/* 日報アプリ向け：使用中の車両・重機の名前と呼び方（日報の「使用車両」「使用機械」の選択肢） */
+function vehicleList_() {
+  var today = ymd_(new Date());
+  return rows_('vehicles').filter(function (v) {
+    if (v.status && v.status !== '使用中') return false;
+    if (v.ownership === 'レンタル' && ((v.rentalFrom && v.rentalFrom > today) || (v.rentalTo && v.rentalTo < today))) return false;
+    return true;
+  }).map(function (v) { return { id: v.id, name: v.name, aliases: v.aliases || '', category: v.category || '車・トラック', ownership: v.ownership || '自社' }; });
+}
+/* 日報の実績から、車ごとの使った日数・よく行く現場を数える（日報のスプレッドシートを読むだけ。書き換えない） */
+var NIPPOU_SHEET_ID = '1h4UDGr_I1_dYrjl3KIbwp1G0iU3kzri72aA4UVXjJtA';   // 庭乃持田園_日報システム
+function nameKey_(s) { return String(s || '').normalize('NFKC').toLowerCase().replace(/[\s・･,，、。\-－_/／（）()「」]/g, '').replace(/(さん|号車)$/, ''); }
+function vehicleUsage_(months) {
+  var ss; try { ss = SpreadsheetApp.openById(prop_('NIPPOU_SHEET_ID', NIPPOU_SHEET_ID)); } catch (e) { return { ok: false, error: '日報のスプレッドシートを開けません：' + e }; }
+  var since = new Date(); since.setMonth(since.getMonth() - months); since.setDate(1);
+  var sinceStr = ymd_(since);
+  var vs = rows_('vehicles'), keyToId = {};
+  vs.forEach(function (v) { [v.name].concat(String(v.aliases || '').split(/[、,，]/)).forEach(function (n) { var k = nameKey_(n); if (k) keyToId[k] = v.id; }); });
+  var by = {}, unmatched = {}, seen = {};
+  ['日報データ', '日報アーカイブ'].forEach(function (shName) {
+    var sh = ss.getSheetByName(shName); if (!sh || sh.getLastRow() < 2) return;
+    var vals = sh.getDataRange().getValues(), head = vals[0].map(String);
+    var cD = head.indexOf('日付'), cS = head.indexOf('現場名'), cV = head.indexOf('使用車両'), cM = head.indexOf('使用機械');
+    if (cD < 0) return;
+    for (var i = 1; i < vals.length; i++) {
+      var d = vals[i][cD]; d = d instanceof Date ? Utilities.formatDate(d, ss.getSpreadsheetTimeZone() || TZ, 'yyyy-MM-dd') : String(d || '').slice(0, 10);
+      if (!d || d < sinceStr) continue;
+      var site = cS >= 0 ? String(vals[i][cS] || '') : '';
+      var names = [].concat(cV >= 0 ? String(vals[i][cV] || '').split(/[・、,，]/) : [], cM >= 0 ? String(vals[i][cM] || '').split(/[・、,，]/) : []);
+      names.forEach(function (n) {
+        n = String(n).trim(); if (!n) return;
+        var id = keyToId[nameKey_(n)];
+        if (!id) {   // 車両アプリにない名前（日報の機械は道具も多いので、使用車両の欄だけ数える）
+          if (cV >= 0 && String(vals[i][cV] || '').indexOf(n) >= 0) { var u = unmatched[n] = unmatched[n] || { days: {}, last: '' }; u.days[d] = 1; if (d > u.last) u.last = d; }
+          return;
+        }
+        var k = id + '|' + d + '|' + site; if (seen[k]) return; seen[k] = 1;
+        var o = by[id] = by[id] || { days: {}, months: {}, sites: {}, last: '' };
+        o.days[d] = 1; o.months[d.slice(0, 7)] = (o.months[d.slice(0, 7)] || 0); if (site) o.sites[site] = (o.sites[site] || 0) + 1; if (d > o.last) o.last = d;
+      });
+    }
+  });
+  var out = {};
+  Object.keys(by).forEach(function (id) {
+    var o = by[id], months = {};
+    Object.keys(o.days).forEach(function (d) { months[d.slice(0, 7)] = (months[d.slice(0, 7)] || 0) + 1; });
+    var sites = Object.keys(o.sites).map(function (k) { return { site: k, n: o.sites[k] }; }).sort(function (a, b) { return b.n - a.n; }).slice(0, 8);
+    out[id] = { days: Object.keys(o.days).length, months: months, sites: sites, last: o.last };
+  });
+  var um = Object.keys(unmatched).map(function (n) { return { name: n, days: Object.keys(unmatched[n].days).length, last: unmatched[n].last }; }).sort(function (a, b) { return b.days - a.days; });
+  return { ok: true, since: sinceStr, usage: out, unmatched: um };
+}
 function addRepair_(log, by) {   // 道具の修理の記録。「修理に出した」「修理から戻った」は道具の今どこも変える
   log = log || {};
   if (!log.toolId) return { ok: false, error: '道具がありません' };
