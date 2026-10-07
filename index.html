@@ -226,13 +226,18 @@ function orderedApps(){   // 覚えている並び → まだ並びにない（�
     const ac = new AbortController(); setTimeout(() => ac.abort(), 10000);
     const r = await (await fetch(GAS + '?app=yoten&action=badge&me=' + encodeURIComponent(me), { cache: 'no-store', signal: ac.signal })).json();
     if (!r.ok) return;
-    const n = (r.unread || 0) + (r.waiting || 0);
+    const td = r.todo || {}, n = (r.unread || 0) + (r.waiting || 0) + (td.over || 0) + (td.today || 0);
     const card = document.querySelector('.app[data-url="yoten.html"]');
     if (card && n) { const c = mk('span','cnt'); c.textContent = n; card.append(c); }
     const box = document.getElementById('remind');
     const add = (href, html) => { const a = mk('a','remind'); a.href = href; a.innerHTML = html + '<span class="go">見る ›</span>'; box.append(a); };
     if (r.unread) add('yoten.html?tab=list&seg=all', '📩 <span><b>' + (r.from && r.from.length ? r.from.join('・') + 'から' : '') + '返事が' + r.unread + '件</b>届いています</span>');
     if (r.waiting) add('yoten.html?tab=list&seg=wait', '🗣 <span>スタッフからの相談・報告が<b>' + r.waiting + '件</b>返事を待っています</span>');
+    // やること（見積期限・時期の約束など）：期限切れ・今日・1週間以内
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    if (td.over) add('yoten.html?tab=todo', '⚠️ <span>期限の過ぎた<b>やることが' + td.over + '件</b>あります</span>');
+    if (td.today) add('yoten.html?tab=todo', '✅ <span><b>今日が期限のやることが' + td.today + '件</b>あります</span>');
+    else if (td.soon && td.next) add('yoten.html?tab=todo', '📅 <span>1週間以内のやること <b>' + td.soon + '件</b>（次：' + esc(td.next.title) + '）</span>');
   } catch (e) { /* 電波がないときは出さない */ }
 })();
 

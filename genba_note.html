@@ -159,7 +159,7 @@ const me = () => lsGet(LS.me, '') || rawGet('nippou_author');
 const isAdmin = () => ADMINS.includes(me());
 async function load() {
   try {
-    const r = await getJSON(GAS_URL + '?app=note&action=data');
+    const r = await getJSON(GAS_URL + '?app=note&action=data&me=' + encodeURIComponent(me() || ''));   // 「自分だけ」のメモは書いた本人にだけ返ってくる
     if (!r.ok) throw new Error(/unknown action/.test(r.error || '') ? '共通GASの更新がまだです（数分で反映されます）' : r.error);
     SITES = r.sites || []; CAUTIONS = r.cautions || []; if (r.admins) ADMINS = r.admins;
     lsSet(LS.cache, { SITES, CAUTIONS, ADMINS });
@@ -232,7 +232,7 @@ function renderSite() {
 }
 function cautionRow(c, idx) {
   return '<div class="caution' + (c.state === '解決' ? ' resolved' : '') + '"><span class="no' + (idx < 0 ? ' nopos' : '') + '">' + (idx < 0 ? '・' : idx + 1) + '</span><div class="grow">' +
-    '<div><span class="tag warn" style="margin-left:0">' + esc(c.kind || 'その他') + '</span>' + (c.state === '解決' ? '<span class="tag done">解決済み</span>' : '') + (c.until ? '<span class="tag">' + esc(md(c.until)) + 'まで</span>' : '') + '</div>' +
+    '<div><span class="tag warn" style="margin-left:0">' + esc(c.kind || 'その他') + '</span>' + (c.state === '解決' ? '<span class="tag done">解決済み</span>' : '') + (c.until ? '<span class="tag">' + esc(md(c.until)) + 'まで</span>' : '') + (c.scope === '自分だけ' ? '<span class="tag">🔒 自分だけ</span>' : '') + '</div>' +
     '<div class="tx">' + esc(c.text || '（写真のみ）') + '</div>' +
     '<div class="mt">' + esc([c.by, c.at ? md(String(c.at).slice(0, 10)) : ''].filter(Boolean).join('・')) + (c.updatedBy && c.updatedBy !== c.by ? '（' + esc(c.updatedBy) + 'が直した）' : '') + '</div>' +
     '<button class="btn sm" type="button" data-edit-caution="' + esc(c.cautionId) + '" style="margin-top:6px">✏️ 見る・直す</button></div>' +
@@ -368,6 +368,7 @@ function drawCaution() {
       '<label class="btn sm">📷 撮る<input type="file" accept="image/*" capture="environment" id="cCam" hidden></label><label class="btn sm">🖼 選ぶ<input type="file" accept="image/*" id="cLib" hidden></label>' +
       (c.preview ? '<button type="button" class="btn sm danger" data-act="rmPhoto">写真を外す</button>' : '') + '</div>' +
     '<label class="lbl">いつまで（工事中など、期間がある注意点だけ）</label><input type="date" id="cUntil" value="' + esc(c.until || '') + '">' +
+    (isNew || c.by === me() ? '<label class="toggle" style="margin:10px 2px 0"><input type="checkbox" id="cPrivate"' + (c.scope === '自分だけ' ? ' checked' : '') + '>🔒 自分だけに見せる（社員には出さない・段取りカードにも出ない）</label>' : '') +
     '<div class="row2" style="margin-top:16px"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="save" style="flex:2">' + (isNew ? '登録する' : '保存する') + '</button></div>' +
     (isNew ? '' : '<div class="row2" style="margin-top:8px"><button class="btn" data-act="resolve">' + (c.state === '解決' ? '↩ 有効に戻す' : '✓ 解決した（一覧から外す）') + '</button>' + (isAdmin() ? '<button class="btn danger" data-act="del">削除</button>' : '') + '</div>'),
     async e => {
@@ -390,12 +391,13 @@ function keepCaution() {
   if (!ED) return;
   if ($('cText')) ED.text = $('cText').value.trim();
   if ($('cUntil')) ED.until = $('cUntil').value;
+  if ($('cPrivate')) ED.scope = $('cPrivate').checked ? '自分だけ' : '';
   if (EMAP && ED.hasPos) { const p = EMAP.center(); ED.lat = +p.lat.toFixed(7); ED.lng = +p.lng.toFixed(7); }
 }
 async function saveCaution(btn) {
   if (!ED.text && !ED.image && !ED.preview) return toast('メモか写真を入れてください');
   btn.disabled = true; const label = btn.textContent; btn.innerHTML = '<span class="loading"></span> 保存中…';
-  const c = { cautionId: ED.cautionId, siteId: CUR.id, site: CUR.name, kind: ED.kind, text: ED.text, until: ED.until, state: ED.state, lat: ED.hasPos ? ED.lat : '', lng: ED.hasPos ? ED.lng : '', removePhoto: !!ED.removePhoto, photoUrl: ED.image ? '' : ED.preview };
+  const c = { cautionId: ED.cautionId, siteId: CUR.id, site: CUR.name, kind: ED.kind, text: ED.text, until: ED.until, state: ED.state, lat: ED.hasPos ? ED.lat : '', lng: ED.hasPos ? ED.lng : '', removePhoto: !!ED.removePhoto, photoUrl: ED.image ? '' : ED.preview, scope: ED.scope || '' };
   try {
     const r = await postJSON(GAS_URL, { app: 'note', mode: 'saveCaution', caution: c, image: ED.image || '', by: me() });
     if (!r.ok) throw new Error(/unknown mode/.test(r.error || '') ? '共通GASの更新がまだです（数分で反映されます）' : r.error);

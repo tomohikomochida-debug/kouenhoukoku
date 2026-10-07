@@ -43,7 +43,8 @@ var SHEETS = {
   toolRepair:{ name: '修理履歴',     head: ['logId', 'toolId', 'date', 'type', 'content', 'shop', 'cost', 'by', 'at'] },
   vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at', 'batch', 'state', 'validUntil', 'page'] },
   memos:     { name: '要点メモ',     head: ['memoId', 'at', 'by', 'to', 'kind', 'headline', 'points', 'needs', 'vehicles', 'site', 'when', 'people', 'missing', 'message', 'rawText', 'readBy', 'status', 'doneAt', 'doneBy', 'routes'] },
-  cautions:  { name: '現場の注意点', head: ['cautionId', 'siteId', 'site', 'kind', 'text', 'lat', 'lng', 'photoUrl', 'photoId', 'until', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },
+  cautions:  { name: '現場の注意点', head: ['cautionId', 'siteId', 'site', 'kind', 'text', 'lat', 'lng', 'photoUrl', 'photoId', 'until', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'scope'] },   // scope：空＝みんな／「自分だけ」＝書いた人だけが見る
+  todos:     { name: 'やること',     head: ['todoId', 'kind', 'title', 'site', 'dueDate', 'whenText', 'note', 'owner', 'state', 'doneAt', 'doneBy', 'eventId', 'calendar', 'memoId', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 見積期限・時期の約束・自分のやること（owner＝見る人）
   replies:   { name: '要点メモの返事', head: ['replyId', 'memoId', 'at', 'by', 'text', 'scope', 'showAt', 'actions', 'readBy'] },
   chosa:     { name: '現場調査の案件', head: ['id', 'name', 'date', 'mode', 'n', 'photos', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 中身は Drive の「現場調査データ」、写真は1枚1ファイルで「現場調査データ ＞ 写真」
   chosaPhotos:{ name: '現場調査の写真', head: ['hash', 'fileId', 'mime', 'size', 'at'] },
@@ -193,7 +194,8 @@ function doGet(e) {
     if (app === 'sharyo' && a === 'list') return out_({ ok: true, vehicles: vehicleList_() });
     if (app === 'sharyo' && a === 'usage') return out_(vehicleUsage_(Number(p.months) || 13));
     if (app === 'sharyo' && a === 'data') return out_({ ok: true, vehicles: rows_('vehicles'), logs: rows_('vehicleLog'), docs: rows_('vehicleDocs'), suppliers: rows_('suppliers'), admins: admins_() });
-    if (app === 'note' && a === 'data') return out_({ ok: true, sites: siteList_(), cautions: rows_('cautions').filter(function (c) { return c.state !== '削除'; }), admins: admins_() });
+    if (app === 'note' && a === 'data') return out_({ ok: true, sites: siteList_(), cautions: rows_('cautions').filter(function (c) { return c.state !== '削除' && canSeeCaution_(c, p.me); }), admins: admins_() });
+    if (app === 'yoten' && a === 'todos') return out_({ ok: true, todos: todoList_(p.me), today: ymd_(new Date()) });
     if (app === 'yoten' && a === 'list') { var ml = memoList_(Number(p.days) || 60); return out_({ ok: true, memos: ml, replies: replyList_(ml, p.me), admins: admins_(), repliers: repliers_(), now: now_() }); }
     if (app === 'yoten' && a === 'badge') return out_(badge_(p.me));
     if (app === 'yoten' && a === 'result') return out_(summaryResult_(p.id));
@@ -277,6 +279,9 @@ function doPost(e) {
       case 'yoten:delete':     return withLock_(function () { return deleteMemo_(b.memoId, b.by); });
       case 'yoten:interpret':  return out_(interpretReply_(b));
       case 'yoten:route':      return withLock_(function () { return route_(b.route, b.by, b.memoBy); });
+      case 'yoten:todoSave':   return withLock_(function () { return todoSave_(b.todo, b.by); });
+      case 'yoten:todoDone':   return withLock_(function () { return todoDone_(b.todoId, b.done, b.by); });
+      case 'yoten:todoDelete': return withLock_(function () { return todoDelete_(b.todoId, b.by); });
       case 'yoten:reply':      return withLock_(function () { return reply_(b); });
       case 'yoten:done':       return withLock_(function () { return setDone_(b.memoId, b.by, b.done); });
       case 'yoten:readReply':  return withLock_(function () { return readReplies_(b.replyIds, b.by); });
@@ -1112,6 +1117,7 @@ function noteFolder_() {   // 写真は「社内アプリ」フォルダの中�
   var p = docsFolder_().getParents(), parent = p.hasNext() ? p.next() : DriveApp.getRootFolder();
   return subFolder_(parent, '現場の注意点写真');
 }
+function canSeeCaution_(c, me) { return c.scope !== '自分だけ' || (me && String(c.by) === String(me)); }
 function saveCaution_(c, image, by) {
   c = c || {};
   if (!c.site && !c.siteId) return { ok: false, error: '現場がありません' };
@@ -1119,6 +1125,7 @@ function saveCaution_(c, image, by) {
   var num = function (v) { return v === '' || v == null || isNaN(Number(v)) ? '' : Number(v); };
   var obj = { cautionId: c.cautionId || '', siteId: c.siteId || '', site: c.site || '', kind: c.kind || 'その他', text: c.text || '', lat: num(c.lat), lng: num(c.lng),
     until: c.until || '', state: c.state || '有効', updatedBy: by || '', updatedAt: now_() };
+  if (c.hasOwnProperty('scope')) obj.scope = c.scope === '自分だけ' ? '自分だけ' : '';
   if (!obj.cautionId) { obj.by = by || ''; obj.at = now_(); }
   if (image) {
     var f = noteFolder_().createFile(Utilities.newBlob(Utilities.base64Decode(image), 'image/jpeg', (obj.site || 'site') + '_' + Date.now() + '.jpg'));
@@ -1130,7 +1137,7 @@ function saveCaution_(c, image, by) {
 function siteNotesForDandori_() {   // 段取りカードに出す：有効な注意点と段取りメモ（カードの現場名と照合できるよう別名も渡す）
   try {
     var today = ymd_(new Date());
-    var cs = rows_('cautions').filter(function (c) { return (c.state || '有効') === '有効' && (!c.until || String(c.until) >= today); })
+    var cs = rows_('cautions').filter(function (c) { return (c.state || '有効') === '有効' && (!c.until || String(c.until) >= today) && c.scope !== '自分だけ'; })   // 自分だけのメモは段取りカード（みんなが見る）に出さない
       .map(function (c) { return { cautionId: c.cautionId, site: c.site, siteId: c.siteId, kind: c.kind, text: c.text, photoUrl: c.photoUrl }; });
     var sites = siteList_().filter(function (s) { return s.memo || cs.some(function (c) { return c.siteId === s.id; }); })
       .map(function (s) { return { id: s.id, name: s.name, aliases: s.aliases, memo: s.memo }; });
@@ -1347,7 +1354,9 @@ function summarizeCore_(b) {
   var to = b.to || '親方へ';
   var prompt =
     'あなたは造園会社（植木屋）の、話を聞いてまとめる係です。言葉にするのが苦手なスタッフが、順番もばらばらに、まとまらないまま話した内容を、聞く人にすぐ伝わる形に整理してください。\n' +
-    '話した日時：' + (b.spokenAt || now_()) + '（「今日」「明日」「木曜」などはこの日時を基準に YYYY-MM-DD に直す）\n' +
+    '話した日時：' + (b.spokenAt || now_()) + '（「今日」「明日」「木曜」などはこの日時を基準に YYYY-MM-DD に直す。曜日は下の暦で確かめる）\n' +
+    '暦（今日から4週間）：' + dateTable_(b.spokenAt) + '\n' +
+    '期限の言い方の決まり：「今週中」「今週まで」＝今週の土曜／「来週まで」「来週中」＝来週の土曜（週は月曜はじまり）／「再来週まで」＝再来週の土曜／「月末」「今月中」＝その月の末日／「来月中」＝来月の末日／「年内」＝12月28日／「〇日まで」＝その日（過ぎていれば来月）\n' +
     '話した人：' + (b.speaker || 'スタッフ') + '（「私」「俺」「自分」はこの人）\n' +
     '宛先：' + to + '\n' +
     'ルール：\n' +
@@ -1368,12 +1377,13 @@ function summarizeCore_(b) {
     '・routes は、話の中で「ほかのアプリに入れるとよいもの」を行き先ごとに分けたもの（なければ空の配列）：\n' +
     '  - type "plan"：これからやる予定（「金曜に続きをやりたい」「明日は〇〇公園で剪定」）。段取りカードになる。date（YYYY-MM-DD、分からなければ空）、dateNote（「金曜あたり」「今週中に」など話した言い方）、site（現場マスタの名前。現場のない用事なら空にして title に短い名前）、members（名簿の名前。話に出た人だけ）、steps（作業を順に短く）、items（持って行く道具・資材、辞書の正式名）、notes（注意点）。済んだことや今日やったことは入れない\n' +
     '  - type "shop"：買う・取ってくる・補充する物（「土のう袋が足りない」「竹を10本買っておいて」）。date（いつまでに必要か、分からなければ空）、place（取引先の正式名、分からなければ空）、items [{name, qty, unit}]（辞書の正式名）\n' +
-    '  - type "calendar"：お客さんとの時期の約束（「この仕事は10月頃にやりましょう」）や見積の期限（「見積は20日までに欲しい」）など、親方が覚えておくべき先の日付。kind（"時期の約束"・"見積期限"・"期限" のどれか）、title（お客さん・現場と内容を短く。例：「〇〇邸 生垣の刈込」）、whenText（話した言い方そのまま。例：「10月頃」「10月下旬」「20日まで」）、date（YYYY-MM-DD。「〇月頃」「〇月中」「〇月上旬」はその月の1日、「中旬」は11日、「下旬」は21日、日付が言われたらその日。過ぎた月なら来年）、note（話の中の補足）\n' +
+    '  - type "calendar"：お客さんとの時期の約束（「この仕事は10月頃にやりましょう」）、見積の期限（「来週までに〇〇の見積を出す」「見積は20日までに欲しい」）、話した人が自分でやること・忘れたくないこと（「〇〇さんに電話する」「〇日までに書類を出す」）など、先の日付で覚えておくこと。kind（"時期の約束"・"見積期限"・"期限"・"やること" のどれか。見積を出す・作る話は"見積期限"）、title（お客さん・現場と内容を短く。例：「〇〇邸 生垣の刈込」「〇〇公園 保存林の見積」）、site（現場マスタの名前。なければ空）、whenText（話した言い方そのまま。例：「10月頃」「来週まで」「20日まで」）、date（YYYY-MM-DD。「〇月頃」「〇月中」「〇月上旬」はその月の1日、「中旬」は11日、「下旬」は21日。期限の言い方は上の決まりで。日付が言われたらその日。過ぎた月なら来年）、note（話の中の補足）\n' +
+    '  - type "note"：お客さん（施主・役所の担当など）に言われたこと・頼まれたこと・好み（「〇〇さんが松は低めにしてほしいって」「車は道路に止めないでと言われた」）。現場ノートに残る。site（現場マスタの名前。分からなければ空）、text（言われたことを短く。誰に言われたかが話に出ていれば入れる）、scope（ふつうは "みんな"。「自分だけ」「内緒」「社員には言わない」「メモだけ」と話したときだけ "自分だけ"）。期限があるなら calendar も別に作る\n' +
     '  - 1つの話に予定や買う物がいくつもあれば、日付・現場・店ごとに分ける。話に出ていないことは入れない\n' +
     '・message は宛先にそのまま送れる文。' + (to === '自分用メモ' ? '自分用のメモなので、短い箇条書き（「・」で始める）' : 'LINEで送る短い文。です・ます調で3〜6行。最初の1行で用件が分かるように。宛先が親方なら「親方、」、みんななら「みなさん、」で始める') + '。missing の内容は勝手に埋めない\n' +
     'JSONだけ返す：{"kind":"","headline":"","points":[""],"needs":[{"name":"正式名","qty":数または空,"unit":"","why":""}],"vehicles":["車両名"],' +
     '"site":"","when":"YYYY-MM-DD または空","whenNote":"","people":["名簿の名前"],"missing":["質問"],"words":[{"said":"","term":""}],"corrections":[""],"message":"",' +
-    '"routes":[{"type":"calendar","kind":"","title":"","whenText":"","date":"","note":""},{"type":"plan","date":"","dateNote":"","site":"","title":"","members":[],"steps":[],"items":[{"name":"","qty":"","unit":""}],"notes":[]},{"type":"shop","date":"","place":"","items":[{"name":"","qty":"","unit":""}]}]}\n\n' +
+    '"routes":[{"type":"calendar","kind":"","title":"","site":"","whenText":"","date":"","note":""},{"type":"note","site":"","text":"","scope":"みんな"},{"type":"plan","date":"","dateNote":"","site":"","title":"","members":[],"steps":[],"items":[{"name":"","qty":"","unit":""}],"notes":[]},{"type":"shop","date":"","place":"","items":[{"name":"","qty":"","unit":""}]}]}\n\n' +
     '名簿（正式な名前（呼び名））：\n' + (b.roster || '') + '\n' +
     '現場マスタ：\n' + (b.masterSites || []).join('、') + '\n' +
     (b.vehicles ? '車両一覧（名前：呼び方）：\n' + b.vehicles + '\n' : '') +
@@ -1389,7 +1399,7 @@ function summarizeCore_(b) {
     kind: MEMO_KINDS.indexOf(j.kind) >= 0 ? j.kind : 'その他', headline: String(j.headline || ''), points: arr(j.points).map(String),
     needs: arr(j.needs), vehicles: arr(j.vehicles).map(String), site: String(j.site || ''), when: String(j.when || ''), whenNote: String(j.whenNote || ''),
     people: arr(j.people).map(String), missing: arr(j.missing).map(String).slice(0, 4), words: arr(j.words), corrections: arr(j.corrections).map(String), message: String(j.message || ''),
-    routes: arr(j.routes).filter(function (r) { return r && (r.type === 'plan' || r.type === 'calendar' || (r.type === 'shop' && arr(r.items).length)); })
+    routes: arr(j.routes).filter(function (r) { return r && (r.type === 'plan' || r.type === 'calendar' || (r.type === 'note' && r.text) || (r.type === 'shop' && arr(r.items).length)); })
   } };
 }
 /* 行き先ごとに入れる：予定 → 段取りカード、買う物 → 段取りの買い出し（立ち寄り先つきの「買い出し」カード）
@@ -1397,6 +1407,7 @@ function summarizeCore_(b) {
 function route_(r, by, memoBy) {
   r = r || {};
   if (r.type === 'calendar') return calendarRoute_(r, by);
+  if (r.type === 'note') return noteRoute_(r, by);
   var today = ymd_(new Date()), date = /^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? r.date : '';
   var from = '（要点まとめ：' + (memoBy || by || '') + 'より）';
   var list = cards_(), card;
@@ -1424,18 +1435,115 @@ function route_(r, by, memoBy) {
   var res = saveCards_([card], by);
   return { ok: true, cardId: (res.cardIds || [])[0] || '', date: card.date, merged: !!card.cardId && list.some(function (c) { return c.cardId === card.cardId; }) };
 }
-/* 親方の標準カレンダー（マイカレンダーの「持田智彦」＝青）に、時期の約束・見積期限を終日の予定で入れる。
-   現場カレンダー・出勤調整カレンダー（みんなが見る）には入れない。入れられるのは親方だけ。
-   別のカレンダーにしたいときは、スクリプト プロパティ MEMO_CALENDAR にカレンダーの名前を書く */
+/* カレンダー＋やること：
+   ・親方の標準カレンダー（マイカレンダーの「持田智彦」＝青）に入れる。現場カレンダー・出勤調整カレンダー（みんなが見る）には入れない
+     別のカレンダーにしたいときは、スクリプト プロパティ MEMO_CALENDAR にカレンダーの名前を書く
+   ・「時期の約束」（〇月頃など）は終日の予定で、通知は MEMO_REMIND_DAYS 日前（既定7日）
+   ・「見積期限」「期限」「やること」は期限の日の朝7時の予定にして、前日の朝7時と当日の朝7時に通知（TODO_REMIND_AT で時刻を変えられる）
+   ・どれも「やること」の一覧に入り、終わったらチェックする
+   ・カレンダーに入れられるのは親方だけ。ほかの人は自分の「やること」にだけ入る */
+var TODO_KINDS = ['見積期限', '時期の約束', '期限', 'やること'];
+function memoCal_() {
+  var name = prop_('MEMO_CALENDAR', '');
+  return name ? (CalendarApp.getCalendarsByName(name)[0] || null) : CalendarApp.getDefaultCalendar();
+}
+function todoTitle_(t) { return (t.state === '済' ? '✓ ' : '') + '【' + (t.kind || '期限') + '】' + (t.title || '') + (t.whenText ? '（' + t.whenText + '）' : ''); }
+function putTodoEvent_(t, cal) {   // 予定を作る・直す。戻り値は eventId
+  var at = Number(prop_('TODO_REMIND_AT', '7')), ev = null;
+  if (t.eventId) { try { ev = cal.getEventById(t.eventId); } catch (e) { ev = null; } }
+  var desc = [t.site ? '現場：' + t.site : '', t.note || '', 'やること一覧：要点まとめアプリ（' + (t.todoId || '') + '）'].filter(String).join('\n');
+  var allDay = t.kind === '時期の約束', d = day_(t.dueDate);
+  var start = Utilities.parseDate(t.dueDate + ' ' + (at < 10 ? '0' : '') + at + ':00', TZ, 'yyyy-MM-dd HH:mm'), end = new Date(start.getTime() + 15 * 60000);   // 東京時間の朝7時
+  if (ev && ev.isAllDayEvent() !== allDay) { try { ev.deleteEvent(); } catch (e) {} ev = null; }
+  if (!ev) ev = allDay ? cal.createAllDayEvent(todoTitle_(t), d, { description: desc }) : cal.createEvent(todoTitle_(t), start, end, { description: desc });
+  else { ev.setTitle(todoTitle_(t)); ev.setDescription(desc); if (allDay) ev.setAllDayDate(d); else ev.setTime(start, end); }
+  try {
+    ev.removeAllReminders();
+    if (t.state !== '済') {
+      if (allDay) ev.addPopupReminder(Number(prop_('MEMO_REMIND_DAYS', '7')) * 24 * 60);
+      else { ev.addPopupReminder(0); ev.addPopupReminder(24 * 60); }   // 当日の朝7時・前日の朝7時
+    }
+  } catch (e) {}
+  return ev.getId();
+}
 function calendarRoute_(r, by) {
-  if (!isAdmin_(by)) return { ok: false, error: 'カレンダーに入れられるのは' + admins_().join('・') + 'だけです' };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) return { ok: false, error: '日付がありません' };
-  var name = prop_('MEMO_CALENDAR', ''), cal = name ? (CalendarApp.getCalendarsByName(name)[0] || null) : CalendarApp.getDefaultCalendar();
-  if (!cal) return { ok: false, error: 'カレンダー「' + name + '」が見つかりません' };
-  var kind = r.kind || '期限', title = '【' + kind + '】' + (r.title || '') + (r.whenText ? '（' + r.whenText + '）' : '');
-  var ev = cal.createAllDayEvent(title, day_(r.date), { description: [r.note || '', '要点まとめから登録（' + now_() + '・' + (by || '') + '）'].filter(String).join('\n') });
-  try { ev.removeAllReminders(); ev.addPopupReminder(Number(prop_('MEMO_REMIND_DAYS', '7')) * 24 * 60); } catch (e) {}
-  return { ok: true, eventId: ev.getId(), date: r.date, calendar: cal.getName() };
+  var t = { kind: TODO_KINDS.indexOf(r.kind) >= 0 ? r.kind : '期限', title: r.title || '', site: r.site || '', dueDate: r.date, whenText: r.whenText || '', note: r.note || '',
+    owner: by || '', state: '', memoId: r.memoId || '', by: by || '', at: now_() };
+  var res = upsert_('todos', 'todoId', 'T', t, by); t.todoId = res.id;
+  var calName = '';
+  if (isAdmin_(by)) {   // カレンダーは親方だけ（スタッフの分は「やること」にだけ入る）
+    var cal = memoCal_();
+    if (!cal) return { ok: true, todoId: t.todoId, date: r.date, calendar: '', warn: 'カレンダー「' + prop_('MEMO_CALENDAR', '') + '」が見つからないので、やることにだけ入れました' };
+    t.eventId = putTodoEvent_(t, cal); calName = cal.getName();
+    upsert_('todos', 'todoId', 'T', { todoId: t.todoId, eventId: t.eventId, calendar: calName }, by);
+  }
+  return { ok: true, todoId: t.todoId, eventId: t.eventId || '', date: r.date, calendar: calName };
+}
+/* お客さんに言われたこと → 現場ノート（現場の注意点の「お客さんの要望」。位置なし）。scope「自分だけ」は書いた人だけが見る */
+function noteRoute_(r, by) {
+  var name = String(r.site || '').trim();
+  if (!name) return { ok: false, error: '現場を選んでください' };
+  var n = function (x) { return String(x || '').replace(/[\s　]/g, ''); };
+  var site = siteList_().filter(function (x) { return n(x.name) === n(name) || String(x.aliases || '').split(/[、,，]/).some(function (a) { return a && n(a) === n(name); }); })[0];
+  var res = saveCaution_({ siteId: site ? site.id : '', site: site ? site.name : name, kind: 'お客さんの要望', text: r.text || '', scope: r.scope === '自分だけ' ? '自分だけ' : '' }, null, by);
+  if (!res.ok) return res;
+  return { ok: true, cautionId: res.id, site: site ? site.name : name, known: !!site, scope: r.scope === '自分だけ' ? '自分だけ' : 'みんな' };
+}
+/* やること一覧 */
+function todoList_(me) {
+  if (!me) return [];
+  var from = addDays_(ymd_(new Date()), -60);   // 済んだものは2か月分まで
+  return rows_('todos').filter(function (t) { return String(t.owner) === String(me) && (t.state !== '済' || String(t.doneAt).slice(0, 10) >= from); })
+    .sort(function (a, b) { return (a.state === '済') - (b.state === '済') || String(a.dueDate).localeCompare(String(b.dueDate)); });
+}
+function todoOf_(id) { return rows_('todos').filter(function (t) { return String(t.todoId) === String(id); })[0] || null; }
+function todoSave_(x, by) {   // 手で足す・直す（件名・期限・種類・メモ）
+  x = x || {};
+  if (!String(x.title || '').trim()) return { ok: false, error: '件名を入れてください' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(x.dueDate || '')) return { ok: false, error: '期限の日付を入れてください' };
+  if (!x.todoId) return calendarRoute_({ kind: x.kind, title: x.title, site: x.site, date: x.dueDate, whenText: x.whenText || '', note: x.note }, by);
+  var t = todoOf_(x.todoId); if (!t) return { ok: false, error: '見つかりません' };
+  if (String(t.owner) !== String(by)) return { ok: false, error: '自分のやることだけ直せます' };
+  if (x.dueDate) t.whenText = x.hasOwnProperty('whenText') ? x.whenText : (String(t.dueDate) === x.dueDate ? t.whenText : '');   // 期限を変えたら「来週まで」などの言い方は外す
+  ['kind', 'title', 'site', 'dueDate', 'note'].forEach(function (k) { if (x.hasOwnProperty(k)) t[k] = x[k]; });
+  upsert_('todos', 'todoId', 'T', t, by);
+  syncTodoEvent_(t, by);
+  return { ok: true, todoId: t.todoId };
+}
+function todoDone_(id, done, by) {
+  var t = todoOf_(id); if (!t) return { ok: false, error: '見つかりません' };
+  if (String(t.owner) !== String(by)) return { ok: false, error: '自分のやることだけチェックできます' };
+  t.state = done ? '済' : ''; t.doneAt = done ? now_() : ''; t.doneBy = done ? by : '';
+  upsert_('todos', 'todoId', 'T', { todoId: t.todoId, state: t.state, doneAt: t.doneAt, doneBy: t.doneBy }, by);
+  syncTodoEvent_(t, by);   // 終わったら予定の頭に ✓ を付けて通知を止める
+  return { ok: true };
+}
+function todoDelete_(id, by) {
+  var t = todoOf_(id); if (!t) return { ok: false, error: '見つかりません' };
+  if (String(t.owner) !== String(by)) return { ok: false, error: '自分のやることだけ消せます' };
+  if (t.eventId) { try { var cal = memoCal_(), ev = cal && cal.getEventById(t.eventId); if (ev) ev.deleteEvent(); } catch (e) {} }
+  return remove_('todos', t.todoId);
+}
+function syncTodoEvent_(t, by) {
+  if (!t.eventId || !isAdmin_(by)) return;
+  try { var cal = memoCal_(); if (!cal) return; var id = putTodoEvent_(t, cal); if (id !== t.eventId) upsert_('todos', 'todoId', 'T', { todoId: t.todoId, eventId: id }, by); } catch (e) {}
+}
+function todoCounts_(me) {   // ホーム画面に出す：期限切れ・今日・今週（7日以内）
+  var today = ymd_(new Date()), week = addDays_(today, 7), c = { over: 0, today: 0, soon: 0, next: '' };
+  todoList_(me).forEach(function (t) {
+    if (t.state === '済' || !t.dueDate) return;
+    var d = String(t.dueDate);
+    if (d < today) c.over++; else if (d === today) c.today++; else if (d <= week) c.soon++;
+    if (d >= today && (!c.next || d < c.next.dueDate)) c.next = { title: t.title, dueDate: d, kind: t.kind };
+  });
+  return c;
+}
+/* 暦：AIが曜日を数え間違えないよう、今日から4週間の日付と曜日を渡す */
+function dateTable_(spokenAt) {
+  var base = /^\d{4}-\d{2}-\d{2}/.test(spokenAt || '') ? String(spokenAt).slice(0, 10) : ymd_(new Date()), wd = ['日', '月', '火', '水', '木', '金', '土'], out = [];
+  for (var i = 0; i < 28; i++) { var s = addDays_(base, i), d = day_(s); out.push(s + '(' + wd[d.getDay()] + ')' + (i === 0 ? '＝今日' : '')); }
+  return out.join(' ');
 }
 function memoList_(days) {
   var from = Utilities.formatDate(new Date(Date.now() - days * 86400000), TZ, 'yyyy-MM-dd');
@@ -1481,7 +1589,9 @@ function badge_(me) {   // ホーム画面のリマインド用：まだ読ん�
     unread++; if (from.indexOf(r.by) < 0) from.push(r.by);
   });
   var waiting = isReplier_(me) ? Object.keys(open).filter(function (k) { return open[k].to === '親方へ'; }).length : 0;
-  return { ok: true, unread: unread, from: from, waiting: waiting };
+  var todo = { over: 0, today: 0, soon: 0, next: '' };
+  try { todo = todoCounts_(me); } catch (e) {}
+  return { ok: true, unread: unread, from: from, waiting: waiting, todo: todo };
 }
 function interpretReply_(b) {   // 返事から「反映の案」を作る（実際に反映するのは人が確認してから）
   var m = b.memo || {};

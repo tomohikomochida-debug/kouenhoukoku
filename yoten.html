@@ -111,6 +111,20 @@ dl.facts dd{margin:0}
 .route{flex-wrap:wrap}
 .route .rdate{width:auto;flex:none;font-size:14px;padding:6px 8px}
 /* 履歴 */
+.todo{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.todo .ck{flex:none;width:28px;height:28px;border-radius:8px;border:2px solid var(--leaf);background:var(--card);font-size:17px;line-height:1;color:#fff;cursor:pointer;display:grid;place-items:center;padding:0}
+.todo.done .ck{background:var(--leaf)}
+.todo .grow{flex:1;min-width:0}
+.todo .tt{font-weight:700;font-size:15px;word-break:break-all}
+.todo.done .tt{text-decoration:line-through;color:var(--bark);font-weight:400}
+.todo .sb{font-size:12.5px;color:var(--bark);margin-top:2px}
+.todo .due{flex:none;text-align:right;font-size:13px;font-weight:700;white-space:nowrap}
+.todo .due.over{color:var(--danger)}
+.todo .due.today{color:#B5651D}
+.todo .ed{border:1px solid var(--line);background:var(--field);border-radius:8px;font:inherit;font-size:12px;padding:2px 8px;margin-top:5px;cursor:pointer;color:var(--ink)}
+.tgrp{font-size:13px;font-weight:700;color:var(--bark);margin:14px 2px 6px}
+.tgrp.over{color:var(--danger)}
+.tag.lock{background:#EFE7F7;color:#5B3F7A}
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:10px}
 .seg button{flex:1;border:0;background:var(--card);font:inherit;font-size:14px;padding:8px 0;cursor:pointer;color:var(--bark)}
 .seg button.on{background:var(--leaf);color:#fff;font-weight:700}
@@ -186,6 +200,14 @@ nav.tabs button.on{color:var(--leaf);font-weight:700}
     <div id="result"></div>
   </section>
 
+  <section id="tab-todo" hidden>
+    <div class="card" style="padding:12px 14px">
+      <div style="display:flex;align-items:center;gap:8px"><b style="flex:1">✅ やること・期限</b><button type="button" class="btn sm primary" id="todoAdd">＋ 足す</button></div>
+      <p class="hint" id="todoHint" style="margin:6px 0 0">話してまとめると、見積の期限や時期の約束がここに入ります。終わったら□を押してください。</p>
+    </div>
+    <div id="todoList"></div>
+  </section>
+
   <section id="tab-list" hidden>
     <div class="seg" id="listSeg">
       <button type="button" data-seg="mine" class="on">自分の</button>
@@ -198,6 +220,7 @@ nav.tabs button.on{color:var(--leaf);font-weight:700}
 
 <nav class="tabs"><div class="in">
   <button type="button" data-tab="speak" class="on"><span class="ic">🎤</span>話してまとめる</button>
+  <button type="button" data-tab="todo"><span class="ic">✅</span>やること<span id="todoBadge"></span></button>
   <button type="button" data-tab="list"><span class="ic">📋</span>まとめた記録<span id="unreadBadge"></span></button>
 </div></nav>
 
@@ -515,8 +538,8 @@ function renderResult(noScroll) {
     (r.words.length ? '<div class="sec">言葉の言い換え（押すと意味）</div><div>' + r.words.map(w => '<button type="button" class="word" data-term="' + esc(w.term) + '"><s>' + esc(w.said) + '</s> → <b>' + esc(w.term) + '</b></button>').join('') + '</div>' : '') +
     (r.corrections.length ? '<div class="fix">聞き間違いを直しました：' + esc(r.corrections.join('、')) + '</div>' : '') +
     '</div>') +
-    '<div class="card"><div class="sec" style="margin-top:0">行き先ごとに入れる（押したものだけ入ります）</div>' + (r.routes.length ? r.routes.map(routeRow).join('') : '<p class="hint">段取りや買い出しに入れるものは見つかりませんでした。必要なら下から足せます。</p>') +
-    '<div class="r-add"><button type="button" class="mini" data-radd="plan">＋ 段取りカード</button><button type="button" class="mini" data-radd="shop">＋ 買い出し</button>' + (isAdmin() ? '<button type="button" class="mini" data-radd="calendar">＋ カレンダー</button>' : '') + '</div></div>' +
+    '<div class="card"><div class="sec" style="margin-top:0">行き先ごとに入れる（押したものだけ入ります）</div>' + (r.routes.length ? r.routes.map(routeRow).join('') : '<p class="hint">段取り・買い出し・期限・お客さんの話に入れるものは見つかりませんでした。必要なら下から足せます。</p>') +
+    '<div class="r-add"><button type="button" class="mini" data-radd="plan">＋ 段取りカード</button><button type="button" class="mini" data-radd="shop">＋ 買い出し</button>' + '<button type="button" class="mini" data-radd="calendar">＋ ' + (isAdmin() ? 'カレンダー・やること' : 'やること') + '</button><button type="button" class="mini" data-radd="note">＋ お客さんの話</button></div></div>' +
     '<div class="card"><div class="sec" style="display:flex;align-items:center">送る文（直してから送れます）<button type="button" class="btn sm" id="remakeBtn" style="margin-left:auto;font-weight:400">↻ 作り直す</button></div><textarea class="msg" id="msg">' + esc(r.message) + '</textarea>' +
     '<div class="row2" style="margin-top:10px"><button class="btn" type="button" id="copyBtn">コピー</button><button class="btn ok" type="button" id="shareBtn" style="flex:2">LINEで送る</button></div>' +
     '<p class="hint" id="saveHint">' + (r.to === '自分用メモ' ? '送ると、自分の記録にも自動で残ります' : '送ると、記録にも自動で残ります（' + (r.to === '親方へ' ? '親方' : 'みんな') + 'がアプリで見られます）') + '</p>' +
@@ -578,8 +601,12 @@ function finishEdit(ok) {
   if (r.savedMsg != null) r.dirtyEdit = true;   // 記録済みなら「記録を更新」できるように
   EDITING = false; renderResult(true); $('msg').value = r.message; saveBtnState(); keepResult(); toast('まとめを直しました');
 }
+function remindText(kind) { return kind === '時期の約束' ? '1週間前に通知' : '前日と当日の朝7時に通知'; }
 function routeLine(x) {
-  if (x.type === 'calendar') return { ic: '📅', to: 'あなたのカレンダー（標準）', what: '【' + (x.kind || '期限') + '】' + (x.title || ''), sub: (x.whenText ? x.whenText + ' → ' : '') + (x.date ? md(x.date) : '日付を入れてください') + '（1週間前に通知）' };
+  if (x.type === 'calendar') return { ic: '📅', to: isAdmin() ? 'あなたのカレンダー（標準）＋やること' : 'あなたのやること', what: '【' + (x.kind || '期限') + '】' + (x.title || ''),
+    sub: (x.site ? x.site + '　' : '') + (x.whenText ? x.whenText + ' → ' : '') + (x.date ? md(x.date) : '日付を入れてください') + (isAdmin() ? '（' + remindText(x.kind) + '）' : '') };
+  if (x.type === 'note') return { ic: '📝', to: '現場ノート（お客さんの話）' + (x.scope === '自分だけ' ? '・自分だけ' : ''), what: (x.site || '現場を選んでください') + '：' + (x.text || ''),
+    sub: x.scope === '自分だけ' ? '🔒 あなたにだけ見えます' : '社員みんなが見られます' };
   if (x.type === 'shop') return { ic: '🛒', to: '段取りの買い出し', what: (x.place || '店は未定') + '：' + x.items.map(i => i.name + (i.qty ? ' ' + i.qty + (i.unit || '') : '')).join('・'), sub: x.date ? md(x.date) + 'までに' : '日にちは仮で明日に入れます' };
   return { ic: '🗓', to: '段取りカード', what: (x.site || x.title || '予定') + (x.steps.length ? '：' + x.steps.join('、') : ''),
     sub: [x.date ? md(x.date) : (x.dateNote || '日にち未定'), x.members.length ? x.members.join('・') : '', x.items.length ? '持ち物 ' + x.items.map(i => i.name).join('・') : ''].filter(Boolean).join('　') };
@@ -589,7 +616,7 @@ function routeRow(x, i) {
   return '<div class="route' + (x.done ? ' done' : '') + '"><span class="ic">' + L.ic + '</span><div class="grow"><div class="to">' + L.to + '</div><div class="what">' + esc(L.what) + '</div><div class="sub">' + esc(L.sub) + '</div></div>' +
     (x.type === 'calendar' && !x.done ? '<input type="date" class="rdate" data-rdate="' + i + '" value="' + esc(x.date || '') + '" aria-label="日付">' : '') +
     '<div class="acts"><button type="button" class="btn sm' + (x.done ? '' : ' primary') + '" data-route="' + i + '"' + (x.done ? ' disabled' : '') + '>' + (x.done ? '✓ 入れました' : routeVerb(x)) + '</button>' +
-    (x.done ? (x.type !== 'calendar' ? '<a class="mini" style="text-align:center;text-decoration:none" href="dandori.html">段取りで直す</a>' : '') : '<button type="button" class="mini" data-redit="' + i + '">✏️ 直す</button>') + '</div></div>';
+    (x.done ? (x.type === 'note' ? '<a class="mini" style="text-align:center;text-decoration:none" href="genba_note.html">現場ノートを見る</a>' : x.type === 'calendar' ? '<button type="button" class="mini" data-tab-go="todo">やることを見る</button>' : '<a class="mini" style="text-align:center;text-decoration:none" href="dandori.html">段取りで直す</a>') : '<button type="button" class="mini" data-redit="' + i + '">✏️ 直す</button>') + '</div></div>';
 }
 /* 行き先ごとのカードを、入れる前に直す・足す */
 const itemsText = items => (items || []).map(it => it.name + (it.qty ? ' ' + it.qty + (it.unit || '') : '')).join('\n');
@@ -607,7 +634,7 @@ function openRouteEdit(i, newType) {
   const isNew = i < 0, x = isNew ? { type: newType, items: [], steps: [], notes: [], members: [], date: '' } : RESULT.routes[i];
   if (!x) return;
   const dl = (id, list) => '<datalist id="' + id + '">' + list.filter(Boolean).map(v => '<option value="' + esc(v) + '">').join('') + '</datalist>';
-  const head = { plan: '🗓 段取りカード', shop: '🛒 買い出し', calendar: '📅 カレンダー' }[x.type];
+  const head = { plan: '🗓 段取りカード', shop: '🛒 買い出し', calendar: isAdmin() ? '📅 カレンダー・やること' : '📅 やること', note: '📝 お客さんの話' }[x.type];
   let body = '';
   if (x.type === 'plan') body =
     '<label class="fl">現場（現場の作業でなければ空のまま）</label><input type="text" id="reSite" list="reSites" value="' + esc(x.site || '') + '" placeholder="現場名">' +
@@ -621,15 +648,21 @@ function openRouteEdit(i, newType) {
     '<label class="fl">お店（決まっていなければ空のまま）</label><input type="text" id="rePlace" list="reShops" value="' + esc(x.place || '') + '" placeholder="例：コメリ">' +
     '<label class="fl">いつまでに</label><input type="date" id="reDate" value="' + esc(x.date || '') + '">' +
     '<label class="fl">買う物（1行に1つ。数は後ろに：例「スターターロープ 2本」）</label><textarea id="reItems">' + esc(itemsText(x.items)) + '</textarea>';
+  else if (x.type === 'note') body =
+    '<label class="fl">現場</label><input type="text" id="reSite" list="reSites" value="' + esc(x.site || '') + '" placeholder="現場名">' +
+    '<label class="fl">言われたこと</label><textarea class="sm" id="reText">' + esc(x.text || '') + '</textarea>' +
+    '<label class="fl">見せる人</label><div class="chips" id="reScope">' + ['みんな', '自分だけ'].map(v => '<button type="button" class="chip' + ((x.scope === '自分だけ') === (v === '自分だけ') ? ' on' : '') + '" data-scope="' + v + '">' + (v === '自分だけ' ? '🔒 自分だけ' : '👥 社員みんな') + '</button>').join('') + '</div>';
   else body =
-    '<label class="fl">種類</label><input type="text" id="reKind" list="reKinds" value="' + esc(x.kind || '') + '" placeholder="例：時期の約束・見積期限">' +
-    '<label class="fl">件名</label><input type="text" id="reTitle" value="' + esc(x.title || '') + '" placeholder="例：○○邸 剪定">' +
+    '<label class="fl">種類</label><div class="chips" id="reKindC">' + ['見積期限', '時期の約束', '期限', 'やること'].map(v => '<button type="button" class="chip' + ((x.kind || '期限') === v ? ' on' : '') + '" data-kind="' + v + '">' + v + '</button>').join('') + '</div>' +
+    '<label class="fl">件名</label><input type="text" id="reTitle" value="' + esc(x.title || '') + '" placeholder="例：○○公園 保存林の見積">' +
+    '<label class="fl">現場（なければ空のまま）</label><input type="text" id="reSite" list="reSites" value="' + esc(x.site || '') + '" placeholder="現場名">' +
     '<label class="fl">日にち</label><input type="date" id="reDate" value="' + esc(x.date || '') + '">' +
     '<label class="fl">メモ</label><input type="text" id="reNote" value="' + esc(x.note || '') + '">';
   openModal('<h3>' + head + (isNew ? 'を足す' : 'を直す') + '</h3>' + body +
     dl('reSites', SITES) + dl('reStaff', STAFF) + dl('reShops', SUP.map(s => s.name)) + dl('reKinds', ['時期の約束', '見積期限', '期限']) +
     '<div class="row2" style="margin-top:16px">' + (isNew ? '' : '<button class="btn danger" data-act="del">この行を消す</button>') + '<button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="ok">' + (isNew ? '足す' : '直す') + '</button></div>',
     e => {
+      const sc = e.target.closest('[data-scope],[data-kind]'); if (sc) { sc.parentNode.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === sc)); return; }
       const b = e.target.closest('button[data-act]'); if (!b) return;
       if (b.dataset.act === 'cancel') return closeModal();
       if (b.dataset.act === 'del') { if (!confirm('この行を消しますか？')) return; RESULT.routes.splice(i, 1); closeModal(); renderResult(true); return toast('消しました'); }
@@ -637,15 +670,18 @@ function openRouteEdit(i, newType) {
       const y = Object.assign({}, x);
       if (x.type === 'plan') Object.assign(y, { site: v('reSite'), title: v('reTitle'), date: v('reDate'), dateNote: v('reDateNote'), steps: lines(v('reSteps')), members: names(v('reMembers')), items: parseItems(v('reItems')), notes: lines(v('reNotes')) });
       else if (x.type === 'shop') Object.assign(y, { place: v('rePlace'), date: v('reDate'), items: parseItems(v('reItems')) });
-      else Object.assign(y, { kind: v('reKind'), title: v('reTitle'), date: v('reDate'), note: v('reNote'), whenText: x.date === v('reDate') ? x.whenText : '' });
+      else if (x.type === 'note') { const on = document.querySelector('#reScope .chip.on'); Object.assign(y, { site: v('reSite'), text: v('reText'), scope: on ? on.dataset.scope : 'みんな' }); }
+      else { const on = document.querySelector('#reKindC .chip.on'); Object.assign(y, { kind: on ? on.dataset.kind : '期限', title: v('reTitle'), site: v('reSite'), date: v('reDate'), note: v('reNote'), whenText: x.date === v('reDate') ? x.whenText : '' }); }
       if (y.type === 'plan' && !y.site && !y.title && !y.steps.length) return toast('現場か件名か、やることを入れてください');
       if (y.type === 'shop' && !y.items.length) return toast('買う物を入れてください');
       if (y.type === 'calendar' && !y.title) return toast('件名を入れてください');
+      if (y.type === 'note' && !y.text) return toast('言われたことを入れてください');
+      if (y.type === 'note' && !y.site) return toast('現場を入れてください');
       if (isNew) RESULT.routes.push(y); else RESULT.routes[i] = y;
       closeModal(); renderResult(true); toast(isNew ? '足しました。「' + routeVerb(y) + '」を押すと入ります' : '直しました');
     });
 }
-function routeVerb(x) { return x.type === 'shop' ? '買い出しに入れる' : x.type === 'calendar' ? 'カレンダーに入れる' : '段取りカードにする'; }
+function routeVerb(x) { return x.type === 'shop' ? '買い出しに入れる' : x.type === 'calendar' ? (isAdmin() ? 'カレンダーとやることに入れる' : 'やることに入れる') : x.type === 'note' ? '現場ノートに入れる' : '段取りカードにする'; }
 function routeDateChanged(el) {
   const x = RESULT && RESULT.routes[Number(el.dataset.rdate)]; if (!x) return;
   x.date = el.value; const sub = el.closest('.route').querySelector('.sub'); if (sub) sub.textContent = routeLine(x).sub; keepResult();
@@ -653,6 +689,7 @@ function routeDateChanged(el) {
 async function doRoute(i, btn) {
   const x = RESULT.routes[i]; if (!x || x.done) return;
   if (x.type === 'calendar' && !/^\d{4}-\d{2}-\d{2}$/.test(x.date || '')) return toast('日付を入れてください');
+  if (x.type === 'note' && !x.site) { toast('現場を選んでください'); return openRouteEdit(i); }
   if (!me()) return chooseName(true, () => doRoute(i));
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loading"></span>'; }
   const items = x.items.map(it => { const w = matchWord(it.name, toolWords(true)); const t = w && termById(w.termId); const tool = t && toolOfTerm(t.termId); return { name: t ? t.term : it.name, termId: t ? t.termId : '', toolId: tool ? tool.id : '', qty: it.qty || '', unit: it.unit || '' }; });
@@ -660,7 +697,9 @@ async function doRoute(i, btn) {
     const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'route', route: Object.assign({}, x, { items }), by: me(), memoBy: me() });
     if (!r.ok) throw new Error(r.error);
     x.done = r.date || 'ok'; x.cardId = r.cardId;
-    toast(x.type === 'calendar' ? 'カレンダー「' + (r.calendar || '') + '」に入れました（' + md(x.date) + '）' : x.type === 'shop' ? '段取りの買い出しに入れました' : (r.merged ? '段取りの同じ日のカードに足しました' : '段取りカードを作りました'));
+    if (x.type === 'calendar') TODOS = null;   // やること一覧を読み直す
+    toast(x.type === 'calendar' ? (r.warn || (r.calendar ? 'カレンダー「' + r.calendar + '」とやることに入れました（' + md(x.date) + '）' : 'やることに入れました（' + md(x.date) + '）')) :
+      x.type === 'note' ? '現場ノート「' + (r.site || '') + '」に入れました' + (r.known === false ? '（現場マスタにない名前です）' : '') : x.type === 'shop' ? '段取りの買い出しに入れました' : (r.merged ? '段取りの同じ日のカードに足しました' : '段取りカードを作りました'));
     renderResult();
     if (RESULT.savedId) { RESULT._quiet = true; save(false).finally(() => { RESULT._quiet = false; }); }   // 記録済みなら、どこに入れたかも記録に残す
   } catch (e) { toast(/unknown mode/.test(e.message || '') ? '共通GASの更新後に使えます' : (e.message || NET_ERR)); if (btn) { btn.disabled = false; btn.textContent = routeVerb(x); } }
@@ -683,7 +722,7 @@ function applyResult(r, text, previous) {
     r.needs = r.needs.map(n => typeof n === 'string' ? { name: n } : n).filter(n => n && n.name);
     r.words = r.words.filter(w => w && w.said && w.term && norm(w.said) !== norm(w.term));
     const official = it => { const w = matchWord(it.name, toolWords(true)); const t = w && termById(w.termId); return Object.assign({}, it, { name: t ? t.term : it.name }); };   // 社内の呼び方を正式名に
-    r.routes = arr(r.routes).filter(x => x && (x.type === 'plan' || x.type === 'shop' || (x.type === 'calendar' && isAdmin())))   // カレンダーは親方だけ
+    r.routes = arr(r.routes).filter(x => x && (x.type === 'plan' || x.type === 'shop' || x.type === 'calendar' || (x.type === 'note' && x.text)))   // カレンダーに入るのは親方だけ（ほかの人は自分の「やること」に入る）
       .map(x => Object.assign({ items: [], steps: [], notes: [], members: [] }, x, { items: arr(x.items).filter(i => i && i.name).map(official), steps: arr(x.steps), notes: arr(x.notes), members: arr(x.members), done: '' }))
       .filter(x => x.type !== 'shop' || x.items.length);
     const keep = previous && RESULT ? { savedId: RESULT.savedId || '', localId: RESULT.localId || '' } : { savedId: '', localId: '' };   // 聞き返しに答えたときは、同じ記録を上書きする
@@ -1022,11 +1061,91 @@ $('modal').addEventListener('click', e => { if (modalHandler) modalHandler(e); }
 $('modalBg').addEventListener('click', e => { if (e.target === $('modalBg')) closeModal(); });
 
 /* ============ イベント ============ */
+/* ============ やること（見積期限・時期の約束・期限） ============ */
+let TODOS = null, TODO_TODAY = TODAY;
+async function loadTodos(quiet) {
+  if (!me()) { $('todoList').innerHTML = '<div class="empty">名前を選ぶと、自分のやることが出ます</div>'; return; }
+  try {
+    const r = await getJSON(GAS_URL + '?app=yoten&action=todos&me=' + encodeURIComponent(me()));
+    if (!r.ok) throw new Error(r.error || '');
+    TODOS = r.todos || []; TODO_TODAY = r.today || TODAY; lsSet('yoten_todos', TODOS); renderTodos(); todoBadge();
+  } catch (e) { if (TODOS == null) { TODOS = lsGet('yoten_todos', null); renderTodos(); } if (!quiet) toast(/unknown|todos/.test(e.message || '') ? '共通GASの更新後に使えます' : NET_ERR); }
+}
+function todoBadge() {
+  const n = (TODOS || []).filter(t => t.state !== '済' && String(t.dueDate) <= addDays(TODO_TODAY, 0)).length;
+  $('todoBadge').innerHTML = n ? '<span class="badge">' + n + '</span>' : '';
+}
+function todoRow(t) {
+  const d = String(t.dueDate || ''), done = t.state === '済';
+  const cls = done ? '' : d < TODO_TODAY ? ' over' : d === TODO_TODAY ? ' today' : '';
+  const left = !done && d ? Math.round((parseYmd(d) - parseYmd(TODO_TODAY)) / 86400000) : null;
+  const lt = left == null ? '' : left < 0 ? (-left) + '日過ぎ' : left === 0 ? '今日まで' : left === 1 ? '明日まで' : 'あと' + left + '日';
+  return '<div class="todo' + (done ? ' done' : '') + '"><button type="button" class="ck" data-tdone="' + esc(t.todoId) + '" aria-label="' + (done ? '終わりを取り消す' : '終わった') + '">' + (done ? '✓' : '') + '</button>' +
+    '<div class="grow"><div class="tt">' + esc(t.title || '') + '</div><div class="sb"><span class="tag none" style="margin-left:0">' + esc(t.kind || '期限') + '</span>' + (t.site ? ' ' + esc(t.site) : '') + (t.whenText ? '　「' + esc(t.whenText) + '」' : '') + (done && t.doneAt ? '　' + esc(md(String(t.doneAt))) + 'に済' : '') + '</div>' +
+    (t.note ? '<div class="sb">' + esc(t.note) + '</div>' : '') + '<button type="button" class="ed" data-tedit="' + esc(t.todoId) + '">✏️ 直す</button></div>' +
+    '<div class="due' + cls + '">' + esc(md(d)) + (lt ? '<div style="font-weight:400;font-size:11.5px">' + lt + '</div>' : '') + '</div></div>';
+}
+function renderTodos() {
+  const box = $('todoList'); if (!box) return;
+  if (TODOS == null) { box.innerHTML = '<div class="empty"><span class="loading" style="border-color:var(--line);border-top-color:var(--leaf)"></span></div>'; return; }
+  $('todoHint').textContent = isAdmin() ? '話してまとめると、見積の期限や時期の約束がこことカレンダー（標準）に入ります。見積期限などは前日と当日の朝7時、〇月頃は1週間前に通知が来ます。終わったら□を押してください。' : '話してまとめると、期限のあることがここに入ります。終わったら□を押してください。';
+  const open = TODOS.filter(t => t.state !== '済'), week = addDays(TODO_TODAY, 7);
+  const g = [['over', '⚠️ 期限が過ぎています', open.filter(t => String(t.dueDate) < TODO_TODAY)], ['', '今日', open.filter(t => String(t.dueDate) === TODO_TODAY)],
+    ['', '1週間以内', open.filter(t => String(t.dueDate) > TODO_TODAY && String(t.dueDate) <= week)], ['', 'それより先', open.filter(t => String(t.dueDate) > week)],
+    ['', '済んだもの', TODOS.filter(t => t.state === '済')]];
+  box.innerHTML = TODOS.length ? g.filter(x => x[2].length).map(x => '<div class="tgrp ' + x[0] + '">' + x[1] + '（' + x[2].length + '）</div>' + x[2].map(todoRow).join('')).join('') : '<div class="empty">まだありません。「話してまとめる」で「来週までに〇〇の見積を出す」のように話すと入ります</div>';
+  todoBadge();
+}
+async function todoDone(id) {
+  const t = (TODOS || []).find(x => x.todoId === id); if (!t) return;
+  const done = t.state !== '済'; t.state = done ? '済' : ''; t.doneAt = done ? nowStr() : ''; renderTodos();
+  try { const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'todoDone', todoId: id, done, by: me() }); if (!r.ok) throw new Error(r.error); toast(done ? '済にしました' : '戻しました'); }
+  catch (e) { t.state = done ? '' : '済'; renderTodos(); toast(e.message || NET_ERR); }
+}
+function openTodoEdit(id) {
+  if (!me()) return chooseName(true, () => openTodoEdit(id));
+  const t = id ? (TODOS || []).find(x => x.todoId === id) : { kind: '見積期限', title: '', site: '', dueDate: addDays(TODAY, 7), note: '' };
+  if (!t) return;
+  const dl = '<datalist id="tdSites">' + SITES.map(v => '<option value="' + esc(v) + '">').join('') + '</datalist>';
+  openModal('<h3>' + (id ? '✏️ やることを直す' : '＋ やることを足す') + '</h3>' +
+    '<label class="fl">種類</label><div class="chips" id="tdKind">' + ['見積期限', '時期の約束', '期限', 'やること'].map(v => '<button type="button" class="chip' + ((t.kind || '期限') === v ? ' on' : '') + '" data-kind="' + v + '">' + v + '</button>').join('') + '</div>' +
+    '<label class="fl">件名</label><input type="text" id="tdTitle" value="' + esc(t.title || '') + '" placeholder="例：○○公園 保存林の見積">' +
+    '<label class="fl">現場（なければ空のまま）</label><input type="text" id="tdSite" list="tdSites" value="' + esc(t.site || '') + '">' +
+    '<label class="fl">期限</label><input type="date" id="tdDue" value="' + esc(t.dueDate || '') + '">' +
+    '<label class="fl">メモ</label><input type="text" id="tdNote" value="' + esc(t.note || '') + '">' + dl +
+    (isAdmin() ? '<p class="hint">カレンダー（標準）の予定も一緒に' + (id ? '直ります' : '入ります') + '</p>' : '') +
+    '<div class="row2" style="margin-top:16px">' + (id ? '<button class="btn danger" data-act="del">消す</button>' : '') + '<button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="ok">' + (id ? '直す' : '足す') + '</button></div>',
+    async e => {
+      const k = e.target.closest('[data-kind]'); if (k) { document.querySelectorAll('#tdKind .chip').forEach(c => c.classList.toggle('on', c === k)); return; }
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      if (b.dataset.act === 'cancel') return closeModal();
+      try {
+        if (b.dataset.act === 'del') {
+          if (!confirm('このやることを消しますか？' + (isAdmin() ? '\n（カレンダーの予定も消えます）' : ''))) return;
+          b.disabled = true; const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'todoDelete', todoId: id, by: me() }); if (!r.ok) throw new Error(r.error);
+          closeModal(); toast('消しました'); return loadTodos();
+        }
+        const on = document.querySelector('#tdKind .chip.on');
+        const x = { todoId: id || '', kind: on ? on.dataset.kind : '期限', title: $('tdTitle').value.trim(), site: $('tdSite').value.trim(), dueDate: $('tdDue').value, note: $('tdNote').value.trim() };
+        if (!x.title) return toast('件名を入れてください');
+        if (!x.dueDate) return toast('期限を入れてください');
+        b.disabled = true; b.innerHTML = '<span class="loading"></span>';
+        const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'todoSave', todo: x, by: me() }); if (!r.ok) throw new Error(r.error);
+        closeModal(); toast(id ? '直しました' : (r.warn || '足しました')); loadTodos();
+      } catch (err) { b.disabled = false; b.textContent = b.dataset.act === 'del' ? '消す' : (id ? '直す' : '足す'); toast(err.message || NET_ERR); }
+    });
+}
+$('todoList').addEventListener('click', e => {
+  const d = e.target.closest('[data-tdone]'); if (d) return todoDone(d.dataset.tdone);
+  const ed = e.target.closest('[data-tedit]'); if (ed) return openTodoEdit(ed.dataset.tedit);
+});
+$('todoAdd').addEventListener('click', () => openTodoEdit(''));
+
 function switchTab(tab) {
   if (LISTENING) stopListen();
   document.querySelectorAll('nav.tabs button').forEach(x => x.classList.toggle('on', x.dataset.tab === tab));
-  $('tab-speak').hidden = tab !== 'speak'; $('tab-list').hidden = tab !== 'list';
-  window.scrollTo(0, 0); if (tab === 'list') { renderList(); loadMemos(); }
+  $('tab-speak').hidden = tab !== 'speak'; $('tab-list').hidden = tab !== 'list'; $('tab-todo').hidden = tab !== 'todo';
+  window.scrollTo(0, 0); if (tab === 'list') { renderList(); loadMemos(); } if (tab === 'todo') { renderTodos(); loadTodos(); }
 }
 document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 $('toChips').addEventListener('click', e => {
@@ -1053,6 +1172,7 @@ $('result').addEventListener('click', e => {
   const ed = e.target.closest('[data-ed-del]'); if (ed) { ed.closest('.ed-row').remove(); return; }
   const et = e.target.closest('[data-ed-act]'); if (et) return finishEdit(et.dataset.edAct === 'ok');
   const rt = e.target.closest('[data-route]'); if (rt) return doRoute(Number(rt.dataset.route), rt);
+  const tg = e.target.closest('[data-tab-go]'); if (tg) return switchTab(tg.dataset.tabGo);
   const re = e.target.closest('[data-redit]'); if (re) return openRouteEdit(Number(re.dataset.redit));
   const ra = e.target.closest('[data-radd]'); if (ra) return openRouteEdit(-1, ra.dataset.radd);
 });
@@ -1077,8 +1197,12 @@ $('meBtn').addEventListener('click', () => chooseName(true));
   const q = new URLSearchParams(location.search);
   const fromDandori = q.get('from') === 'dandori' && !!$('raw').value.trim();
   if (fromDandori) { TO = '親方へ'; drawTo(); }
+  const toQ = { self: '自分用メモ', boss: '親方へ', all: 'みんなへ' }[q.get('to')];   // iPhoneのショートカット用：yoten.html?to=self で「自分用メモ」から始める
+  if (toQ && !fromDandori) { TO = toQ; lsSet(LS.to, TO); drawTo(); }
+  if (q.get('tab') === 'todo') switchTab('todo');
   if (q.get('tab') === 'list' || q.get('memo')) { if (q.get('memo')) OPEN_ID = q.get('memo'); if (q.get('seg')) { SEG = q.get('seg'); document.querySelectorAll('#listSeg button').forEach(x => x.classList.toggle('on', x.dataset.seg === SEG)); } switchTab('list'); }
   load().then(() => {
+    if (me()) loadTodos(true);
     if (fromDandori) return go();
     const p = lsGet(LS.pending, null), k = lsGet(LS.result, null);
     if (p && (!k || p.at > k.at)) resumePending();   // まとめ中のほうが新しければ、そちらを受け取る
