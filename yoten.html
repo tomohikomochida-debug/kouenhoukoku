@@ -193,7 +193,7 @@ async function getJSON(url, ms) {
   const ac = new AbortController(), tm = setTimeout(() => ac.abort(), ms || 20000);
   try { return await (await fetch(url, { cache: 'no-store', signal: ac.signal })).json(); } finally { clearTimeout(tm); }
 }
-async function postJSON(url, body) { return (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })).json(); }
+async function postJSON(url, body, keepalive) { return (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), keepalive: !!keepalive })).json(); }
 
 /* ============ 言葉のゆれ ============ */
 const SMALL = { 'ぁ': 'あ', 'ぃ': 'い', 'ぅ': 'う', 'ぇ': 'え', 'ぉ': 'お', 'っ': 'つ', 'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'ゎ': 'わ' };
@@ -431,9 +431,12 @@ function renderResult() {
     (r.corrections.length ? '<div class="fix">聞き間違いを直しました：' + esc(r.corrections.join('、')) + '</div>' : '') +
     '</div>' +
     '<div class="card"><div class="sec">送る文（直してから送れます）</div><textarea class="msg" id="msg">' + esc(r.message) + '</textarea>' +
-    '<div class="row2" style="margin-top:10px"><button class="btn" type="button" id="copyBtn">コピー</button><button class="btn ok" type="button" id="shareBtn">LINEで送る</button></div>' +
-    '<button class="btn primary block" type="button" id="saveBtn" style="margin-top:8px">📋 記録に残す' + (TO === '親方へ' ? '（親方も見られます）' : TO === 'みんなへ' ? '（みんなが見られます）' : '') + '</button>' +
+    '<div class="row2" style="margin-top:10px"><button class="btn" type="button" id="copyBtn">コピー</button><button class="btn ok" type="button" id="shareBtn" style="flex:2">LINEで送る</button></div>' +
+    '<p class="hint" id="saveHint">' + (r.to === '自分用メモ' ? '送ると、自分の記録にも自動で残ります' : '送ると、記録にも自動で残ります（' + (r.to === '親方へ' ? '親方' : 'みんな') + 'がアプリで見られます）') + '</p>' +
+    '<button class="btn block" type="button" id="saveBtn" style="margin-top:8px"></button>' +
     '<button class="btn block" type="button" id="moreBtn" style="margin-top:8px">🎤 言い足りないことを話す</button></div>';
+  $('msg').addEventListener('input', saveBtnState);
+  saveBtnState();
   box.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 async function runSummarize(text, previous) {
@@ -443,7 +446,8 @@ async function runSummarize(text, previous) {
     ['points', 'needs', 'vehicles', 'people', 'missing', 'words', 'corrections'].forEach(k => { r[k] = arr(r[k]); });
     r.needs = r.needs.map(n => typeof n === 'string' ? { name: n } : n).filter(n => n && n.name);
     r.words = r.words.filter(w => w && w.said && w.term && norm(w.said) !== norm(w.term));
-    RESULT = r; RESULT.rawText = text; RESULT.to = TO; RESULT.saved = '';
+    const keep = previous && RESULT ? { savedId: RESULT.savedId || '', localId: RESULT.localId || '' } : { savedId: '', localId: '' };   // 聞き返しに答えたときは、同じ記録を上書きする
+    RESULT = Object.assign(r, keep, { rawText: text, to: TO, savedMsg: null });
     renderResult();
   } catch (e) { toast(e.message || NET_ERR); }
   finally { b.disabled = false; b.textContent = '✨ まとめる'; }
@@ -486,11 +490,19 @@ function showTerm(name) {
     e => { if (e.target.closest('[data-act="close"]')) closeModal(); });
 }
 
-/* 送る・残す */
+/* 送る・残す
+   「LINEで送る」を押したら、記録にも自動で残す（押し忘れ防止）。送る画面でやめたときは残さない。
+   一度残したあとに送る文を直して送り直したら、同じ記録を上書きする（二重にならない） */
 function share() {
-  const text = $('msg').value.trim(); if (!text) return;
-  if (navigator.share) navigator.share({ text }).catch(() => { });
-  else location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent(text);
+  if (!RESULT) return;
+  const text = $('msg').value.trim(); if (!text) return toast('送る文が空です');
+  if (!me()) return chooseName(true, share);   // 名前を選ぶタップの流れのまま送る画面を開く
+  if (navigator.share) {
+    navigator.share({ text }).then(() => save(true)).catch(e => { if (!e || e.name !== 'AbortError') { save(true); } });
+  } else {
+    save(true, true);   // LINEの画面に移る前に送り出す（ページを離れても届くように）
+    location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent(text);
+  }
 }
 async function copyMsg() {
   const text = $('msg').value;
@@ -499,23 +511,39 @@ async function copyMsg() {
 function memoOf(r) {
   return { to: r.to, kind: r.kind, headline: r.headline, points: JSON.stringify(r.points), needs: JSON.stringify(r.needs), vehicles: JSON.stringify(r.vehicles), site: r.site, when: r.when || r.whenNote || '', people: JSON.stringify(r.people), missing: JSON.stringify(r.missing), message: $('msg') ? $('msg').value : r.message, rawText: r.rawText };
 }
-async function save() {
-  if (!me()) return chooseName(true, save);
-  if (!RESULT) return;
-  const b = $('saveBtn'); b.disabled = true; b.innerHTML = '<span class="loading"></span> 保存中…';
+let SAVING = false;
+function saveBtnState() {
+  const b = $('saveBtn'); if (!b || !RESULT) return;
+  const changed = RESULT.savedMsg != null && $('msg').value !== RESULT.savedMsg;
+  b.disabled = SAVING || (RESULT.savedMsg != null && !changed);
+  b.textContent = SAVING ? '保存中…' : RESULT.savedMsg == null ? '📋 送らずに記録だけ残す' : changed ? '📋 直した文で記録を更新' : (RESULT.savedId ? '✓ 記録に残しました' : '✓ この端末に残しました');
+}
+async function save(auto, keepalive) {
+  if (!RESULT || SAVING) return;
+  if (!me()) return chooseName(true, () => save(auto));
+  const msg = $('msg') ? $('msg').value : RESULT.message;
+  if (RESULT.savedId && RESULT.savedMsg === msg) { if (auto) toast('送りました（記録済み）'); return; }
+  SAVING = true; saveBtnState();
   const memo = memoOf(RESULT);
-  const local = lsGet(LS.local, []); local.unshift(Object.assign({ memoId: 'L' + Date.now(), at: nowStr(), by: me(), local: true }, memo)); lsSet(LS.local, local.slice(0, 30));
+  if (RESULT.savedId) memo.memoId = RESULT.savedId;
+  // この端末の控え（電波がないときも残る）。同じまとめは1件にまとめる
+  const local = lsGet(LS.local, []), lid = RESULT.localId || ('L' + Date.now());
+  const entry = Object.assign({ memoId: lid, at: nowStr(), by: me(), local: true }, memo, { memoId: RESULT.savedId || lid, local: !RESULT.savedId });
+  const i = local.findIndex(m => m.memoId === lid || (RESULT.savedId && m.memoId === RESULT.savedId));
+  if (i >= 0) local.splice(i, 1);
+  local.unshift(entry); lsSet(LS.local, local.slice(0, 30));
+  RESULT.localId = RESULT.savedId || lid;
   try {
-    const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'save', memo, by: me() });
+    const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'save', memo, by: me() }, keepalive);
     if (!r.ok) throw new Error(r.error);
-    local[0].memoId = r.id; local[0].local = false; lsSet(LS.local, local.slice(0, 30));
-    toast('記録に残しました'); lsSet(LS.draft, '');
-    b.textContent = '✓ 記録に残しました';
+    entry.memoId = r.id; entry.local = false; lsSet(LS.local, local.slice(0, 30));
+    RESULT.savedId = r.id; RESULT.localId = r.id; RESULT.savedMsg = msg;
+    toast(auto ? '送りました。記録にも残しました' : '記録に残しました'); lsSet(LS.draft, '');
     loadMemos();
   } catch (e) {
-    toast(/unknown mode/.test(e.message) ? 'この端末に残しました（共通GASの更新後はみんなと共有できます）' : 'この端末に残しました（' + NET_ERR + '）');
-    b.textContent = '✓ この端末に残しました';
-  }
+    RESULT.savedMsg = msg;
+    toast((auto ? '送りました。' : '') + (/unknown mode/.test(e.message || '') ? 'この端末に残しました（共通GASの更新後はみんなと共有できます）' : 'この端末に残しました（' + NET_ERR + '）'));
+  } finally { SAVING = false; saveBtnState(); }
 }
 
 /* ============ まとめた記録 ============ */
