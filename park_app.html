@@ -319,6 +319,22 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
   #nuAll{bottom:64px;max-height:70%}
 }
 .nu-hide{display:none!important}
+
+/* 縮尺バッジ：タップで縮尺合わせ */
+.scalebadge{cursor:pointer;z-index:5;touch-action:manipulation;user-select:none}
+.scalebadge:hover{border-color:var(--blue)}
+.scalebadge.no{animation:sbPulse 2.4s ease-in-out infinite}
+@keyframes sbPulse{0%,100%{box-shadow:0 0 0 0 #ffb45400}50%{box-shadow:0 0 0 4px #ffb45444}}
+#calPop{display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:25;width:min(380px,calc(100% - 150px));min-width:220px;
+  background:rgba(14,18,24,.95);border:1px solid var(--blue);border-radius:12px;padding:10px 12px;box-shadow:0 8px 24px #000a;font-size:12px;line-height:1.5}
+#calPop.on{display:flex;flex-direction:column;gap:6px}
+#calPop>b{color:var(--blue);font-size:13px}
+#calPop .cp-t b{color:var(--acc)}
+#calPop .cp-r{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#calPop input{width:80px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:7px;font-size:15px;text-align:right}
+#calPop button{margin-left:auto;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer}
+#calPop .cp-n{color:var(--warn);font-size:11px}
+#calPop .cp-n:empty{display:none}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" defer></script>
@@ -509,7 +525,10 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <button id="symSel" style="display:none;align-items:center;background:#0f766e;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">実寸/記号</button>
     </div>
     <div class="hint" id="hint"></div>
-    <div class="scalebadge no" id="scaleBadge">縮尺：未設定</div>
+    <div class="scalebadge no" id="scaleBadge" title="タップして縮尺を合わせる">縮尺：未設定（タップで合わせる）</div>
+    <div id="calPop"><b>縮尺合わせ</b><span class="cp-t">図面の上で、長さの分かる<b>2点</b>をタップ（押したままドラッグでもOK）</span>
+      <span class="cp-r">その2点の実距離 <input id="calPopDist" type="number" step="0.1" min="0" inputmode="decimal"> m<button id="calPopX">やめる</button></span>
+      <span class="cp-n" id="calPopNote"></span></div>
     <div class="draftbar" id="draftbar">
       <button id="dbFinish" class="ok">✓ 確定</button>
       <button id="dbUndo">↶ 1点戻す</button>
@@ -1786,7 +1805,7 @@ function placeTree(ip){
 }
 function updateScaleBadge(){const b=$('scaleBadge');
   if(state.scale){b.classList.remove('no');b.textContent=`縮尺：1px ≈ ${state.scale.toFixed(4)} m`;}
-  else{b.classList.add('no');b.textContent='縮尺：未設定';}}
+  else{b.classList.add('no');b.textContent='縮尺：未設定（タップで合わせる）';}}
 
 /* ---------- 選択・削除 ---------- */
 function hit(ip){
@@ -3556,6 +3575,37 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
   const q=(location.search.match(/[?&]ui=(new|old)/)||[])[1];
   if(q) ls.set(UI_KEY,q);
   if((q||ls.get(UI_KEY))==='new') enter();
+})();
+</script>
+<script>
+/* 指でタップすると、ブラウザが後から「マウスのクリック」も送ってくる。
+   それを拾うと点が2回置かれる（面積の角が二重・縮尺の2点が同じ場所になる）ので、指で触った直後のマウス操作は地図では無視する */
+(function(){
+  let lastTouch=0; const cvs=document.getElementById('cv');
+  ['touchstart','touchend','touchmove'].forEach(t=>cvs.addEventListener(t,()=>{lastTouch=Date.now();},{capture:true,passive:true}));
+  ['mousedown','mouseup','mousemove','click'].forEach(t=>window.addEventListener(t,e=>{
+    if(e.target===cvs&&Date.now()-lastTouch<800){ e.stopPropagation(); }
+  },true));
+})();
+/* 縮尺バッジをタップ → その場で縮尺合わせ（実距離を入れて2点タップ） */
+(function(){
+  const $=id=>document.getElementById(id);
+  const pop=$('calPop'), inp=$('calPopDist');
+  function open(){
+    if(!state.img){ alert('先に公園の図面を読み込んでください。'); return; }
+    holeMode=null; inp.value=$('calDist').value||'10';
+    $('calPopNote').textContent=state.scale?'測り直すと、描いた面積はすべて新しい縮尺で計算し直されます。':'';
+    pop.classList.add('on'); setTool('cal'); $('hint').style.display='none';
+  }
+  function close(){ pop.classList.remove('on'); if(typeof updateHint==='function')updateHint(); }
+  $('scaleBadge').addEventListener('click',()=>{ if(pop.classList.contains('on')){cancel();return;} open(); });
+  inp.addEventListener('input',()=>{ $('calDist').value=inp.value; draw(); });
+  function cancel(){ close(); cancelDraft(); setTool((MASTER[$('catSel').value]||{}).mode||'area'); }
+  $('calPopX').onclick=cancel;
+  // 縮尺が決まった・別の道具に替えた → 閉じる
+  const _fin=finishCal; finishCal=function(){ const r=_fin.apply(this,arguments); if(state.scale)close(); return r; };
+  const _set=setTool; setTool=function(t){ const r=_set.apply(this,arguments); if(t!=='cal'&&pop.classList.contains('on'))close(); if(t==='cal'&&pop.classList.contains('on'))$('hint').style.display='none'; return r; };
+  $('calDist').addEventListener('input',()=>{ if(pop.classList.contains('on'))inp.value=$('calDist').value; });
 })();
 </script>
 
