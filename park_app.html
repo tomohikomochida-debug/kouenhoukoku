@@ -379,6 +379,14 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <label class="fld">請負者（商号又は名称）</label>
       <input id="rpUkeoi" placeholder="株式会社グリーンネットワーク" style="width:100%">
       <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
+      <h3 style="margin:0 0 6px">発生材（運搬・処分）</h3>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:4px 0"><input type="checkbox" id="rpGenzaiOn" checked> 発生材運搬-1・発生材処分を報告書に入れる</label>
+      <div class="row">
+        <div style="flex:1"><label class="fld">数量（t）</label><input id="rpGenzaiQty" class="txt" inputmode="decimal" placeholder="例：0.19"></div>
+        <div style="flex:1"><label class="fld">摘要</label><input id="rpGenzaiNote" class="txt" placeholder="例：丸太のみ"></div>
+      </div>
+      <div class="legend" style="font-size:11px;color:var(--mut);margin-top:4px">複数の公園をまとめて処分した回は、発生材を付ける1つの公園だけチェックを入れ、ほかの公園はチェックを外してください。</div>
+      <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
       <h3 style="margin:0 0 6px">クラウド</h3>
       <button class="btn ghost" id="cloudCfg">クラウドの確認<small>みんなの共有（Googleドライブ）につながるか・前のクラウドから移す</small></button>
   </div>
@@ -2358,7 +2366,8 @@ $('saveJson').onclick=()=>{
   const order=$('orderNo').value||'';
   const data={park:$('parkName').value||'未設定',contract:$('contractName').value||'',order,date:$('workDate').value||'',start:$('startDate').value||'',finish:$('finishDate').value||'',agent:$('agentName')?($('agentName').value||''):'',supervisor:$('supervisorName')?($('supervisorName').value||''):'',
     scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,
-    rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value},
+    rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value,
+        genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:''},
     customWorks:customWorksDefs,
     mapImg:state.mapImg||null,saved:new Date().toISOString()};
   const base=(order?order+'_':'')+(data.park);
@@ -2414,7 +2423,8 @@ function applyParkData(d,kb){
   if($('startDate'))$('startDate').value=d.start||'';if($('finishDate'))$('finishDate').value=d.finish||'';
   if($('agentName'))$('agentName').value=d.agent||'';if($('supervisorName'))$('supervisorName').value=d.supervisor||'';
   if(d.rp){const R=d.rp;const sv=(id,v)=>{const el=$(id);if(el&&v!==undefined&&v!==null&&v!=='')el.value=v;};
-    sv('rpFy',R.fy);sv('rpNo',R.no);sv('rpSubmit',R.submit);sv('rpKeiyaku',R.keiyaku);sv('rpAddr',R.addr);sv('rpAtena',R.atena);sv('rpUkeoi',R.ukeoi);}
+    sv('rpFy',R.fy);sv('rpNo',R.no);sv('rpSubmit',R.submit);sv('rpKeiyaku',R.keiyaku);sv('rpAddr',R.addr);sv('rpAtena',R.atena);sv('rpUkeoi',R.ukeoi);
+    sv('rpGenzaiQty',R.genzaiQty);sv('rpGenzaiNote',R.genzaiNote);if($('rpGenzaiOn'))$('rpGenzaiOn').checked=(R.genzaiOn!==false);}
   if(d.customWorks){ importCustomWorks(d.customWorks); buildTreeColors(); fillCats(); }
   state.cloudId=d.cloudId||state.cloudId||null; state.cloudVer=d.cloudId?(d.cloudVer||null):(state.cloudVer||null);
   if(d.mapImg){state.mapImg=d.mapImg;const b=$('rpMapBtn');if(b)b.firstChild.textContent='🖼 履行場所の図：読み込みました（変えるならもう一度）';}
@@ -2497,7 +2507,8 @@ function parkPayload(){
     agent:$('agentName').value||'',supervisor:$('supervisorName').value||'',
     scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,
     rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,
-        addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value},
+        addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value,
+        genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:''},
     customWorks:customWorksDefs,
     mapImg:state.mapImg||null,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,saved:new Date().toISOString()};
 }
@@ -3597,6 +3608,14 @@ function rpRows(){
   state.manual.forEach(m=>{
     rows.push({name:m.kind,spec:'',qty:m.qty,unit:(MANUAL[m.kind]||{}).unit||''});
   });
+  // 発生材（運搬-1・処分）：設定でONなら報告書の末尾に標準で入れる
+  const gOn=$('rpGenzaiOn');
+  if(gOn&&gOn.checked){
+    const q=parseFloat((($('rpGenzaiQty')&&$('rpGenzaiQty').value)||'').replace(/[^\d.]/g,''))||0;
+    const note=($('rpGenzaiNote')&&$('rpGenzaiNote').value)||'';
+    rows.push({name:'発生材運搬-1',spec:'',qty:q,unit:'t',note});
+    rows.push({name:'発生材処分',spec:'',qty:q,unit:'t',note});
+  }
   return rows;
 }
 // 選んだ画像を、わくの縦横比に合わせて白地の中央に置き直す（つぶれ防止）。印刷用に3倍解像度。
