@@ -463,10 +463,30 @@ const MASTER = {
 const NINKU_CHIPS = [0.25, 0.5, 0.75, 1.0];
 const STATES = ['対応済み','報告済み','未対応'];
 
-/* ===== 追加した現場・委託を端末に記憶（本番はスプレッドシートで全員共有）===== */
+/* ===== 追加した現場：すぐこの端末の一覧に出し、共通GASで日報の「現場マスタ」に「仮登録」で入れて全員で共有する =====
+   電波が無い時は端末に覚えておき、次に開いた時に送る（親方が現場ノートで確認すると正式な現場になる） */
 function pushCustom(rec){
   try{ const c=JSON.parse(localStorage.getItem('nippou_custom_sites')||'[]'); c.push(rec);
     localStorage.setItem('nippou_custom_sites',JSON.stringify(c)); }catch(e){}
+  if(rec&&rec.site) shareCustomSites(true);
+}
+let _sharing=false;
+async function shareCustomSites(fromAdd){
+  if(_sharing) return; let c=[]; try{ c=JSON.parse(localStorage.getItem('nippou_custom_sites')||'[]'); }catch(e){ return; }
+  const todo=c.filter(x=>x&&x.site&&!x.shared); if(!todo.length) return;
+  _sharing=true;
+  try{
+    const res=await fetchT(GENBA_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({app:'nippou',mode:'addSite',sites:todo.map(x=>({cat:x.cat,contract:x.contract||'',site:x.site})),by:author||''})},20000);
+    const j=await res.json(); if(!j.ok) throw new Error(j.error||'');
+    const rs=j.results||[];
+    todo.forEach((x,i)=>{ const r=rs[i]; if(r&&r.ok){ x.shared=true; x.sharedAs=r.name; } });
+    try{ localStorage.setItem('nippou_custom_sites',JSON.stringify(c)); }catch(e){}
+    if(fromAdd){ const r=rs[rs.length-1]||{};
+      toast(r.existed?('「'+r.name+'」はもう現場の一覧にありました（みんなの一覧に出ています）'):('「'+(r.name||todo[todo.length-1].site)+'」をみんなの現場一覧に入れました（親方が確認するまで「仮登録」）')); }
+  }catch(e){
+    if(fromAdd) toast('電波が弱いので、追加した現場はこの端末に覚えておき、次に開いたときにみんなの一覧へ送ります');
+  }finally{ _sharing=false; }
 }
 function loadCustom(){
   let c=[]; try{ c=JSON.parse(localStorage.getItem('nippou_custom_sites')||'[]'); }catch(e){}
@@ -927,6 +947,7 @@ document.getElementById('draftDiscard').onclick=()=>{ clearDraft(); document.get
   loadCustom();
   initNames();
   initOutbox();
+  setTimeout(()=>shareCustomSites(false),1500);   // 前に追加して、まだみんなの一覧に送れていない現場を送る
   // ダッシュボードから「直す」で開かれた場合（?edit=RID）
   const params=new URLSearchParams(location.search);
   const editRid=params.get('edit');

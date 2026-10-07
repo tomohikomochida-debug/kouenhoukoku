@@ -254,6 +254,7 @@ function doPost(e) {
       /* 現場ノート */
       /* 日報：音声入力の文を、用語集・現場名で直す */
       case 'nippou:fixText':   return out_(fixText_(b));
+      case 'nippou:addSite':   return withLock_(function () { return addSitesFromNippou_(b.sites || [b.site], b.by); });
       case 'note:saveSite':      return withLock_(function () { return saveSite_(b.site, b.by); });
       case 'note:importBukken':  return withLock_(function () { return importBukken_(b.by); });
       case 'note:saveCaution':   return withLock_(function () { return saveCaution_(b.caution, b.image, b.by); });
@@ -1025,9 +1026,35 @@ function saveSite_(site, by) {
   ['address', 'company', 'contact', 'aliases', 'memo', 'lat', 'lng', 'note'].forEach(function (k) {
     if (site.hasOwnProperty(k) && col[k] != null) t.sh.getRange(row, col[k] + 1).setValue(cell_(site[k] == null ? '' : String(site[k])));
   });
-  if (isAdmin_(by) && site.hasOwnProperty('state') && col.state != null && /^(稼働中|終了)$/.test(site.state)) t.sh.getRange(row, col.state + 1).setValue(site.state);
+  if (isAdmin_(by) && site.hasOwnProperty('state') && col.state != null && /^(稼働中|終了|仮登録)$/.test(site.state)) t.sh.getRange(row, col.state + 1).setValue(site.state);
   t.sh.getRange(row, col.updatedBy + 1).setValue(by || ''); t.sh.getRange(row, col.updatedAt + 1).setValue(now_());
   return { ok: true, id: site.id };
+}
+/* 日報で「一覧に無い現場を追加」した現場を、現場マスタに「仮登録」で入れる（全員の日報の一覧に出る）。
+   同じ名前（別名も）の現場がもうあれば足さずに、その正式な名前を返す。仮登録は親方が現場ノートで「正式な現場にする」 */
+function addSitesFromNippou_(list, by) {
+  var t = siteSheet_(), vals = t.sh.getDataRange().getValues(), col = siteCols_(t.head), out = [];
+  var byKey = {};
+  for (var i = 1; i < vals.length; i++) {
+    var nm = vals[i][col.name]; if (!nm) continue;
+    [nm].concat(col.aliases != null ? String(vals[i][col.aliases] || '').split(/[｜|、,，]/) : []).forEach(function (n) { var k = nameKey_(n); if (k && byKey[k] == null) byKey[k] = i; });
+  }
+  (list || []).forEach(function (x) {
+    x = x || {}; var name = String(x.site || x.name || '').trim(), kind = String(x.cat || x.kind || '').trim(), contract = String(x.contract || '').trim();
+    if (!name || !kind) { out.push({ ok: false, name: name, error: '現場名と種類が要ります' }); return; }
+    var hit = byKey[nameKey_(name)];
+    if (hit != null) { var r = vals[hit]; out.push({ ok: true, existed: true, id: r[col.id], name: String(r[col.name]), kind: String(r[col.kind] || ''), contract: String(r[col.contract] || ''), state: String(r[col.state] || '') }); return; }
+    var pre = SITE_PREFIX[kind] || 'OT', max = 0, re = new RegExp('^' + pre + '-(\\d+)$');
+    vals.forEach(function (r) { var m = String(r[col.id]).match(re); if (m) max = Math.max(max, Number(m[1])); });
+    var id = pre + '-' + ('00' + (max + 1)).slice(-3);
+    var row = t.head.map(function () { return ''; });
+    row[col.id] = id; row[col.kind] = kind; if (col.contract != null) row[col.contract] = contract; row[col.name] = cell_(name); row[col.state] = '仮登録';
+    if (col.note != null) row[col.note] = '日報から追加：' + (by || '') + '（' + now_().slice(0, 10) + '）';
+    if (col.updatedBy != null) row[col.updatedBy] = by || ''; if (col.updatedAt != null) row[col.updatedAt] = now_();
+    t.sh.appendRow(row); vals.push(row); byKey[nameKey_(name)] = vals.length - 1;
+    out.push({ ok: true, created: true, id: id, name: name, kind: kind, contract: contract, state: '仮登録' });
+  });
+  return { ok: true, results: out };
 }
 function importBukken_(by) {   // 物件マスタの住所・管理会社・連絡先・別名・段取りメモ・備考を、名前（別名も）で照合して、空いている欄にだけ写す
   if (!isAdmin_(by)) return { ok: false, error: '物件マスタから写すのは' + admins_().join('・') + 'だけができます' };

@@ -191,7 +191,7 @@ function render() {
   $('siteList').innerHTML = list.length ? list.map(s => {
     const n = activeCautions(s).length;
     return '<button type="button" class="site' + (/終了/.test(s.state) ? ' end' : '') + '" data-site="' + esc(s.id) + '"><div class="nm">' + esc(s.name) +
-      (n ? '<span class="tag warn">⚠ 注意点 ' + n + '</span>' : '') + (s.memo ? '<span class="tag memo">📝 段取りメモ</span>' : '') + (/終了/.test(s.state) ? '<span class="tag">終了</span>' : '') + '</div>' +
+      (n ? '<span class="tag warn">⚠ 注意点 ' + n + '</span>' : '') + (s.memo ? '<span class="tag memo">📝 段取りメモ</span>' : '') + (/終了/.test(s.state) ? '<span class="tag">終了</span>' : '') + (s.state === '仮登録' ? '<span class="tag warn">仮登録</span>' : '') + '</div>' +
       '<div class="sub">' + esc([s.kind, s.contract, s.address].filter(Boolean).join('・') || '　') + '</div></button>';
   }).join('') : '<div class="empty">' + (SITES.length ? '当てはまる現場がありません' : '現場がまだ読み込めていません') + '</div>';
 }
@@ -216,6 +216,8 @@ function renderSite() {
       (s.note ? '<dt>備考</dt><dd>' + esc(s.note) + '</dd>' : '') +
     '</dl>' +
     '<div class="sec">📝 段取りメモ（段取りカードに出ます）</div>' + (s.memo ? '<div class="memo-box">' + esc(s.memo) + '</div>' : '<p class="hint" style="margin:0">駐車場所・鍵・集合場所など、毎回伝えたいことを書いておけます。</p>') +
+    (s.state === '仮登録' ? '<div class="memo-box" style="margin-top:10px">日報で追加された現場です（' + esc(String(s.note || '').replace(/^日報から追加：/, '')) + '）。名前と種類が正しければ' + (isAdmin() ? '「正式な現場にする」を押してください。表記ちがいの同じ現場なら「直す」で状態を「終了」にしてください。' : '親方が確認します。') + '</div>' +
+      (isAdmin() ? '<button class="btn primary block sm" type="button" data-act="confirmSite" style="margin-top:8px">✓ 正式な現場にする</button>' : '') : '') +
     '<button class="btn block sm" type="button" data-act="editSite" style="margin-top:10px">✏️ 現場の情報を直す</button></div>' +
     '<div class="card"><div class="row2" style="align-items:center"><div class="sec" style="margin:0">⚠ 注意点 ' + act.length + '件</div><button class="btn primary sm" type="button" data-act="addCaution" style="flex:none">＋ 注意点を追加</button></div>' +
     '<div class="hint" style="margin:4px 0 8px">段取りでこの現場のカードを開くと、一番上に出ます。</div>' +
@@ -430,7 +432,7 @@ function editSite(isNew) {
     '<label class="lbl">別名・呼び方（、で区切る）</label><input type="text" id="sAliases" value="' + esc(s.aliases) + '" placeholder="例：ふじのき、ふじの木台">' +
     '<label class="lbl">📝 段取りメモ（段取りカードに出ます）</label><textarea id="sMemo" placeholder="例：駐車は管理棟の裏。鍵は管理人室で借りる">' + esc(s.memo) + '</textarea>' +
     '<label class="lbl">備考</label><input type="text" id="sNote" value="' + esc(s.note) + '">' +
-    (!isNew && isAdmin() ? '<label class="lbl">状態</label><select id="sState"><option' + (!/終了/.test(s.state) ? ' selected' : '') + '>稼働中</option><option' + (/終了/.test(s.state) ? ' selected' : '') + '>終了</option></select>' : '') +
+    (!isNew && isAdmin() ? '<label class="lbl">状態</label><select id="sState"><option' + (!/終了|仮登録/.test(s.state) ? ' selected' : '') + '>稼働中</option>' + (s.state === '仮登録' ? '<option selected>仮登録</option>' : '') + '<option' + (/終了/.test(s.state) ? ' selected' : '') + '>終了</option></select>' : '') +
     '<div class="row2" style="margin-top:16px"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="save" style="flex:2">保存する</button></div>',
     async e => {
       const b = e.target.closest('button[data-act]'); if (!b) return;
@@ -497,6 +499,7 @@ $('backBtn').addEventListener('click', closeSite);
 $('siteBody').addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if (b && b.dataset.act === 'editSite') return editSite(false);
+  if (b && b.dataset.act === 'confirmSite') { b.disabled = true; return postJSON(GAS_URL, { app: 'note', mode: 'saveSite', site: { id: CUR.id, state: '稼働中' }, by: me() }).then(async r => { if (!r.ok) throw new Error(r.error || ''); toast('正式な現場にしました'); await load(); }).catch(e => { b.disabled = false; toast('保存できませんでした：' + e.message); }); }
   if (b && b.dataset.act === 'addCaution') return openCaution(null);
   if (b && b.dataset.act === 'toggleResolved') { SHOW_RESOLVED = !SHOW_RESOLVED; return renderSite(); }
   const ec = e.target.closest('[data-edit-caution]'); if (ec) { const c = CAUTIONS.find(x => x.cautionId === ec.dataset.editCaution); if (c) openCaution(c); }
