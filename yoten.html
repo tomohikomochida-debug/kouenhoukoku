@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="要点まとめ">
+<meta name="theme-color" content="#214A37">
+<title>要点まとめ｜庭乃持田園</title>
+<style>
+:root{
+  --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7; --ok:#2E7D55;
+  --tape:#C77C30; --bark:#5B5750; --ink:#22231F; --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F;
+  --radius:10px; --shadow:0 1px 0 rgba(34,35,31,.04), 0 8px 24px -16px rgba(34,35,31,.25);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif;-webkit-text-size-adjust:100%;line-height:1.6}
+header{background:var(--leaf);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:20;padding-top:calc(12px + env(safe-area-inset-top))}
+header .row{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;flex:1;letter-spacing:.04em}
+header .me{font-size:13px;background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:999px;padding:5px 12px;font-family:inherit}
+.home-btn{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;color:#fff;text-decoration:none;font-size:13px;font-weight:700;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.32);border-radius:999px;padding:5px 11px 5px 9px;white-space:nowrap;line-height:1.2}
+.home-btn .hb-ic{font-size:15px;line-height:1}
+@media (max-width:400px){ .home-btn{padding:5px 8px} .home-btn .hb-t{display:none} }
+.info-bar{background:var(--tape);color:#fff;font-size:12.5px;text-align:center;padding:5px 12px}
+.error-banner{display:none;background:var(--danger);color:#fff;padding:10px 16px;font-size:13px}
+main{max-width:680px;margin:0 auto;padding:12px 16px calc(96px + env(safe-area-inset-bottom))}
+#result{scroll-margin-top:72px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+h2{font-size:15px;margin:2px 0 8px;color:var(--leaf)}
+.hint{font-size:12.5px;color:var(--bark);margin:4px 0 0}
+.sec{font-size:13px;font-weight:700;color:var(--bark);margin:14px 0 6px}
+.sec:first-child{margin-top:0}
+textarea,input[type=text]{width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink)}
+textarea{min-height:120px;resize:vertical;line-height:1.7}
+textarea:focus,input:focus{outline:2px solid var(--leaf);outline-offset:1px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-size:15px;font-weight:700;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:10px 16px;min-height:46px;cursor:pointer;text-decoration:none}
+.btn.primary{background:var(--leaf);color:#fff;border-color:var(--leaf)}
+.btn.ok{background:var(--ok);color:#fff;border-color:var(--ok)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.block{width:100%}
+.btn.sm{min-height:34px;padding:5px 11px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:default}
+.row2{display:flex;gap:8px}.row2>*{flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{border:1px solid var(--line);background:var(--field);border-radius:999px;padding:7px 14px;font-size:14px;cursor:pointer;color:var(--ink);font-family:inherit}
+.chip.on{background:var(--leaf-soft);border-color:var(--leaf);color:var(--leaf);font-weight:700}
+.tag{display:inline-block;font-size:11.5px;border-radius:6px;padding:1px 7px;margin-left:4px;vertical-align:1px;white-space:nowrap}
+.tag.loc{background:var(--leaf-soft);color:var(--leaf)}
+.tag.out{background:#FFF3D6;color:#7A5B12}
+.tag.none{background:#EEE;color:var(--bark)}
+/* 話す */
+.mic-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px 0 4px}
+.mic{width:116px;height:116px;border-radius:50%;border:0;background:var(--tape);color:#fff;font-size:44px;cursor:pointer;box-shadow:0 10px 24px -10px rgba(0,0,0,.45);font-family:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
+.mic small{font-size:13px;font-weight:700;margin-top:6px}
+.mic.rec{background:var(--danger);animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(176,83,63,.45)}50%{box-shadow:0 0 0 16px rgba(176,83,63,0)}}
+.mic-status{font-size:13px;color:var(--bark);min-height:20px;text-align:center}
+.interim{color:var(--bark);font-size:14px;min-height:0;white-space:pre-wrap}
+.guide{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.guide div{background:var(--field);border:1px dashed var(--line);border-radius:8px;padding:6px 9px;font-size:13px;color:var(--bark)}
+.guide b{color:var(--ink)}
+/* 結果 */
+.res-head{display:flex;align-items:flex-start;gap:8px}
+.kind{flex:none;font-size:12.5px;font-weight:700;border-radius:6px;padding:2px 8px;margin-top:3px;background:var(--leaf-soft);color:var(--leaf)}
+.kind.k-困りごと{background:#F6DCDC;color:#9A3A3A}
+.kind.k-お願い{background:#FFF3D6;color:#7A5B12}
+.kind.k-相談{background:#E8ECF4;color:#3D4B66}
+.headline{font-size:19px;font-weight:700;line-height:1.45}
+ol.points{margin:6px 0 0;padding-left:22px}
+ol.points li{margin:4px 0;font-size:15.5px}
+dl.facts{display:grid;grid-template-columns:64px 1fr;gap:5px 8px;margin:0;font-size:14.5px}
+dl.facts dt{color:var(--bark);font-size:13px;padding-top:1px}
+dl.facts dd{margin:0}
+.need{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.need:last-child{border-bottom:0}
+.need .grow{flex:1;min-width:0}
+.need .nm{font-weight:700}
+.need .sub{font-size:12.5px;color:var(--bark)}
+.missing{background:#FFF7E6;border:1px solid #F0DDB0;border-radius:10px;padding:10px 12px}
+.missing h3{margin:0 0 6px;font-size:14px;color:#6B5212}
+.q{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px dashed #EAD7A6}
+.q:first-of-type{border-top:0}
+.q .t{flex:1;font-size:15px}
+.word{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--field);border-radius:8px;padding:4px 9px;font-size:13.5px;margin:0 6px 6px 0;cursor:pointer;font-family:inherit;color:var(--ink)}
+.word s{color:var(--bark)}
+.fix{font-size:12.5px;color:var(--bark);margin-top:6px}
+.msg{min-height:140px}
+/* 履歴 */
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:10px}
+.seg button{flex:1;border:0;background:var(--card);font:inherit;font-size:14px;padding:8px 0;cursor:pointer;color:var(--bark)}
+.seg button.on{background:var(--leaf);color:#fff;font-weight:700}
+.memo{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:9px;cursor:pointer;box-shadow:var(--shadow)}
+.memo .mt{font-size:12.5px;color:var(--bark);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.memo .hl{font-size:16px;font-weight:700;margin-top:3px}
+.memo.unread{border-left:5px solid var(--tape)}
+.raw{font-size:13px;color:var(--bark);white-space:pre-wrap;background:var(--field);border-radius:8px;padding:10px}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);z-index:30;padding-bottom:env(safe-area-inset-bottom)}
+nav.tabs .in{max-width:680px;margin:0 auto;display:flex}
+nav.tabs button{flex:1;border:0;background:none;font:inherit;font-size:11.5px;color:var(--bark);padding:8px 0 7px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer}
+nav.tabs button .ic{font-size:21px;line-height:1.1}
+nav.tabs button.on{color:var(--leaf);font-weight:700}
+.badge{background:var(--danger);color:#fff;border-radius:999px;font-size:10.5px;padding:0 6px;margin-left:3px;vertical-align:2px}
+.modal-bg{position:fixed;inset:0;background:rgba(34,35,31,.45);z-index:50;display:none;align-items:flex-end;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--paper);width:100%;max-width:680px;max-height:94vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.modal h3{margin:0 0 6px;font-size:18px;color:var(--leaf)}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%}
+.toast.show{opacity:1}
+.loading{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{color:var(--bark);text-align:center;padding:18px 10px;font-size:14px}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="error-banner" id="errBanner"></div>
+<header><div class="row"><a class="home-btn" href="index.html" title="アプリ一覧にもどる" aria-label="アプリ一覧（ホーム）にもどる"><span class="hb-ic">🏠</span><span class="hb-t">ホーム</span></a><h1>🗣 要点まとめ</h1><button class="me" id="meBtn" type="button">名前を選ぶ</button></div></header>
+<div class="info-bar" id="infoBar" hidden></div>
+
+<main>
+  <section id="tab-speak">
+    <div class="card">
+      <div class="sec">だれに伝える？</div>
+      <div class="chips" id="toChips"></div>
+
+      <div class="mic-wrap" style="margin-top:14px">
+        <button class="mic" id="micBtn" type="button" aria-label="話す"><span>🎤</span><small id="micLabel">話す</small></button>
+        <div class="mic-status" id="micStatus">まとまらなくて大丈夫。思いついた順に、ぜんぶ話してください</div>
+      </div>
+      <div class="interim" id="interim"></div>
+
+      <div class="sec">話した内容（直してもOK）</div>
+      <textarea id="raw" placeholder="例：えーと、明日の上作延のやつなんですけど、ブロワーがなんか調子悪くて、あの、エンジンかかんないんで、2トンに積むやつ、別のがあれば…あと土のう袋も足りないかもです"></textarea>
+      <div class="guide" aria-label="話すきっかけ">
+        <div><b>なにが</b>あった？</div><div><b>なにが</b>ほしい？</div>
+        <div><b>いつ・どこ</b>の話？</div><div><b>どうして</b>ほしい？</div>
+      </div>
+      <div class="row2" style="margin-top:12px">
+        <button class="btn" id="clearBtn" type="button">消す</button>
+        <button class="btn primary" id="goBtn" type="button" style="flex:2">✨ まとめる</button>
+      </div>
+    </div>
+    <div id="result"></div>
+  </section>
+
+  <section id="tab-list" hidden>
+    <div class="seg" id="listSeg">
+      <button type="button" data-seg="mine" class="on">自分の</button>
+      <button type="button" data-seg="all">みんなの</button>
+    </div>
+    <div id="memoList"></div>
+  </section>
+</main>
+
+<nav class="tabs"><div class="in">
+  <button type="button" data-tab="speak" class="on"><span class="ic">🎤</span>話してまとめる</button>
+  <button type="button" data-tab="list"><span class="ic">📋</span>まとめた記録<span id="unreadBadge"></span></button>
+</div></nav>
+
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ 設定 ============ */
+// 現場アプリGAS（段取り・道具管理・用語集・車両・取引先・要点まとめで共通の1本）
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
+const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';   // 名簿・現場マスタ
+const LS = { me: 'dandori_me', to: 'yoten_to', draft: 'yoten_draft', cache: 'yoten_cache', local: 'yoten_local_v1', read: 'yoten_read' };
+const TO_LIST = ['親方へ', 'みんなへ', '自分用メモ'];
+const NET_ERR = '電波を確認して、もう一度お試しください';
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+
+/* ============ 小道具 ============ */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function lsGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+function rawGet(k) { try { const v = localStorage.getItem(k); if (v == null) return ''; try { const j = JSON.parse(v); return typeof j === 'string' ? j : ''; } catch (e) { return v; } } catch (e) { return ''; } }
+function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2600); }
+function showError(m) { const b = $('errBanner'); b.textContent = '⚠️ ' + m; b.style.display = 'block'; }
+function info(m) { const b = $('infoBar'); b.textContent = m || ''; b.hidden = !m; }
+const p2 = n => String(n).padStart(2, '0');
+function ymd(d) { return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); }
+function parseYmd(s) { const a = String(s).split('-').map(Number); return new Date(a[0], a[1] - 1, a[2]); }
+function addDays(s, n) { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); }
+function nowStr() { const d = new Date(); return ymd(d) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()); }
+function md(s) { if (!/^\d{4}-\d{2}-\d{2}/.test(s || '')) return s || ''; const d = parseYmd(s.slice(0, 10)); return (d.getMonth() + 1) + '/' + d.getDate() + '(' + WD[d.getDay()] + ')'; }
+const TODAY = ymd(new Date());
+const arr = v => Array.isArray(v) ? v : (v == null || v === '' ? [] : (() => { try { const j = JSON.parse(v); return Array.isArray(j) ? j : [j]; } catch (e) { return [v]; } })());
+async function getJSON(url, ms) {
+  const ac = new AbortController(), tm = setTimeout(() => ac.abort(), ms || 20000);
+  try { return await (await fetch(url, { cache: 'no-store', signal: ac.signal })).json(); } finally { clearTimeout(tm); }
+}
+async function postJSON(url, body) { return (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })).json(); }
+
+/* ============ 言葉のゆれ ============ */
+const SMALL = { 'ぁ': 'あ', 'ぃ': 'い', 'ぅ': 'う', 'ぇ': 'え', 'ぉ': 'お', 'っ': 'つ', 'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'ゎ': 'わ' };
+function toHira(s) { return String(s || '').replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)); }
+function norm(s) { return toHira(String(s || '').normalize('NFKC').toLowerCase()).replace(/[\s・･,，、。.\-－_/／（）()「」『』]/g, ''); }
+function loose(s) { return norm(s).normalize('NFD').replace(/[゙゚]/g, '').normalize('NFC').replace(/[ぁぃぅぇぉっゃゅょゎ]/g, c => SMALL[c]).replace(/ー/g, ''); }
+const splitAl = s => String(s || '').split(/[、,，]/).map(x => x.trim()).filter(Boolean);
+
+/* ============ データ（用語集・道具管理・車両・取引先・名簿） ============ */
+let WORDS = { terms: [], aliases: [] }, TOOLS = [], VEH = [], SUP = [], NICK = [], STAFF = [], SITES = [];
+let MEMOS = null, ADMINS = ['親方'], SERVER_LIST = false;
+async function load() {
+  const [w, t, d] = await Promise.allSettled([getJSON(GAS_URL + '?app=yougo&action=data'), getJSON(GAS_URL + '?app=dougu&action=data'), getJSON(GAS_URL + '?app=dandori&action=data&from=' + TODAY + '&to=' + TODAY)]);
+  const ok = r => r.status === 'fulfilled' && r.value && r.value.ok;
+  const c = lsGet(LS.cache, {}) || {};
+  if (ok(w)) { WORDS = { terms: w.value.terms || [], aliases: w.value.aliases || [] }; c.WORDS = WORDS; } else if (c.WORDS) WORDS = c.WORDS;
+  if (ok(t)) { TOOLS = t.value.tools || []; c.TOOLS = TOOLS; if (t.value.admins) ADMINS = t.value.admins; } else if (c.TOOLS) TOOLS = c.TOOLS;
+  if (ok(d)) { VEH = d.value.vehicles || []; SUP = d.value.suppliers || []; NICK = d.value.nicknames || []; Object.assign(c, { VEH, SUP, NICK }); } else { VEH = c.VEH || []; SUP = c.SUP || []; NICK = c.NICK || []; }
+  lsSet(LS.cache, c);
+  if (!ok(w) || !ok(t) || !ok(d)) { if (c.WORDS) toast('前回のデータで動いています（' + NET_ERR + '）'); else showError('用語集・道具・車両のデータを読み込めませんでした。' + NET_ERR); }
+  STAFF = staffList(); SITES = lsGet('dandori_me_sites', []) || [];
+  fetchStaff();
+  loadMemos();
+}
+const termById = id => WORDS.terms.find(t => t.termId === id);
+const toolOfTerm = termId => TOOLS.find(t => t.termId === termId);
+function toolWords(includeMis) {   // 道具・資材の言葉（正式名と呼び方）を長い順に
+  const out = [];
+  WORDS.terms.filter(t => t.category === '道具' || t.category === '資材').forEach(t => {
+    out.push({ w: t.term, termId: t.termId, type: '正式名' });
+    WORDS.aliases.filter(a => a.termId === t.termId && (includeMis || a.type !== '聞き間違い')).forEach(a => out.push({ w: a.alias, termId: t.termId, type: a.type }));
+  });
+  return out.sort((a, b) => norm(b.w).length - norm(a.w).length);
+}
+function allWords() {   // すべての用語（専門用語の言い換え用）
+  const out = [];
+  WORDS.terms.forEach(t => { out.push({ w: t.term, termId: t.termId, type: '正式名' }); WORDS.aliases.filter(a => a.termId === t.termId).forEach(a => out.push({ w: a.alias, termId: t.termId, type: a.type })); });
+  return out.sort((a, b) => norm(b.w).length - norm(a.w).length);
+}
+function matchWord(name, list) {
+  const n = norm(name), l = loose(name); if (!n) return null;
+  const ws = list || allWords();
+  return ws.find(x => norm(x.w) === n) || ws.find(x => loose(x.w) === l) || null;
+}
+function dictText() { return toolWords(true).filter(x => x.type !== '正式名').map(x => x.w + '→' + (termById(x.termId) || {}).term).join('\n'); }
+function termsText() { return WORDS.terms.filter(t => t.category !== '道具' && t.category !== '資材').map(t => t.term).join('、'); }
+function vehText() { return VEH.filter(v => !v.status || v.status === '使用中').map(v => v.name + (v.aliases ? '：' + splitAl(v.aliases).join('・') : '')).join('\n'); }
+function supText() { return SUP.map(s => s.name + (s.aliases ? '：' + splitAl(s.aliases).join('・') : '')).join('\n'); }
+function vehicleOf(word) { const w = norm(word); if (!w) return null; return VEH.find(v => [v.name].concat(splitAl(v.aliases)).some(n => norm(n) === w)) || null; }
+function rosterText() { return STAFF.map(n => { const ns = NICK.filter(x => x.name === n).map(x => x.nickname); return n + (ns.length ? '（' + ns.join('・') + '）' : ''); }).join('、'); }
+
+/* 名前・名簿（日報・段取りアプリと同じ名前を引き継ぐ） */
+const me = () => lsGet(LS.me, '') || rawGet('nippou_author');
+let STAFF_LIST = null;
+function staffList() {
+  if (STAFF_LIST && STAFF_LIST.length) return STAFF_LIST;
+  const m = lsGet('nippou_masters', null); if (m && m.staff && m.staff.length) return m.staff.map(x => typeof x === 'string' ? x : (x.name || '')).filter(Boolean);
+  return lsGet(LS.me + '_staff', null) || [];
+}
+function flatSites(sg) { const out = []; const walk = v => { if (Array.isArray(v)) v.forEach(x => typeof x === 'string' ? out.push(x) : walk(x)); else if (v && typeof v === 'object') Object.values(v).forEach(walk); }; walk(sg); return Array.from(new Set(out.filter(Boolean))); }
+async function fetchStaff() {
+  try {
+    const r = await getJSON(MASTERS_URL + '?action=masters', 10000);
+    const s = (r.staff || []).map(x => typeof x === 'string' ? x : (x.name || x.staff || '')).filter(Boolean);
+    if (r.siteGroups) { SITES = flatSites(r.siteGroups); lsSet(LS.me + '_sites', SITES); }
+    if (s.length) { STAFF_LIST = s; STAFF = s; lsSet(LS.me + '_staff', s); if ($('nmIn')) drawName(); }
+  } catch (e) { /* 名簿が取れなくても手入力で進める */ }
+}
+
+/* ============ 宛先 ============ */
+let TO = lsGet(LS.to, '親方へ');
+function drawTo() { $('toChips').innerHTML = TO_LIST.map(t => '<button type="button" class="chip' + (t === TO ? ' on' : '') + '" data-to="' + t + '">' + t + '</button>').join(''); }
+
+/* ============ 音声入力 ============
+   Android・パソコン：ボタンを押すと続けて聞き取り（止めるまで）
+   iPhone・iPad：聞き取りが途中で切れやすいので、キーボードのマイクで話す（他の社内アプリと同じ） */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const LIVE = !!SR && !IS_IOS;
+let REC = null, LISTENING = false, TARGET = null;
+function appendText(el, t) {
+  t = String(t || '').trim(); if (!t) return;
+  const v = el.value.replace(/\s+$/, '');
+  el.value = v + (v && !/[。、\n]$/.test(v) ? '。' : '') + t;
+  el.dispatchEvent(new Event('input'));
+}
+function startListen(target, btn, label, status) {
+  if (!LIVE) {
+    target.focus();
+    if (status) status.textContent = '⌨️ キーボードのマイク（🎤）を押して話してください';
+    toast('キーボードのマイクを押して話してください'); return;
+  }
+  if (LISTENING) return stopListen();
+  TARGET = { el: target, btn, label, status };
+  REC = new SR(); REC.lang = 'ja-JP'; REC.continuous = true; REC.interimResults = true;
+  REC.onresult = e => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) { const r = e.results[i]; if (r.isFinal) appendText(TARGET.el, r[0].transcript); else interim += r[0].transcript; }
+    if (TARGET.el === $('raw')) $('interim').textContent = interim;
+  };
+  REC.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { toast('マイクの使用を許可してください'); stopListen(); } };
+  REC.onend = () => { if (LISTENING) { try { REC.start(); } catch (e) { stopListen(); } } };   // 黙っていると切れるので、止めるまで聞き続ける
+  try { REC.start(); } catch (e) { toast('聞き取りを始められませんでした'); return; }
+  LISTENING = true;
+  btn.classList.add('rec'); if (label) label.textContent = '止める'; if (status) status.textContent = '● 聞いています… 終わったら「止める」';
+}
+function stopListen() {
+  LISTENING = false; try { REC && REC.stop(); } catch (e) { }
+  if (TARGET) { TARGET.btn.classList.remove('rec'); if (TARGET.label) TARGET.label.textContent = TARGET.btn === $('micBtn') ? '続けて話す' : '話す'; if (TARGET.status) TARGET.status.textContent = '止めました。言い足りなければもう一度押してください'; }
+  $('interim').textContent = ''; TARGET = null;
+}
+
+/* ============ まとめる ============ */
+let RESULT = null, PREV = null;   // PREV：聞き返しに答えたときの、前回のまとめ
+async function summarize(text, previous) {
+  const body = { app: 'yoten', mode: 'summarize', text, previous, to: TO, spokenAt: nowStr(), speaker: me() || 'スタッフ', roster: rosterText(), masterSites: SITES, vehicles: vehText(), suppliers: supText(), dict: dictText(), terms: termsText() };
+  try {
+    const r = await postJSON(GAS_URL, body);
+    if (r.ok && r.result) { info(''); return r.result; }
+    if (/unknown mode/.test(r.error || '')) { info('AIの準備がまだのため、簡易版でまとめています（共通GASの更新後はAIがまとめます）'); return localSummarize(text); }
+    throw new Error(r.error || 'AIでまとめられませんでした');
+  } catch (e) {
+    if (e.name === 'TypeError') { info('電波が弱いため、簡易版でまとめています'); return localSummarize(text); }
+    throw e;
+  }
+}
+/* 簡易版（AIが使えないとき）：口ぐせを取り、辞書で道具・車両・現場を拾う */
+const FILLER = /(えー+と?|ええと|えっと|あのー*|そのー+|うーん|んー+|まあ|なんか|なんて言うか|みたいな(感じ)?|ていうか|っていうか)[、。,\s]*/g;
+function clauses(text) {
+  return text.replace(FILLER, '').split(/[。\n！？!?]|(?:なんですけど|んですけど|ですけど|けれど|けど|なので|んで、|ので|から、|て、|で、)/)
+    .map(s => s.replace(/^[、,\s]+|[、,\s]+$/g, '').replace(/^(あと|それと|それで|で|あ)[、\s]*/, '').replace(/の(やつ|件|こと)$/, 'の件')).filter(s => s.length >= 4);
+}
+function qtyAfter(text, pos) {
+  const KN = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  const m = text.slice(pos).match(/^[^\d一二三四五六七八九十、。]{0,6}?(\d+|[一二三四五六七八九十]+)\s*(本|個|束|枚|台|袋|丁|足|株|m|メートル|つ|kg|キロ)?/);
+  if (!m) return { qty: '', unit: '' };
+  const q = /^\d+$/.test(m[1]) ? Number(m[1]) : (m[1].length === 1 ? KN[m[1]] : (m[1] === '十' ? 10 : (KN[m[1][0]] || 1) * 10 + (KN[m[1][1]] || 0)));
+  return { qty: q, unit: m[2] || '' };
+}
+function findItems(text) {
+  const raw = text.normalize('NFKC'), used = new Array(raw.length).fill(false), found = [];
+  toolWords(false).forEach(x => {
+    const w = x.w.normalize('NFKC'); let from = 0, i;
+    while ((i = raw.indexOf(w, from)) >= 0) {
+      from = i + 1;
+      if (used.slice(i, i + w.length).some(Boolean)) continue;
+      const q = qtyAfter(raw, i + w.length);
+      if (w.length === 1 && !q.qty) continue;
+      for (let k = i; k < i + w.length; k++) used[k] = true;
+      if (!found.some(f => f.termId === x.termId)) found.push({ pos: i, termId: x.termId, surface: x.w, qty: q.qty, unit: q.unit });
+    }
+  });
+  return found.sort((a, b) => a.pos - b.pos);
+}
+function siteIn(text) {
+  const key = s => norm(s).replace(/[のノヶケが]/g, '');
+  const k = key(text); let best = '';
+  SITES.forEach(s => { if (key(s).length >= 3 && k.includes(key(s)) && s.length > best.length) best = s; });
+  return best;
+}
+function dateIn(text) {
+  if (/明後日|あさって/.test(text)) return addDays(TODAY, 2);
+  if (/明日|あした/.test(text)) return addDays(TODAY, 1);
+  if (/今日|きょう/.test(text)) return TODAY;
+  const m = text.match(/(\d{1,2})月(\d{1,2})日/); if (m) { let y = new Date().getFullYear(); const s = y + '-' + p2(m[1]) + '-' + p2(m[2]); return s < addDays(TODAY, -60) ? (y + 1) + '-' + p2(m[1]) + '-' + p2(m[2]) : s; }
+  const w = text.match(/(来週)?([月火水木金土日])曜/); if (w) { const t = WD.indexOf(w[2]); let n = (t - new Date().getDay() + 7) % 7 || 7; if (w[1]) n += 7; return addDays(TODAY, n); }
+  return '';
+}
+function localSummarize(text) {
+  const cl = clauses(text), uniq = [];
+  cl.forEach(c => { if (!uniq.some(u => u.includes(c) || c.includes(u))) uniq.push(c); });
+  const items = findItems(text), words = [];
+  items.forEach(it => { const t = termById(it.termId); if (t && norm(t.term) !== norm(it.surface)) words.push({ said: it.surface, term: t.term }); });
+  const vehicles = VEH.filter(v => [v.name].concat(splitAl(v.aliases)).some(n => n && norm(text).includes(norm(n)))).map(v => v.name);
+  const people = STAFF.filter(n => text.includes(n)).concat(NICK.filter(x => STAFF.includes(x.name) && text.includes(x.nickname)).map(x => x.name)).filter((x, i, a) => a.indexOf(x) === i);
+  const site = siteIn(text), when = dateIn(text);
+  const kind = /壊|故障|動かな|かからな|調子(が)?悪|危な|足りな|困/.test(text) ? '困りごと' : /欲しい|ほしい|貸して|お願い|頼み|買って|用意して/.test(text) ? 'お願い' : /どう(したら|すれば)|いいですか|迷|相談/.test(text) ? '相談' : /終わ|完了|済み|やりました|でした/.test(text) ? '報告' : '連絡';
+  const missing = [];
+  if (!when && !/今週|来週|今月|いつでも/.test(text)) missing.push('いつの話ですか？（今日・明日・何日まで など）');
+  if (!site && kind !== '相談') missing.push('どこの現場の話ですか？');
+  if (items.some(i => !i.qty) && kind !== '報告') missing.push('いくつ必要ですか？');
+  if ((kind === '困りごと' || kind === 'お願い') && !/して(ほしい|もらえ|ください)|したい|どうしたら|貸して|買って/.test(text)) missing.push('どうしてほしいですか？');
+  const points = uniq.slice(0, 5);
+  const KIND_RE = { 困りごと: /壊|故障|動かな|かからな|悪|危な|足りな|困/, お願い: /欲しい|ほしい|貸して|お願い|買って|用意/, 相談: /どう|いいですか|迷/, 報告: /終わ|完了|済|やりました/ };
+  const headline = (uniq.find(c => KIND_RE[kind] && KIND_RE[kind].test(c) && c.length >= 6) || points[0] || text.replace(FILLER, '').slice(0, 25)).slice(0, 30);
+  const needs = items.map(it => ({ name: (termById(it.termId) || {}).term || it.surface, qty: it.qty, unit: it.unit, why: '' }));
+  const R = { kind, headline, points, needs, vehicles, site, when, whenNote: '', people, missing: missing.slice(0, 4), words, corrections: [], message: '', local: true };
+  R.message = composeMessage(R);
+  return R;
+}
+function composeMessage(r) {
+  const L = [];
+  const rest = r.points.filter(p => p !== r.headline);
+  if (TO === '自分用メモ') { L.push('・' + r.headline); rest.forEach(p => L.push('・' + p)); }
+  else {
+    L.push((TO === '親方へ' ? '親方、' : 'みなさん、') + (r.kind === '困りごと' || r.kind === 'お願い' || r.kind === '相談' ? r.kind + 'です。' : 'お疲れさまです。'));
+    if (r.site || r.when) L.push((r.when ? md(r.when) + ' ' : '') + (r.site || ''));
+    L.push(r.headline + (/[。！？]$/.test(r.headline) ? '' : '。'));
+    rest.slice(0, 3).forEach(p => L.push('・' + p));
+  }
+  if (r.needs.length) L.push('必要なもの：' + r.needs.map(n => n.name + (n.qty ? ' ' + n.qty + (n.unit || '') : '')).join('・'));
+  if (r.vehicles.length) L.push('車両：' + r.vehicles.join('・'));
+  if (TO !== '自分用メモ') L.push('よろしくお願いします。');
+  return L.join('\n');
+}
+
+/* ============ 結果の表示 ============ */
+function needRow(n, i) {
+  const w = matchWord(n.name, toolWords(true)) || matchWord(n.name);
+  const term = w ? termById(w.termId) : null, tool = term ? toolOfTerm(term.termId) : null;
+  let where = '';
+  if (tool) {
+    if (tool.status && tool.status !== '倉庫') where = '<span class="tag out">' + esc(tool.status) + (tool.statusSite ? '：' + esc(tool.statusSite) : '') + '</span>';
+    else if (tool.location) where = '<span class="tag loc">🗄 ' + esc(tool.location) + '</span>';
+  } else if (!term) where = '<span class="tag none">用語集にない言葉</span>';
+  return '<div class="need"><div class="grow"><div class="nm">' + esc(term ? term.term : n.name) + (n.qty ? ' <span>' + esc(n.qty) + esc(n.unit || '') + '</span>' : '') + where + '</div>' +
+    (n.why ? '<div class="sub">' + esc(n.why) + '</div>' : '') + (tool && tool.qty ? '<div class="sub">会社にある数：' + esc(tool.qty) + '</div>' : '') + '</div></div>';
+}
+function renderResult() {
+  const r = RESULT, box = $('result');
+  if (!r) { box.innerHTML = ''; return; }
+  const facts = [];
+  if (r.site) facts.push(['現場', esc(r.site)]);
+  if (r.when || r.whenNote) facts.push(['いつ', esc(md(r.when)) + (r.whenNote ? '（' + esc(r.whenNote) + '）' : '')]);
+  if (r.people.length) facts.push(['人', esc(r.people.join('・'))]);
+  if (r.vehicles.length) facts.push(['車両', r.vehicles.map(v => { const x = vehicleOf(v); return esc(x ? x.name : v) + (x && x.plate ? '<span class="tag none">' + esc(x.plate) + '</span>' : ''); }).join('、')]);
+  box.innerHTML =
+    (r.missing.length ? '<div class="card missing"><h3>💬 あと、これを話すと伝わります</h3>' + r.missing.map((q, i) =>
+      '<div class="q"><span class="t">' + esc(q) + '</span><button class="btn sm" type="button" data-ans="' + i + '">🎤 答える</button></div>').join('') + '</div>' : '') +
+    '<div class="card"><div class="res-head"><span class="kind k-' + esc(r.kind) + '">' + esc(r.kind) + '</span><div class="headline">' + esc(r.headline) + '</div></div>' +
+    (r.points.length ? '<div class="sec">要点</div><ol class="points">' + r.points.map(p => '<li>' + esc(p) + '</li>').join('') + '</ol>' : '') +
+    (facts.length ? '<div class="sec">いつ・どこ・だれ</div><dl class="facts">' + facts.map(f => '<dt>' + f[0] + '</dt><dd>' + f[1] + '</dd>').join('') + '</dl>' : '') +
+    (r.needs.length ? '<div class="sec">必要なもの（道具管理と照合）</div>' + r.needs.map(needRow).join('') : '') +
+    (r.words.length ? '<div class="sec">言葉の言い換え（押すと意味）</div><div>' + r.words.map(w => '<button type="button" class="word" data-term="' + esc(w.term) + '"><s>' + esc(w.said) + '</s> → <b>' + esc(w.term) + '</b></button>').join('') + '</div>' : '') +
+    (r.corrections.length ? '<div class="fix">聞き間違いを直しました：' + esc(r.corrections.join('、')) + '</div>' : '') +
+    '</div>' +
+    '<div class="card"><div class="sec">送る文（直してから送れます）</div><textarea class="msg" id="msg">' + esc(r.message) + '</textarea>' +
+    '<div class="row2" style="margin-top:10px"><button class="btn" type="button" id="copyBtn">コピー</button><button class="btn ok" type="button" id="shareBtn">LINEで送る</button></div>' +
+    '<button class="btn primary block" type="button" id="saveBtn" style="margin-top:8px">📋 記録に残す' + (TO === '親方へ' ? '（親方も見られます）' : TO === 'みんなへ' ? '（みんなが見られます）' : '') + '</button>' +
+    '<button class="btn block" type="button" id="moreBtn" style="margin-top:8px">🎤 言い足りないことを話す</button></div>';
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+async function runSummarize(text, previous) {
+  const b = $('goBtn'); b.disabled = true; b.innerHTML = '<span class="loading"></span> まとめ中…';
+  try {
+    const r = await summarize(text, previous);
+    ['points', 'needs', 'vehicles', 'people', 'missing', 'words', 'corrections'].forEach(k => { r[k] = arr(r[k]); });
+    r.needs = r.needs.map(n => typeof n === 'string' ? { name: n } : n).filter(n => n && n.name);
+    r.words = r.words.filter(w => w && w.said && w.term && norm(w.said) !== norm(w.term));
+    RESULT = r; RESULT.rawText = text; RESULT.to = TO; RESULT.saved = '';
+    renderResult();
+  } catch (e) { toast(e.message || NET_ERR); }
+  finally { b.disabled = false; b.textContent = '✨ まとめる'; }
+}
+function go() {
+  if (LISTENING) stopListen();
+  const text = $('raw').value.trim(); if (!text) return toast('まず話してください');
+  PREV = null; runSummarize(text, null);
+}
+
+/* 聞き返しに答える／言い足す */
+function openAnswer(question) {
+  openModal('<h3>' + (question ? esc(question) : '言い足りないこと') + '</h3>' +
+    '<p class="hint" style="margin-bottom:10px">短くて大丈夫です。答えると、前のまとめに足してまとめ直します。</p>' +
+    '<textarea id="ans" style="min-height:100px"></textarea>' +
+    '<div class="mic-wrap" style="margin-top:10px"><button class="mic" id="ansMic" type="button" style="width:84px;height:84px;font-size:32px"><span>🎤</span><small id="ansLabel">話す</small></button><div class="mic-status" id="ansStatus"></div></div>' +
+    '<div class="row2" style="margin-top:12px"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="ok">まとめ直す</button></div>',
+    e => {
+      if (e.target.closest('#ansMic')) return startListen($('ans'), $('ansMic'), $('ansLabel'), $('ansStatus'));
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      if (LISTENING) stopListen();
+      if (b.dataset.act === 'cancel') return closeModal();
+      const a = $('ans').value.trim(); if (!a) return toast('答えを話すか入力してください');
+      const add = question ? '（' + question.replace(/[？?]$/, '') + '→）' + a : a;
+      $('raw').value = $('raw').value.replace(/\s+$/, '') + '\n' + add; lsSet(LS.draft, $('raw').value);
+      const prev = RESULT ? { kind: RESULT.kind, headline: RESULT.headline, points: RESULT.points, needs: RESULT.needs, vehicles: RESULT.vehicles, site: RESULT.site, when: RESULT.when, people: RESULT.people } : null;
+      closeModal();
+      runSummarize($('raw').value.trim(), prev);
+    });
+  setTimeout(() => { if (!LIVE && $('ans')) $('ans').focus(); }, 60);
+}
+function showTerm(name) {
+  const w = matchWord(name), t = w ? termById(w.termId) : null;
+  if (!t) return toast('用語集にまだありません');
+  const al = WORDS.aliases.filter(a => a.termId === t.termId && a.type !== '聞き間違い').map(a => a.alias);
+  openModal('<h3>' + esc(t.term) + (t.kana ? ' <small style="font-size:13px;color:var(--bark)">' + esc(t.kana) + '</small>' : '') + '</h3>' +
+    '<p>' + esc(t.meaning || '（意味はまだ登録されていません）') + '</p>' +
+    (t.usage ? '<p class="hint">使い方：' + esc(t.usage) + '</p>' : '') + (al.length ? '<p class="hint">ほかの呼び方：' + esc(al.join('・')) + '</p>' : '') +
+    '<div class="row2" style="margin-top:14px"><a class="btn" href="yougo.html?q=' + encodeURIComponent(t.term) + '">用語集で開く</a><button class="btn primary" data-act="close">閉じる</button></div>',
+    e => { if (e.target.closest('[data-act="close"]')) closeModal(); });
+}
+
+/* 送る・残す */
+function share() {
+  const text = $('msg').value.trim(); if (!text) return;
+  if (navigator.share) navigator.share({ text }).catch(() => { });
+  else location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent(text);
+}
+async function copyMsg() {
+  const text = $('msg').value;
+  try { await navigator.clipboard.writeText(text); toast('コピーしました'); } catch (e) { const t = $('msg'); t.select(); document.execCommand('copy'); toast('コピーしました'); }
+}
+function memoOf(r) {
+  return { to: r.to, kind: r.kind, headline: r.headline, points: JSON.stringify(r.points), needs: JSON.stringify(r.needs), vehicles: JSON.stringify(r.vehicles), site: r.site, when: r.when || r.whenNote || '', people: JSON.stringify(r.people), missing: JSON.stringify(r.missing), message: $('msg') ? $('msg').value : r.message, rawText: r.rawText };
+}
+async function save() {
+  if (!me()) return chooseName(true, save);
+  if (!RESULT) return;
+  const b = $('saveBtn'); b.disabled = true; b.innerHTML = '<span class="loading"></span> 保存中…';
+  const memo = memoOf(RESULT);
+  const local = lsGet(LS.local, []); local.unshift(Object.assign({ memoId: 'L' + Date.now(), at: nowStr(), by: me(), local: true }, memo)); lsSet(LS.local, local.slice(0, 30));
+  try {
+    const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'save', memo, by: me() });
+    if (!r.ok) throw new Error(r.error);
+    local[0].memoId = r.id; local[0].local = false; lsSet(LS.local, local.slice(0, 30));
+    toast('記録に残しました'); lsSet(LS.draft, '');
+    b.textContent = '✓ 記録に残しました';
+    loadMemos();
+  } catch (e) {
+    toast(/unknown mode/.test(e.message) ? 'この端末に残しました（共通GASの更新後はみんなと共有できます）' : 'この端末に残しました（' + NET_ERR + '）');
+    b.textContent = '✓ この端末に残しました';
+  }
+}
+
+/* ============ まとめた記録 ============ */
+let SEG = 'mine', OPEN_ID = '';
+async function loadMemos() {
+  try {
+    const r = await getJSON(GAS_URL + '?app=yoten&action=list&days=60', 15000);
+    if (!r.ok) throw new Error(r.error);
+    MEMOS = r.memos || []; if (r.admins) ADMINS = r.admins; SERVER_LIST = true;
+  } catch (e) { MEMOS = null; SERVER_LIST = false; }
+  renderList();
+}
+const isAdmin = () => ADMINS.includes(me());
+const readSet = () => new Set(lsGet(LS.read, []));
+function listItems() {
+  let list = SERVER_LIST ? MEMOS.slice() : lsGet(LS.local, []);
+  if (SERVER_LIST) lsGet(LS.local, []).filter(m => m.local).forEach(m => list.unshift(m));   // まだ送れていない分
+  if (SEG === 'mine') list = list.filter(m => m.by === me());
+  else list = list.filter(m => m.to !== '自分用メモ' || m.by === me());
+  return list;
+}
+function unreadCount() {
+  if (!SERVER_LIST || !me()) return 0;
+  const rd = readSet();
+  return (MEMOS || []).filter(m => m.by !== me() && !rd.has(m.memoId) && ((m.to === '親方へ' && isAdmin()) || m.to === 'みんなへ')).length;
+}
+function renderList() {
+  const n = unreadCount(); $('unreadBadge').innerHTML = n ? '<span class="badge">' + n + '</span>' : '';
+  if ($('tab-list').hidden) return;
+  const list = listItems(), rd = readSet();
+  $('memoList').innerHTML = (SERVER_LIST ? '' : '<p class="hint" style="margin:0 0 8px">この端末に残した記録だけ表示しています。</p>') +
+    (list.length ? list.map(m => {
+      const unread = m.by !== me() && !rd.has(m.memoId);
+      const open = OPEN_ID === m.memoId;
+      return '<button type="button" class="memo' + (unread ? ' unread' : '') + '" data-memo="' + esc(m.memoId) + '">' +
+        '<div class="mt"><span class="kind k-' + esc(m.kind) + '" style="margin:0">' + esc(m.kind || '') + '</span>' + esc(md(String(m.at).slice(0, 10))) + ' ' + esc(String(m.at).slice(11, 16)) + '・' + esc(m.by) + ' → ' + esc(m.to) + (m.local ? '<span class="tag none">この端末だけ</span>' : '') + (m.readBy ? '<span class="tag loc">既読：' + esc(m.readBy) + '</span>' : '') + '</div>' +
+        '<div class="hl">' + esc(m.headline) + '</div>' +
+        (open ? memoDetail(m) : '') + '</button>';
+    }).join('') : '<div class="empty">まだ記録がありません</div>');
+}
+function memoDetail(m) {
+  const pts = arr(m.points), needs = arr(m.needs), veh = arr(m.vehicles);
+  const canDel = !m.local && (m.by === me() || isAdmin());
+  return '<div style="margin-top:8px">' + (pts.length ? '<ol class="points">' + pts.map(p => '<li>' + esc(p) + '</li>').join('') + '</ol>' : '') +
+    ((m.site || m.when) ? '<div class="hint">' + esc([m.site, md(m.when)].filter(Boolean).join('　')) + '</div>' : '') +
+    (needs.length ? '<div class="hint">必要なもの：' + esc(needs.map(n => (n.name || n) + (n.qty ? ' ' + n.qty + (n.unit || '') : '')).join('・')) + '</div>' : '') +
+    (veh.length ? '<div class="hint">車両：' + esc(veh.join('・')) + '</div>' : '') +
+    '<div class="sec">送った文</div><div class="raw">' + esc(m.message) + '</div>' +
+    '<div class="sec">話した内容（そのまま）</div><div class="raw">' + esc(m.rawText) + '</div>' +
+    '<div class="row2" style="margin-top:10px"><span class="btn sm" data-reuse="' + esc(m.memoId) + '">この話で作り直す</span>' + (canDel ? '<span class="btn sm danger" data-del="' + esc(m.memoId) + '">消す</span>' : '') + '</div></div>';
+}
+async function openMemo(id) {
+  OPEN_ID = OPEN_ID === id ? '' : id;
+  const m = listItems().find(x => x.memoId === id);
+  if (m && m.by !== me()) {
+    const rd = lsGet(LS.read, []); if (!rd.includes(id)) { rd.push(id); lsSet(LS.read, rd.slice(-500)); }
+    if (SERVER_LIST && !m.local && me() && !String(m.readBy || '').split('、').includes(me())) {
+      postJSON(GAS_URL, { app: 'yoten', mode: 'read', memoId: id, by: me() }).then(r => { if (r.ok) { m.readBy = r.readBy; renderList(); } }).catch(() => { });
+    }
+  }
+  renderList();
+}
+async function deleteMemo(id) {
+  if (!confirm('この記録を消しますか？')) return;
+  try { const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'delete', memoId: id, by: me() }); if (!r.ok) throw new Error(r.error); lsSet(LS.local, lsGet(LS.local, []).filter(m => m.memoId !== id)); toast('消しました'); loadMemos(); }
+  catch (e) { toast(e.message || NET_ERR); }
+}
+function reuseMemo(id) {
+  const m = listItems().find(x => x.memoId === id); if (!m) return;
+  $('raw').value = m.rawText || ''; lsSet(LS.draft, $('raw').value);
+  if (TO_LIST.includes(m.to)) { TO = m.to; lsSet(LS.to, TO); drawTo(); }
+  switchTab('speak'); go();
+}
+
+/* ============ 名前・モーダル ============ */
+let AFTER_NAME = null;
+function chooseName(force, then) { if (me() && !force) { if (then) then(); return; } AFTER_NAME = then || null; drawName(); }
+function drawName() {
+  const typed = $('nmIn') ? $('nmIn').value : me();
+  openModal('<h3>あなたの名前</h3><p class="hint" style="margin:4px 0 12px">最初の1回だけ選びます（日報・段取りアプリと同じ名前です）。</p>' +
+    '<div class="chips" style="margin-bottom:12px">' + staffList().map(s => '<button type="button" class="chip" data-nm="' + esc(s) + '">' + esc(s) + '</button>').join('') + '</div>' +
+    '<input type="text" id="nmIn" placeholder="一覧にないときは名前を入力" value="' + esc(typed) + '">' +
+    '<div class="row2" style="margin-top:12px"><button class="btn" data-act="later">あとで</button><button class="btn primary" data-act="ok">決定</button></div>',
+    e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.act === 'later') { AFTER_NAME = null; closeModal(); return; }
+      const v = b.dataset.nm || (b.dataset.act === 'ok' ? $('nmIn').value.trim() : '');
+      if (!v) { if (b.dataset.act === 'ok') toast('名前を選ぶか入力してください'); return; }
+      lsSet(LS.me, v); $('meBtn').textContent = '👤 ' + v; closeModal(); renderList();
+      const t = AFTER_NAME; AFTER_NAME = null; if (t) t();
+    });
+}
+let modalHandler = null;
+function openModal(html, handler) { $('modal').innerHTML = html; modalHandler = handler; $('modalBg').classList.add('show'); $('modal').scrollTop = 0; }
+function closeModal() { if (LISTENING) stopListen(); $('modalBg').classList.remove('show'); $('modal').innerHTML = ''; modalHandler = null; }
+$('modal').addEventListener('click', e => { if (modalHandler) modalHandler(e); });
+$('modalBg').addEventListener('click', e => { if (e.target === $('modalBg')) closeModal(); });
+
+/* ============ イベント ============ */
+function switchTab(tab) {
+  if (LISTENING) stopListen();
+  document.querySelectorAll('nav.tabs button').forEach(x => x.classList.toggle('on', x.dataset.tab === tab));
+  $('tab-speak').hidden = tab !== 'speak'; $('tab-list').hidden = tab !== 'list';
+  window.scrollTo(0, 0); if (tab === 'list') { renderList(); loadMemos(); }
+}
+document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+$('toChips').addEventListener('click', e => {
+  const c = e.target.closest('[data-to]'); if (!c) return;
+  TO = c.dataset.to; lsSet(LS.to, TO); drawTo();
+  if (RESULT && RESULT.local) { RESULT.to = TO; RESULT.message = composeMessage(RESULT); renderResult(); }
+  else if (RESULT) toast('宛先を変えたら、もう一度「まとめる」を押すと送る文が変わります');
+});
+$('micBtn').addEventListener('click', () => startListen($('raw'), $('micBtn'), $('micLabel'), $('micStatus')));
+$('raw').addEventListener('input', () => lsSet(LS.draft, $('raw').value));
+$('clearBtn').addEventListener('click', () => { if ($('raw').value && !confirm('話した内容を消しますか？')) return; if (LISTENING) stopListen(); $('raw').value = ''; lsSet(LS.draft, ''); RESULT = null; renderResult(); $('micLabel').textContent = '話す'; });
+$('goBtn').addEventListener('click', go);
+$('result').addEventListener('click', e => {
+  const a = e.target.closest('[data-ans]'); if (a) return openAnswer(RESULT.missing[Number(a.dataset.ans)]);
+  const w = e.target.closest('[data-term]'); if (w) return showTerm(w.dataset.term);
+  if (e.target.closest('#copyBtn')) return copyMsg();
+  if (e.target.closest('#shareBtn')) return share();
+  if (e.target.closest('#saveBtn')) return save();
+  if (e.target.closest('#moreBtn')) return openAnswer('');
+});
+$('listSeg').addEventListener('click', e => { const b = e.target.closest('[data-seg]'); if (!b) return; SEG = b.dataset.seg; document.querySelectorAll('#listSeg button').forEach(x => x.classList.toggle('on', x === b)); renderList(); });
+$('memoList').addEventListener('click', e => {
+  const d = e.target.closest('[data-del]'); if (d) { e.stopPropagation(); return deleteMemo(d.dataset.del); }
+  const u = e.target.closest('[data-reuse]'); if (u) { e.stopPropagation(); return reuseMemo(u.dataset.reuse); }
+  const m = e.target.closest('[data-memo]'); if (m) return openMemo(m.dataset.memo);
+});
+$('meBtn').addEventListener('click', () => chooseName(true));
+
+(function init() {
+  if (me()) $('meBtn').textContent = '👤 ' + me();
+  drawTo();
+  $('raw').value = lsGet(LS.draft, '') || '';
+  if (!LIVE) $('micStatus').textContent = 'まとまらなくて大丈夫。🎤を押して、キーボードのマイクで話してください';
+  if (new URLSearchParams(location.search).get('tab') === 'list') switchTab('list');
+  load();
+})();
+</script>
+</body>
+</html>

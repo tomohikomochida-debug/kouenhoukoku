@@ -4,6 +4,7 @@
  *  ・用語集  （app=yougo） ：言葉のマスタ。用語／呼び方／聞き間違い。AIで探す・意味の下書き
  *  ・道具管理（app=dougu） ：道具マスタ（用語IDでつなぐ）・番地・写真。登録時のAI照合
  *  ・段取り  （app=dandori）：段取りカード。Googleカレンダー（現場カレンダー・出勤調整カレンダー）の読み取り。AIで話を整理
+ *  ・要点まとめ（app=yoten）：まとまらないまま話した内容を、AIで要点・必要な道具・車両・送る文に整理。要点メモに残す
  *  返り値はすべて { ok:true/false, error?:"..." } 形式（社内アプリ共通ルール）
  *
  * ───────── 置き方 ─────────
@@ -36,7 +37,8 @@ var SHEETS = {
   vehicles:  { name: '車両',         head: ['id', 'name', 'aliases', 'ownership', 'plate', 'model', 'shakenDate', 'insuranceDate', 'rentalShop', 'rentalFrom', 'rentalTo', 'photoUrl', 'photoId', 'status', 'memo', 'updatedBy', 'updatedAt', 'docFolderId', 'category', 'waste', 'inspectDate', 'firstReg'] },
   vehicleLog:{ name: '車両の記録',   head: ['logId', 'vehicleId', 'date', 'type', 'content', 'shop', 'cost', 'odometer', 'by', 'at'] },
   toolRepair:{ name: '修理履歴',     head: ['logId', 'toolId', 'date', 'type', 'content', 'shop', 'cost', 'by', 'at'] },
-  vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at', 'batch', 'state', 'validUntil', 'page'] }
+  vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at', 'batch', 'state', 'validUntil', 'page'] },
+  memos:     { name: '要点メモ',     head: ['memoId', 'at', 'by', 'to', 'kind', 'headline', 'points', 'needs', 'vehicles', 'site', 'when', 'people', 'missing', 'message', 'rawText', 'readBy'] }
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
 
@@ -179,6 +181,7 @@ function doGet(e) {
     if (app === 'sharyo' && a === 'list') return out_({ ok: true, vehicles: vehicleList_() });
     if (app === 'sharyo' && a === 'usage') return out_(vehicleUsage_(Number(p.months) || 13));
     if (app === 'sharyo' && a === 'data') return out_({ ok: true, vehicles: rows_('vehicles'), logs: rows_('vehicleLog'), docs: rows_('vehicleDocs'), suppliers: rows_('suppliers'), admins: admins_() });
+    if (app === 'yoten' && a === 'list') return out_({ ok: true, memos: memoList_(Number(p.days) || 60), admins: admins_() });
     if (app === 'dandori') {
       var today = ymd_(new Date());
       if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles') });
@@ -229,6 +232,11 @@ function doPost(e) {
       case 'dandori:deleteCard': return withLock_(function () { return deleteCard_(b.cardId); });
       case 'dandori:addNickname':    return withLock_(function () { return addNickname_(b.name, b.nickname, b.by); });
       case 'dandori:deleteNickname': return withLock_(function () { return deleteNickname_(b.name, b.nickname); });
+      /* 要点まとめ */
+      case 'yoten:summarize':  return out_(summarize_(b));
+      case 'yoten:save':       return withLock_(function () { return upsert_('memos', 'memoId', 'M', Object.assign({}, b.memo, { by: b.by, at: now_() }), b.by); });
+      case 'yoten:read':       return withLock_(function () { return readMemo_(b.memoId, b.by); });
+      case 'yoten:delete':     return withLock_(function () { return deleteMemo_(b.memoId, b.by); });
       default: return out_({ ok: false, error: 'unknown mode: ' + key });
     }
   } catch (err) { return out_({ ok: false, error: String(err) }); }
@@ -754,6 +762,73 @@ function organize_(b) {   // 順不同に話した段取りを「日付×現場�
     '話した内容：\n' + b.text;
   var j = gemini_(prompt);
   return { ok: true, cards: j.cards || [] };
+}
+
+/* ================================================================
+ *  要点まとめ（言葉にするのが苦手なスタッフ向け）
+ *  まとまらないまま話した内容 →「一言でいうと」「要点」「必要な道具・資材」「車両」「足りない情報（聞き返し）」「送る文」
+ * ================================================================ */
+var MEMO_KINDS = ['報告', '相談', 'お願い', '連絡', '困りごと', 'その他'];
+function summarize_(b) {
+  var to = b.to || '親方へ';
+  var prompt =
+    'あなたは造園会社（植木屋）の、話を聞いてまとめる係です。言葉にするのが苦手なスタッフが、順番もばらばらに、まとまらないまま話した内容を、聞く人にすぐ伝わる形に整理してください。\n' +
+    '話した日時：' + (b.spokenAt || now_()) + '（「今日」「明日」「木曜」などはこの日時を基準に YYYY-MM-DD に直す）\n' +
+    '話した人：' + (b.speaker || 'スタッフ') + '（「私」「俺」「自分」はこの人）\n' +
+    '宛先：' + to + '\n' +
+    'ルール：\n' +
+    '・「えー」「あの」「なんか」「〜みたいな」、同じ話のくり返し、言いよどみは取り除く。言い直し（「3本、いや5本」）は後の発言を採用する\n' +
+    '・話していないことは書かない。推測で埋めない。分からない所は missing に回す\n' +
+    '・本人の気持ちや理由（「〜だから困っている」「〜したい」）は大事な情報なので、短くして残す\n' +
+    '・kind は ' + MEMO_KINDS.join('・') + ' から1つ（道具が壊れた・足りない・危ないは「困りごと」、何かを頼みたいは「お願い」、どうしたらいいか聞きたいは「相談」、終わった・こうだったは「報告」）\n' +
+    '・headline は「一言でいうと」。結論を先に、25字くらいで\n' +
+    '・points は要点。大事な順に3〜6個、1つ30字以内。主語や対象（何が・どこの）を省かない\n' +
+    '・needs は話に出た「必要な道具・資材・買う物」。名前は下の辞書の正式名に直す（社内の呼び方・聞き間違いも辞書で直す）。数が話に出ていれば qty と unit、なぜ要るかが話に出ていれば why\n' +
+    '・vehicles は話に出た車両。車両一覧の名前に合わせる\n' +
+    '・site は現場名。現場マスタの名前に合わせる（音声の聞き間違いが多いので、音や字が近い名前に直す）。なければ空\n' +
+    '・when はいつの話か（YYYY-MM-DD）。はっきりしなければ空にして whenNote に話した言い方（「来週あたり」など）\n' +
+    '・people は話に出たスタッフ。名簿の正式な名前で（呼び名・〜くんは名簿で直す）。業者・お店・お客さんは入れない\n' +
+    '・missing は「聞く人が知りたいのに、話に出ていないこと」。いつ・どこ・何を・いくつ・誰が・なぜ・どうしてほしいか のうち、用件に本当に必要なものだけ。スタッフがそのまま答えられる短い質問で、最大4つ（例：「何本必要ですか？」「いつまでに必要ですか？」）。足りていれば空\n' +
+    '・words は話の中の専門用語・社内の呼び方で、辞書の正式名に直したもの {"said":"話した言葉","term":"正式名"}。直していないものは書かない\n' +
+    '・corrections は聞き間違いを直したもの（「元の言葉→直した言葉」）\n' +
+    '・message は宛先にそのまま送れる文。' + (to === '自分用メモ' ? '自分用のメモなので、短い箇条書き（「・」で始める）' : 'LINEで送る短い文。です・ます調で3〜6行。最初の1行で用件が分かるように。宛先が親方なら「親方、」、みんななら「みなさん、」で始める') + '。missing の内容は勝手に埋めない\n' +
+    'JSONだけ返す：{"kind":"","headline":"","points":[""],"needs":[{"name":"正式名","qty":数または空,"unit":"","why":""}],"vehicles":["車両名"],' +
+    '"site":"","when":"YYYY-MM-DD または空","whenNote":"","people":["名簿の名前"],"missing":["質問"],"words":[{"said":"","term":""}],"corrections":[""],"message":""}\n\n' +
+    '名簿（正式な名前（呼び名））：\n' + (b.roster || '') + '\n' +
+    '現場マスタ：\n' + (b.masterSites || []).join('、') + '\n' +
+    (b.vehicles ? '車両一覧（名前：呼び方）：\n' + b.vehicles + '\n' : '') +
+    (b.suppliers ? '取引先（正式名：呼び方。店・業者はスタッフではない）：\n' + b.suppliers + '\n' : '') +
+    '道具・資材の辞書（呼び方→正式名）：\n' + (b.dict || '') + '\n' +
+    (b.terms ? 'その他の用語（正式名）：\n' + b.terms + '\n' : '') + '\n' +
+    (b.previous ? '前にまとめた結果（今回の話は、これへの付け足し・答え。合わせて1つにまとめ直す）：\n' + JSON.stringify(b.previous) + '\n\n' : '') +
+    '話した内容：\n' + b.text;
+  var j = gemini_(prompt);
+  var arr = function (v) { return Array.isArray(v) ? v : (v ? [v] : []); };
+  return { ok: true, result: {
+    kind: MEMO_KINDS.indexOf(j.kind) >= 0 ? j.kind : 'その他', headline: String(j.headline || ''), points: arr(j.points).map(String),
+    needs: arr(j.needs), vehicles: arr(j.vehicles).map(String), site: String(j.site || ''), when: String(j.when || ''), whenNote: String(j.whenNote || ''),
+    people: arr(j.people).map(String), missing: arr(j.missing).map(String).slice(0, 4), words: arr(j.words), corrections: arr(j.corrections).map(String), message: String(j.message || '')
+  } };
+}
+function memoList_(days) {
+  var from = Utilities.formatDate(new Date(Date.now() - days * 86400000), TZ, 'yyyy-MM-dd');
+  return rows_('memos').filter(function (m) { return String(m.at).slice(0, 10) >= from; })
+    .sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); }).slice(0, 200);
+}
+function readMemo_(id, by) {   // 読んだ人を残す（「親方が見た」が送った人に分かるように）
+  var s = sh_('memos'), head = SHEETS.memos.head, vals = s.getDataRange().getValues(), col = head.indexOf('readBy');
+  for (var i = 1; i < vals.length; i++) if (String(vals[i][0]) === String(id)) {
+    var list = String(vals[i][col] || '').split('、').filter(String);
+    if (by && list.indexOf(by) < 0) { list.push(by); s.getRange(i + 1, col + 1).setValue(list.join('、')); }
+    return { ok: true, readBy: list.join('、') };
+  }
+  return { ok: false, error: '見つかりません: ' + id };
+}
+function deleteMemo_(id, by) {   // 消せるのは書いた本人と親方だけ
+  var m = rows_('memos').filter(function (x) { return String(x.memoId) === String(id); })[0];
+  if (!m) return { ok: false, error: '見つかりません: ' + id };
+  if (String(m.by) !== String(by || '') && !isAdmin_(by)) return { ok: false, error: '消せるのは書いた本人と' + admins_().join('・') + 'だけです' };
+  return remove_('memos', id);
 }
 
 /* ================================================================
