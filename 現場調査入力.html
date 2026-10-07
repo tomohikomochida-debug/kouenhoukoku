@@ -348,7 +348,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   <div id="camQr"></div>
   <p id="camStatus" class="camst"></p>
   <div class="row"><input id="camUrl" readonly><button type="button" id="camCopy">コピー</button></div>
-  <p class="hint">一度つないだら、次からはiPhoneで同じページを開くだけでつながります（iPhoneで「ホーム画面に追加」しておくと便利です）。iPadとiPhoneの両方がネットにつながっている必要があります。</p>
+  <p class="hint">一度つないだら、次からはiPhoneで同じページを開くだけでつながります（iPhoneで「ホーム画面に追加」しておくと便利です）。iPhoneの画面を消しても、戻せば何も押さずに自動でつながり直します（その間に撮った写真はiPhoneに残り、つながったら送られます）。つながっている間はiPadの画面は消えません。iPadとiPhoneの両方がネットにつながっている必要があります。</p>
   <div class="row"><button type="button" class="warn hidden" id="camStop">iPhoneカメラをやめる</button><span style="flex:1"></span><button type="button" class="pri" onclick="document.getElementById('dlgCam').close()">閉じる</button></div>
 </dialog>
 <div id="np" class="np noprint" style="display:none">
@@ -3572,11 +3572,15 @@ function camStart(){
   const p=new Peer(CAM.id,peerOpts()); CAM.peer=p;
   p.on("open",()=>{ CAM.status="ready"; camUI(); });
   p.on("connection",c=>{
-    c.on("open",()=>{ CAM.conns.add(c); camUI(); camSync(); renderTrees();
+    c.on("open",()=>{ c._last=Date.now(); CAM.conns.add(c); camUI(); camSync(); renderTrees(); camWake();
       const x=camItem(CAM.target); toast("📱 iPhoneカメラがつながりました"+(x?"。次の写真は"+(x.i+1)+"番に入ります":""));
       if(CAM.closeOnJoin){ CAM.closeOnJoin=false; const d=document.getElementById("dlgCam"); setTimeout(()=>{ if(d.open) d.close(); },1200); } });   // 番号の「つなぐ」から開いたときは、つながったら閉じる
-    c.on("data",d=>camData(c,d).catch(e=>{ console.error(e); try{ c.send({type:"ack",id:d&&d.id,ok:false,msg:"受け取れませんでした"}); }catch(_){} }));
-    const gone=()=>{ if(CAM.conns.delete(c)){ camUI(); renderTrees(); } };
+    c.on("data",d=>{
+      c._last=Date.now();
+      if(d&&d.type==="ping"){ c._ping=true; try{ c.send({type:"pong"}); }catch(e){} return; }   // iPhone からの「つながってる？」
+      camData(c,d).catch(e=>{ console.error(e); try{ c.send({type:"ack",id:d&&d.id,ok:false,msg:"受け取れませんでした"}); }catch(_){} });
+    });
+    const gone=()=>{ if(CAM.conns.delete(c)){ camUI(); renderTrees(); camWake(); } };
     c.on("close",gone); c.on("error",gone);
   });
   p.on("disconnected",()=>{ if(p.destroyed) return; CAM.status="wait"; camUI(); setTimeout(()=>{ if(!p.destroyed&&p.disconnected) try{ p.reconnect(); }catch(e){} },2500); });
@@ -3590,7 +3594,21 @@ function camStop(){
   camLS("gc_cam","0");
   for(const c of CAM.conns) try{ c.close(); }catch(e){}
   CAM.conns.clear(); if(CAM.peer) try{ CAM.peer.destroy(); }catch(e){}
-  CAM.peer=null; CAM.status="off"; camUI(); renderTrees();
+  CAM.peer=null; CAM.status="off"; camUI(); renderTrees(); camWake();
+}
+// iPhone とつながっている間は、iPad の画面を消さない（消えると通信が止まるため）
+async function camWake(){
+  if(camOn()&&document.visibilityState==="visible"){ if(!CAM.wl&&navigator.wakeLock) try{ CAM.wl=await navigator.wakeLock.request("screen"); CAM.wl.addEventListener("release",()=>{ CAM.wl=null; }); }catch(e){} }
+  else if(CAM.wl){ try{ CAM.wl.release(); }catch(e){} CAM.wl=null; }
+}
+// 待ち受けの見張り：サーバーとの接続が切れていたらつなぎ直し、返事の来なくなった iPhone は外す
+function camWatch(){
+  if(CAM.status==="off") return;
+  if(!CAM.peer||CAM.peer.destroyed){ camStart(); return; }
+  if(CAM.peer.disconnected) try{ CAM.peer.reconnect(); }catch(e){}
+  const now=Date.now();
+  // 「つながってる？」が20秒（一度も来ていなければ30秒）来なければ外す
+  for(const c of [...CAM.conns]) if(now-c._last>(c._ping?20000:30000)){ CAM.conns.delete(c); try{ c.close(); }catch(e){} camUI(); renderTrees(); camWake(); }
 }
 // iPhone へ「いまの送り先」と番号の一覧を知らせる
 function camSync(){
@@ -3671,10 +3689,8 @@ function camInit(){
   document.getElementById("camStop").onclick=()=>{ camStop(); document.getElementById("dlgCam").close(); };
   document.getElementById("camCopy").onclick=async()=>{ try{ await navigator.clipboard.writeText(document.getElementById("camUrl").value); toast("コピーしました"); }catch(e){ document.getElementById("camUrl").select(); } };
   if(camLS("gc_cam")==="1") camStart();   // 一度つないだ iPad は、開くたびに自動で待ち受ける（iPhone は同じページを開くだけでつながる）
-  document.addEventListener("visibilitychange",()=>{
-    if(document.visibilityState!=="visible"||!CAM.peer||CAM.peer.destroyed) return;
-    if(CAM.peer.disconnected) try{ CAM.peer.reconnect(); }catch(e){}
-  });
+  document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"){ camWatch(); camWake(); } });
+  setInterval(camWatch,5000);
 }
 
 /* ---------- iPhone 側：撮影画面 ---------- */
@@ -3716,7 +3732,7 @@ async function camPhone(hostId){
     hEl("div",{class:"ctop"},dot,stat),tgt,list,
     hEl("div",{class:"cbot"},hEl("div",{class:"cposrow"},nextBtn,posBtn,posInfo),lens,hEl("div",{class:"crow"},thumb,shutter,stdBtn,std)));
   document.body.append(root);
-  let peer=null, conn=null, connecting=false, last=null, stream=null, devs=[];
+  let peer=null, conn=null, connecting=false, last=null, stream=null, devs=[], lastPong=0, hiddenAt=0;
   const pending=new Map();
   const setStat=(t,cls)=>{ stat.textContent=t+(pending.size&&!/枚/.test(t)?"（未送信"+pending.size+"枚はiPhoneに保存中）":""); dot.className="cdot "+(cls||""); };
   const showTarget=()=>{ if(!last){ tgt.textContent="送り先：—"; return; } tgt.textContent=last.title+" ▸ "+last.label+" ▾"; };
@@ -3736,6 +3752,7 @@ async function camPhone(hostId){
   // --- つなぐ ---
   const onData=d=>{
     if(!d||typeof d!=="object") return;
+    if(d.type==="pong"){ lastPong=Date.now(); return; }
     if(d.type==="target"){ last=d; showTarget(); if(conn&&conn.open) for(const [,it] of pending) if(it.el.classList.contains("ng")){ it.el.className="cth wait"; send1(it); } }
     if(d.type==="posack"){ setStat(d.ok?"📍 "+d.label+"を記録しました":"⚠️ "+d.msg,d.ok?"ok":"ng"); return; }
     if(d.type==="ack"){
@@ -3748,13 +3765,16 @@ async function camPhone(hostId){
     if(connecting||(conn&&conn.open)||!peer||!peer.open) return;
     connecting=true; setStat("iPadにつないでいます…","wait");
     const c=peer.connect(hostId,{reliable:true,serialization:"binary"});
-    const to=setTimeout(()=>{ if(!c.open){ connecting=false; try{ c.close(); }catch(e){} } },9000);
-    c.on("open",()=>{ clearTimeout(to); connecting=false; conn=c; setStat(pending.size?"iPadとつながりました。残りの"+pending.size+"枚を送ります":"iPadとつながりました","ok"); c.send({type:"hello"}); for(const [,it] of pending) send1(it); });
+    const to=setTimeout(()=>{ if(!c.open){ connecting=false; try{ c.close(); }catch(e){} } },6000);
+    c.on("open",()=>{ clearTimeout(to); connecting=false; conn=c; lastPong=Date.now(); setStat(pending.size?"iPadとつながりました。残りの"+pending.size+"枚を送ります":"iPadとつながりました","ok"); c.send({type:"hello"}); for(const [,it] of pending) send1(it); });
     c.on("data",onData);
     const lost=()=>{ clearTimeout(to); connecting=false; if(conn===c){ conn=null; setStat("iPadとの接続が切れました。つなぎ直しています…","wait"); } };
     c.on("close",lost); c.on("error",lost);
   };
+  const dropConn=msg=>{ const c=conn; conn=null; connecting=false; if(c) try{ c.close(); }catch(e){} setStat(msg,"wait"); };
   const startPeer=()=>{
+    if(peer&&!peer.destroyed) try{ peer.destroy(); }catch(e){}
+    conn=null; connecting=false;
     peer=new Peer(undefined,peerOpts());
     peer.on("open",connect);
     peer.on("disconnected",()=>{ setTimeout(()=>{ if(peer&&!peer.destroyed&&peer.disconnected) try{ peer.reconnect(); }catch(e){} },2000); });
@@ -3765,7 +3785,24 @@ async function camPhone(hostId){
     });
   };
   if(typeof Peer==="undefined") setStat("部品を読み込めませんでした","ng"); else startPeer();
-  setInterval(()=>{ if(peer&&!peer.destroyed&&peer.disconnected) try{ peer.reconnect(); }catch(e){} connect(); },3500);
+  // 見張り：3秒ごとに「つながってる？」を送り、10秒返事がなければ、つなぎ直す（画面を消した後に、つながったふりのまま止まるのを防ぐ）
+  setInterval(()=>{
+    if(document.visibilityState!=="visible"||typeof Peer==="undefined") return;
+    if(!peer||peer.destroyed){ startPeer(); return; }
+    if(peer.disconnected) try{ peer.reconnect(); }catch(e){}
+    if(conn&&conn.open){ try{ conn.send({type:"ping"}); }catch(e){} if(Date.now()-lastPong>10000) dropConn("iPadから返事がないので、つなぎ直しています…（そのまま撮れます）"); }
+    connect();
+  },3000);
+  // 画面を消して戻ってきたら、何も押さなくても すぐ つなぎ直す
+  const resume=()=>{
+    const away=hiddenAt?Date.now()-hiddenAt:0; hiddenAt=0;
+    if(typeof Peer==="undefined") return;
+    if(away>30000||!peer||peer.destroyed){ setStat("自動でつなぎ直しています…（そのまま撮れます）","wait"); startPeer(); return; }   // 長く離れていたら、つなぎ役のサーバーから入り直す
+    if(away>2000) dropConn("自動でつなぎ直しています…（そのまま撮れます）");
+    if(peer.disconnected) try{ peer.reconnect(); }catch(e){}
+    connect();
+  };
+  window.addEventListener("pageshow",e=>{ if(e.persisted){ hiddenAt=hiddenAt||Date.now()-60000; resume(); } });
   // --- カメラ ---
   const lensName=l=>/ultra ?wide|超広角/i.test(l)?"0.5x":/tele|望遠/i.test(l)?"望遠":/dual|triple|デュアル|トリプル/i.test(l)?"オート":"1x";
   const lensPref=camLS("gc_lens");
@@ -3830,10 +3867,9 @@ async function camPhone(hostId){
   const wake=async()=>{ try{ if(navigator.wakeLock) await navigator.wakeLock.request("screen"); }catch(e){} };
   wake();
   document.addEventListener("visibilitychange",async()=>{
-    if(document.visibilityState!=="visible") return;
-    wake();
+    if(document.visibilityState!=="visible"){ hiddenAt=Date.now(); return; }
+    wake(); resume();
     if(!stream||stream.getVideoTracks().every(t=>t.readyState==="ended")) try{ const on=lens.querySelector(".on"); const d=devs.find(x=>lensName(x.label)===(on&&on.textContent)); await startCam(d?d.deviceId:null); }catch(e){}
-    connect();
   });
 }
 
