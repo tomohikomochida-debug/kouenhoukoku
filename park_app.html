@@ -385,6 +385,9 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
         <div style="flex:1"><label class="fld">数量（t）</label><input id="rpGenzaiQty" class="txt" inputmode="decimal" placeholder="例：0.19"></div>
         <div style="flex:1"><label class="fld">摘要</label><input id="rpGenzaiNote" class="txt" placeholder="例：丸太のみ"></div>
       </div>
+      <button class="btn ghost" id="genzaiFetch" style="margin-top:8px">🔗 残材処分の記録から数量を取る<small>公園名が同じ記録を探して、数量（t）に仮置きします</small></button>
+      <div id="genzaiStat" style="display:none;font-size:12px;margin-top:6px;padding:6px 8px;border-radius:8px;background:rgba(227,179,65,.12);color:#e3b341"></div>
+      <div id="genzaiList" style="display:none;margin-top:6px"></div>
       <div class="legend" style="font-size:11px;color:var(--mut);margin-top:4px">複数の公園をまとめて処分した回は、発生材を付ける1つの公園だけチェックを入れ、ほかの公園はチェックを外してください。</div>
       <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
       <h3 style="margin:0 0 6px">クラウド</h3>
@@ -2367,7 +2370,7 @@ $('saveJson').onclick=()=>{
   const data={park:$('parkName').value||'未設定',contract:$('contractName').value||'',order,date:$('workDate').value||'',start:$('startDate').value||'',finish:$('finishDate').value||'',agent:$('agentName')?($('agentName').value||''):'',supervisor:$('supervisorName')?($('supervisorName').value||''):'',
     scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,
     rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value,
-        genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:''},
+        genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:'',genzaiSrc:genzaiSrc},
     customWorks:customWorksDefs,
     mapImg:state.mapImg||null,saved:new Date().toISOString()};
   const base=(order?order+'_':'')+(data.park);
@@ -2424,7 +2427,10 @@ function applyParkData(d,kb){
   if($('agentName'))$('agentName').value=d.agent||'';if($('supervisorName'))$('supervisorName').value=d.supervisor||'';
   if(d.rp){const R=d.rp;const sv=(id,v)=>{const el=$(id);if(el&&v!==undefined&&v!==null&&v!=='')el.value=v;};
     sv('rpFy',R.fy);sv('rpNo',R.no);sv('rpSubmit',R.submit);sv('rpKeiyaku',R.keiyaku);sv('rpAddr',R.addr);sv('rpAtena',R.atena);sv('rpUkeoi',R.ukeoi);
-    sv('rpGenzaiQty',R.genzaiQty);sv('rpGenzaiNote',R.genzaiNote);if($('rpGenzaiOn'))$('rpGenzaiOn').checked=(R.genzaiOn!==false);}
+    sv('rpGenzaiQty',R.genzaiQty);sv('rpGenzaiNote',R.genzaiNote);if($('rpGenzaiOn'))$('rpGenzaiOn').checked=(R.genzaiOn!==false);
+    genzaiSrc=Array.isArray(R.genzaiSrc)?R.genzaiSrc:[]; zzCands=[]; renderZzCands();
+    if($('rpGenzaiQty'))$('rpGenzaiQty').style.borderColor='';
+    genzaiStat(genzaiSrc.length?('残材処分の記録 '+genzaiSrc.length+'件から取った数量です（'+genzaiSrc.map(s=>s.date+' '+s.kg+'kg').join('、')+'）'):'');}
   if(d.customWorks){ importCustomWorks(d.customWorks); buildTreeColors(); fillCats(); }
   state.cloudId=d.cloudId||state.cloudId||null; state.cloudVer=d.cloudId?(d.cloudVer||null):(state.cloudVer||null);
   if(d.mapImg){state.mapImg=d.mapImg;const b=$('rpMapBtn');if(b)b.firstChild.textContent='🖼 履行場所の図：読み込みました（変えるならもう一度）';}
@@ -2508,7 +2514,7 @@ function parkPayload(){
     scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,
     rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,
         addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value,
-        genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:''},
+        genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:'',genzaiSrc:genzaiSrc},
     customWorks:customWorksDefs,
     mapImg:state.mapImg||null,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,saved:new Date().toISOString()};
 }
@@ -3618,6 +3624,99 @@ function rpRows(){
   }
   return rows;
 }
+
+/* ---------- 残材処分アプリと連携：同じ公園の処分量を発生材の数量に仮置き ---------- */
+const ZAIZAI_GAS='https://script.google.com/macros/s/AKfycbz3eI72jQip1qDuZp1rBgQQB4vmDlaP8kjptoFWquxKf2x1Y45ZbjG_wUksPmZ113zM/exec';
+let zzAll=null, zzCands=[], genzaiSrc=[];
+function zzNorm(s){ return String(s||'').normalize('NFKC').replace(/[\s　]/g,''); }
+function zzNum(v){ const n=Number(String(v==null?'':v).replace(/[^\d.-]/g,'')); return isFinite(n)?n:0; }
+function zzDate(v){ if(!v) return ''; const s=String(v).trim();
+  if(/^\d{4}-\d{2}-\d{2}T/.test(s)){ const t=new Date(s); if(!isNaN(t)) return t.getFullYear()+'-'+('0'+(t.getMonth()+1)).slice(-2)+'-'+('0'+t.getDate()).slice(-2); }  // UTCの時刻つきは端末（日本時間）の日付に直す
+  let m=s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/); if(m) return m[1]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[3]).slice(-2);
+  const d=new Date(s); if(!isNaN(d)) return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+  return s; }
+function zzAddDays(ymd,n){ const d=new Date(ymd+'T00:00:00'); if(isNaN(d)) return ymd; d.setDate(d.getDate()+n);
+  return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function zzKey(r){ return r.denpyo?String(r.denpyo):('r'+r.rid); }
+async function zzLoad(force){
+  if(zzAll&&!force) return zzAll;
+  const res=await fetch(ZAIZAI_GAS+'?action=list',{cache:'no-store'}); const d=await res.json();
+  zzAll=(d.records||[]); return zzAll;
+}
+// 公園名（と委託名）で、残材処分の記録を探す
+function zzMatch(park,contract){
+  const p=zzNorm(park); if(!p) return [];
+  let rows=zzAll.filter(r=>zzNorm(r.site)===p);
+  if(!rows.length) rows=zzAll.filter(r=>{ const s=zzNorm(r.site); return s && (s.indexOf(p)>=0||p.indexOf(s)>=0); });
+  const c=zzNorm(contract);
+  if(c&&rows.length){ const same=rows.filter(r=>{ const sc=zzNorm(r.siteContract); return sc && (sc.indexOf(c)>=0||c.indexOf(sc)>=0); }); if(same.length) rows=same; }
+  return rows;
+}
+function genzaiStat(msg){ const el=$('genzaiStat'); if(!el) return; el.style.display=msg?'block':'none'; el.textContent=msg||''; }
+// 候補を作る（同じ伝票に他の現場があれば「全量をこの公園に」を選べる）
+function buildZzCands(rows){
+  const lo=$('startDate').value||$('workDate').value||'';
+  const hi=$('finishDate').value||$('workDate').value||$('startDate').value||'';
+  const latest=rows.reduce((m,r)=>{ const d=zzDate(r.date); return d>m?d:m; },'');
+  return rows.map(r=>{
+    const k=zzKey(r), date=zzDate(r.date), kg=zzNum(r.qty);
+    const same=zzAll.filter(x=>zzKey(x)===k);
+    const totalKg=same.reduce((a,x)=>a+zzNum(x.qty),0);
+    const others=same.filter(x=>zzNorm(x.site)!==zzNorm(r.site)).map(x=>x.site).filter(Boolean);
+    const inWin = (lo&&hi) ? (date>=lo && date<=zzAddDays(hi,14)) : (date===latest);
+    return {k,date,kg,totalKg,others,type:r.type||'',place:r.place||'',on:inWin,full:false};
+  }).sort((a,b)=>b.date.localeCompare(a.date));
+}
+function renderZzCands(){
+  const box=$('genzaiList'); if(!box) return;
+  if(!zzCands.length){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='block';
+  box.innerHTML='<div style="font-size:11px;color:var(--mut);margin-bottom:4px">使う記録にチェック（期間内のものは最初からチェック済み）</div>'+
+    zzCands.map((c,i)=>{
+      let h=`<label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin:4px 0;line-height:1.4"><input type="checkbox" data-zz="${i}" ${c.on?'checked':''}>`+
+        `<span><b>${c.date||'日付なし'}</b>　${Math.round(c.kg).toLocaleString()} kg　<span style="color:var(--mut)">${(c.type||'')}${c.place?'・'+c.place:''}</span></span></label>`;
+      if(c.others.length){
+        h+=`<label style="display:flex;gap:8px;align-items:flex-start;font-size:11.5px;margin:0 0 4px 24px;color:var(--mut);line-height:1.4"><input type="checkbox" data-zzfull="${i}" ${c.full?'checked':''}>`+
+          `<span>この伝票の全量 ${Math.round(c.totalKg).toLocaleString()} kg をこの公園に付ける（同じ伝票：${c.others.join('・')}）</span></label>`;
+      }
+      return h;
+    }).join('');
+  box.querySelectorAll('[data-zz]').forEach(el=>{ el.onchange=()=>{ zzCands[+el.dataset.zz].on=el.checked; applyZz(); }; });
+  box.querySelectorAll('[data-zzfull]').forEach(el=>{ el.onchange=()=>{ const c=zzCands[+el.dataset.zzfull]; c.full=el.checked; if(el.checked) c.on=true; renderZzCands(); applyZz(); }; });
+}
+// チェックした記録の合計を、発生材の数量（t）に仮置きする
+function applyZz(){
+  const sel=zzCands.filter(c=>c.on);
+  const kg=sel.reduce((a,c)=>a+(c.full?c.totalKg:c.kg),0);
+  const q=$('rpGenzaiQty'), n=$('rpGenzaiNote');
+  q.value = kg>0 ? String(Math.round(kg/10)/100) : '';
+  q.style.borderColor = kg>0 ? '#e3b341' : '';
+  const types=[...new Set(sel.map(c=>c.type).filter(Boolean))];
+  if(n && (!n.value || n.dataset.auto==='1')){ n.value = types.length===1 ? types[0]+'のみ' : types.join('・'); n.dataset.auto='1'; }
+  genzaiSrc=sel.map(c=>({k:c.k,date:c.date,kg:Math.round(c.full?c.totalKg:c.kg),full:!!c.full}));
+  genzaiStat(kg>0 ? `仮置き：残材処分の記録 ${sel.length}件・計 ${Math.round(kg).toLocaleString()} kg → ${q.value} t（確認して、ちがえば直してください）`
+                  : '残材処分の記録からは、まだ選ばれていません。');
+}
+async function genzaiFetch(auto){
+  const park=$('parkName').value||'';
+  if(!park.trim()){ if(!auto) alert('先に公園名を入れてください。'); return; }
+  const b=$('genzaiFetch'); const label=b.firstChild.textContent; b.firstChild.textContent='🔗 残材処分の記録を探しています…'; b.disabled=true;
+  try{
+    await zzLoad(!auto);
+    const rows=zzMatch(park,$('contractName')?$('contractName').value:'');
+    if(!rows.length){ zzCands=[]; renderZzCands(); genzaiStat('「'+park+'」の残材処分の記録は見つかりませんでした（現場名の書き方がちがう可能性があります）。'); return; }
+    zzCands=buildZzCands(rows); renderZzCands(); applyZz();
+  }catch(e){ genzaiStat('残材処分の記録を読めませんでした。電波を確認して、もう一度お試しください。'); }
+  finally{ b.firstChild.textContent=label; b.disabled=false; }
+}
+$('genzaiFetch').onclick=()=>genzaiFetch(false);
+// 手で直したら仮置きの印を消す
+$('rpGenzaiQty').addEventListener('input',()=>{ $('rpGenzaiQty').style.borderColor=''; genzaiStat($('rpGenzaiQty').value?'手で入力した数量です。':''); });
+$('rpGenzaiNote').addEventListener('input',()=>{ $('rpGenzaiNote').dataset.auto=''; });
+// 設定を開いたとき、数量が空なら自動で探して仮置きする
+$('cfgBtn').addEventListener('click',()=>{
+  if($('rpGenzaiOn').checked && !$('rpGenzaiQty').value && ($('parkName').value||'').trim()) genzaiFetch(true);
+});
 // 選んだ画像を、わくの縦横比に合わせて白地の中央に置き直す（つぶれ防止）。印刷用に3倍解像度。
 function rpFitMap(dataURL){
   return new Promise((res,rej)=>{
