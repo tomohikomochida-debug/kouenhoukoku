@@ -89,6 +89,15 @@ summary .q{width:20px;height:20px;border-radius:50%;background:var(--leaf);color
 
 .foot{text-align:center;color:var(--bark);font-size:11px;margin-top:22px}
 
+/* リマインド（要点まとめの返事・返事待ち） */
+.remind{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;
+  background:#FFF8E6;border:1px solid #F0DDB0;border-left:6px solid var(--tape);border-radius:12px;
+  padding:12px 14px;margin:0 0 14px;font-size:14px}
+.remind b{color:var(--ink)}
+.remind .go{margin-left:auto;color:var(--tape);font-weight:700;white-space:nowrap}
+.app{position:relative}
+.app .cnt{position:absolute;top:10px;right:10px;background:var(--danger);color:#fff;border-radius:999px;
+  font-size:12px;font-weight:700;min-width:22px;height:22px;padding:0 7px;display:grid;place-items:center}
 @media (max-width:340px){ .grid{grid-template-columns:1fr} }
 @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
 </style>
@@ -101,6 +110,7 @@ summary .q{width:20px;height:20px;border-radius:50%;background:var(--leaf);color
     <span class="tag">現場のアプリ ｜ 押すだけで開きます</span>
   </header>
 
+  <div id="remind"></div>
   <nav class="grid" id="grid" aria-label="アプリ"></nav>
 
   <div class="sub"><span>事務・集計用</span></div>
@@ -178,13 +188,34 @@ const mk = (tag, cls) => { const e = document.createElement(tag); if (cls) e.cla
 (function renderApps(){
   const grid = document.getElementById('grid');
   for (const a of APPS){
-    const link = mk('a','app'); link.href = a.url;
+    const link = mk('a','app'); link.href = a.url; link.dataset.url = a.url;
     const chip = mk('span','chip'); chip.setAttribute('aria-hidden','true'); chip.innerHTML = svg(a.icon);
     const box = mk('div');
     const h = mk('h2'); h.textContent = a.name;
     const p = mk('p');  p.textContent = a.desc;
     box.append(h, p); link.append(chip, box); grid.append(link);
   }
+})();
+
+/* 要点まとめのリマインド：まだ見ていない返事・返事待ちを、ホームの一番上とカードに出す
+   （名前は日報・段取りアプリで選んだものを使う。電波がないときは何も出さない） */
+(async function remind(){
+  const GAS = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
+  const get = k => { try { const v = localStorage.getItem(k); if (v == null) return ''; try { const j = JSON.parse(v); return typeof j === 'string' ? j : ''; } catch (e) { return v; } } catch (e) { return ''; } };
+  const me = get('dandori_me') || get('nippou_author');
+  if (!me) return;
+  try {
+    const ac = new AbortController(); setTimeout(() => ac.abort(), 10000);
+    const r = await (await fetch(GAS + '?app=yoten&action=badge&me=' + encodeURIComponent(me), { cache: 'no-store', signal: ac.signal })).json();
+    if (!r.ok) return;
+    const n = (r.unread || 0) + (r.waiting || 0);
+    const card = document.querySelector('.app[data-url="yoten.html"]');
+    if (card && n) { const c = mk('span','cnt'); c.textContent = n; card.append(c); }
+    const box = document.getElementById('remind');
+    const add = (href, html) => { const a = mk('a','remind'); a.href = href; a.innerHTML = html + '<span class="go">見る ›</span>'; box.append(a); };
+    if (r.unread) add('yoten.html?tab=list&seg=all', '📩 <span><b>' + (r.from && r.from.length ? r.from.join('・') + 'から' : '') + '返事が' + r.unread + '件</b>届いています</span>');
+    if (r.waiting) add('yoten.html?tab=list&seg=wait', '🗣 <span>スタッフからの相談・報告が<b>' + r.waiting + '件</b>返事を待っています</span>');
+  } catch (e) { /* 電波がないときは出さない */ }
 })();
 
 (function renderTools(){

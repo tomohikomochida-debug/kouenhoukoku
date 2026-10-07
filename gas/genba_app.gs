@@ -38,7 +38,8 @@ var SHEETS = {
   vehicleLog:{ name: '車両の記録',   head: ['logId', 'vehicleId', 'date', 'type', 'content', 'shop', 'cost', 'odometer', 'by', 'at'] },
   toolRepair:{ name: '修理履歴',     head: ['logId', 'toolId', 'date', 'type', 'content', 'shop', 'cost', 'by', 'at'] },
   vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at', 'batch', 'state', 'validUntil', 'page'] },
-  memos:     { name: '要点メモ',     head: ['memoId', 'at', 'by', 'to', 'kind', 'headline', 'points', 'needs', 'vehicles', 'site', 'when', 'people', 'missing', 'message', 'rawText', 'readBy'] }
+  memos:     { name: '要点メモ',     head: ['memoId', 'at', 'by', 'to', 'kind', 'headline', 'points', 'needs', 'vehicles', 'site', 'when', 'people', 'missing', 'message', 'rawText', 'readBy', 'status', 'doneAt', 'doneBy'] },
+  replies:   { name: '要点メモの返事', head: ['replyId', 'memoId', 'at', 'by', 'text', 'scope', 'showAt', 'actions', 'readBy'] }
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
 
@@ -181,7 +182,8 @@ function doGet(e) {
     if (app === 'sharyo' && a === 'list') return out_({ ok: true, vehicles: vehicleList_() });
     if (app === 'sharyo' && a === 'usage') return out_(vehicleUsage_(Number(p.months) || 13));
     if (app === 'sharyo' && a === 'data') return out_({ ok: true, vehicles: rows_('vehicles'), logs: rows_('vehicleLog'), docs: rows_('vehicleDocs'), suppliers: rows_('suppliers'), admins: admins_() });
-    if (app === 'yoten' && a === 'list') return out_({ ok: true, memos: memoList_(Number(p.days) || 60), admins: admins_() });
+    if (app === 'yoten' && a === 'list') { var ml = memoList_(Number(p.days) || 60); return out_({ ok: true, memos: ml, replies: replyList_(ml, p.me), admins: admins_(), repliers: repliers_(), now: now_() }); }
+    if (app === 'yoten' && a === 'badge') return out_(badge_(p.me));
     if (app === 'dandori') {
       var today = ymd_(new Date());
       if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles') });
@@ -237,6 +239,10 @@ function doPost(e) {
       case 'yoten:save':       return withLock_(function () { return upsert_('memos', 'memoId', 'M', Object.assign({}, b.memo, { by: b.by, at: now_() }), b.by); });
       case 'yoten:read':       return withLock_(function () { return readMemo_(b.memoId, b.by); });
       case 'yoten:delete':     return withLock_(function () { return deleteMemo_(b.memoId, b.by); });
+      case 'yoten:interpret':  return out_(interpretReply_(b));
+      case 'yoten:reply':      return withLock_(function () { return reply_(b); });
+      case 'yoten:done':       return withLock_(function () { return setDone_(b.memoId, b.by, b.done); });
+      case 'yoten:readReply':  return withLock_(function () { return readReplies_(b.replyIds, b.by); });
       default: return out_({ ok: false, error: 'unknown mode: ' + key });
     }
   } catch (err) { return out_({ ok: false, error: String(err) }); }
@@ -823,6 +829,95 @@ function readMemo_(id, by) {   // 読んだ人を残す（「親方が見た」�
     return { ok: true, readBy: list.join('、') };
   }
   return { ok: false, error: '見つかりません: ' + id };
+}
+/* ---------- 返事（親方などが記録に返事する） ----------
+ *  ・夜（REPLY_QUIET_FROM 時＝既定20時）から朝（REPLY_SEND_AT 時＝既定7時）までの返事は、朝7時から相手に見える
+ *  ・scope：本人＝書いた人だけ／みんな＝全員に見える
+ *  ・反映：お知らせ（段取りアプリの一番上に出す）、修理に出す（道具管理の修理履歴・今どこ）
+ *  ・返事できる人：スクリプト プロパティ REPLY_NAMES（未設定なら削除できる人＝親方）            */
+function repliers_() { var r = prop_('REPLY_NAMES', ''); return r ? String(r).split(/[,、，\s]+/).map(function (x) { return x.trim(); }).filter(String) : admins_(); }
+function isReplier_(name) { return repliers_().indexOf(String(name || '').trim()) >= 0 || isAdmin_(name); }
+function showAt_(sendNow) {
+  var d = new Date(), h = Number(Utilities.formatDate(d, TZ, 'H')), from = Number(prop_('REPLY_QUIET_FROM', '20')), at = Number(prop_('REPLY_SEND_AT', '7'));
+  if (sendNow || (h >= at && h < from)) return now_();
+  var day = ymd_(d); if (h >= from) day = addDays_(day, 1);
+  return day + ' ' + ('0' + at).slice(-2) + ':00';
+}
+function visible_(r, me) { return String(r.showAt || '') <= now_() || String(r.by) === String(me || ''); }
+function replyList_(memos, me) {
+  var ids = {}; memos.forEach(function (m) { ids[m.memoId] = 1; });
+  return rows_('replies').filter(function (r) { return ids[r.memoId] && visible_(r, me); });
+}
+function badge_(me) {   // ホーム画面のリマインド用：まだ読んでいない返事・返事待ちの件数
+  if (!me) return { ok: true, unread: 0, waiting: 0 };
+  var memos = memoList_(30), mine = {}, open = {};
+  memos.forEach(function (m) { if (String(m.by) === String(me)) mine[m.memoId] = 1; if (m.to !== '自分用メモ' && String(m.by) !== String(me) && !m.status) open[m.memoId] = m; });
+  var unread = 0, from = [];
+  rows_('replies').forEach(function (r) {
+    if (String(r.by) === String(me) || !visible_(r, me)) return;
+    if (!(mine[r.memoId] || r.scope === 'みんな')) return;
+    if (String(r.readBy || '').split('、').indexOf(me) >= 0) return;
+    unread++; if (from.indexOf(r.by) < 0) from.push(r.by);
+  });
+  var waiting = isReplier_(me) ? Object.keys(open).filter(function (k) { return open[k].to === '親方へ'; }).length : 0;
+  return { ok: true, unread: unread, from: from, waiting: waiting };
+}
+function interpretReply_(b) {   // 返事から「反映の案」を作る（実際に反映するのは人が確認してから）
+  var m = b.memo || {};
+  var prompt =
+    'あなたは造園会社（植木屋）の事務係です。スタッフの相談・報告に親方が返事をしました。返事の内容から、会社のアプリに反映すべきことを案として出してください。\n' +
+    '今日：' + ymd_(new Date()) + '\n' +
+    'ルール：\n' +
+    '・道具を修理に出す指示（「〇〇に修理出しておいて」「直しに出して」）は type "repair"。tool は道具一覧の正式名、shop は取引先一覧の正式名に直す（なければ話したとおり）。content は修理の内容を短く（相談の内容から）\n' +
+    '・みんなが知っておくべきこと（修理に出す・道具が使えない・置き場所が変わる・段取りが変わる・注意してほしいこと）は type "notice"。text はスタッフが読んで分かる短い文（例：「ブロワー（1台）は〇〇機械で修理中です。戻るまで別のを使ってください」）。until は表示する期限 YYYY-MM-DD（分からなければ今日から7日後）\n' +
+    '・返事が了解・OK・解決で終わるなら done を true\n' +
+    '・返事に書いていないことは足さない\n' +
+    'JSONだけ返す：{"actions":[{"type":"repair","tool":"","shop":"","content":""},{"type":"notice","text":"","until":""}],"done":true/false}\n\n' +
+    '道具一覧（正式名）：\n' + (b.tools || '') + '\n' +
+    '取引先一覧（正式名：呼び方）：\n' + (b.suppliers || '') + '\n\n' +
+    'スタッフ（' + (m.by || '') + '）の相談：' + (m.headline || '') + '\n' + [].concat(m.points || []).join('\n') + '\n必要なもの：' + JSON.stringify(m.needs || []) + '\n\n' +
+    '親方の返事：\n' + b.text;
+  var j = gemini_(prompt);
+  var acts = (Array.isArray(j.actions) ? j.actions : []).filter(function (x) { return x && (x.type === 'repair' || x.type === 'notice'); });
+  return { ok: true, actions: acts, done: !!j.done };
+}
+function reply_(b) {
+  if (!isReplier_(b.by)) return { ok: false, error: '返事できるのは' + repliers_().join('・') + 'です' };
+  var memo = rows_('memos').filter(function (x) { return String(x.memoId) === String(b.memoId); })[0];
+  if (!memo) return { ok: false, error: '記録が見つかりません' };
+  var results = [];
+  (b.actions || []).forEach(function (a) {   // 人が「反映する」を選んだものだけ届く
+    try {
+      if (a.type === 'notice' && a.text) {
+        var c = saveCards_([{ kind: 'notice', title: a.text, date: a.until || addDays_(ymd_(new Date()), 7), dateNote: '', site: '', eventId: '', meetTime: '', staff: [], vehicle: '', stops: [], items: [], steps: [], notes: [], rawText: '要点まとめ（' + b.memoId + '）への返事から' }], b.by);
+        results.push({ type: 'notice', text: a.text, until: a.until || '', ok: true, cardId: (c.cardIds || [])[0] || '' });
+      } else if (a.type === 'repair' && a.toolId) {
+        var r = addRepair_({ toolId: a.toolId, type: '修理に出した', content: a.content || memo.headline || '', shop: a.shop || '' }, b.by);
+        results.push({ type: 'repair', tool: a.tool || '', shop: a.shop || '', ok: !!r.ok, error: r.error || '' });
+      } else if (a.type === 'repair') results.push({ type: 'repair', tool: a.tool || '', shop: a.shop || '', ok: false, error: '道具管理に登録されていない道具です' });
+    } catch (e) { results.push({ type: a.type, ok: false, error: String(e) }); }
+  });
+  var showAt = showAt_(!!b.now), id = nextId_('replies', 'replyId', 'A');
+  sh_('replies').appendRow([id, b.memoId, now_(), b.by, b.text || '', b.scope === 'みんな' ? 'みんな' : '本人', showAt, JSON.stringify(results), ''].map(cell_));
+  upsert_('memos', 'memoId', 'M', { memoId: b.memoId, status: b.done ? '済' : '返事済', doneAt: b.done ? now_() : '', doneBy: b.done ? b.by : '' });
+  return { ok: true, replyId: id, showAt: showAt, held: showAt > now_(), results: results };
+}
+function setDone_(id, by, done) {   // 「済」にする／戻す：書いた本人と返事できる人
+  var m = rows_('memos').filter(function (x) { return String(x.memoId) === String(id); })[0];
+  if (!m) return { ok: false, error: '見つかりません: ' + id };
+  if (String(m.by) !== String(by || '') && !isReplier_(by)) return { ok: false, error: '済にできるのは書いた本人と' + repliers_().join('・') + 'です' };
+  var hasReply = rows_('replies').some(function (r) { return String(r.memoId) === String(id); });
+  return upsert_('memos', 'memoId', 'M', { memoId: id, status: done ? '済' : (hasReply ? '返事済' : ''), doneAt: done ? now_() : '', doneBy: done ? by : '' });
+}
+function readReplies_(ids, by) {
+  if (!by) return { ok: true };
+  var s = sh_('replies'), vals = s.getDataRange().getValues(), col = SHEETS.replies.head.indexOf('readBy'), want = {};
+  (ids || []).forEach(function (x) { want[x] = 1; });
+  for (var i = 1; i < vals.length; i++) if (want[String(vals[i][0])]) {
+    var list = String(vals[i][col] || '').split('、').filter(String);
+    if (list.indexOf(by) < 0) { list.push(by); s.getRange(i + 1, col + 1).setValue(list.join('、')); }
+  }
+  return { ok: true };
 }
 function deleteMemo_(id, by) {   // 消せるのは書いた本人と親方だけ
   var m = rows_('memos').filter(function (x) { return String(x.memoId) === String(id); })[0];

@@ -95,6 +95,23 @@ dl.facts dd{margin:0}
 .memo .hl{font-size:16px;font-weight:700;margin-top:3px}
 .memo.unread{border-left:5px solid var(--tape)}
 .raw{font-size:13px;color:var(--bark);white-space:pre-wrap;background:var(--field);border-radius:8px;padding:10px}
+.st{font-size:11.5px;font-weight:700;border-radius:6px;padding:1px 7px}
+.st.wait{background:#FFF3D6;color:#7A5B12}
+.st.rep{background:#E8ECF4;color:#3D4B66}
+.st.done{background:var(--leaf-soft);color:var(--leaf)}
+.st.new{background:var(--danger);color:#fff}
+.reply{background:#F1F4F8;border:1px solid #D5DDE8;border-radius:10px;padding:9px 11px;margin-top:8px}
+.reply .who{font-size:12px;color:var(--bark);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.reply .tx{white-space:pre-wrap;font-size:15px;margin-top:2px}
+.reply .act{font-size:12.5px;margin-top:4px;color:var(--leaf)}
+.reply .act.ng{color:var(--danger)}
+.reply.held{border-style:dashed;opacity:.8}
+.acts{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.actrow{display:flex;gap:8px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.actrow input[type=checkbox]{width:22px;height:22px;margin-top:2px;flex:none}
+.actrow .grow{flex:1;min-width:0}
+.actrow textarea{min-height:60px;font-size:15px;margin-top:4px}
+.night{background:#EEF0F6;border:1px solid #D5DAE8;border-radius:8px;padding:8px 10px;font-size:13.5px;margin-top:10px;display:flex;gap:8px;align-items:center}
 nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);z-index:30;padding-bottom:env(safe-area-inset-bottom)}
 nav.tabs .in{max-width:680px;margin:0 auto;display:flex}
 nav.tabs button{flex:1;border:0;background:none;font:inherit;font-size:11.5px;color:var(--bark);padding:8px 0 7px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer}
@@ -149,6 +166,7 @@ nav.tabs button.on{color:var(--leaf);font-weight:700}
     <div class="seg" id="listSeg">
       <button type="button" data-seg="mine" class="on">自分の</button>
       <button type="button" data-seg="all">みんなの</button>
+      <button type="button" data-seg="wait" id="segWait" hidden>返事待ち</button>
     </div>
     <div id="memoList"></div>
   </section>
@@ -204,7 +222,7 @@ const splitAl = s => String(s || '').split(/[、,，]/).map(x => x.trim()).filte
 
 /* ============ データ（用語集・道具管理・車両・取引先・名簿） ============ */
 let WORDS = { terms: [], aliases: [] }, TOOLS = [], VEH = [], SUP = [], NICK = [], STAFF = [], SITES = [];
-let MEMOS = null, ADMINS = ['親方'], SERVER_LIST = false;
+let MEMOS = null, REPLIES = [], ADMINS = ['親方'], REPLIERS = ['親方'], SERVER_NOW = '', SERVER_LIST = false;
 async function load() {
   const [w, t, d] = await Promise.allSettled([getJSON(GAS_URL + '?app=yougo&action=data'), getJSON(GAS_URL + '?app=dougu&action=data'), getJSON(GAS_URL + '?app=dandori&action=data&from=' + TODAY + '&to=' + TODAY)]);
   const ok = r => r.status === 'fulfilled' && r.value && r.value.ok;
@@ -546,69 +564,111 @@ async function save(auto, keepalive) {
   } finally { SAVING = false; saveBtnState(); }
 }
 
-/* ============ まとめた記録 ============ */
+/* ============ まとめた記録・返事 ============ */
 let SEG = 'mine', OPEN_ID = '';
 async function loadMemos() {
   try {
-    const r = await getJSON(GAS_URL + '?app=yoten&action=list&days=60', 15000);
+    const r = await getJSON(GAS_URL + '?app=yoten&action=list&days=60&me=' + encodeURIComponent(me()), 15000);
     if (!r.ok) throw new Error(r.error);
-    MEMOS = r.memos || []; if (r.admins) ADMINS = r.admins; SERVER_LIST = true;
-  } catch (e) { MEMOS = null; SERVER_LIST = false; }
+    MEMOS = r.memos || []; REPLIES = r.replies || []; SERVER_NOW = r.now || nowStr(); SERVER_LIST = true;
+    if (r.admins) ADMINS = r.admins; if (r.repliers) REPLIERS = r.repliers;
+  } catch (e) { MEMOS = null; REPLIES = []; SERVER_LIST = false; }
+  $('segWait').hidden = !(SERVER_LIST && isReplier());
   renderList();
 }
 const isAdmin = () => ADMINS.includes(me());
+const isReplier = () => REPLIERS.includes(me()) || isAdmin();
 const readSet = () => new Set(lsGet(LS.read, []));
+const repliesOf = id => REPLIES.filter(r => r.memoId === id).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+const isHeld = r => String(r.showAt || '') > (SERVER_NOW || nowStr());
+const canSeeReply = (r, m) => r.by === me() || m.by === me() || r.scope === 'みんな' || isReplier();
+const replyUnread = r => r.by !== me() && !isHeld(r) && !String(r.readBy || '').split('、').includes(me());
+function memoUnreadReplies(m) { return repliesOf(m.memoId).filter(r => canSeeReply(r, m) && (m.by === me() || r.scope === 'みんな') && replyUnread(r)); }
 function listItems() {
   let list = SERVER_LIST ? MEMOS.slice() : lsGet(LS.local, []);
   if (SERVER_LIST) lsGet(LS.local, []).filter(m => m.local).forEach(m => list.unshift(m));   // まだ送れていない分
   if (SEG === 'mine') list = list.filter(m => m.by === me());
+  else if (SEG === 'wait') list = list.filter(m => m.to !== '自分用メモ' && m.by !== me() && !m.status);
   else list = list.filter(m => m.to !== '自分用メモ' || m.by === me());
   return list;
 }
-function unreadCount() {
+function badgeCount() {
   if (!SERVER_LIST || !me()) return 0;
   const rd = readSet();
-  return (MEMOS || []).filter(m => m.by !== me() && !rd.has(m.memoId) && ((m.to === '親方へ' && isAdmin()) || m.to === 'みんなへ')).length;
+  const unreadMemos = (MEMOS || []).filter(m => m.by !== me() && !rd.has(m.memoId) && ((m.to === '親方へ' && isReplier()) || m.to === 'みんなへ')).length;
+  const unreadReplies = (MEMOS || []).reduce((n, m) => n + memoUnreadReplies(m).length, 0);
+  return unreadMemos + unreadReplies;
+}
+function statusTag(m) {
+  if (m.local) return '<span class="tag none">この端末だけ</span>';
+  if (m.status === '済') return '<span class="st done">✓ 済</span>';
+  if (m.status === '返事済') return '<span class="st rep">💬 返事あり</span>';
+  return m.to === '自分用メモ' ? '' : '<span class="st wait">返事待ち</span>';
 }
 function renderList() {
-  const n = unreadCount(); $('unreadBadge').innerHTML = n ? '<span class="badge">' + n + '</span>' : '';
+  const n = badgeCount(); $('unreadBadge').innerHTML = n ? '<span class="badge">' + n + '</span>' : '';
   if ($('tab-list').hidden) return;
   const list = listItems(), rd = readSet();
   $('memoList').innerHTML = (SERVER_LIST ? '' : '<p class="hint" style="margin:0 0 8px">この端末に残した記録だけ表示しています。</p>') +
     (list.length ? list.map(m => {
-      const unread = m.by !== me() && !rd.has(m.memoId);
+      const newReplies = memoUnreadReplies(m).length;
+      const unread = (m.by !== me() && !rd.has(m.memoId)) || newReplies > 0;
       const open = OPEN_ID === m.memoId;
       return '<button type="button" class="memo' + (unread ? ' unread' : '') + '" data-memo="' + esc(m.memoId) + '">' +
-        '<div class="mt"><span class="kind k-' + esc(m.kind) + '" style="margin:0">' + esc(m.kind || '') + '</span>' + esc(md(String(m.at).slice(0, 10))) + ' ' + esc(String(m.at).slice(11, 16)) + '・' + esc(m.by) + ' → ' + esc(m.to) + (m.local ? '<span class="tag none">この端末だけ</span>' : '') + (m.readBy ? '<span class="tag loc">既読：' + esc(m.readBy) + '</span>' : '') + '</div>' +
+        '<div class="mt"><span class="kind k-' + esc(m.kind) + '" style="margin:0">' + esc(m.kind || '') + '</span>' + statusTag(m) + (newReplies ? '<span class="st new">新しい返事 ' + newReplies + '</span>' : '') +
+        esc(md(String(m.at).slice(0, 10))) + ' ' + esc(String(m.at).slice(11, 16)) + '・' + esc(m.by) + ' → ' + esc(m.to) + (m.readBy ? '<span class="tag loc">既読：' + esc(m.readBy) + '</span>' : '') + '</div>' +
         '<div class="hl">' + esc(m.headline) + '</div>' +
         (open ? memoDetail(m) : '') + '</button>';
-    }).join('') : '<div class="empty">まだ記録がありません</div>');
+    }).join('') : '<div class="empty">' + (SEG === 'wait' ? '返事待ちの記録はありません' : 'まだ記録がありません') + '</div>');
+}
+function replyHtml(r, m) {
+  const acts = arr(r.actions);
+  return '<div class="reply' + (isHeld(r) ? ' held' : '') + '"><div class="who"><b>💬 ' + esc(r.by) + '</b>' + esc(md(String(r.at).slice(0, 10))) + ' ' + esc(String(r.at).slice(11, 16)) +
+    '<span class="tag ' + (r.scope === 'みんな' ? 'loc' : 'none') + '">' + (r.scope === 'みんな' ? 'みんなに見える' : esc(m.by) + 'さんだけ') + '</span>' +
+    (isHeld(r) ? '<span class="tag out">⏰ ' + esc(md(String(r.showAt).slice(0, 10))) + ' ' + esc(String(r.showAt).slice(11, 16)) + 'に届きます</span>' : '') + '</div>' +
+    '<div class="tx">' + esc(r.text) + '</div>' +
+    acts.map(a => '<div class="act' + (a.ok ? '' : ' ng') + '">' + (a.type === 'notice' ? '📢 お知らせに出しました：' + esc(a.text) : '🔧 修理に出す：' + esc(a.tool) + (a.shop ? '（' + esc(a.shop) + '）' : '')) + (a.ok ? '' : ' → できませんでした（' + esc(a.error || '') + '）') + '</div>').join('') + '</div>';
 }
 function memoDetail(m) {
   const pts = arr(m.points), needs = arr(m.needs), veh = arr(m.vehicles);
   const canDel = !m.local && (m.by === me() || isAdmin());
+  const canDone = SERVER_LIST && !m.local && (m.by === me() || isReplier());
+  const reps = repliesOf(m.memoId).filter(r => canSeeReply(r, m));
   return '<div style="margin-top:8px">' + (pts.length ? '<ol class="points">' + pts.map(p => '<li>' + esc(p) + '</li>').join('') + '</ol>' : '') +
     ((m.site || m.when) ? '<div class="hint">' + esc([m.site, md(m.when)].filter(Boolean).join('　')) + '</div>' : '') +
     (needs.length ? '<div class="hint">必要なもの：' + esc(needs.map(n => (n.name || n) + (n.qty ? ' ' + n.qty + (n.unit || '') : '')).join('・')) + '</div>' : '') +
     (veh.length ? '<div class="hint">車両：' + esc(veh.join('・')) + '</div>' : '') +
+    reps.map(r => replyHtml(r, m)).join('') +
+    (SERVER_LIST && !m.local && isReplier() && m.to !== '自分用メモ' ? '<span class="btn primary block" data-reply="' + esc(m.memoId) + '" style="margin-top:10px">🎤 返事する</span>' : '') +
     '<div class="sec">送った文</div><div class="raw">' + esc(m.message) + '</div>' +
     '<div class="sec">話した内容（そのまま）</div><div class="raw">' + esc(m.rawText) + '</div>' +
-    '<div class="row2" style="margin-top:10px"><span class="btn sm" data-reuse="' + esc(m.memoId) + '">この話で作り直す</span>' + (canDel ? '<span class="btn sm danger" data-del="' + esc(m.memoId) + '">消す</span>' : '') + '</div></div>';
+    '<div class="row2" style="margin-top:10px">' + (canDone ? '<span class="btn sm" data-done="' + esc(m.memoId) + '" data-v="' + (m.status === '済' ? '0' : '1') + '">' + (m.status === '済' ? '済を戻す' : '✓ 済にする') + '</span>' : '') +
+    '<span class="btn sm" data-reuse="' + esc(m.memoId) + '">この話で作り直す</span>' + (canDel ? '<span class="btn sm danger" data-del="' + esc(m.memoId) + '">消す</span>' : '') + '</div></div>';
 }
 async function openMemo(id) {
   OPEN_ID = OPEN_ID === id ? '' : id;
   const m = listItems().find(x => x.memoId === id);
-  if (m && m.by !== me()) {
-    const rd = lsGet(LS.read, []); if (!rd.includes(id)) { rd.push(id); lsSet(LS.read, rd.slice(-500)); }
-    if (SERVER_LIST && !m.local && me() && !String(m.readBy || '').split('、').includes(me())) {
-      postJSON(GAS_URL, { app: 'yoten', mode: 'read', memoId: id, by: me() }).then(r => { if (r.ok) { m.readBy = r.readBy; renderList(); } }).catch(() => { });
+  if (m && OPEN_ID) {
+    if (m.by !== me()) {
+      const rd = lsGet(LS.read, []); if (!rd.includes(id)) { rd.push(id); lsSet(LS.read, rd.slice(-500)); }
+      if (SERVER_LIST && !m.local && me() && !String(m.readBy || '').split('、').includes(me())) {
+        postJSON(GAS_URL, { app: 'yoten', mode: 'read', memoId: id, by: me() }).then(r => { if (r.ok) { m.readBy = r.readBy; renderList(); } }).catch(() => { });
+      }
+    }
+    const newOnes = memoUnreadReplies(m);   // 開いたら返事を既読に（どの端末で見ても分かるようにGASに残す）
+    if (newOnes.length && me()) {
+      newOnes.forEach(r => { r.readBy = [r.readBy, me()].filter(Boolean).join('、'); });
+      postJSON(GAS_URL, { app: 'yoten', mode: 'readReply', replyIds: newOnes.map(r => r.replyId), by: me() }).catch(() => { });
     }
   }
   renderList();
 }
 async function deleteMemo(id) {
-  if (!confirm('この記録を消しますか？')) return;
   try { const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'delete', memoId: id, by: me() }); if (!r.ok) throw new Error(r.error); lsSet(LS.local, lsGet(LS.local, []).filter(m => m.memoId !== id)); toast('消しました'); loadMemos(); }
+  catch (e) { toast(e.message || NET_ERR); }
+}
+async function setDone(id, done) {
+  try { const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'done', memoId: id, done, by: me() }); if (!r.ok) throw new Error(r.error); toast(done ? '済にしました' : '済を戻しました'); loadMemos(); }
   catch (e) { toast(e.message || NET_ERR); }
 }
 function reuseMemo(id) {
@@ -616,6 +676,79 @@ function reuseMemo(id) {
   $('raw').value = m.rawText || ''; lsSet(LS.draft, $('raw').value);
   if (TO_LIST.includes(m.to)) { TO = m.to; lsSet(LS.to, TO); drawTo(); }
   switchTab('speak'); go();
+}
+
+/* 返事を書く（声でOK）→ 反映の案 → 送る */
+const QUIET_FROM = 20, SEND_AT = 7;   // GAS のスクリプト プロパティ REPLY_QUIET_FROM／REPLY_SEND_AT と合わせる
+function isNight() { const h = new Date().getHours(); return h >= QUIET_FROM || h < SEND_AT; }
+let RE = null;   // 返事の下書き：{memo, scope, acts:[{type, text, until, tool, toolId, shop, content, on}], done, now}
+function openReply(id) {
+  const m = (MEMOS || []).find(x => x.memoId === id); if (!m) return;
+  RE = { memo: m, scope: '本人', acts: [], done: false, now: false };
+  drawReply('');
+}
+function drawReply(text) {
+  const m = RE.memo;
+  openModal('<h3>' + esc(m.by) + 'さんへの返事</h3><p class="hint" style="margin-bottom:8px">' + esc(m.headline) + '</p>' +
+    '<textarea id="reTx" style="min-height:90px" placeholder="例：〇〇機械に修理出しておいて／OK、それで進めて／そうじゃなくて、こうしておいて">' + esc(text) + '</textarea>' +
+    '<div class="mic-wrap" style="margin-top:8px"><button class="mic" id="reMic" type="button" style="width:76px;height:76px;font-size:30px"><span>🎤</span><small id="reLabel">話す</small></button><div class="mic-status" id="reStatus"></div></div>' +
+    '<div class="sec">だれに見せる？</div><div class="chips">' + ['本人', 'みんな'].map(v => '<button type="button" class="chip' + (RE.scope === v ? ' on' : '') + '" data-scope="' + v + '">' + (v === '本人' ? esc(m.by) + 'さんだけ' : 'みんなに見せる') + '</button>').join('') + '</div>' +
+    '<div class="sec">アプリに反映すること</div>' +
+    (RE.acts.length ? '<div class="acts">' + RE.acts.map((a, i) => '<label class="actrow"><input type="checkbox" data-act-on="' + i + '"' + (a.on ? ' checked' : '') + '><div class="grow">' +
+      (a.type === 'notice' ? '<b>📢 みんなへのお知らせ</b>（段取りアプリの一番上に' + esc(md(a.until)) + 'まで）<textarea data-act-tx="' + i + '">' + esc(a.text) + '</textarea>'
+        : '<b>🔧 修理に出す</b>：' + esc(a.tool) + (a.shop ? '（修理先：' + esc(a.shop) + '）' : '') + (a.toolId ? '<div class="hint">道具管理の「今どこ」が「修理中」になり、修理の記録が残ります</div>' : '<div class="hint" style="color:var(--danger)">この道具は道具管理に登録されていないので、修理の記録は残せません（お知らせは出せます）</div>')) +
+      '</div></label>').join('') + '</div>' : '<p class="hint">返事を話したあと「反映の案を出す」を押すと、お知らせや修理の記録の案が出ます。</p>') +
+    '<button type="button" class="btn block" data-act="plan" style="margin-top:8px">✨ 反映の案を出す</button>' +
+    '<label class="actrow" style="margin-top:10px"><input type="checkbox" id="reDone"' + (RE.done ? ' checked' : '') + '><div class="grow"><b>この件を「済」にする</b></div></label>' +
+    (isNight() ? '<label class="night"><input type="checkbox" id="reNow"' + (RE.now ? ' checked' : '') + ' style="width:20px;height:20px"><span>🌙 ' + QUIET_FROM + '時を過ぎているので、<b>明日の朝' + SEND_AT + '時</b>に届きます。今すぐ届けるときはチェック</span></label>' : '') +
+    '<div class="row2" style="margin-top:14px"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="send" style="flex:2">返事を送る</button></div>',
+    async e => {
+      if (e.target.closest('#reMic')) return startListen($('reTx'), $('reMic'), $('reLabel'), $('reStatus'));
+      const sc = e.target.closest('[data-scope]'); if (sc) { keepReply(); RE.scope = sc.dataset.scope; return drawReply($('reTx').value); }
+      const on = e.target.closest('[data-act-on]'); if (on) { RE.acts[Number(on.dataset.actOn)].on = on.checked; return; }
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      if (LISTENING) stopListen();
+      if (b.dataset.act === 'cancel') return closeModal();
+      keepReply();
+      const text = $('reTx').value.trim();
+      if (b.dataset.act === 'plan') {
+        if (!text) return toast('先に返事を話してください');
+        b.disabled = true; b.innerHTML = '<span class="loading" style="border-color:rgba(0,0,0,.2);border-top-color:var(--leaf)"></span> 考え中…';
+        try { await planReply(text); } catch (err) { toast(err.message || NET_ERR); }
+        return drawReply(text);
+      }
+      if (b.dataset.act === 'send') {
+        if (!text) return toast('返事を話すか入力してください');
+        b.disabled = true; b.innerHTML = '<span class="loading"></span> 送信中…';
+        try {
+          const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'reply', memoId: RE.memo.memoId, text, scope: RE.scope, now: RE.now, done: RE.done, by: me(),
+            actions: RE.acts.filter(a => a.on).map(a => ({ type: a.type, text: a.text, until: a.until, tool: a.tool, toolId: a.toolId, shop: a.shop, content: a.content })) });
+          if (!r.ok) throw new Error(r.error);
+          const ng = (r.results || []).filter(x => !x.ok);
+          closeModal();
+          toast((r.held ? '明日の朝' + SEND_AT + '時に届きます' : '返事を送りました') + (ng.length ? '（反映できなかったものがあります）' : ''));
+          OPEN_ID = RE.memo.memoId; RE = null; loadMemos();
+        } catch (err) { toast(/unknown mode/.test(err.message || '') ? '共通GASの更新後に使えます' : (err.message || NET_ERR)); b.disabled = false; b.textContent = '返事を送る'; }
+      }
+    });
+  const done = $('reDone'); if (done) done.addEventListener('change', () => { RE.done = done.checked; });
+  const now = $('reNow'); if (now) now.addEventListener('change', () => { RE.now = now.checked; });
+}
+function keepReply() { document.querySelectorAll('[data-act-tx]').forEach(t => { RE.acts[Number(t.dataset.actTx)].text = t.value; }); }
+async function planReply(text) {   // AIに「反映の案」を出してもらい、道具はアプリ側で道具管理と照合する
+  const m = RE.memo;
+  const toolNames = TOOLS.map(t => (termById(t.termId) || {}).term).filter(Boolean);
+  const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'interpret', text, tools: toolNames.join('、'), suppliers: supText(),
+    memo: { by: m.by, headline: m.headline, points: arr(m.points), needs: arr(m.needs) } });
+  if (!r.ok) throw new Error(/unknown mode/.test(r.error || '') ? '共通GASの更新後に使えます' : (r.error || 'AIで案を出せませんでした'));
+  RE.done = RE.done || !!r.done;
+  RE.acts = (r.actions || []).map(a => {
+    if (a.type === 'notice') return { type: 'notice', text: a.text || '', until: /^\d{4}-\d{2}-\d{2}$/.test(a.until || '') ? a.until : addDays(TODAY, 7), on: true };
+    const w = matchWord(a.tool || '', toolWords(true)) || matchWord(a.tool || ''), term = w ? termById(w.termId) : null, tool = term ? toolOfTerm(term.termId) : null;
+    return { type: 'repair', tool: term ? term.term : (a.tool || ''), toolId: tool ? tool.id : '', shop: a.shop || '', content: a.content || '', on: !!tool };
+  });
+  if (!RE.acts.length) toast('反映することは見つかりませんでした（返事だけ送れます）');
+  if (RE.acts.some(a => a.type === 'notice')) RE.scope = RE.scope;   // お知らせはみんなに出る。返事の見せ方は選んだまま
 }
 
 /* ============ 名前・モーダル ============ */
@@ -672,6 +805,8 @@ $('listSeg').addEventListener('click', e => { const b = e.target.closest('[data-
 $('memoList').addEventListener('click', e => {
   const d = e.target.closest('[data-del]'); if (d) { e.stopPropagation(); return deleteMemo(d.dataset.del); }
   const u = e.target.closest('[data-reuse]'); if (u) { e.stopPropagation(); return reuseMemo(u.dataset.reuse); }
+  const rp = e.target.closest('[data-reply]'); if (rp) { e.stopPropagation(); return openReply(rp.dataset.reply); }
+  const dn = e.target.closest('[data-done]'); if (dn) { e.stopPropagation(); return setDone(dn.dataset.done, dn.dataset.v === '1'); }
   const m = e.target.closest('[data-memo]'); if (m) return openMemo(m.dataset.memo);
 });
 $('meBtn').addEventListener('click', () => chooseName(true));
@@ -681,7 +816,8 @@ $('meBtn').addEventListener('click', () => chooseName(true));
   drawTo();
   $('raw').value = lsGet(LS.draft, '') || '';
   if (!LIVE) $('micStatus').textContent = 'まとまらなくて大丈夫。🎤を押して、キーボードのマイクで話してください';
-  if (new URLSearchParams(location.search).get('tab') === 'list') switchTab('list');
+  const q = new URLSearchParams(location.search);
+  if (q.get('tab') === 'list' || q.get('memo')) { if (q.get('memo')) OPEN_ID = q.get('memo'); if (q.get('seg')) { SEG = q.get('seg'); document.querySelectorAll('#listSeg button').forEach(x => x.classList.toggle('on', x.dataset.seg === SEG)); } switchTab('list'); }
   load();
 })();
 </script>
