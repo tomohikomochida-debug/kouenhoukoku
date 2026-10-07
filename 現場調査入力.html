@@ -176,6 +176,7 @@ header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .petools .esep{ width:1px; height:24px; background:#555; }
   .petools .eh{ color:#bbb; font-size:13px; }
   .pehead button:disabled{ opacity:.4; }
+  .petools .esnap.on{ background:#FDD835; color:#111; border-color:#FDD835; }
   .petools .edel{ color:#ffb4a8; border-color:#7a3a30; }
 /* iPhone をカメラにする（iPad 側の表示） */
 #btnCam.on{background:#2e7d55;color:#fff}#btnCam.wait{opacity:.75}
@@ -3365,7 +3366,7 @@ let edState=null, edDrag=null;
 const ED_COLORS=[["#E53935","赤"],["#FDD835","黄"],["#1E88E5","青"],["#FFFFFF","白"],["#111111","黒"]];
 const ED_TOOLS=[["pen","✏️ ペン"],["marker","🖍 マーカー"],["circle","⭕ 丸"],["arrow","➡ 矢印"],["select","👆 選ぶ・動かす"],["crop","✂ 切り取り"]];
 const ED_SIZES=[["s","細",.004],["m","中",.008],["l","太",.016]];
-const ED={ tool:"pen", color:"#E53935", size:"m" };
+const ED={ tool:"pen", color:"#E53935", size:"m", snap:(()=>{ try{ return localStorage.getItem("gc_snap")!=="0"; }catch(e){ return true; } })() };   // snap：シェイプ認識（描き終わりで止めると形を整える）
 const edClone=a=>JSON.parse(JSON.stringify(a));
 function edSnap(){ edState.hist.push(edClone(edState.strokes)); if(edState.hist.length>60) edState.hist.shift(); }   // 「1つ戻す」用に、変える前を控える
 function editPhoto(i,k){ const ph=state.trees[i]&&state.trees[i].photos; if(!ph||!ph[k]) return; edState={i:i,k:k,url:ph[k],sel:null,strokes:[],hist:[],pick:-1};
@@ -3379,15 +3380,17 @@ function edTools(){
   else if(ED.tool==="select"&&!pk) h+=`<div class="eg"><span class="eh">書いた線や丸をタップして選び、ドラッグで動かします</span></div>`;
   else h+=`<div class="eg">${ED_COLORS.map(([c,l])=>b("ec",col===c,`onclick="edSet('color','${c}')" style="--c:${c}" aria-label="${l}"`,"")).join("")}`+
     `<span class="esep"></span>${ED_SIZES.map(([k,l])=>b("es",siz===k,`onclick="edSet('size','${k}')"`,l)).join("")}`+
-    (pk?`<span class="esep"></span>${b("edel",false,`onclick="edDelPick()" title="ドラッグで動かす・青い点で大きさ・上の白い丸で回す"`,"🗑 消す")}`:"")+`</div>`;
+    (pk?`<span class="esep"></span>${b("edel",false,`onclick="edDelPick()" title="ドラッグで動かす・青い点で大きさ・上の白い丸で回す"`,"🗑 消す")}`:"")+
+    (!pk&&(ED.tool==="pen"||ED.tool==="marker")?`<span class="esep"></span>${b("esnap",ED.snap,`onclick="edSnapToggle()" title="描き終わりで指を止めると、まっすぐな線・丸・四角・三角・矢印に整えます"`,"✨ 図形補正")}`:"")+`</div>`;
   document.getElementById("edTools").innerHTML=h;
   const u=document.getElementById("edUndoBtn"); if(u&&edState) u.disabled=!edState.hist.length&&!edState.sel;
 }
+function edSnapToggle(){ ED.snap=!ED.snap; try{ localStorage.setItem("gc_snap",ED.snap?"1":"0"); }catch(e){} edTools(); toast(ED.snap?"図形補正オン：描き終わりで指を少し止めると形が整います":"図形補正オフ"); }
 function edSet(k,v){
   const pk=edState&&edState.pick>=0?edState.strokes[edState.pick]:null;
   if(pk&&(k==="color"||k==="size")){ edSnap(); if(k==="color") pk.c=v; else pk.w=ED_SIZES.find(s=>s[0]===v)[2]; }   // 選んでいる図形の色・太さを変える
   ED[k]=v;
-  if(k==="tool"&&v==="crop") edState.pick=-1;
+  if(k==="tool"&&v!=="select") edState.pick=-1;   // 道具を持ちかえたら、選ぶのをやめる
   edPaint(); edTools();
 }
 function edLoad(){ const img=document.getElementById("edImg"); img.onload=edFit; img.src=edState.url; const s=document.getElementById("edSel"); if(s) s.style.display="none"; edState.sel=null; edState.pick=-1; edTools(); }
@@ -3405,14 +3408,16 @@ if(window.ResizeObserver) new ResizeObserver(()=>{ if(edState) edFit(); }).obser
 function edPaint(){ const cv=document.getElementById("edCv"), x=cv.getContext("2d"); x.clearRect(0,0,cv.width,cv.height);
   edDraw(x,cv.width,cv.height,edState.strokes.concat(edDrag&&edDrag.stroke?[edDrag.stroke]:[]));
   if(edState.pick>=0&&edState.strokes[edState.pick]) edDrawPick(x,cv.width,cv.height,edState.strokes[edState.pick]); }
-function edLW(s,L){ return Math.max(1,s.w*L*(s.t==="marker"?3.5:1)); }
+const edIsMk=s=>s.t==="marker"||!!s.m;
+function edLW(s,L){ return Math.max(1,s.w*L*(edIsMk(s)?3.5:1)); }
 function edDraw(x,W,H,strokes){   // 書き込みを描く（画面の紙にも、焼き込みにも同じ処理）
   const L=Math.max(W,H);
   for(const s of strokes){
     const P=s.pts.map(p=>[p[0]*W,p[1]*H]), lw=edLW(s,L);
-    x.save(); x.strokeStyle=s.c; x.fillStyle=s.c; x.lineWidth=lw; x.lineCap="round"; x.lineJoin="round"; x.globalAlpha=s.t==="marker"?.4:1;
+    x.save(); x.strokeStyle=s.c; x.fillStyle=s.c; x.lineWidth=lw; x.lineCap="round"; x.lineJoin="round"; x.globalAlpha=edIsMk(s)?.4:1;
     if(s.t==="pen"||s.t==="marker"){ x.beginPath(); P.forEach((p,k)=>k?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])); if(P.length===1) x.lineTo(P[0][0]+.1,P[0][1]); x.stroke(); }
     else if(s.t==="circle"&&P.length>1){ const [a,b]=P; x.beginPath(); x.ellipse((a[0]+b[0])/2,(a[1]+b[1])/2,Math.max(1,Math.abs(b[0]-a[0])/2),Math.max(1,Math.abs(b[1]-a[1])/2),s.r||0,0,Math.PI*2); x.stroke(); }
+    else if(s.t==="poly"&&P.length>2){ x.beginPath(); P.forEach((p,k)=>k?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])); x.closePath(); x.stroke(); }   // 三角・四角など
     else if(s.t==="arrow"&&P.length>1){ const [a,b]=P, ang=Math.atan2(b[1]-a[1],b[0]-a[0]), hl=Math.max(lw*4,12);
       x.beginPath(); x.moveTo(a[0],a[1]); x.lineTo(b[0]-Math.cos(ang)*hl*.6,b[1]-Math.sin(ang)*hl*.6); x.stroke();
       x.beginPath(); x.moveTo(b[0],b[1]); x.lineTo(b[0]-hl*Math.cos(ang-.45),b[1]-hl*Math.sin(ang-.45)); x.lineTo(b[0]-hl*Math.cos(ang+.45),b[1]-hl*Math.sin(ang+.45)); x.closePath(); x.fill(); }
@@ -3420,7 +3425,7 @@ function edDraw(x,W,H,strokes){   // 書き込みを描く（画面の紙にも�
   }
 }
 // 選んでいる図形：点線の枠と、大きさ・向きを変える青い点
-function edHandles(s){ if(s.t==="circle"||s.t==="arrow") return s.pts.slice(0,2); return []; }
+function edHandles(s){ if(s.t==="circle"||s.t==="arrow") return s.pts.slice(0,2); if(s.t==="poly") return s.pts.slice(); return []; }   // 三角・四角は角ごとに動かせる
 function edBox(s,W,H){ const xs=s.pts.map(p=>p[0]*W), ys=s.pts.map(p=>p[1]*H); return [Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]; }
 const edRot=(q,c,a)=>{ const dx=q[0]-c[0], dy=q[1]-c[1], co=Math.cos(a), si=Math.sin(a); return [c[0]+dx*co-dy*si, c[1]+dx*si+dy*co]; };   // 点 q を c のまわりに a だけ回す（画面の点で）
 function edCenter(s,W,H){ const [x0,y0,x1,y1]=edBox(s,W,H); return [(x0+x1)/2,(y0+y1)/2]; }
@@ -3454,6 +3459,8 @@ function edHit(p,ir){
     const s=edState.strokes[i], P=s.pts.map(q=>[q[0]*W,q[1]*H]), tol=edLW(s,L)/2+near;
     if(s.t==="pen"||s.t==="marker"){ if(P.length===1?Math.hypot(X-P[0][0],Y-P[0][1])<tol:P.some((q,k)=>k&&segD(P[k-1],q)<tol)) return { i, handle:null }; }
     else if(s.t==="arrow"){ if(segD(P[0],P[1])<tol) return { i, handle:null }; }
+    else if(s.t==="poly"){ let inside=false; for(let k=0,j=P.length-1;k<P.length;j=k++){ if(((P[k][1]>Y)!==(P[j][1]>Y))&&(X<(P[j][0]-P[k][0])*(Y-P[k][1])/(P[j][1]-P[k][1])+P[k][0])) inside=!inside; }
+      if(inside||P.some((q,k)=>segD(q,P[(k+1)%P.length])<tol)) return { i, handle:null }; }   // 内側でも線の上でもつかめる
     else if(s.t==="circle"){ const cx=(P[0][0]+P[1][0])/2, cy=(P[0][1]+P[1][1])/2, rx=Math.max(1,Math.abs(P[1][0]-P[0][0])/2), ry=Math.max(1,Math.abs(P[1][1]-P[0][1])/2), q=edRot([X,Y],[cx,cy],-(s.r||0));
       if(((q[0]-cx)/(rx+tol))**2+((q[1]-cy)/(ry+tol))**2<=1) return { i, handle:null }; }   // 丸は、線の上でも内側でもつかめる
   }
@@ -3486,18 +3493,119 @@ function edMove(ev){ if(!edDrag||ev.pointerId!==edDrag.id) return; ev.preventDef
       const xs=m.orig.map(q=>q[0]), ys=m.orig.map(q=>q[1]); dx=Math.max(-Math.min(...xs),Math.min(1-Math.max(...xs),dx)); dy=Math.max(-Math.min(...ys),Math.min(1-Math.max(...ys),dy));
       s.pts=m.orig.map(q=>[q[0]+dx,q[1]+dy]); }
     edDrag.moved=true; edPaint(); return; }
-  if(edDrag.stroke){ const p=edPt(ev,ir), s=edDrag.stroke; if(s.t==="pen"||s.t==="marker") s.pts.push(p); else s.pts[1]=p; edPaint(); return; }
+  if(edDrag.stroke){ const p=edPt(ev,ir), s=edDrag.stroke;
+    if(edDrag.snapped){ edSnapFollow(p,ir); edPaint(); return; }
+    if(s.t==="pen"||s.t==="marker"){ s.pts.push(p); if(ED.snap) edHoldWatch(ev); } else s.pts[1]=p;
+    edPaint(); return; }
   if(ED.tool!=="crop") return;
   const minX=Math.min(edDrag.x0,ev.clientX), minY=Math.min(edDrag.y0,ev.clientY), w=Math.abs(ev.clientX-edDrag.x0), h=Math.abs(ev.clientY-edDrag.y0);
   const s=document.getElementById("edSel"); s.style.display="block"; s.style.left=(minX-sr.left)+"px"; s.style.top=(minY-sr.top)+"px"; s.style.width=w+"px"; s.style.height=h+"px";
   edState.sel={fx:Math.max(0,(minX-ir.left)/ir.width), fy:Math.max(0,(minY-ir.top)/ir.height), fw:Math.min(1,w/ir.width), fh:Math.min(1,h/ir.height)}; edTools(); }
 function edUp(ev){ if(!edDrag) return;
-  const d=edDrag; edDrag=null;
+  const d=edDrag; edDrag=null; clearTimeout(ED.holdT);
+  if(d.snapped&&d.stroke){ edSnap(); edState.strokes.push(d.stroke); edState.pick=d.stroke.t==="pen"||d.stroke.t==="marker"?-1:edState.strokes.length-1; edPaint(); edTools(); return; }   // 整えた図形は、すぐ動かせるよう選んだ状態に
   if(d.move){ if(!d.moved) edState.hist.pop(); edPaint(); edTools(); return; }   // 触っただけ（選んだだけ）なら、戻す控えは消す
   const s=d.stroke;
   if(s){ const p=s.pts, far=p.length>1&&Math.hypot(p[p.length-1][0]-p[0][0],p[p.length-1][1]-p[0][1])>.01;
     if(s.t==="pen"||s.t==="marker"||far){ edSnap(); edState.strokes.push(s); if(s.t==="circle"||s.t==="arrow") edState.pick=edState.strokes.length-1; }   // 丸・矢印は描いたら選んだ状態にして、すぐ動かせるように
     edPaint(); edTools(); } }
+/* シェイプ認識：描き終わりで指を約0.5秒止めると、まっすぐな線・矢印・丸・三角・四角に整える。
+   整えた後も指を離すまでは、線・矢印は先を、丸・三角・四角は大きさを指で合わせられる */
+function edHoldWatch(ev){
+  const d=edDrag; if(!d) return;
+  if(!d.hold||Math.hypot(ev.clientX-d.hold[0],ev.clientY-d.hold[1])>5){ d.hold=[ev.clientX,ev.clientY]; clearTimeout(ED.holdT); ED.holdT=setTimeout(edTrySnap,520); }
+}
+function edTrySnap(){
+  const d=edDrag; if(!d||!d.stroke||d.snapped) return;
+  const r=edRecognize(d.stroke,d.ir.width,d.ir.height); if(!r) return;
+  d.stroke=r; d.snapped=true; d.snap0={ pts:edClone(r.pts), p:d.stroke.pts[d.stroke.pts.length-1] };
+  const W=d.ir.width, H=d.ir.height, [x0,y0,x1,y1]=edBox(r,W,H); d.snap0.c=[(x0+x1)/2,(y0+y1)/2];
+  d.snap0.hp=d.hold?[(d.hold[0]-d.ir.left),(d.hold[1]-d.ir.top)]:null;
+  if(navigator.vibrate) try{ navigator.vibrate(12); }catch(e){}
+  edPaint();
+}
+function edSnapFollow(p,ir){
+  const d=edDrag, s=d.stroke, W=ir.width, H=ir.height, o=d.snap0;
+  if(s.t==="arrow"||((s.t==="pen"||s.t==="marker")&&s.pts.length===2)){ s.pts=[o.pts[0],p]; return; }   // 線・矢印：先が指についてくる
+  if(!o.hp) return;
+  const d0=Math.hypot(o.hp[0]-o.c[0],o.hp[1]-o.c[1]), d1=Math.hypot(p[0]*W-o.c[0],p[1]*H-o.c[1]); if(d0<8) return;
+  const k=Math.max(.2,Math.min(5,d1/d0));   // 丸・三角・四角：中心から指までの距離で大きさを変える
+  s.pts=o.pts.map(q=>[Math.min(1,Math.max(0,(o.c[0]+(q[0]*W-o.c[0])*k)/W)),Math.min(1,Math.max(0,(o.c[1]+(q[1]*H-o.c[1])*k)/H))]);
+}
+/* シェイプ認識：手で描いた線を、まっすぐな線・矢印・丸（楕円）・三角・四角・多角形に整える
+   s：ペン・マーカーの線（pts は写真の大きさに対する割合）、W・H：画面上の写真の大きさ（px）。整えられなければ null */
+function edRecognize(s,W,H){
+  const P=s.pts.map(q=>[q[0]*W,q[1]*H]); if(P.length<5) return null;
+  const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+  const segD=(q,a,b)=>{ const dx=b[0]-a[0], dy=b[1]-a[1], l=dx*dx+dy*dy; let t=l?((q[0]-a[0])*dx+(q[1]-a[1])*dy)/l:0; t=Math.max(0,Math.min(1,t)); return Math.hypot(q[0]-a[0]-t*dx,q[1]-a[1]-t*dy); };
+  const lineD=(q,a,b)=>{ const dx=b[0]-a[0], dy=b[1]-a[1], l=Math.hypot(dx,dy)||1; return Math.abs((q[0]-a[0])*dy-(q[1]-a[1])*dx)/l; };
+  let L=0; for(let k=1;k<P.length;k++) L+=dist(P[k-1],P[k]);
+  if(L<40) return null;
+  const clamp=v=>Math.min(1,Math.max(0,v)), toN=q=>[clamp(q[0]/W),clamp(q[1]/H)];
+  const base={ c:s.c, w:s.w }; if(s.t==="marker") base.m=true;   // マーカーで描いたものは、整えた後も半透明の太線のまま
+  const A=P[0], B=P[P.length-1], dAB=dist(A,B);
+  // 弧の長さで等間隔に取り直す（ゆっくり描いた所に点が集まるのをならす）
+  const resample=(Q,n,closed)=>{ const R=closed?Q.concat([Q[0]]):Q; let tot=0; const seg=[]; for(let k=1;k<R.length;k++){ const d=dist(R[k-1],R[k]); seg.push(d); tot+=d; }
+    const out=[]; let k=0, acc=0; for(let j=0;j<n;j++){ const want=tot*j/(closed?n:n-1); while(k<seg.length-1&&acc+seg[k]<want){ acc+=seg[k]; k++; } const t=seg[k]?(want-acc)/seg[k]:0; out.push([R[k][0]+(R[k+1][0]-R[k][0])*t,R[k][1]+(R[k+1][1]-R[k][1])*t]); } return out; };
+  if(dAB>0.22*L){   // ---- 閉じていない：線か矢印 ----
+    let fi=0, fd=0; P.forEach((q,k)=>{ const d=dist(q,A); if(d>fd){ fd=d; fi=k; } });
+    const tip=P[fi]; let hl=0; for(let k=fi+1;k<P.length;k++) hl+=dist(P[k-1],P[k]);
+    const dev2=Math.max(...P.slice(0,fi+1).map(q=>segD(q,A,tip)));
+    // 矢印：まっすぐ進んで、先で折り返して短い「かえし」を描いた線
+    if(fi>3&&hl>Math.max(12,fd*0.08)&&hl<fd*0.7&&dev2<Math.max(10,fd*0.08)&&dist(B,tip)>8) return Object.assign({},base,{ t:"arrow", pts:[toN(A),toN(tip)] });
+    { // まっすぐな線：点の集まりにいちばん合う直線を引き、そこからのずれが小さければ、その直線に乗せる（両端は描き始め・描き終わりの位置）
+      const Q=resample(P,48,false), mx=Q.reduce((a2,q)=>a2+q[0],0)/Q.length, my=Q.reduce((a2,q)=>a2+q[1],0)/Q.length;
+      let xx=0,yy=0,xy=0; Q.forEach(q=>{ const x=q[0]-mx, y=q[1]-my; xx+=x*x; yy+=y*y; xy+=x*y; });
+      const an=0.5*Math.atan2(2*xy,xx-yy), ux=Math.cos(an), uy=Math.sin(an);
+      const dev=Math.max(...Q.map(q=>Math.abs(-(q[0]-mx)*uy+(q[1]-my)*ux)));
+      const pr=q=>{ const t=(q[0]-mx)*ux+(q[1]-my)*uy; return [mx+t*ux,my+t*uy]; };
+      if(dev<Math.max(10,dAB*0.09)) return { t:s.t, c:s.c, w:s.w, pts:[toN(pr(A)),toN(pr(B))] };
+    }
+    return null;
+  }
+  // ---- 閉じている：丸か多角形 ----
+  { let ci=P.length-1, cd=1e9; for(let k=Math.floor(P.length/2);k<P.length;k++){ const d=dist(P[k],A); if(d<cd){ cd=d; ci=k; } } P.length=ci+1; }   // 書き始めを通り過ぎた分（重ね描き）は切る
+  const R=resample(P,96,true);
+  const cx=R.reduce((a,q)=>a+q[0],0)/R.length, cy=R.reduce((a,q)=>a+q[1],0)/R.length;
+  let sxx=0,syy=0,sxy=0; R.forEach(q=>{ const x=q[0]-cx, y=q[1]-cy; sxx+=x*x; syy+=y*y; sxy+=x*y; }); sxx/=R.length; syy/=R.length; sxy/=R.length;
+  const th=0.5*Math.atan2(2*sxy,sxx-syy), co=Math.cos(th), si=Math.sin(th);
+  const UV=R.map(q=>{ const x=q[0]-cx, y=q[1]-cy; return [x*co+y*si, -x*si+y*co]; });
+  const a=Math.max(4,Math.sqrt(2*UV.reduce((s2,q)=>s2+q[0]*q[0],0)/UV.length)), b=Math.max(4,Math.sqrt(2*UV.reduce((s2,q)=>s2+q[1]*q[1],0)/UV.length));
+  const eErr=UV.reduce((s2,q)=>s2+Math.abs(Math.hypot(q[0]/a,q[1]/b)-1),0)/UV.length;   // 楕円からのずれ（割合）
+  // 角を探す（閉じた線の Douglas-Peucker → ほぼ一直線の角は消す）
+  const rdp=(Q,eps)=>{ if(Q.length<3) return Q.slice(); let mi=0,md=0; for(let k=1;k<Q.length-1;k++){ const d=lineD(Q[k],Q[0],Q[Q.length-1]); if(d>md){ md=d; mi=k; } }
+    if(md<=eps) return [Q[0],Q[Q.length-1]]; const l=rdp(Q.slice(0,mi+1),eps), r=rdp(Q.slice(mi),eps); return l.slice(0,-1).concat(r); };
+  let fi=0, fd=0; R.forEach((q,k)=>{ const d=dist(q,R[0]); if(d>fd){ fd=d; fi=k; } });
+  const eps=L*0.028;
+  let C=rdp(R.slice(0,fi+1),eps).slice(0,-1).concat(rdp(R.slice(fi).concat([R[0]]),eps).slice(0,-1));
+  for(let pass=0;pass<4;pass++){   // ほぼまっすぐ（150°以上）の角・近すぎる角を消す
+    let changed=false;
+    for(let k=0;k<C.length&&C.length>3;k++){ const p0=C[(k-1+C.length)%C.length], p1=C[k], p2=C[(k+1)%C.length];
+      const v1=[p0[0]-p1[0],p0[1]-p1[1]], v2=[p2[0]-p1[0],p2[1]-p1[1]], ang=Math.acos(Math.max(-1,Math.min(1,(v1[0]*v2[0]+v1[1]*v2[1])/((Math.hypot(...v1)*Math.hypot(...v2))||1))));
+      if(ang>2.6||dist(p0,p1)<L*0.05){ C.splice(k,1); changed=true; k--; } }
+    if(!changed) break;
+  }
+  const pErr=R.reduce((s2,q)=>s2+Math.min(...C.map((p,k)=>segD(q,p,C[(k+1)%C.length]))),0)/R.length/((a+b)/2);   // 多角形からのずれ（割合）
+  if(eErr<0.11&&(C.length>=5||eErr<pErr*0.9)){   // 丸（楕円）
+    const ax=a/b<1.12?(a+b)/2:a, by=a/b<1.12?(a+b)/2:b;   // ほぼ円なら真円に
+    return Object.assign({},base,{ t:"circle", r:th, pts:[toN([cx-ax,cy-by]),toN([cx+ax,cy+by])] });
+  }
+  if(C.length>=3&&C.length<=6&&pErr<0.09){
+    if(C.length===4){   // 4つの角がほぼ直角なら、きれいな長方形に
+      const angs=C.map((p1,k)=>{ const p0=C[(k+3)%4], p2=C[(k+1)%4], v1=[p0[0]-p1[0],p0[1]-p1[1]], v2=[p2[0]-p1[0],p2[1]-p1[1]]; return Math.acos((v1[0]*v2[0]+v1[1]*v2[1])/((Math.hypot(...v1)*Math.hypot(...v2))||1)); });
+      if(angs.every(g=>Math.abs(g-Math.PI/2)<0.33)){
+        let li=0, ll=0; C.forEach((p,k)=>{ const d=dist(p,C[(k+1)%4]); if(d>ll){ ll=d; li=k; } });
+        let ang=Math.atan2(C[(li+1)%4][1]-C[li][1],C[(li+1)%4][0]-C[li][0]); const q90=Math.PI/2, sn=Math.round(ang/q90)*q90; if(Math.abs(ang-sn)<0.09) ang=sn;   // ほぼ水平・垂直ならそろえる
+        const c2=Math.cos(ang), s2=Math.sin(ang), mx=(C[0][0]+C[1][0]+C[2][0]+C[3][0])/4, my=(C[0][1]+C[1][1]+C[2][1]+C[3][1])/4;
+        const loc=C.map(p=>[(p[0]-mx)*c2+(p[1]-my)*s2, -(p[0]-mx)*s2+(p[1]-my)*c2]);
+        const x0=Math.min(...loc.map(q=>q[0])), x1=Math.max(...loc.map(q=>q[0])), y0=Math.min(...loc.map(q=>q[1])), y1=Math.max(...loc.map(q=>q[1]));
+        C=[[x0,y0],[x1,y0],[x1,y1],[x0,y1]].map(q=>[mx+q[0]*c2-q[1]*s2, my+q[0]*s2+q[1]*c2]);
+      }
+    }
+    return Object.assign({},base,{ t:"poly", pts:C.map(toN) });
+  }
+  return null;
+}
 function edDelPick(){ if(!edState||edState.pick<0) return; edSnap(); edState.strokes.splice(edState.pick,1); edState.pick=-1; edPaint(); edTools(); }
 function edUndo(){ if(!edState) return;
   if(edState.hist.length){ edState.strokes=edState.hist.pop(); edState.pick=-1; }
