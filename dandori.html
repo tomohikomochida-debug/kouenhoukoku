@@ -1159,6 +1159,13 @@ async function toggleShop(key) {
  *  ・使い切り：積むだけ。余って戻ってきたら「余りを戻す」で数を入れる（警告は出さない）
  */
 const KIND_USE = '使い切り', KIND_BACK = '戻す';
+function toolPlaces(t) {   // 道具の置き場（置き場が2か所以上なら「置き場 場所 数」を並べる）
+  let st = []; try { st = t.stock ? JSON.parse(t.stock) : []; } catch (e) { st = []; }
+  st = st.filter(x => x && (x.place || x.site));
+  if (!st.length) return t.location || '場所未設定';
+  const multi = new Set(st.map(x => x.site)).size > 1;
+  return st.map(x => (multi ? x.site + ' ' : '') + (x.place || '') + (st.length > 1 ? ' ' + (Number(x.qty) || 0) : '')).join('／');
+}
 function itemKind(it) {   // 道具管理で決めた管理方法 → なければ用語集の分類（資材は使い切り）
   if (it.kind) return it.kind;
   const t = it.toolId && TOOLS.find(x => x.id === it.toolId); if (t && t.kind) return t.kind;
@@ -1210,7 +1217,7 @@ function loadCard(c) {
 function loadRow(c, it, i, vs) {
   const t = it.toolId && TOOLS.find(x => x.id === it.toolId), kind = itemKind(it), q = Number(it.qty) || 1, u = it.unit || '個', k = esc(c.cardId) + '|' + i, back = Number(it.backQty) || 0;
   const other = it.toolId ? OUTS.filter(o => o.toolId === it.toolId && o.outId !== it.outId) : [];
-  let sub = t ? '📍 ' + esc(t.location || '場所未設定') : '道具管理に未登録';
+  let sub = t ? '📍 ' + esc(toolPlaces(t)) : '道具管理に未登録';
   if (other.length) sub += '　<span class="tag warn">ほかで持ち出し中：' + other.map(o => esc(o.site || '現場未定') + ' ' + (o.qty - o.backQty) + esc(o.unit || '個')).join('・') + '</span>';
   if (kind === KIND_BACK && it.loaded && back > 0 && back < q) sub += '　<span class="tag warn">未返却 ' + (q - back) + esc(u) + '</span>';
   const vb = vs.length > 1 ? '<div style="margin-top:4px"><button class="tg sm" data-vmove="' + k + '">🚚 ' + esc(vs.includes(it.vehicle) ? it.vehicle : vs[0]) + ' → 別の車へ</button></div>' : '';

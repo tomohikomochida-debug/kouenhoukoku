@@ -30,8 +30,9 @@ var ALIAS_TYPES = ['社内呼び', '別名', '略称', '聞き間違い'];
 var SHEETS = {
   terms:     { name: '用語',         head: ['termId', 'term', 'kana', 'category', 'meaning', 'usage', 'related', 'toolId', 'source', 'photoUrl', 'reviewState', 'addedBy', 'updatedAt'] },
   aliases:   { name: '呼び方',       head: ['alias', 'kana', 'termId', 'type', 'state', 'addedBy', 'addedAt'] },
-  tools:     { name: '道具マスタ',   head: ['id', 'termId', 'location', 'qty', 'photoUrl', 'photoId', 'status', 'statusSite', 'statusBy', 'statusAt', 'registeredBy', 'reviewState', 'createdAt', 'updatedAt', 'kind'] },   // kind：戻す（帰ったら戻す道具）／使い切り（土嚢袋・縄などの資材）
-  locations: { name: '番地',         head: ['code', 'floor', 'area', 'place', 'container', 'mapX', 'mapY'] },
+  tools:     { name: '道具マスタ',   head: ['id', 'termId', 'location', 'qty', 'photoUrl', 'photoId', 'status', 'statusSite', 'statusBy', 'statusAt', 'registeredBy', 'reviewState', 'createdAt', 'updatedAt', 'kind', 'stock'] },   // stock：置き場ごとの数 [{site,place,qty}]（JSON）。location・qty はその代表の場所と合計   // kind：戻す（帰ったら戻す道具）／使い切り（土嚢袋・縄などの資材）
+  locations: { name: '番地',         head: ['code', 'floor', 'area', 'place', 'container', 'mapX', 'mapY', 'site'] },
+  sites:     { name: '置き場',       head: ['siteId', 'name', 'main', 'memo', 'mapUrl', 'mapFileId', 'order', 'updatedBy', 'updatedAt'] },   // メインの道具置き場と、ほかの置き場
   toolLog:   { name: '持ち出し履歴', head: ['at', 'toolId', 'action', 'site', 'by', 'name', 'qty', 'vehicle'] },
   outs:      { name: '持ち出し',     head: ['outId', 'toolId', 'name', 'kind', 'date', 'site', 'cardId', 'itemKey', 'vehicle', 'qty', 'unit', 'backQty', 'state', 'outBy', 'outAt', 'backBy', 'backAt'] },   // 積んだ1回＝1行。「今どこ」「未返却」はここから計算
   cards:     { name: '段取りカード', head: ['cardId', 'date', 'site', 'eventId', 'meetTime', 'staff', 'vehicle', 'stops', 'items', 'steps', 'notes', 'rawText', 'createdBy', 'updatedAt', 'kind', 'title', 'dateNote', 'doneAt', 'doneBy'] },
@@ -187,7 +188,7 @@ function doGet(e) {
     if (app === 'chosa') return out_(chosaGet_(a, p));
     if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL) });
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
-    if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair'), suppliers: rows_('suppliers'), admins: admins_(), outs: openOuts_() });
+    if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair'), suppliers: rows_('suppliers'), admins: admins_(), outs: openOuts_(), sites: rows_('sites') });
     if (app === 'torihiki' && a === 'data') return out_({ ok: true, suppliers: rows_('suppliers'), history: supplierHistory_(), admins: admins_() });
     if (app === 'sharyo' && a === 'list') return out_({ ok: true, vehicles: vehicleList_() });
     if (app === 'sharyo' && a === 'usage') return out_(vehicleUsage_(Number(p.months) || 13));
@@ -224,6 +225,8 @@ function doPost(e) {
       case 'dougu:identify':   return out_(identify_(b.text, b.image, b.loc, b.catalog));
       case 'dougu:addTool':    return withLock_(function () { return addTool_(b.tool, b.image, b.by); });
       case 'dougu:updateTool': return withLock_(function () { return updateTool_(b.id, b.patch, b.by); });
+      case 'dougu:saveSite':   return withLock_(function () { return upsert_('sites', 'siteId', 'P', b.site, b.by); });
+      case 'dougu:deleteSite': return withLock_(function () { return remove_('sites', b.siteId); });
       case 'dougu:review':     return withLock_(function () { return updateTool_(b.key, { reviewState: b.action === 'approve' ? '確認済' : '未確認' }); });
       case 'dougu:addRepair':  return withLock_(function () { return addRepair_(b.log, b.by); });
       case 'dougu:deleteRepair': return withLock_(function () { return remove_('toolRepair', b.logId); });
@@ -578,7 +581,9 @@ function addTool_(t, image, by) {
   if (!t || !t.termId) return { ok: false, error: '用語ID（termId）がありません' };
   var id = nextId_('tools', 'id', 'T');
   var photo = image ? savePhoto_(image, id) : { url: '', id: '' };
-  sh_('tools').appendRow([id, t.termId, t.location || '', Number(t.qty) || 1, photo.url, photo.id, '倉庫', '', '', '', by || '', '未確認', now_(), now_()]);
+  var row = { id: id, termId: t.termId, location: t.location || '', qty: Number(t.qty) || 1, photoUrl: photo.url, photoId: photo.id, status: '倉庫', statusSite: '', statusBy: '', statusAt: '',
+    registeredBy: by || '', reviewState: '未確認', createdAt: now_(), updatedAt: now_(), kind: t.kind || '', stock: t.stock || '' };
+  sh_('tools').appendRow(SHEETS.tools.head.map(function (h) { return row[h] == null ? '' : row[h]; }));
   return { ok: true, id: id, photoUrl: photo.url };
 }
 function updateTool_(id, patch, by) {
