@@ -47,7 +47,7 @@ var SHEETS = {
   replies:   { name: '要点メモの返事', head: ['replyId', 'memoId', 'at', 'by', 'text', 'scope', 'showAt', 'actions', 'readBy'] },
   chosa:     { name: '現場調査の案件', head: ['id', 'name', 'date', 'mode', 'n', 'photos', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 中身は Drive の「現場調査データ」、写真は1枚1ファイルで「現場調査データ ＞ 写真」
   chosaPhotos:{ name: '現場調査の写真', head: ['hash', 'fileId', 'mime', 'size', 'at'] },
-  parks:     { name: '公園報告',     head: ['id', 'park', 'contract', 'order', 'date', 'figures', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] }   // 中身（図面・図形）は Drive の「公園報告データ」に1件1ファイルで置く
+  parks:     { name: '公園報告',     head: ['id', 'park', 'contract', 'order', 'date', 'figures', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'genzai'] }   // 中身（図面・図形）は Drive の「公園報告データ」に1件1ファイルで置く。genzai＝発生材に使った残材処分の記録（JSON）
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
 
@@ -1132,12 +1132,38 @@ function parkFolder_() {
   return folder;
 }
 function parkRow_(id) { var list = rows_('parks'); for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i]; return null; }
-function parkItem_(r) { return { id: r.id, park: r.park, contract: r.contract, order: r.order, date: r.date, figures: Number(r.figures) || 0, updated: r.updatedAt, by: r.updatedBy || r.by, ver: Number(r.ver) || 1 }; }
+function parkItem_(r) { return { id: r.id, park: r.park, contract: r.contract, order: r.order, date: r.date, figures: Number(r.figures) || 0, updated: r.updatedAt, by: r.updatedBy || r.by, ver: Number(r.ver) || 1, genzai: parkGenzaiList_(r.genzai) }; }
+/* 発生材に使った残材処分の記録。[{k:伝票のキー, kg, full:全量か, date}]。報告書に入れない設定なら空 */
+function parkGenzaiOf_(json) {
+  try {
+    var d = JSON.parse(json), R = (d && d.rp) || {};
+    if (R.genzaiOn === false || !Array.isArray(R.genzaiSrc)) return '[]';
+    return JSON.stringify(R.genzaiSrc.filter(function (x) { return x && x.k; }).map(function (x) {
+      return { k: String(x.k), kg: Number(x.kg) || 0, full: !!x.full, date: String(x.date || '') }; }));
+  } catch (e) { return ''; }
+}
+function parkGenzaiList_(v) { if (!v) return []; try { var a = JSON.parse(String(v)); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+/* 前に保存した記録にも、発生材に使った記録を書き足す（中身のファイルを1回ずつ読む）。?app=park&action=genzaiFill */
+function parkGenzaiFill_() {
+  var list = rows_('parks'), n = 0, t0 = Date.now();
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i];
+    if (r.state === '削除' || String(r.genzai || '') !== '' || !r.fileId) continue;
+    if (Date.now() - t0 > 240000) break;   // 時間切れの前に止める（もう一度開けば続きから）
+    var g = '[]';
+    try { g = parkGenzaiOf_(DriveApp.getFileById(r.fileId).getBlob().getDataAsString('UTF-8')) || '[]'; } catch (e) {}
+    upsert_('parks', 'id', 'P', { id: r.id, genzai: g }, r.updatedBy || r.by || '');
+    n++;
+  }
+  var left = rows_('parks').filter(function (r) { return r.state !== '削除' && String(r.genzai || '') === '' && r.fileId; }).length;
+  return { ok: true, filled: n, left: left };
+}
 function parkGet_(a, p) {
   if (a === 'ping') {
     var n = rows_('parks').filter(function (r) { return r.state !== '削除'; }).length;
     return { ok: true, shared: true, spreadsheet: ss_().getName() + '（公園報告シート）', folder: '社内アプリ ＞ ' + parkFolder_().getName(), count: n };
   }
+  if (a === 'genzaiFill') { var lk = LockService.getScriptLock(); lk.waitLock(25000); try { return parkGenzaiFill_(); } finally { lk.releaseLock(); } }
   if (a === 'list') {
     var items = rows_('parks').filter(function (r) { return r.state !== '削除'; }).map(parkItem_);
     items.sort(function (x, y) { return String(y.updated).localeCompare(String(x.updated)); });
@@ -1163,7 +1189,7 @@ function parkSave_(b) {
     var noVer = b.ver == null || b.ver === '';   // 版の分からない古いファイル（前のクラウドなど）からの保存は、上書きせず新しい記録にする
     if (noVer || Number(b.ver) !== (Number(old.ver) || 1)) { forked = !noVer; old = null; }   // 開いたあとで誰かが保存し直していた → 上書きしない
   }
-  var obj = { park: String(b.park).trim(), contract: b.contract || '', order: b.order || '', date: b.date || '', figures: Number(b.figures) || 0, state: '有効' };
+  var obj = { park: String(b.park).trim(), contract: b.contract || '', order: b.order || '', date: b.date || '', figures: Number(b.figures) || 0, state: '有効', genzai: parkGenzaiOf_(json) || '[]' };
   if (old) { obj.id = old.id; obj.ver = (Number(old.ver) || 1) + 1; }
   else { obj.ver = 1; obj.by = by; obj.at = now_(); }
   var r = upsert_('parks', 'id', 'P', obj, by);
