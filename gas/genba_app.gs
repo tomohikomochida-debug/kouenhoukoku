@@ -43,7 +43,8 @@ var SHEETS = {
   vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at', 'batch', 'state', 'validUntil', 'page'] },
   memos:     { name: '要点メモ',     head: ['memoId', 'at', 'by', 'to', 'kind', 'headline', 'points', 'needs', 'vehicles', 'site', 'when', 'people', 'missing', 'message', 'rawText', 'readBy', 'status', 'doneAt', 'doneBy', 'routes'] },
   cautions:  { name: '現場の注意点', head: ['cautionId', 'siteId', 'site', 'kind', 'text', 'lat', 'lng', 'photoUrl', 'photoId', 'until', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },
-  replies:   { name: '要点メモの返事', head: ['replyId', 'memoId', 'at', 'by', 'text', 'scope', 'showAt', 'actions', 'readBy'] }
+  replies:   { name: '要点メモの返事', head: ['replyId', 'memoId', 'at', 'by', 'text', 'scope', 'showAt', 'actions', 'readBy'] },
+  parks:     { name: '公園報告',     head: ['id', 'park', 'contract', 'order', 'date', 'figures', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] }   // 中身（図面・図形）は Drive の「公園報告データ」に1件1ファイルで置く
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
 
@@ -180,6 +181,7 @@ function gemini_(parts, opt) {   // parts：文字列 または Gemini の parts
 function doGet(e) {
   var p = (e && e.parameter) || {}, app = p.app || '', a = p.action || '';
   try {
+    if (app === 'park') return out_(parkGet_(a, p));
     if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL) });
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
     if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair'), suppliers: rows_('suppliers'), admins: admins_(), outs: openOuts_() });
@@ -247,6 +249,9 @@ function doPost(e) {
       case 'note:importBukken':  return withLock_(function () { return importBukken_(b.by); });
       case 'note:saveCaution':   return withLock_(function () { return saveCaution_(b.caution, b.image, b.by); });
       case 'note:deleteCaution': return withLock_(function () { return upsert_('cautions', 'cautionId', 'K', { cautionId: b.cautionId, state: '削除', updatedBy: b.by, updatedAt: now_() }, b.by); });
+      /* 公園報告 */
+      case 'park:save':        return withLock_(function () { return parkSave_(b); });
+      case 'park:delete':      return withLock_(function () { return parkDelete_(b.id, b.by); });
       /* 要点まとめ */
       case 'yoten:summarize':  return out_(summarize_(b));
       case 'yoten:save':       return withLock_(function () { return upsert_('memos', 'memoId', 'M', Object.assign({}, b.memo, { by: b.by, at: now_() }), b.by); });
@@ -965,6 +970,76 @@ function siteNotesForDandori_() {   // 段取りカードに出す：有効な�
       .map(function (s) { return { id: s.id, name: s.name, aliases: s.aliases, memo: s.memo }; });
     return { cautions: cs, sites: sites };
   } catch (e) { return { cautions: [], sites: [], error: String(e) }; }
+}
+
+/* ================================================================
+ *  公園報告（park_app.html）の記録をみんなで共有する
+ *  ・一覧は共通スプレッドシートの「公園報告」シート（1件1行）
+ *  ・中身（図面の画像・図形・設定）は「社内アプリ ＞ 公園報告データ」に 1件1つの .json ファイル
+ *    （画像が入って数MBになるので、表のセルには入れない）
+ *  ・保存し直すたびに新しいファイルを作り、前のファイルはゴミ箱へ（30日は戻せる）
+ *  ・ほかの人が先に同じ記録を保存し直していたら、上書きせず別の記録として残す
+ * ================================================================ */
+function parkFolder_() {
+  var id = prop_('PARK_FOLDER_ID', '');
+  if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) return f; } catch (e) {} }
+  var p = docsFolder_().getParents(), parent = p.hasNext() ? p.next() : DriveApp.getRootFolder();
+  var folder = subFolder_(parent, '公園報告データ');
+  PropertiesService.getScriptProperties().setProperty('PARK_FOLDER_ID', folder.getId());
+  return folder;
+}
+function parkRow_(id) { var list = rows_('parks'); for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i]; return null; }
+function parkItem_(r) { return { id: r.id, park: r.park, contract: r.contract, order: r.order, date: r.date, figures: Number(r.figures) || 0, updated: r.updatedAt, by: r.updatedBy || r.by, ver: Number(r.ver) || 1 }; }
+function parkGet_(a, p) {
+  if (a === 'ping') {
+    var n = rows_('parks').filter(function (r) { return r.state !== '削除'; }).length;
+    return { ok: true, shared: true, spreadsheet: ss_().getName() + '（公園報告シート）', folder: '社内アプリ ＞ ' + parkFolder_().getName(), count: n };
+  }
+  if (a === 'list') {
+    var items = rows_('parks').filter(function (r) { return r.state !== '削除'; }).map(parkItem_);
+    items.sort(function (x, y) { return String(y.updated).localeCompare(String(x.updated)); });
+    return { ok: true, items: items };
+  }
+  if (a === 'get') {
+    var r = parkRow_(p.id);
+    if (!r || r.state === '削除') return { ok: false, error: 'この記録は見つかりませんでした（消されたかもしれません）' };
+    var text;
+    try { text = DriveApp.getFileById(r.fileId).getBlob().getDataAsString('UTF-8'); } catch (e) { return { ok: false, error: '中身のファイルを開けませんでした：' + e }; }
+    return { ok: true, data: text, item: parkItem_(r) };
+  }
+  return { ok: false, error: 'unknown action' };
+}
+function parkSave_(b) {
+  var json = String(b.json || '');
+  if (!json) return { ok: false, error: '保存する中身がありません' };
+  if (!String(b.park || '').trim()) return { ok: false, error: '公園名を入れてください' };
+  if (json.length > 45 * 1024 * 1024) return { ok: false, error: '大きすぎて保存できません（図面の画像を小さくしてください）' };
+  var by = String(b.by || '').trim(), old = b.id ? parkRow_(b.id) : null, forked = false;
+  if (old && old.state === '削除') old = null;
+  if (old) {
+    var noVer = b.ver == null || b.ver === '';   // 版の分からない古いファイル（前のクラウドなど）からの保存は、上書きせず新しい記録にする
+    if (noVer || Number(b.ver) !== (Number(old.ver) || 1)) { forked = !noVer; old = null; }   // 開いたあとで誰かが保存し直していた → 上書きしない
+  }
+  var obj = { park: String(b.park).trim(), contract: b.contract || '', order: b.order || '', date: b.date || '', figures: Number(b.figures) || 0, state: '有効' };
+  if (old) { obj.id = old.id; obj.ver = (Number(old.ver) || 1) + 1; }
+  else { obj.ver = 1; obj.by = by; obj.at = now_(); }
+  var r = upsert_('parks', 'id', 'P', obj, by);
+  try { var d = JSON.parse(json); d.cloudId = r.id; d.cloudVer = obj.ver; json = JSON.stringify(d); } catch (e) {}   // 中身にも番号と版を書いておく（.json で持ち出しても、あとで正しく照合できる）
+  var name = [obj.park, obj.date || '日付なし', r.id].join('_').replace(/[\\\/:*?"<>|]/g, '') + '.json';
+  var file = parkFolder_().createFile(Utilities.newBlob(json, 'application/json', name));
+  if (old && old.fileId) { try { DriveApp.getFileById(old.fileId).setTrashed(true); } catch (e) {} }
+  upsert_('parks', 'id', 'P', { id: r.id, fileId: file.getId(), size: Math.round(json.length / 1024) + 'KB' }, by);
+  var row = parkRow_(r.id);
+  return { ok: true, id: r.id, ver: obj.ver, updated: row.updatedAt, forked: forked };
+}
+function parkDelete_(id, by) {   // 消すのは、作った人か親方だけ。ファイルはゴミ箱へ（30日は戻せる）
+  var r = parkRow_(id);
+  if (!r || r.state === '削除') return { ok: false, error: 'この記録は見つかりませんでした' };
+  by = String(by || '').trim();
+  if (!isAdmin_(by) && (!by || by !== String(r.by || '').trim())) return { ok: false, error: '消せるのは、この記録を作った人（' + (r.by || '不明') + '）か' + admins_().join('・') + 'だけです' };
+  if (r.fileId) { try { DriveApp.getFileById(r.fileId).setTrashed(true); } catch (e) {} }
+  upsert_('parks', 'id', 'P', { id: r.id, state: '削除' }, by);
+  return { ok: true };
 }
 
 /* ================================================================

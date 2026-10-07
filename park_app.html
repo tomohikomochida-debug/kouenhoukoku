@@ -380,7 +380,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <input id="rpUkeoi" placeholder="株式会社グリーンネットワーク" style="width:100%">
       <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
       <h3 style="margin:0 0 6px">クラウド</h3>
-      <button class="btn ghost" id="cloudCfg">クラウドの設定<small>GASのURLを貼る（最初に1回だけ）</small></button>
+      <button class="btn ghost" id="cloudCfg">クラウドの確認<small>みんなの共有（Googleドライブ）につながるか・前のクラウドから移す</small></button>
   </div>
 </div></div>
 <div id="cloudBox"><div class="bx">
@@ -483,8 +483,8 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
 
     <div class="sec">
       <h3>保存 / 書き出し</h3>
-      <button class="btn" id="cloudSave">☁️ クラウドに保存<small>Driveへ直接。ファイルの受け渡しは要りません</small></button>
-      <button class="btn ghost" id="cloudOpen">☁️ クラウドから開く<small>保存した公園の一覧から選びます</small></button>
+      <button class="btn" id="cloudSave">☁️ クラウドに保存<small>みんなの共有（Googleドライブ）へ。設定は要りません</small></button>
+      <button class="btn ghost" id="cloudOpen">☁️ クラウドから開く<small>みんなが保存した公園の一覧から選びます</small></button>
       <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
       <button class="btn ghost" id="rpMapBtn">🖼 履行場所の図をえらぶ<small>Googleマップのスクショ（枠に合わせて自動で収めます）</small></button>
       <input type="file" id="rpMapFile" accept="image/*" hidden>
@@ -2292,16 +2292,27 @@ function applyParkData(d,kb){
   if($('agentName'))$('agentName').value=d.agent||'';if($('supervisorName'))$('supervisorName').value=d.supervisor||'';
   if(d.rp){const R=d.rp;const sv=(id,v)=>{const el=$(id);if(el&&v!==undefined&&v!==null&&v!=='')el.value=v;};
     sv('rpFy',R.fy);sv('rpNo',R.no);sv('rpSubmit',R.submit);sv('rpKeiyaku',R.keiyaku);sv('rpAddr',R.addr);sv('rpAtena',R.atena);sv('rpUkeoi',R.ukeoi);}
-  state.cloudId=d.cloudId||state.cloudId||null;
+  state.cloudId=d.cloudId||state.cloudId||null; state.cloudVer=d.cloudId?(d.cloudVer||null):(state.cloudVer||null);
   if(d.mapImg){state.mapImg=d.mapImg;const b=$('rpMapBtn');if(b)b.firstChild.textContent='🖼 履行場所の図：読み込みました（変えるならもう一度）';}
   state.features=d.features||[];state.manual=d.manual||[];recalcAll();
   undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
   if(!state.features.length) alert('読み込みは成功しましたが、記録が0件でした（大きさ '+kb+' KB）。\n保存したときに図形が入っていたか確認してください。');
 }
-/* ---------- クラウド（GAS経由でDriveに保存） ---------- */
-const CLOUD_KEY='park_gas_url';
-function cloudUrl(){ try{ return (localStorage.getItem(CLOUD_KEY)||'').trim(); }catch(e){ return ''; } }
+/* ---------- クラウド（みんなの共有：共通GAS → Googleドライブ「社内アプリ ＞ 公園報告データ」） ---------- */
+const PARK_GAS='https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
+const CLOUD_KEY='park_gas_url';   // 以前の「自分で貼ったGASのURL」。いまは前のクラウドから移すときだけ使う
+function oldCloudUrl(){ try{ const u=(localStorage.getItem(CLOUD_KEY)||'').trim(); return u&&u!==PARK_GAS?u:''; }catch(e){ return ''; } }
+function cloudGet(action,extra){ return fetch(PARK_GAS+'?app=park&action='+action+(extra||''),{cache:'no-store'}).then(r=>r.json()); }
+function cloudPost(body){ return fetch(PARK_GAS,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({app:'park',by:myName()},body))}).then(r=>r.json()); }
+// 名前（ほかのアプリと同じ「自分の名前」を使う。無ければ1回だけ聞く）
+function myName(ask){
+  let n='';
+  try{ for(const k of ['dandori_me','nippou_author']){ const v=localStorage.getItem(k); if(v){ try{ const j=JSON.parse(v); n=typeof j==='string'?j:''; }catch(e){ n=v; } } if(n)break; } }catch(e){}
+  n=String(n||'').trim();
+  if(!n&&ask){ const v=prompt('あなたの名前を入れてください（だれが保存したか一覧に出ます）',''); n=String(v||'').trim(); if(n){ try{ localStorage.setItem('dandori_me',JSON.stringify(n)); }catch(e){} } }
+  return n;
+}
 function cloudBox(on,title){ $('cloudBox').classList.toggle('on',!!on); if(title)$('cloudTitle').textContent=title; }
 $('cloudClose').onclick=()=>cloudBox(false);
 $('cfgBtn').onclick=()=>$('cfgBox').classList.add('on');
@@ -2314,21 +2325,47 @@ $('moreOutBtn').onclick=()=>{
 };
 // 実施日を変えたら「別の日の記録」として保存する（同じ公園に何度も行くため）
 $('workDate').addEventListener('change',()=>{
-  if(state.cloudId){ state.cloudId=null; }
+  if(state.cloudId){ state.cloudId=null; state.cloudVer=null; }
 });
-$('cloudCfg').onclick=()=>{
-  const cur=cloudUrl();
-  const v=prompt('GASのウェブアプリURL（/exec で終わるもの）を貼ってください。\n空にすると設定を消します。',cur);
-  if(v===null)return;
-  const u=v.trim();
-  if(u&&!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)){ alert('URLの形が違うようです。/exec で終わる必要があります。'); return; }
-  try{ localStorage.setItem(CLOUD_KEY,u); }catch(e){}
-  if(!u){ alert('設定を消しました。'); return; }
-  fetch(u+'?action=ping').then(r=>r.json()).then(d=>{
-    alert(d.ok?('つながりました。\n表：'+d.spreadsheet+'\nフォルダ：'+d.folder+'\n保存ずみ：'+d.count+'件')
-              :('つながりましたが、GAS側でエラーです。\n'+d.error));
-  }).catch(e=>alert('つながりませんでした。URLと、デプロイの「アクセスできるユーザー：全員」を確認してください。\n'+e));
+$('cloudCfg').onclick=async()=>{
+  const old=oldCloudUrl();
+  try{
+    const d=await cloudGet('ping');
+    if(!d.ok) throw new Error(d.error||'エラー');
+    let msg='みんなの共有につながっています。\n表：'+d.spreadsheet+'\nフォルダ：'+d.folder+'\n保存ずみ：'+d.count+'件';
+    if(old){
+      if(confirm(msg+'\n\nこの端末には、前に自分で設定したクラウドがあります。\nそこに保存した公園を、みんなの共有へコピーしますか？（前のクラウドはそのまま残ります）')) migrateOld(old);
+    }else alert(msg);
+  }catch(e){ alert('つながりませんでした。電波の届くところで、もう一度お試しください。\n'+(e&&e.message||e)); }
 };
+async function migrateOld(old){
+  cloudBox(true,'前のクラウドから移す'); const body=$('cloudBody');
+  body.innerHTML='<div class="legend">前のクラウドの一覧を読んでいます…</div>';
+  try{
+    const l=await (await fetch(old+'?action=list')).json();
+    if(!l.ok) throw new Error(l.error||'一覧を取れませんでした');
+    const items=l.items||[]; if(!items.length){ body.innerHTML='<div class="legend">前のクラウドには公園がありませんでした。</div>'; return; }
+    const have=(await cloudGet('list')).items||[];
+    const same=it=>have.some(h=>h.park===it.park&&String(h.date||'')===String(it.date||''));
+    let done=0, skip=0, ng=[];
+    for(const it of items){
+      body.innerHTML='<div class="legend">コピー中… '+(done+skip+ng.length+1)+' / '+items.length+'　'+esc(it.park||'')+'</div>';
+      if(same(it)){ skip++; continue; }   // 同じ公園・同じ実施日がもう共有にあれば飛ばす
+      try{
+        const g=await (await fetch(old+'?action=get&id='+encodeURIComponent(it.id))).json();
+        if(!g.ok) throw new Error(g.error);
+        const text=typeof g.data==='string'?g.data:JSON.stringify(g.data);
+        let d={}; try{ d=JSON.parse(text); }catch(e){}
+        const r=await cloudPost({mode:'save',park:d.park||it.park||'（名前なし）',contract:d.contract||'',order:d.order||it.order||'',date:d.date||it.date||'',
+          figures:(d.features||[]).length,json:text});
+        if(!r.ok) throw new Error(r.error); done++;
+      }catch(e){ ng.push((it.park||it.id)+'：'+(e&&e.message||e)); }
+    }
+    body.innerHTML='<div class="legend">終わりました。<br>コピー '+done+'件'+(skip?('／すでに共有にあったので飛ばした '+skip+'件'):'')
+      +(ng.length?('<br>コピーできなかった '+ng.length+'件：<br>'+ng.map(esc).join('<br>')):'')+'</div>';
+    if(!ng.length){ try{ localStorage.removeItem(CLOUD_KEY); }catch(e){} }
+  }catch(e){ body.innerHTML='<div class="legend">前のクラウドにつながりませんでした。'+esc(String(e&&e.message||e))+'</div>'; }
+}
 function parkPayload(){
   const order=$('orderNo').value||'';
   return {park:$('parkName').value||'',contract:$('contractName').value||'',order,
@@ -2337,67 +2374,72 @@ function parkPayload(){
     scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,
     rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,
         addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value},
-    mapImg:state.mapImg||null,cloudId:state.cloudId||null,saved:new Date().toISOString()};
+    mapImg:state.mapImg||null,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,saved:new Date().toISOString()};
 }
 $('cloudSave').onclick=async()=>{
-  const u=cloudUrl();
-  if(!u){ alert('先に「クラウドの設定」でGASのURLを貼ってください。'); return; }
   if(!$('parkName').value){ alert('公園名を入れてください。一覧で見分けがつかなくなります。'); return; }
+  myName(true);
   const b=$('cloudSave'); const label=b.firstChild.textContent;
   b.firstChild.textContent='☁️ 保存中…'; b.disabled=true;
   try{
     const payload=parkPayload();
-    const res=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({action:'save',id:state.cloudId||null,park:payload.park,contract:payload.contract,
-        order:payload.order,date:payload.date,figures:state.features.length,json:JSON.stringify(payload)})});
-    const d=await res.json();
-    if(!d.ok) throw new Error(d.error||'保存できませんでした');
-    state.cloudId=d.id;
-    alert('クラウドに保存しました。\n公園：'+payload.park+'\n更新：'+d.updated+'\n\n事務所では「クラウドから開く」で読み込めます。');
+    const d=await cloudPost({mode:'save',id:state.cloudId||null,ver:state.cloudId?state.cloudVer:null,park:payload.park,contract:payload.contract,
+        order:payload.order,date:payload.date,figures:state.features.length,json:JSON.stringify(payload)});
+    if(!d.ok) throw new Error(/unknown/.test(d.error||'')?'共通GASの更新がまだです（数分で反映されます）':(d.error||'保存できませんでした'));
+    state.cloudId=d.id; state.cloudVer=d.ver;
+    alert((d.forked?'ほかの人が先にこの記録を保存し直していたので、上書きせず「別の記録」として保存しました。\n一覧で2つを見くらべてください。\n\n':'みんなの共有に保存しました。\n')
+      +'公園：'+payload.park+(payload.date?('（'+payload.date+'）'):'')+'\n更新：'+d.updated+'\n\nほかの端末・事務所では「クラウドから開く」で読み込めます。');
   }catch(e){
     alert('クラウドに保存できませんでした。\n'+(e&&e.message?e.message:e)+'\n\n電波の届くところで、もう一度お試しください。念のため「この公園を保存（.json）」もしておくと安全です。');
   }finally{ b.firstChild.textContent=label; b.disabled=false; }
 };
-$('cloudOpen').onclick=async()=>{
-  const u=cloudUrl();
-  if(!u){ alert('先に「クラウドの設定」でGASのURLを貼ってください。'); return; }
-  cloudBox(true,'クラウドの公園'); $('cloudBody').innerHTML='<div class="legend">読み込み中…</div>';
-  try{
-    const d=await (await fetch(u+'?action=list')).json();
-    if(!d.ok) throw new Error(d.error||'一覧を取れませんでした');
-    if(!d.items.length){ $('cloudBody').innerHTML='<div class="legend">まだ保存された公園がありません。</div>'; return; }
-    $('cloudBody').innerHTML=d.items.map(it=>
+let cloudItems=[], cloudQ='';
+function drawCloudList(){
+  const q=cloudQ.trim().toLowerCase();
+  const list=cloudItems.filter(it=>!q||[it.park,it.contract,it.order,it.date,it.by].join(' ').toLowerCase().includes(q));
+  $('cloudList').innerHTML=list.length?list.map(it=>
       '<div class="item" data-id="'+esc(it.id)+'"><div><div class="nm">'+esc(it.park||'（名前なし）')
-      +(it.date?('　<span style="color:var(--acc)">'+esc(it.date)+'</span>'):'')+'</div>'
-      +'<div class="sb">更新 '+esc(it.updated||'')+(it.figures?('　図形 '+it.figures+'件'):'')
+      +(it.date?('　<span style="color:var(--acc)">'+esc(it.date)+'</span>'):'')+(it.id===state.cloudId?'　<span style="color:var(--acc)">（開いている）</span>':'')+'</div>'
+      +'<div class="sb">更新 '+esc(it.updated||'')+(it.by?('　'+esc(it.by)):'')+(it.figures?('　図形 '+it.figures+'件'):'')
       +(it.order?('　指示 '+esc(it.order)):'')+'</div></div>'
-      +'<div class="go">開く →</div><button class="del" data-del="'+esc(it.id)+'" title="消す">🗑</button></div>').join('');
-    Array.prototype.forEach.call($('cloudBody').querySelectorAll('[data-del]'),b=>{
-      b.onclick=async e=>{
-        e.stopPropagation();
-        if(!confirm('この記録を消します。よろしいですか。')) return;
-        try{
-          const r=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain'},
-            body:JSON.stringify({action:'delete',id:b.getAttribute('data-del')})});
-          const d2=await r.json();
-          if(!d2.ok) throw new Error(d2.error||'消せませんでした');
-          $('cloudOpen').onclick();
-        }catch(err){ alert('消せませんでした。\n'+(err&&err.message||err)); }
-      };
-    });
-    Array.prototype.forEach.call($('cloudBody').querySelectorAll('.item'),el=>{
-      el.onclick=async()=>{
-        if(state.features.length && !confirm('いま記録している内容を置きかえます。よろしいですか。')) return;
-        $('cloudBody').innerHTML='<div class="legend">開いています…</div>';
-        try{
-          const g=await (await fetch(u+'?action=get&id='+encodeURIComponent(el.getAttribute('data-id')))).json();
-          if(!g.ok) throw new Error(g.error||'読み込めませんでした');
-          applyParkJson(g.data);
-          state.cloudId=el.getAttribute('data-id');
-          cloudBox(false);
-        }catch(e){ $('cloudBody').innerHTML='<div class="legend">'+esc(String(e&&e.message||e))+'</div>'; }
-      };
-    });
+      +'<div class="go">開く →</div><button class="del" data-del="'+esc(it.id)+'" title="消す">🗑</button></div>').join('')
+    :'<div class="legend">'+(cloudItems.length?'見つかりません。':'まだ保存された公園がありません。')+'</div>';
+  Array.prototype.forEach.call($('cloudList').querySelectorAll('[data-del]'),b=>{
+    b.onclick=async e=>{
+      e.stopPropagation();
+      if(!confirm('この記録を消します。よろしいですか。\n（消せるのは作った人と親方です。Driveのゴミ箱に30日残ります）')) return;
+      if(!myName(true)) return;
+      try{
+        const d2=await cloudPost({mode:'delete',id:b.getAttribute('data-del')});
+        if(!d2.ok) throw new Error(d2.error||'消せませんでした');
+        if(state.cloudId===b.getAttribute('data-del')){ state.cloudId=null; state.cloudVer=null; }
+        $('cloudOpen').onclick();
+      }catch(err){ alert('消せませんでした。\n'+(err&&err.message||err)); }
+    };
+  });
+  Array.prototype.forEach.call($('cloudList').querySelectorAll('.item'),el=>{
+    el.onclick=async()=>{
+      if(state.features.length && !confirm('いま記録している内容を置きかえます。よろしいですか。')) return;
+      $('cloudBody').innerHTML='<div class="legend">開いています…</div>';
+      try{
+        const g=await cloudGet('get','&id='+encodeURIComponent(el.getAttribute('data-id')));
+        if(!g.ok) throw new Error(g.error||'読み込めませんでした');
+        applyParkJson(g.data);
+        state.cloudId=el.getAttribute('data-id'); state.cloudVer=g.item?g.item.ver:state.cloudVer;
+        cloudBox(false);
+      }catch(e){ $('cloudBody').innerHTML='<div class="legend">'+esc(String(e&&e.message||e))+'</div>'; }
+    };
+  });
+}
+$('cloudOpen').onclick=async()=>{
+  cloudBox(true,'みんなの公園（共有）'); $('cloudBody').innerHTML='<div class="legend">読み込み中…</div>';
+  try{
+    const d=await cloudGet('list');
+    if(!d.ok) throw new Error(/unknown/.test(d.error||'')?'共通GASの更新がまだです（数分で反映されます）':(d.error||'一覧を取れませんでした'));
+    cloudItems=d.items||[];
+    $('cloudBody').innerHTML=(cloudItems.length>6?'<input id="cloudQ" placeholder="🔍 公園名・日付・名前でさがす" style="width:100%;margin-bottom:8px">':'')+'<div id="cloudList"></div>';
+    const qi=$('cloudQ'); if(qi){ qi.value=cloudQ; qi.oninput=()=>{ cloudQ=qi.value; drawCloudList(); }; }
+    drawCloudList();
   }catch(e){ $('cloudBody').innerHTML='<div class="legend">一覧を取れませんでした。'+esc(String(e&&e.message||e))+'</div>'; }
 };
 /* ---------- ファイルをドラッグ＆ドロップで開く ---------- */
