@@ -220,9 +220,9 @@
   .crop-modal[hidden]{display:none}
   .crop-head{color:#fff;padding:12px 14px 8px;font-size:15px;font-weight:700;line-height:1.4}
   .crop-head small{display:block;font-size:12px;font-weight:400;opacity:.75}
-  .crop-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:10px;touch-action:none;user-select:none;-webkit-user-select:none}
+  .crop-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:18px;overflow:hidden;position:relative;touch-action:none;user-select:none;-webkit-user-select:none}
   .crop-wrap{position:relative;line-height:0;touch-action:none}
-  .crop-wrap img{display:block;max-width:calc(100vw - 20px);max-height:calc(100vh - 170px);-webkit-user-drag:none;pointer-events:none}
+  .crop-wrap img{display:block;max-width:calc(100vw - 36px);max-height:calc(100vh - 190px);-webkit-user-drag:none;pointer-events:none}
   .crop-box{position:absolute;border:2px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.55);cursor:move;touch-action:none}
   .crop-box::before,.crop-box::after{content:'';position:absolute;border:0 dashed rgba(255,255,255,.45);pointer-events:none}
   .crop-box::before{left:33.3%;right:33.3%;top:0;bottom:0;border-left-width:1px;border-right-width:1px}
@@ -232,8 +232,9 @@
   .crop-box i[data-h=ne]{right:-15px;top:-15px;cursor:nesw-resize}
   .crop-box i[data-h=sw]{left:-15px;bottom:-15px;cursor:nesw-resize}
   .crop-box i[data-h=se]{right:-15px;bottom:-15px;cursor:nwse-resize}
-  .crop-foot{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
-  .crop-foot button{flex:1;height:48px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer}
+  .crop-foot{display:flex;gap:6px;padding:10px 10px calc(10px + env(safe-area-inset-bottom))}
+  .crop-foot button{flex:1;min-width:0;height:48px;padding:0 2px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;font-family:inherit;font-size:14px;font-weight:700;white-space:nowrap;letter-spacing:-.02em;cursor:pointer}
+  .crop-foot button.on{background:#e0a52a;border-color:#e0a52a;color:#222}
   .crop-foot button.primary{background:var(--leaf);border-color:var(--leaf)}
 
   /* 伝票からの仮入力 */
@@ -492,6 +493,7 @@
     <button type="button" id="cropCancel">やめる</button>
     <button type="button" id="cropRot">⟳ 回す</button>
     <button type="button" id="cropAll">全体</button>
+    <button type="button" id="cropEnh">くっきり</button>
     <button type="button" id="cropOk" class="primary">切り取る</button>
   </div>
 </div>
@@ -826,7 +828,9 @@ function resetForm(){ editDenpyo=null; editKey=null; slipEdit=[]; renderSlips();
 /* ===== 処分伝票（スキャン・写真の添付） ===== */
 const slipReady=()=>SLIP_GAS_URL.indexOf('PASTE_')!==0;
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const SLIP_MAX=2000;   // 長い辺の最大ピクセル（A4の1/4に印刷して十分読める大きさ）
+const SLIP_MAX=2800;       // 保存するときの長い辺の最大ピクセル（切り取った後の伝票。細かい文字も読める大きさ）
+const SLIP_SRC_MAX=3600;   // 取り込んだ直後に持っておく大きさ（切り取る前。ここで縮めすぎると、切り取った後に文字がつぶれる）
+const SLIP_Q=0.9;          // 保存するときのJPEGの画質
 async function slipGet(params){ const r=await fetchT(SLIP_GAS_URL+'?'+params,30000); return r.json(); }
 async function slipPost(body){ const r=await fetch(SLIP_GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
   const d=await r.json(); if(!d.ok) throw new Error(d.error||'slip'); return d; }
@@ -836,11 +840,18 @@ async function getSlipData(id){ if(slipCache[id]) return slipCache[id];
   slipCache[id]={mime:d.mime||'image/jpeg',data:d.data,w:num(d.w),h:num(d.h)}; return slipCache[id]; }
 
 function loadImg(src){ return new Promise((ok,ng)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ng; i.src=src; }); }
-function fitCanvas(src,w,h){ const s=Math.min(1,SLIP_MAX/Math.max(w,h)); const c=document.createElement('canvas');
-  c.width=Math.max(1,Math.round(w*s)); c.height=Math.max(1,Math.round(h*s)); const x=c.getContext('2d');
-  x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(src,0,0,c.width,c.height); return c; }
+// 長い辺を max 以下にした白地のキャンバス。大きく縮めるときは半分ずつ縮めて、文字がつぶれないようにする
+function fitCanvas(src,w,h,max){ max=max||SLIP_MAX;
+  const s=Math.min(1,max/Math.max(w,h)), W=Math.max(1,Math.round(w*s)), H=Math.max(1,Math.round(h*s));
+  let cur=src, cw=w, ch=h;
+  while(cw/2>=W*1.4 && ch/2>=H*1.4){   // 半分ずつ
+    const t=document.createElement('canvas'); t.width=Math.round(cw/2); t.height=Math.round(ch/2);
+    const tx=t.getContext('2d'); tx.imageSmoothingQuality='high'; tx.drawImage(cur,0,0,t.width,t.height); cur=t; cw=t.width; ch=t.height; }
+  const c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d');
+  x.imageSmoothingQuality='high'; x.fillStyle='#fff'; x.fillRect(0,0,W,H); x.drawImage(cur,0,0,W,H); return c; }
+function shrinkTo(c,max){ return Math.max(c.width,c.height)>max ? fitCanvas(c,c.width,c.height,max) : c; }
 async function imageToCanvas(file){ const url=URL.createObjectURL(file);
-  try{ const img=await loadImg(url); return fitCanvas(img,img.naturalWidth,img.naturalHeight); } finally{ URL.revokeObjectURL(url); } }
+  try{ const img=await loadImg(url); return fitCanvas(img,img.naturalWidth,img.naturalHeight,SLIP_SRC_MAX); } finally{ URL.revokeObjectURL(url); } }
 let pdfjsP=null;
 function loadPdfjs(){ if(pdfjsP) return pdfjsP;
   pdfjsP=new Promise((ok,ng)=>{ const s=document.createElement('script');
@@ -892,17 +903,33 @@ function renderSlips(){
   });
 }
 /* ===== 伝票のトリミング（必要なところだけ切り取る） ===== */
-const crop={i:-1,src:null,box:null,drag:null,after:null};
+const crop={i:-1,base:null,src:null,box:null,drag:null,after:null,enh:false};
+try{ crop.enh=localStorage.getItem('zaizai_crop_enh')==='1'; }catch(e){}
+/* 「くっきり」：うすい伝票（感圧紙・カーボン）の文字を濃くする。白黒にして、紙の白と文字の黒の幅を広げる */
+function enhanceDoc(c){
+  const o=document.createElement('canvas'); o.width=c.width; o.height=c.height; const x=o.getContext('2d');
+  x.drawImage(c,0,0); const im=x.getImageData(0,0,o.width,o.height), d=im.data, n=d.length/4;
+  const hist=new Uint32Array(256), L=new Uint8ClampedArray(n);
+  for(let i=0,j=0;j<n;i+=4,j++){ const v=(d[i]*299+d[i+1]*587+d[i+2]*114)/1000|0; L[j]=v; hist[v]++; }
+  const pct=q=>{ let a=0,t=n*q; for(let v=0;v<256;v++){ a+=hist[v]; if(a>=t) return v; } return 255; };
+  const lo=pct(0.01), hi=Math.max(lo+40,pct(0.90));   // 下1%＝いちばん濃い文字、上10%より上＝紙の白
+  const lut=new Uint8ClampedArray(256);
+  for(let v=0;v<256;v++){ const t=Math.min(1,Math.max(0,(v-lo)/(hi-lo))); lut[v]=Math.round(255*Math.pow(t,1.35)); }   // 中間を少し濃く（文字を太く見せる）
+  for(let i=0,j=0;j<n;i+=4,j++){ const v=lut[L[j]]; d[i]=d[i+1]=d[i+2]=v; d[i+3]=255; }
+  x.putImageData(im,0,0); return o;
+}
+function cropApplyEnh(){ crop.src=crop.enh?enhanceDoc(crop.base):crop.base;
+  const b=$('#cropEnh'); if(b) b.classList.toggle('on',crop.enh); }
 function finishCrop(){ const fn=crop.after; crop.after=null; if(fn) fn(); }   // 切り取り画面を閉じた後にすること（伝票の読み取り）
 const CROP_MIN=40;   // 枠の最小（画面px）
 function cropDisp(){ const im=$('#cropImg'); return {w:im.clientWidth,h:im.clientHeight}; }
 function cropDraw(){ const b=crop.box,el=$('#cropBox'); el.style.left=b.x+'px'; el.style.top=b.y+'px'; el.style.width=b.w+'px'; el.style.height=b.h+'px'; }
 function cropFull(){ const d=cropDisp(); crop.box={x:0,y:0,w:d.w,h:d.h}; cropDraw(); }
-function cropShow(){
+function cropShow(keepBox){
   const im=$('#cropImg');
-  im.onload=()=>{ const d=cropDisp(); const m=Math.round(Math.min(d.w,d.h)*0.04);
+  im.onload=()=>{ if(keepBox&&crop.box) return; const d=cropDisp(); const m=Math.round(Math.min(d.w,d.h)*0.04);
     crop.box={x:m,y:m,w:d.w-m*2,h:d.h-m*2}; cropDraw(); };
-  im.src=crop.src.toDataURL('image/jpeg',.9);
+  im.src=shrinkTo(crop.src,1600).toDataURL('image/jpeg',.9);   // 画面に出すのは軽い画像（切り取りは元の大きさで行う）
 }
 async function openCrop(i){
   const s=slipEdit[i]; if(!s) return;
@@ -911,10 +938,10 @@ async function openCrop(i){
     if(s.canvas) c=rotCanvas(s.canvas,s.rot);
     else { toast('伝票を読み込んでいます…'); const d=await getSlipData(s.id);
       const img=await loadImg('data:'+d.mime+';base64,'+d.data); c=fitCanvas(img,img.naturalWidth,img.naturalHeight); }
-    crop.i=i; crop.src=c; $('#cropModal').hidden=false; document.body.style.overflow='hidden'; cropShow();
+    crop.i=i; crop.base=c; crop.box=null; cropApplyEnh(); $('#cropModal').hidden=false; document.body.style.overflow='hidden'; cropShow();
   }catch(e){ toast('伝票を開けませんでした。電波を確認してください',true); }
 }
-function closeCrop(){ $('#cropModal').hidden=true; document.body.style.overflow=''; crop.i=-1; crop.src=null; crop.drag=null; }
+function closeCrop(){ $('#cropModal').hidden=true; document.body.style.overflow=''; crop.i=-1; crop.base=null; crop.src=null; crop.drag=null; }
 function cropPt(e){ const r=$('#cropWrap').getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; }
 function cropClamp(b){ const d=cropDisp();
   b.w=Math.max(CROP_MIN,Math.min(b.w,d.w)); b.h=Math.max(CROP_MIN,Math.min(b.h,d.h));
@@ -946,15 +973,19 @@ $('#cropWrap').addEventListener('pointermove',e=>{
 ['pointerup','pointercancel'].forEach(ev=>$('#cropWrap').addEventListener(ev,()=>{ crop.drag=null; }));
 $('#cropCancel').onclick=()=>{ closeCrop(); finishCrop(); };
 $('#cropAll').onclick=cropFull;
-$('#cropRot').onclick=()=>{ if(!crop.src) return; crop.src=rotCanvas(crop.src,90); cropShow(); };
+$('#cropRot').onclick=()=>{ if(!crop.base) return; crop.base=rotCanvas(crop.base,90); crop.box=null; cropApplyEnh(); cropShow(); };
+$('#cropEnh').onclick=()=>{ if(!crop.base) return; crop.enh=!crop.enh; try{ localStorage.setItem('zaizai_crop_enh',crop.enh?'1':'0'); }catch(e){}
+  toast(crop.enh?'文字をくっきりさせました':'元の色にもどしました'); cropApplyEnh(); cropShow(true); };
 $('#cropOk').onclick=()=>{
-  const s=slipEdit[crop.i]; if(!s||!crop.src||!crop.box) return closeCrop();
-  const d=cropDisp(), k=crop.src.width/d.w, b=crop.box;
+  const s=slipEdit[crop.i]; if(!s||!crop.base||!crop.box) return closeCrop();
+  const B=crop.base, d=cropDisp(), k=B.width/d.w, b=crop.box;
   const sx=Math.round(b.x*k), sy=Math.round(b.y*k);
-  const sw=Math.max(1,Math.min(crop.src.width-sx,Math.round(b.w*k))), sh=Math.max(1,Math.min(crop.src.height-sy,Math.round(b.h*k)));
-  const out=document.createElement('canvas'); out.width=sw; out.height=sh;
-  const x=out.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,sw,sh); x.drawImage(crop.src,sx,sy,sw,sh,0,0,sw,sh);
-  const fresh={canvas:out,rot:0,thumb:thumbOf(out,0)};
+  const sw=Math.max(1,Math.min(B.width-sx,Math.round(b.w*k))), sh=Math.max(1,Math.min(B.height-sy,Math.round(b.h*k)));
+  let out=document.createElement('canvas'); out.width=sw; out.height=sh;
+  const x=out.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,sw,sh); x.drawImage(crop.base,sx,sy,sw,sh,0,0,sw,sh);
+  if(crop.enh) out=enhanceDoc(out);   // くっきりは切り取った範囲だけで濃さを決める（机などの写り込みに引っぱられない）
+  const kept=shrinkTo(out,SLIP_MAX);
+  const fresh={canvas:kept,rot:0,thumb:thumbOf(kept,0)};
   if(s.canvas){ slipEdit[crop.i]=fresh; }                       // まだ送っていない伝票：そのまま置きかえ
   else { s.removed=true; slipEdit.splice(crop.i+1,0,fresh); }   // 送った伝票：切り取った画像に差しかえ（記録するときに入れかわる）
   closeCrop(); renderSlips();
@@ -969,10 +1000,8 @@ async function slipImageB64(s){
   let c;
   if(s.canvas) c=rotCanvas(s.canvas,s.rot);
   else { const d=await getSlipData(s.id); const img=await loadImg('data:'+d.mime+';base64,'+d.data); c=fitCanvas(img,img.naturalWidth,img.naturalHeight); }
-  const k=Math.min(1,1600/Math.max(c.width,c.height));   // 読み取りには1600pxで十分（送る量を減らす）
-  if(k<1){ const o=document.createElement('canvas'); o.width=Math.round(c.width*k); o.height=Math.round(c.height*k);
-    const x=o.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,o.width,o.height); x.drawImage(c,0,0,o.width,o.height); c=o; }
-  return c.toDataURL('image/jpeg',.85).split(',')[1];
+  c=shrinkTo(c,2400);   // 読み取り用（細かい数字まで読めるよう大きめ）
+  return c.toDataURL('image/jpeg',.88).split(',')[1];
 }
 function markAi(el){ if(!el) return; el.classList.add('ai-fill'); }
 function clearAiMarks(){ document.querySelectorAll('.ai-fill').forEach(el=>el.classList.remove('ai-fill')); }
@@ -1052,7 +1081,7 @@ async function sendSlips(key,rows,onProg){
   const total=adds.length+dels.length; let done=0;
   const site=rows.map(r=>r.site).filter(Boolean).join('・'), place=rows[0]?rows[0].place:'', date=rows[0]?rows[0].date:'';
   for(const s of dels){ await slipPost({mode:'remove',id:s.id}); onProg(++done,total); }
-  for(const s of adds){ const c=rotCanvas(s.canvas,s.rot); const data=c.toDataURL('image/jpeg',.82).split(',')[1];
+  for(const s of adds){ const c=shrinkTo(rotCanvas(s.canvas,s.rot),SLIP_MAX); const data=c.toDataURL('image/jpeg',SLIP_Q).split(',')[1];
     await slipPost({mode:'upload',denpyo:key,date,place,site,author,mime:'image/jpeg',data,w:c.width,h:c.height}); onProg(++done,total); }
 }
 $('#slipCamBtn').onclick=()=>$('#slipCam').click();
