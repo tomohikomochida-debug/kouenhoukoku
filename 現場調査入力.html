@@ -3485,7 +3485,7 @@ function pageHead(sub){ return `<div class="pghead"><h2>${esc(state.bookTitle||"
 function frameHTML(fr){ const t=fr.t, no=fr.no;
    var cap = t.type==="exterior"
      ? `<span class="bn">No.${no}</span><br><b>${esc(t.item)||"（品名未入力）"}</b><br>数量：${esc(t.qty)||"-"} ${esc(t.unit)}${t.memo?`<br>仕様：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`
-     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>幹周：${esc(t.c)||"-"} cm${t.kabu&&numsOf(t.stems).length?`（株立ち ${numsOf(t.stems).length}本）`:""}${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
+     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>幹周：${esc(t.c)||"-"} cm${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
    return `<div class="pbitem"><div class="p">${fr.img?`<img src="${fr.img}">`:'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
 }
 function renderBook(){
@@ -3844,8 +3844,9 @@ async function camPhone(hostId){
 const KABU_RATE=0.7;
 const NP={ i:-1, f:"", buf:"", fresh:true, undo:false };
 const numsOf=a=>(a||[]).map(v=>parseFloat(v)).filter(v=>isFinite(v)&&v>0);
-function kabuC(t){ const n=numsOf(t.stems); return n.length?String(Math.round(n.reduce((a,b)=>a+b,0)*KABU_RATE)):""; }
-function kabuText(t){ const n=numsOf(t.stems); if(!n.length) return "各幹の幹周を入れると、総和×0.7で幹周を出します"; return "（"+n.join("＋")+"）×0.7 ＝ <b>"+kabuC(t)+"</b> cm"; }
+function kabuSum(t){ const n=numsOf(t.stems); return n.length?Math.round(n.reduce((a,b)=>a+b,0)*KABU_RATE):null; }
+function kabuC(t){ const n=numsOf(t.stems), v=kabuSum(t); return v==null?"":v+"（"+n.join("・")+"）"; }   // 株立ちの幹周の書き方：70（50・50）
+function kabuText(t){ const n=numsOf(t.stems); if(!n.length) return "各幹の幹周を入れると、総和×0.7で幹周を出します"; return "（"+n.join("＋")+"）×0.7 ＝ "+kabuSum(t)+"　→　幹周 <b>"+esc(kabuC(t))+"</b>"; }
 function girthHTML(t,i){   // 幹周のマス（株立ちなら、幹ごとのマスと計算結果）
   const kb=`<button type="button" class="kabubtn ${t.kabu?"on":""}" onclick="toggleKabu(${i})">${t.kabu?"✓ 株立ち":"株立ち"}</button>`;
   if(!t.kabu) return `<div class="fld"><label>幹周 (cm)${kb}</label><input class="yellow numin" id="np-${i}-c" readonly inputmode="none" value="${esc(t.c)}" onclick="npOpen(${i},'c')" placeholder="タップで入力"></div>`;
@@ -3858,6 +3859,7 @@ function refreshCard(i){ const el=document.querySelectorAll("#trees .tree")[i]; 
 function toggleKabu(i){ const t=state.trees[i]; if(!t) return; pushUndo("kabu"+i);
   t.kabu=!t.kabu; t.stems=t.stems||[];
   if(t.kabu&&numsOf(t.stems).length) t.c=kabuC(t);
+  if(!t.kabu&&/（/.test(t.c||"")) t.c=String(parseFloat(t.c)||"");   // 株立ちをやめたら、合計の数字だけ残す
   markDirty(); refreshCard(i);
   if(t.kabu) npOpen(i,"s"+(numsOf(t.stems).length?t.stems.length:0)); else npClose(); }
 function npVal(t,f){ if(f[0]==="s") return (t.stems||[])[+f.slice(1)]||""; return t[f]||""; }
