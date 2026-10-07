@@ -991,44 +991,102 @@ function segCross(a,b,c,d){
 }
 function placeLabels(L,segs,dots,B,opt){
   opt=opt||{};
-  const placed=[], allSegs=segs.slice(), leads=[], GAP=opt.gap||5, LW=(opt.lineW!=null?opt.lineW:1000);
+  let placed=[], leads=[]; const GAP=opt.gap||5, LW=(opt.lineW!=null?opt.lineW:1000);
   const rectAt=(x,y,w,h,m)=>({l:x-w/2-m,r:x+w/2+m,t:y-h/2-m,b:y+h/2+m});
   const over=(A,C)=>A.l<C.r&&C.l<A.r&&A.t<C.b&&C.t<A.b;
-  L.forEach(o=>{
-    const cands=[];
-    // 第一候補：線のすぐ脇（辺の長さ）／呼び出し側の希望の位置
+  const segDot=(x1,y1,x2,y2,d)=>{const dx=x2-x1,dy=y2-y1,L2=dx*dx+dy*dy||1;let t=((d.x-x1)*dx+(d.y-y1)*dy)/L2;t=Math.max(0,Math.min(1,t));return Math.hypot(x1+dx*t-d.x,y1+dy*t-d.y)<d.r*0.9;};
+  const isOwn=(o,d)=>Math.hypot(d.x-o.ax,d.y-o.ay)<=d.r+0.5||(o.own||[]).some(q=>Math.hypot(q.x-d.x,q.y-d.y)<0.5);
+  function cands(o){
+    const out=[];
     if(o.n){
       const n=o.n, t={x:-n.y,y:n.x}, e=Math.abs(n.x)*o.w/2+Math.abs(n.y)*o.h/2+2.5;
-      [1,-1].forEach(sg=>{ cands.push({x:o.ax+n.x*e*sg,y:o.ay+n.y*e*sg}); });
+      [1,-1].forEach(sg=>{ out.push({x:o.ax+n.x*e*sg,y:o.ay+n.y*e*sg}); });
       [0.8,1.6].forEach(s=>[1,-1].forEach(sg=>[1,-1].forEach(sd=>{
-        cands.push({x:o.ax+n.x*e*sg+t.x*o.w*s*sd,y:o.ay+n.y*e*sg+t.y*o.w*s*sd}); })));
+        out.push({x:o.ax+n.x*e*sg+t.x*o.w*s*sd,y:o.ay+n.y*e*sg+t.y*o.w*s*sd}); })));
     }
-    (o.pref||[]).forEach(p=>cands.push(p));
-    // 空きが無ければ、まわりをぐるっと探す（遠くなるほど引き出し線つき）
-    const a0=o.pref&&o.pref[0]?Math.atan2(o.pref[0].y-o.ay,o.pref[0].x-o.ax):(o.n?Math.atan2(o.n.y,o.n.x):-Math.PI/2);
+    (o.pref||[]).forEach(p=>out.push(p));
+    const a0=o.pref&&o.pref[0]&&(o.pref[0].x!==o.ax||o.pref[0].y!==o.ay)?Math.atan2(o.pref[0].y-o.ay,o.pref[0].x-o.ax):(o.n?Math.atan2(o.n.y,o.n.x):-Math.PI/2);
     const base=Math.max(o.h,o.w*0.6);
-    [0.9,1.4,2,2.8,3.8,5,6.5,8.5].forEach(k=>{ for(let i=0;i<16;i++){ const a=a0+(i%2?1:-1)*Math.ceil(i/2)*Math.PI/8;
-      cands.push({x:o.ax+Math.cos(a)*(base*k+4),y:o.ay+Math.sin(a)*(base*k+4)}); } });
-    let best=null;
-    for(let ci=0;ci<cands.length;ci++){
-      const c=cands[ci], R=rectAt(c.x,c.y,o.w,o.h,1.5);
-      if(R.l<B.l||R.r>B.r||R.t<B.t||R.b>B.b) continue;
-      if(placed.some(P=>over(R,P))) continue;
-      if(dots.some(d=>d.x>R.l-d.r&&d.x<R.r+d.r&&d.y>R.t-d.r&&d.y<R.b+d.r)) continue;
-      const hits=allSegs.reduce((s,g)=>s+(segHitsRect(g[0],g[1],g[2],g[3],R)?1:0),0);
-      const R0=rectAt(c.x,c.y,o.w,o.h,0);
-      const sx=Math.max(R0.l,Math.min(R0.r,o.ax)), sy=Math.max(R0.t,Math.min(R0.b,o.ay));
-      const gap=Math.hypot(sx-o.ax,sy-o.ay), lead=gap>(o.gap!=null?o.gap:GAP);
-      let lhits=0; if(lead){ const sh=(P)=>({l:P.l+2,r:P.r-2,t:P.t+2,b:P.b-2}); lhits=placed.reduce((s,P)=>s+(segHitsRect(o.ax,o.ay,sx,sy,sh(P))?1:0),0); const me=[o.ax,o.ay,sx,sy]; lhits+=leads.reduce((s,g)=>s+(segCross(me,g)?0.75:0),0)+segs.reduce((s,g)=>s+(segCross(me,g)?0.02:0),0); }
-      const score=hits*LW+lhits*400+(lead?30:0)+gap+ci*0.01;
-      if(!best||score<best.score) best={score,x:c.x,y:c.y,lead,sx,sy,R};
-      if((hits===0||LW<1)&&!lead&&ci<8) break;     // きれいに置けた
+    [0.9,1.15,1.4,1.7,2,2.4,2.8,3.3,3.8,5,6.5,8.5,11,14,18,23].forEach(k=>{ for(let i=0;i<32;i++){ const a=a0+(i%2?1:-1)*Math.ceil(i/2)*Math.PI/16;
+      out.push({x:o.ax+Math.cos(a)*(base*k+4),y:o.ay+Math.sin(a)*(base*k+4)}); } });
+    return out;
+  }
+  // 候補の点数：小さいほど良い。文字どうしの重なり・枠外は不可。引き出し線が文字・ほかの線・ほかの点を横切るのは強く嫌う
+  function evalAt(o,c,ci){
+    const R=rectAt(c.x,c.y,o.w,o.h,1.5);
+    if(R.l<B.l||R.r>B.r||R.t<B.t||R.b>B.b) return null;
+    if(placed.some(P=>over(R,P.R))) return null;
+    if(dots.some(d=>d.x>R.l-d.r&&d.x<R.r+d.r&&d.y>R.t-d.r&&d.y<R.b+d.r)) return null;
+    const hits=segs.reduce((s,g)=>s+(segHitsRect(g[0],g[1],g[2],g[3],R)?1:0),0);
+    const lcover=leads.reduce((s,q)=>{const g=q.g;return s+(segHitsRect(g[0],g[1],g[2],g[3],R)?1:0);},0);   // ほかの引き出し線を文字で隠す
+    const R0=rectAt(c.x,c.y,o.w,o.h,0);
+    const sx=Math.max(R0.l,Math.min(R0.r,o.ax)), sy=Math.max(R0.t,Math.min(R0.b,o.ay));
+    const gap=Math.hypot(sx-o.ax,sy-o.ay);
+    let lead=gap>(o.gap!=null?o.gap:GAP);
+    // 引き出し線なしで置く時は、ほかの対象（木の丸など）より自分にはっきり近いこと。紛らわしければ線でつなぐ
+    if(!lead&&dots.length){ const other=dots.reduce((m,d)=>{ if(isOwn(o,d))return m; const qx=Math.max(R0.l,Math.min(R0.r,d.x)),qy=Math.max(R0.t,Math.min(R0.b,d.y)); return Math.min(m,Math.hypot(qx-d.x,qy-d.y)-d.r); },1e9);
+      if(other<gap+6) lead=true; }
+    let bad=0;
+    if(lead){
+      const sh=P=>({l:P.l+2,r:P.r-2,t:P.t+2,b:P.b-2}), me=[o.ax,o.ay,sx,sy];
+      bad+=placed.reduce((s,P)=>s+(segHitsRect(o.ax,o.ay,sx,sy,sh(P.R))?1:0),0)*3000;     // 線が文字を横切る
+      bad+=leads.reduce((s,q)=>s+(segCross(me,q.g)?1:0),0)*3000;                          // 引き出し線どうしが交差
+      bad+=dots.reduce((s,d)=>s+(!isOwn(o,d)&&segDot(o.ax,o.ay,sx,sy,d)?1:0),0)*800;      // ほかの木の丸を横切る
+      bad+=segs.reduce((s,g)=>s+(segCross(me,g)?1:0),0)*8;
     }
-    if(!best){ const R=rectAt(o.ax,o.ay,o.w,o.h,1.5); best={x:o.ax,y:o.ay,lead:false,sx:o.ax,sy:o.ay,R}; }
-    o.lx=best.x; o.ly=best.y; o.leader=best.lead; o.sx=best.sx; o.sy=best.sy;
-    placed.push(best.R);
-    if(best.lead){ allSegs.push([o.ax,o.ay,best.sx,best.sy]); leads.push([o.ax,o.ay,best.sx,best.sy]); }
+    return {score:hits*LW+lcover*3000+bad+(lead?30:0)+gap*1.2+ci*0.01,x:c.x,y:c.y,lead,sx,sy,R,hits};
+  }
+  function put(o,b){
+    o.lx=b.x; o.ly=b.y; o.leader=b.lead; o.sx=b.sx; o.sy=b.sy; o._R=b.R;
+    placed.push({o,R:b.R});
+    if(b.lead) leads.push({o,g:[o.ax,o.ay,b.sx,b.sy]});
+  }
+  function unput(o){ placed=placed.filter(P=>P.o!==o); leads=leads.filter(q=>q.o!==o); }
+  // 1回目：引き出し線なしで、近くにそのまま置けるものから置く
+  const rest=[];
+  L.forEach(o=>{ o._cs=cands(o); o._free=0; for(let ci=0;ci<o._cs.length&&ci<40;ci++){ const e=evalAt(o,o._cs[ci],ci); if(e&&!e.lead&&(e.hits===0||LW<1)) o._free++; } });
+  L.slice().sort((a,b)=>a._free-b._free).forEach(o=>{
+    const cs=o._cs; let ok=null;
+    for(let ci=0;ci<cs.length&&ci<40;ci++){ const e=evalAt(o,cs[ci],ci); if(e&&!e.lead&&(e.hits===0||LW<1)){ ok=e; break; } }
+    if(ok) put(o,ok); else rest.push(o);
   });
+  // 2回目：残りは引き出し線つき。ごちゃついていれば遠くても、線が交差しない所へ
+  rest.forEach(o=>{
+    const cs=o._cs; let best=null;
+    cs.forEach((c,ci)=>{ const e=evalAt(o,c,ci); if(e&&(!best||e.score<best.score)) best=e; });
+    if(!best){ const R=rectAt(o.ax,o.ay,o.w,o.h,1.5); best={x:o.ax,y:o.ay,lead:false,sx:o.ax,sy:o.ay,R}; }
+    put(o,best);
+  });
+  // 置き直し：1つずつ外して、ほかを固定したまま一番良い所へ（引き出し線の付いたものを中心に）
+  for(let pass=0;pass<3;pass++){ let improved=false;
+    L.forEach(o=>{
+      if(!o._cs) return;
+      unput(o);
+      const cur=evalAt(o,{x:o.lx,y:o.ly},0);
+      let best=cur;
+      o._cs.forEach((c,ci)=>{ const e=evalAt(o,c,ci); if(e&&(!best||e.score<best.score-0.5)) best=e; });
+      if(!best){ const R=rectAt(o.lx,o.ly,o.w,o.h,1.5); best={x:o.lx,y:o.ly,lead:o.leader,sx:o.sx,sy:o.sy,R}; }
+      if(cur&&best!==cur) improved=true;
+      put(o,best);
+    });
+    if(!improved) break;
+  }
+  // 仕上げ：それでも交差した引き出し線は、文字の位置を入れ替えてほどく
+  const site=(o,x,y)=>{const R0=rectAt(x,y,o.w,o.h,0);return {x:Math.max(R0.l,Math.min(R0.r,o.ax)),y:Math.max(R0.t,Math.min(R0.b,o.ay))};};
+  const LD=L.filter(o=>o.leader);
+  for(let pass=0;pass<4;pass++){ let changed=false;
+    for(let a=0;a<LD.length;a++)for(let b=a+1;b<LD.length;b++){ const A=LD[a],C=LD[b];
+      if(!segCross([A.ax,A.ay,A.sx,A.sy],[C.ax,C.ay,C.sx,C.sy])) continue;
+      const sa=site(A,C.lx,C.ly), sc=site(C,A.lx,A.ly);
+      const RA=rectAt(C.lx,C.ly,A.w,A.h,1.5), RC=rectAt(A.lx,A.ly,C.w,C.h,1.5);
+      const others=placed.filter(P=>P.o!==A&&P.o!==C);
+      if(others.some(P=>over(RA,P.R)||over(RC,P.R))||over(RA,RC)) continue;
+      if(segCross([A.ax,A.ay,sa.x,sa.y],[C.ax,C.ay,sc.x,sc.y])) continue;
+      const tx=A.lx,ty=A.ly; A.lx=C.lx;A.ly=C.ly;C.lx=tx;C.ly=ty; A.sx=sa.x;A.sy=sa.y;C.sx=sc.x;C.sy=sc.y;
+      placed.forEach(P=>{ if(P.o===A)P.R=RA; if(P.o===C)P.R=RC; }); changed=true;
+    }
+    if(!changed)break;
+  }
   return L;
 }
 var TRI_MONO=false;
@@ -3126,7 +3184,7 @@ function rpBuildHaichi(wb,park){
         for(let q=0;q<grp.length;q++) trees.forEach((u,j)=>{ if(!used[j]&&u.f.kind+'|'+(u.f.rank||'')===key&&Math.hypot(u.x-grp[q].x,u.y-grp[q].y)<24){used[j]=true;grp.push(u);} });
         const cx=grp.reduce((a,u)=>a+u.x,0)/grp.length, cy=grp.reduce((a,u)=>a+u.y,0)/grp.length, ymin=Math.min.apply(null,grp.map(u=>u.y));
         const name=(t.f.rank||String(t.f.kind).replace(/（.*?）/g,'')), unit=(MASTER[t.f.cat]||{}).unit||'本';
-        NL.push({ax:cx,ay:cy,gap:16,pref:[{x:cx,y:ymin-17},{x:cx,y:Math.max.apply(null,grp.map(u=>u.y))+17}],s:name+(grp.length>1?(' ×'+grp.length+unit):''),fs:9,col:dark(featColor(t.f))});
+        NL.push({ax:cx,ay:cy,gap:14,own:grp.map(u=>({x:u.x,y:u.y})),pref:[{x:cx,y:ymin-17},{x:cx,y:Math.max.apply(null,grp.map(u=>u.y))+17}],s:name+(grp.length>1?(' ×'+grp.length+unit):''),fs:9,col:dark(featColor(t.f))});
       });
       rpPlaceTexts('配置図',WID,NL,{l:ox+2,t:oy+2,r:ox+box.w-2,b:oy+box.h-2},[],0,DOTS);
       r+=Math.ceil(box.h/RP_ROWPX)+1;
