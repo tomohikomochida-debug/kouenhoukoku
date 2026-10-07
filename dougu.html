@@ -130,7 +130,8 @@ dl.kv dd{margin:0}
     <div class="card">
       <h2>道具を登録する</h2>
       <div class="step"><div class="no">1</div><div class="bd">
-        <label class="lbl">保管場所</label>
+        <label class="lbl">保管場所 <button type="button" class="btn sm" id="siteBtn" style="margin-left:6px">🏠 置き場の設定</button></label>
+        <div class="chips" id="siteChips" style="margin-bottom:8px"></div>
         <div class="chips" id="locChips"></div>
         <input type="text" id="locNew" placeholder="一覧にない場所を入力（例：2F-C-3段目）" style="margin-top:8px" hidden>
         <p class="hint">棚のQRラベルを読むと、ここが自動で入ります。</p>
@@ -411,7 +412,7 @@ const SEED_TOOLS = [["T0001","Y0153","1F-A-2段",6],
 
 /* ============ データ ============ */
 // tools＝道具マスタ（termId で用語集とつながる）、terms・aliases＝用語集の言葉
-let DB = { tools: [], terms: [], aliases: [], locations: [], repairs: [], suppliers: [], outs: [] };   // outs：まだ戻っていない持ち出し（段取りの積み込みで記録）
+let DB = { tools: [], terms: [], aliases: [], locations: [], repairs: [], suppliers: [], outs: [], sites: [] };   // sites：置き場（メイン＋ほか）   // outs：まだ戻っていない持ち出し（段取りの積み込みで記録）
 let ADMINS = ['親方'];
 const canDelete = () => ADMINS.includes(me());
 let TOOLS = [];   // 表示用：道具マスタに用語集の名前・読み・意味を合わせたもの
@@ -427,7 +428,7 @@ function buildTools() {
   TOOLS = DB.tools.map(t => {
     const w = termById(t.termId) || {};
     const outs = (DB.outs || []).filter(o => String(o.toolId) === String(t.id)).map(o => Object.assign({}, o, { left: (Number(o.qty) || 1) - (Number(o.backQty) || 0) }));
-    return Object.assign({}, t, { outs, kind: t.kind || (w.category === '資材' ? KIND_USE : KIND_BACK), qty: Number(t.qty) || 0, name: w.term || '（用語集に名前がありません）', kana: w.kana || '', feature: w.meaning || '', category: w.category || '', commonName: commonOf(t.termId) });
+    return Object.assign({}, t, { outs, stock: stockOf(t), kind: t.kind || (w.category === '資材' ? KIND_USE : KIND_BACK), qty: Number(t.qty) || 0, name: w.term || '（用語集に名前がありません）', kana: w.kana || '', feature: w.meaning || '', category: w.category || '', commonName: commonOf(t.termId) });
   });
 }
 
@@ -454,14 +455,14 @@ function demoSave() {
 /* ---- 通信：道具は道具管理GAS、言葉は用語集GAS ---- */
 const api = {
   async load() {
-    if (DEMO) { const w = demoWords(); return { ok: true, tools: demoTools(), terms: w.terms, aliases: w.aliases, locations: [], repairs: lsGet('dougu_repairs_demo', []), suppliers: lsGet('torihiki_demo_v1', []), outs: lsGet('dandori_outs_demo', []).filter(o => o.state === '持ち出し') }; }
+    if (DEMO) { const w = demoWords(); return { ok: true, tools: demoTools(), terms: w.terms, aliases: w.aliases, locations: [], repairs: lsGet('dougu_repairs_demo', []), suppliers: lsGet('torihiki_demo_v1', []), outs: lsGet('dandori_outs_demo', []).filter(o => o.state === '持ち出し'), sites: lsGet('dougu_sites_demo', []) }; }
     const [a, b] = await Promise.all([
       fetch(GAS_URL + '?app=dougu&action=data', { cache: 'no-store' }).then(r => r.json()),
       fetch(YOUGO_URL + '?app=yougo&action=data', { cache: 'no-store' }).then(r => r.json())
     ]);
     if (!a.ok) throw new Error(a.error || '道具データを読めません');
     if (!b.ok) throw new Error(b.error || '用語集を読めません');
-    return { ok: true, tools: a.tools || [], locations: a.locations || [], repairs: a.repairs || [], suppliers: a.suppliers || [], admins: a.admins, outs: a.outs || [], terms: b.terms || [], aliases: b.aliases || [] };
+    return { ok: true, tools: a.tools || [], locations: a.locations || [], repairs: a.repairs || [], suppliers: a.suppliers || [], admins: a.admins, outs: a.outs || [], sites: a.sites || [], terms: b.terms || [], aliases: b.aliases || [] };
   },
   async post(target, body) {   // target: 'dougu'（道具管理GAS）／'yougo'（用語集GAS）
     if (DEMO) return demoPost(target, body);
@@ -509,9 +510,16 @@ function demoPost(target, b) {
       case 'addTool': {
         const max = T.reduce((m, t) => Math.max(m, Number(String(t.id).replace(/\D/g, '')) || 0), 0);
         const id = 'T' + String(max + 1).padStart(4, '0');
-        T.push({ id, termId: b.tool.termId, location: b.tool.location, qty: Number(b.tool.qty) || 1, photoUrl: b.image ? 'data:image/jpeg;base64,' + b.image : '', status: '倉庫', statusSite: '', registeredBy: b.by, reviewState: '未確認', createdAt: now(), updatedAt: now() });
+        T.push({ id, termId: b.tool.termId, location: b.tool.location, qty: Number(b.tool.qty) || 1, stock: b.tool.stock || '', kind: b.tool.kind || '', photoUrl: b.image ? 'data:image/jpeg;base64,' + b.image : '', status: '倉庫', statusSite: '', registeredBy: b.by, reviewState: '未確認', createdAt: now(), updatedAt: now() });
         demoSave(); return { ok: true, id };
       }
+      case 'saveSite': {
+        const L = lsGet('dougu_sites_demo', []), s = Object.assign({}, b.site);
+        if (!s.siteId) s.siteId = 'P' + String(L.reduce((m, x) => Math.max(m, Number(String(x.siteId).replace(/\D/g, '')) || 0), 0) + 1).padStart(4, '0');
+        const i = L.findIndex(x => x.siteId === s.siteId); if (i >= 0) L[i] = s; else L.push(s);
+        lsSet('dougu_sites_demo', L); DB.sites = L; return { ok: true, id: s.siteId };
+      }
+      case 'deleteSite': { const L = lsGet('dougu_sites_demo', []).filter(x => x.siteId !== b.siteId); lsSet('dougu_sites_demo', L); DB.sites = L; return { ok: true }; }
       case 'updateTool': {
         const t = T.find(x => x.id === b.id); if (!t) return { ok: false, error: '道具が見つかりません' };
         const p = Object.assign({}, b.patch);
@@ -537,7 +545,7 @@ function demoPost(target, b) {
 async function load() {
   try {
     const r = await api.load();
-    DB = { tools: r.tools, terms: r.terms, aliases: r.aliases, locations: r.locations || [], repairs: r.repairs || [], suppliers: r.suppliers || [], outs: r.outs || [] };
+    DB = { tools: r.tools, terms: r.terms, aliases: r.aliases, locations: r.locations || [], repairs: r.repairs || [], suppliers: r.suppliers || [], outs: r.outs || [], sites: r.sites || [] };
     if (r.admins && r.admins.length) { ADMINS = r.admins; lsSet('dougu_admins', ADMINS); }
     if (!DEMO) lsSet(LS.cache, DB);
   } catch (e) {
@@ -618,7 +626,7 @@ function toolRow(t, why) {
   const out = whereTag(t);
   return '<button type="button" class="tool" data-tool="' + esc(t.id) + '"><div class="ph">' + phHtml(t) + '</div><div style="min-width:0">' +
     '<div class="nm">' + nameHtml(t) + '</div>' +
-    '<div class="sub"><span class="tag loc">' + esc(t.location || '場所未設定') + '</span> ' + out + ' <span class="tnum">' + t.qty + '個</span>' + (why ? '　' + esc(why) : '') + '</div>' +
+    '<div class="sub">' + stockTags(t) + ' ' + out + ' <span class="tnum">' + t.qty + '個</span>' + (why ? '　' + esc(why) : '') + '</div>' +
     '</div></button>';
 }
 
@@ -676,8 +684,8 @@ function openTool(id, fromSearch) {
     '<div class="row2" style="margin-top:10px"><button class="btn sm" data-add-miss="聞き間違い">聞き間違いとして</button><button class="btn sm" data-add-miss="別名">呼び方として</button></div></div>';
   h += '<h3>' + nameHtml(t) + '</h3>';
   h += t.photoUrl ? '<img class="detail-ph" src="' + esc(t.photoUrl) + '" alt="">' : '<div class="big-ph">🧰</div>';
-  h += '<dl class="kv"><dt>保管場所</dt><dd><b>' + esc(t.location || '未設定') + '</b></dd>' +
-    '<dt>数量</dt><dd class="tnum">' + t.qty + '個</dd>' +
+  h += '<dl class="kv"><dt>保管場所</dt><dd>' + t.stock.map(x => '<div><b>' + esc(placeLabel(x)) + '</b>' + (t.stock.length > 1 ? '　<span class="tnum">' + x.qty + '個</span>' : '') + '</div>').join('') + '</dd>' +
+    '<dt>数量</dt><dd class="tnum">' + t.qty + '個' + (t.stock.length > 1 ? '（合計）' : '') + '</dd>' +
     '<dt>今どこ</dt><dd>' + (whereTag(t) || '倉庫') + outDetail(t) + '</dd>' +
     '<dt>管理方法</dt><dd>' + (t.kind === KIND_USE ? '使い切りの資材（戻しのチェックなし）' : '帰ったら戻す道具') + '</dd>' +
     (t.feature ? '<dt>どんな道具</dt><dd>' + esc(t.feature) + '</dd>' : '') +
@@ -722,11 +730,16 @@ function openAliasForm(id) {
 let edPhoto = null;
 function openEditForm(id) {
   const t = toolById(id);
-  let qty = t.qty, kind = t.kind;
+  let kind = t.kind; const rows = t.stock.map(x => Object.assign({}, x));
+  const siteOpts = cur => sites().map(s => '<option value="' + esc(s.name) + '"' + (s.name === cur ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + (sites().some(s => s.name === cur) ? '' : '<option selected>' + esc(cur) + '</option>');
+  const rowsHtml = () => rows.map((x, i) => '<div class="card" style="padding:8px 10px;margin-bottom:6px">' + (multiSite() || rows.length > 1 ? '<select data-rs="' + i + '" style="margin-bottom:6px">' + siteOpts(x.site) + '</select>' : '') +
+    '<div class="row2" style="align-items:center"><input type="text" data-rp="' + i + '" value="' + esc(x.place) + '" list="pl' + i + '" placeholder="場所（例：1F-A-2段）"><datalist id="pl' + i + '">' + placesOf(x.site).map(l => '<option value="' + esc(l) + '">').join('') + '</datalist>' +
+    '<div class="qty" style="flex:none"><button class="btn" data-rq="' + i + '" data-d="-1">－</button><span class="n tnum">' + x.qty + '</span><button class="btn" data-rq="' + i + '" data-d="1">＋</button></div>' +
+    (rows.length > 1 ? '<button class="btn sm" data-rx="' + i + '" style="flex:none">×</button>' : '') + '</div></div>').join('') +
+    '<div class="hint" style="display:flex;justify-content:space-between;align-items:center">合計 <b class="tnum">' + rows.reduce((a, x) => a + x.qty, 0) + '個</b><button class="btn sm" data-act="addrow">＋ ほかの置き場・場所にもある</button></div>';
   const kindChips = () => [[KIND_BACK, '帰ったら戻す道具'], [KIND_USE, '使い切りの資材']].map(([k, l]) => '<button type="button" class="chip' + (kind === k ? ' on' : '') + '" data-kind="' + k + '">' + l + '</button>').join('');
   openModal('<h3>場所・数量・管理方法</h3>' +
-    '<label class="lbl">保管場所</label><input type="text" id="edLoc" value="' + esc(t.location) + '" list="locList">' + locDatalist() +
-    '<label class="lbl" style="margin-top:12px">数量</label><div class="qty"><button class="btn" data-q="-1">－</button><span class="n tnum" id="edQ">' + qty + '</span><button class="btn" data-q="1">＋</button></div>' +
+    '<label class="lbl">置き場・場所と数</label><div id="edRows">' + rowsHtml() + '</div>' +
     '<label class="lbl" style="margin-top:12px">管理方法</label><div class="chips" id="edKind">' + kindChips() + '</div>' +
     '<p class="hint">「使い切り」は土のう袋・縄などの資材。積み込みで戻しのチェックをせず、余ったときだけ戻した数を入れます。</p>' +
     '<label class="lbl" style="margin-top:12px">写真を撮り直す</label><div class="row2"><button class="btn" data-act="cam">📷 撮影</button><button class="btn" data-act="lib">🖼 選ぶ</button></div><p class="hint" id="edPhHint"></p>' +
@@ -734,13 +747,17 @@ function openEditForm(id) {
     '<div class="row2" style="margin-top:16px"><button class="btn" data-act="back">戻る</button><button class="btn primary" data-act="save">保存する</button></div>',
     async e => {
       const b = e.target.closest('button'); if (!b) return;
-      if (b.dataset.q) { qty = Math.max(0, qty + Number(b.dataset.q)); $('edQ').textContent = qty; return; }
+      document.querySelectorAll('[data-rp]').forEach(inp => { rows[Number(inp.dataset.rp)].place = inp.value.trim(); });
+      document.querySelectorAll('[data-rs]').forEach(sel => { rows[Number(sel.dataset.rs)].site = sel.value; });
+      if (b.dataset.rq) { const x = rows[Number(b.dataset.rq)]; x.qty = Math.max(0, x.qty + Number(b.dataset.d)); $('edRows').innerHTML = rowsHtml(); return; }
+      if (b.dataset.rx) { rows.splice(Number(b.dataset.rx), 1); $('edRows').innerHTML = rowsHtml(); return; }
+      if (b.dataset.act === 'addrow') { rows.push({ site: (sites().find(s => !rows.some(x => x.site === s.name)) || mainSite()).name, place: '', qty: 1 }); $('edRows').innerHTML = rowsHtml(); return; }
       if (b.dataset.kind) { kind = b.dataset.kind; $('edKind').innerHTML = kindChips(); return; }
       if (b.dataset.act === 'cam' || b.dataset.act === 'lib') { pickPhoto(b.dataset.act === 'cam', p => { edPhoto = p; $('edPhHint').textContent = '✓ 新しい写真を選びました'; }); return; }
       if (b.dataset.act === 'back') { edPhoto = null; return openTool(id); }
       if (b.dataset.act === 'save') {
         b.disabled = true;
-        const patch = { location: $('edLoc').value.trim(), qty, kind };
+        const patch = Object.assign(stockPatch(rows), { kind });
         if (edPhoto) patch.image = edPhoto.b64;
         await post('dougu', { mode: 'updateTool', id, patch, by: me() }, '保存しました');
         edPhoto = null; openTool(id);
@@ -748,9 +765,88 @@ function openEditForm(id) {
     });
 }
 
+/* ============ 置き場（メイン＋ほかの置き場）と、置き場ごとの数 ============
+   DB.sites：置き場マスタ（siteId・name・main）。まだ登録がなければ「メイン置き場」1つとして扱う。
+   道具の stock：[{ site:置き場の名前, place:置き場の中の場所, qty:数 }]。同じ道具を複数の置き場に分けて持てる。
+   今までの location（場所）・qty（数）は、stock から作る「代表の場所」と「合計」として残す（段取りなど他のアプリ用）。 */
+const MAIN_SITE_NAME = 'メイン置き場';
+const isMain = s => s && (s.main === true || s.main === 'TRUE' || s.main === 'true' || s.main === 1 || s.main === '1');
+function sites() {
+  const s = (DB.sites || []).filter(x => x && x.name).slice().sort((a, b) => (isMain(b) - isMain(a)) || (Number(a.order) || 0) - (Number(b.order) || 0));
+  return s.length ? s : [{ siteId: '', name: MAIN_SITE_NAME, main: true, virtual: true }];
+}
+const mainSite = () => sites().find(isMain) || sites()[0];
+const multiSite = () => sites().length > 1 || TOOLS.some(t => t.stock && t.stock.some(x => x.site !== mainSite().name));
+function stockOf(t) {
+  let s = [];
+  try { s = typeof t.stock === 'string' ? (t.stock ? JSON.parse(t.stock) : []) : (Array.isArray(t.stock) ? t.stock : []); } catch (e) { s = []; }
+  s = s.filter(x => x && (x.place || x.site || Number(x.qty)));
+  if (!s.length) s = [{ site: mainSite().name, place: t.location || '', qty: Number(t.qty) || 0 }];
+  return s.map(x => ({ site: x.site || mainSite().name, place: String(x.place || ''), qty: Number(x.qty) || 0 }));
+}
+function stockPatch(st) {   // 置き場ごとの数 → 保存する形（代表の場所・合計も作る）
+  st = st.map(x => ({ site: x.site || mainSite().name, place: String(x.place || '').trim(), qty: Math.max(0, Number(x.qty) || 0) })).filter(x => x.place || x.qty);
+  const m = mainSite().name, first = st.find(x => x.site === m) || st[0] || { site: m, place: '' };
+  return { stock: JSON.stringify(st), qty: st.reduce((a, x) => a + x.qty, 0), location: (first.site && first.site !== m ? first.site + '・' : '') + first.place };
+}
+const siteShort = n => n === mainSite().name ? 'メイン' : n;
+function placeLabel(x) { return (multiSite() ? x.site + '　' : '') + (x.place || '場所未設定'); }
+function stockTags(t) { return (t.stock || stockOf(t)).map(x => '<span class="tag loc">' + esc(placeLabel(x)) + (t.stock && t.stock.length > 1 ? ' ' + x.qty : '') + '</span>').join(' '); }
+function placesOf(site) {   // その置き場の中の場所の一覧（登録済みの道具と番地から）
+  const s = new Set();
+  TOOLS.forEach(t => (t.stock || []).forEach(x => { if (x.site === site && x.place) s.add(x.place); }));
+  (DB.locations || []).forEach(l => { if (l.code && (l.site || mainSite().name) === site) s.add(String(l.code)); });
+  if (reg.site === site && reg.loc) s.add(reg.loc);
+  return Array.from(s).sort((a, b) => a.localeCompare(b, 'ja', { numeric: true }));
+}
+/* 置き場の設定：名前・メイン・追加・削除（道具が置いてある置き場は消さない） */
+function openSites() {
+  const list = sites().map(s => Object.assign({}, s));
+  const used = n => TOOLS.filter(t => (t.stock || []).some(x => x.site === n && x.qty > 0)).length;
+  const draw = () => openModal('<h3>🏠 置き場の設定</h3><p class="hint" style="margin-bottom:10px">メインの道具置き場のほかに、置き場を足せます。道具ごとに「どの置き場に何個」を分けて持てます。</p>' +
+    list.map((s, i) => '<div class="card" style="padding:10px;margin-bottom:8px"><div class="row2" style="align-items:center"><input type="text" data-sn="' + i + '" value="' + esc(s.name) + '" placeholder="置き場の名前（例：第2置き場・資材ヤード）">' +
+      '<label style="flex:none;display:flex;gap:4px;align-items:center;font-size:13px;white-space:nowrap"><input type="radio" name="smain" data-sm="' + i + '" ' + (isMain(s) ? 'checked' : '') + ' style="width:18px;height:18px">メイン</label></div>' +
+      '<div class="hint" style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">道具 ' + used(s.name) + '種類' + (used(s.name) ? '' : '<button class="btn sm danger" data-sdel="' + i + '">消す</button>') + '</div></div>').join('') +
+    '<button class="btn block" data-act="add">＋ 置き場を足す</button>' +
+    '<div class="row2" style="margin-top:14px"><button class="btn" data-act="close">やめる</button><button class="btn primary" data-act="save">保存する</button></div>', async e => {
+      const b = e.target.closest('button'); const r = e.target.closest('[data-sm]');
+      document.querySelectorAll('[data-sn]').forEach(inp => { list[Number(inp.dataset.sn)].name = inp.value.trim(); });
+      if (r) { list.forEach((s, i) => { s.main = i === Number(r.dataset.sm); }); return; }
+      if (!b) return;
+      if (b.dataset.act === 'close') return closeModal();
+      if (b.dataset.act === 'add') { list.push({ siteId: '', name: '', main: false }); return draw(); }
+      if (b.dataset.sdel != null) { const s = list[Number(b.dataset.sdel)]; if (!confirm('「' + (s.name || '名前なし') + '」を消しますか？')) return; s.del = true; list.splice(Number(b.dataset.sdel), 1); if (s.siteId) list.removed = (list.removed || []).concat(s.siteId); if (!list.some(isMain) && list[0]) list[0].main = true; return draw(); }
+      if (b.dataset.act !== 'save') return;
+      const names = list.map(s => s.name);
+      if (names.some(n => !n)) return toast('置き場の名前を入れてください');
+      if (new Set(names).size !== names.length) return toast('同じ名前の置き場があります');
+      b.disabled = true;
+      const before = sites(), renames = [];
+      for (const id of (list.removed || [])) await api.post('dougu', { mode: 'deleteSite', siteId: id, by: me() });
+      for (const [i, s] of list.entries()) {
+        const old = before.find(x => x.siteId && x.siteId === s.siteId) || (s.virtual ? before.find(x => x.virtual) : null);
+        const r2 = await api.post('dougu', { mode: 'saveSite', by: me(), site: { siteId: s.siteId || '', name: s.name, main: !!isMain(s), order: i } });
+        if (!r2.ok) { toast(r2.error || NET_ERR); b.disabled = false; return; }
+        if (old && old.name !== s.name) renames.push([old.name, s.name]);
+      }
+      await load();
+      if (renames.length) { for (const [f, t2] of renames) await renameSite(f, t2); await load(); }   // 名前を変えたら、道具の置き場の名前も付け替える
+      closeModal(); toast('置き場を保存しました'); renderAll();
+    });
+  draw();
+}
+async function renameSite(from, to) {
+  for (const t of TOOLS) {
+    if (!(t.stock || []).some(x => x.site === from)) continue;
+    const st = t.stock.map(x => x.site === from ? Object.assign({}, x, { site: to }) : x);
+    await api.post('dougu', { mode: 'updateTool', id: t.id, patch: stockPatch(st), by: me() });
+  }
+}
+
 /* ============ 登録 ============ */
-const reg = { loc: '', photo: null, name: '', qty: 1 };
-function saveDraft() { lsSet(LS.draft, { loc: reg.loc, name: reg.name, qty: reg.qty }); }
+const reg = { loc: '', site: '', photo: null, name: '', qty: 1 };
+function saveDraft() { lsSet(LS.draft, { loc: reg.loc, site: reg.site, name: reg.name, qty: reg.qty }); }
+const regSite = () => (sites().find(s => s.name === reg.site) || mainSite()).name;
 function locList() {
   const s = new Set();
   DB.locations.forEach(l => l.code && s.add(String(l.code)));
@@ -760,7 +856,8 @@ function locList() {
 }
 function locDatalist() { return '<datalist id="locList">' + locList().map(l => '<option value="' + esc(l) + '">').join('') + '</datalist>'; }
 function renderLocChips() {
-  $('locChips').innerHTML = locList().map(l => '<button type="button" class="chip' + (l === reg.loc ? ' on' : '') + '" data-loc="' + esc(l) + '">' + esc(l) + '</button>').join('') +
+  $('siteChips').innerHTML = sites().length > 1 ? sites().map(s => '<button type="button" class="chip' + (s.name === regSite() ? ' on' : '') + '" data-rsite="' + esc(s.name) + '">🏠 ' + esc(s.name) + '</button>').join('') : '';
+  $('locChips').innerHTML = placesOf(regSite()).map(l => '<button type="button" class="chip' + (l === reg.loc ? ' on' : '') + '" data-loc="' + esc(l) + '">' + esc(l) + '</button>').join('') +
     '<button type="button" class="chip" data-loc="__new">＋新しい場所</button>';
 }
 function updateRegBtn() { $('regNext').disabled = !(reg.loc && (reg.name || reg.photo)); }
@@ -809,15 +906,16 @@ async function regConfirm() {
   match ? showMatch(match, ai) : showNew(ai);
 }
 function showMatch(t, ai) {
-  const sameLoc = norm(t.location) === norm(reg.loc);
+  const here = { site: regSite(), place: reg.loc }, hereL = placeLabel(here);
+  const sameLoc = t.stock.some(x => x.site === here.site && norm(x.place) === norm(here.place)), movable = t.stock.length === 1 && !sameLoc;
   const knowName = !reg.name || norm(t.name) === norm(reg.name) || aliasesOf(t.termId).some(a => norm(a.alias) === norm(reg.name));
   openModal('<h3>この道具ですか？</h3><p class="hint" style="margin-bottom:10px">登録済みの道具と同じかもしれません。' + (ai && ai.why ? '（' + esc(ai.why) + '）' : '') + '</p>' +
     '<div class="tool" style="cursor:default"><div class="ph">' + phHtml(t) + '</div><div><div class="nm">' + nameHtml(t) + '</div>' +
-    '<div class="sub"><span class="tag loc">' + esc(t.location || '場所未設定') + '</span> <span class="tnum">今 ' + t.qty + '個</span></div></div></div>' +
-    (!sameLoc ? '<p class="hint" style="color:var(--danger)">登録済みの場所は「' + esc(t.location) + '」です。今の場所は「' + esc(reg.loc) + '」。</p>' : '') +
+    '<div class="sub">' + stockTags(t) + ' <span class="tnum">今 ' + t.qty + '個</span></div></div></div>' +
+    (!sameLoc ? '<p class="hint" style="color:var(--danger)">登録済みの場所は「' + esc(t.stock.map(placeLabel).join('・')) + '」です。今の場所は「' + esc(hereL) + '」。</p>' : '') +
     (!knowName ? '<label style="display:flex;gap:8px;align-items:center;margin:10px 0;font-size:14px"><input type="checkbox" id="mAddAlias" checked style="width:20px;height:20px">「' + esc(reg.name) + '」を呼び方に追加する（用語集へ）</label>' : '') +
-    '<button class="btn ok block" data-act="add" style="margin-top:8px">同じ道具：数量を＋' + reg.qty + '（' + (t.qty + reg.qty) + '個に）</button>' +
-    (!sameLoc ? '<button class="btn block" data-act="move" style="margin-top:8px">同じ道具：場所を「' + esc(reg.loc) + '」に変える</button>' : '') +
+    '<button class="btn ok block" data-act="add" style="margin-top:8px">同じ道具：' + (sameLoc ? '数量を＋' + reg.qty : '「' + esc(hereL) + '」にも ' + reg.qty + '個ある') + '（合計' + (t.qty + reg.qty) + '個に）</button>' +
+    (movable ? '<button class="btn block" data-act="move" style="margin-top:8px">同じ道具：場所を「' + esc(hereL) + '」に移した</button>' : '') +
     '<button class="btn block" data-act="new" style="margin-top:8px">別の道具として登録する</button>' +
     '<button class="btn block" data-act="cancel" style="margin-top:8px">やめる</button>',
     async e => {
@@ -826,7 +924,10 @@ function showMatch(t, ai) {
       if (b.dataset.act === 'new') return showNew(ai);
       b.disabled = true;
       const addAl = $('mAddAlias') && $('mAddAlias').checked;
-      const patch = b.dataset.act === 'add' ? { addQty: reg.qty } : { location: reg.loc };
+      let st = t.stock.map(x => Object.assign({}, x));
+      if (b.dataset.act === 'add') { const e2 = st.find(x => x.site === here.site && norm(x.place) === norm(here.place)); if (e2) e2.qty += reg.qty; else st.push({ site: here.site, place: here.place, qty: reg.qty }); }
+      else st = [{ site: here.site, place: here.place, qty: st[0].qty }];
+      const patch = stockPatch(st);
       if (!t.photoUrl && reg.photo) patch.image = reg.photo.b64;
       const ok = await post('dougu', { mode: 'updateTool', id: t.id, patch, by: me() }, b.dataset.act === 'add' ? '数量を追加しました' : '場所を変えました');
       if (ok && addAl) await post('yougo', { mode: 'addAlias', alias: reg.name, termId: t.termId, type: '社内呼び', by: me() });
@@ -851,7 +952,7 @@ function showNew(ai) {
     '<p class="hint" id="nKnown">' + (known ? '✓ 用語集にある言葉です' : (ai.name ? 'AIの提案です。違うときは直してください。用語集にも新しく登録されます。' : '用語集にも新しく登録されます。')) + '</p>' +
     '<label class="lbl" style="margin-top:12px">よく使う呼び方</label><input type="text" id="nCommon" value="' + esc(common) + '" placeholder="例：パチン">' +
     '<label class="lbl" style="margin-top:12px">どんな道具か（見た目・用途を一言）</label><input type="text" id="nFeat" value="' + esc(known ? known.meaning : (ai.feature || '')) + '" placeholder="例：柄の長い大きな木づち">' +
-    '<dl class="kv" style="margin-top:14px"><dt>保管場所</dt><dd><b>' + esc(reg.loc) + '</b></dd><dt>数量</dt><dd class="tnum">' + reg.qty + '個</dd></dl>' +
+    '<dl class="kv" style="margin-top:14px"><dt>保管場所</dt><dd><b>' + esc(placeLabel({ site: regSite(), place: reg.loc })) + '</b></dd><dt>数量</dt><dd class="tnum">' + reg.qty + '個</dd></dl>' +
     '<div class="row2"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="save">登録する</button></div>',
     async e => {
       const b = e.target.closest('button'); if (!b) return;
@@ -877,7 +978,7 @@ async function registerTool(nm, kana, feat, aliases) {
     } else {
       for (const a of aliases) await api.post('yougo', { mode: 'addAlias', alias: a.alias, termId, type: a.type, by: me(), state: a.state });
     }
-    const r2 = await api.post('dougu', { mode: 'addTool', by: me(), image: reg.photo ? reg.photo.b64 : '', tool: { termId, location: reg.loc, qty: reg.qty } });
+    const r2 = await api.post('dougu', { mode: 'addTool', by: me(), image: reg.photo ? reg.photo.b64 : '', tool: Object.assign({ termId }, stockPatch([{ site: regSite(), place: reg.loc, qty: reg.qty }])) });
     if (!r2.ok) throw new Error(r2.error || '道具を登録できませんでした');
     toast('登録しました。同じ場所の次の道具をどうぞ');
     if (!DEMO) await load(); else { buildTools(); renderAll(); }
@@ -914,9 +1015,12 @@ function renderDict() {
   if (dictView === 'kana') {
     box.innerHTML = TOOLS.slice().sort((a, b) => String(a.kana || a.name).localeCompare(String(b.kana || b.name), 'ja')).map(t => toolRow(t, aliasesOf(t.termId).map(a => a.alias).slice(0, 4).join('・'))).join('');
   } else if (dictView === 'loc') {
-    const g = {};
-    TOOLS.forEach(t => (g[t.location || '場所未設定'] = g[t.location || '場所未設定'] || []).push(t));
-    box.innerHTML = Object.keys(g).sort((a, b) => a.localeCompare(b, 'ja', { numeric: true })).map(k => '<div class="sec-title">📍 ' + esc(k) + '（' + g[k].length + '）</div>' + g[k].map(t => toolRow(t)).join('')).join('');
+    const order = sites().map(s => s.name), G = {};
+    TOOLS.forEach(t => t.stock.forEach(x => { const s = G[x.site] = G[x.site] || {}; (s[x.place || '場所未設定'] = s[x.place || '場所未設定'] || []).push({ t, x }); }));
+    const sk = Object.keys(G).sort((a, b) => (order.indexOf(a) < 0 ? 99 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 99 : order.indexOf(b)));
+    box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin:0 2px 8px"><span class="hint" style="margin:0">置き場 ' + sites().length + 'か所' + (sites().length > 1 ? '（メイン：' + esc(mainSite().name) + '）' : '') + '</span><button class="btn sm" data-sites="1">🏠 置き場の設定</button></div>' +
+      sk.map(sn => (sk.length > 1 || sites().length > 1 ? '<h3 style="margin:14px 2px 2px;font-size:16px">🏠 ' + esc(sn) + (sn === mainSite().name ? '（メイン）' : '') + '</h3>' : '') +
+        Object.keys(G[sn]).sort((a, b) => a.localeCompare(b, 'ja', { numeric: true })).map(k => '<div class="sec-title">📍 ' + esc(k) + '（' + G[sn][k].length + '）</div>' + G[sn][k].map(({ t, x }) => toolRow(t, t.stock.length > 1 ? 'ここに' + x.qty + '個' : '')).join('')).join('')).join('');
   } else {
     const rows = [];
     DB.aliases.filter(a => a.type === '聞き間違い').forEach(a => TOOLS.filter(t => t.termId === a.termId).forEach(t => rows.push({ a, t })));
@@ -1034,6 +1138,9 @@ document.body.addEventListener('click', e => {
   const rt = e.target.closest('[data-rev-tool]'); if (rt) return approveTool(rt.dataset.revTool);
   const ra = e.target.closest('[data-rev-al]');
   if (ra) { const a = renderReview._als[Number(ra.dataset.revAl)]; if (a) post('yougo', { mode: 'review', kind: 'alias', key: { termId: a.termId, alias: a.alias }, action: ra.dataset.ac }, ra.dataset.ac === 'approve' ? '承認しました' : '却下しました'); return; }
+  const rsite = e.target.closest('[data-rsite]'); if (rsite) { reg.site = rsite.dataset.rsite; reg.loc = ''; renderLocChips(); saveDraft(); updateRegBtn(); return; }
+  if (e.target.closest('#siteBtn')) return openSites();
+  if (e.target.closest('[data-sites]')) return openSites();
   const lc = e.target.closest('[data-loc]');
   if (lc) {
     if (lc.dataset.loc === '__new') { $('locNew').hidden = false; $('locNew').focus(); return; }
@@ -1060,8 +1167,8 @@ $('meBtn').addEventListener('click', () => chooseName(true));
   $('demoBar').hidden = !DEMO;
   if (me()) $('meBtn').textContent = '👤 ' + me();
   const d = lsGet(LS.draft, null);
-  if (d) { reg.loc = d.loc || ''; reg.name = d.name || ''; reg.qty = d.qty || 1; $('regName').value = reg.name; $('qN').textContent = reg.qty; }
-  if (p.get('loc')) { reg.loc = p.get('loc'); saveDraft(); showTab('reg'); }   // 棚のQRラベル：dougu.html?loc=1F-A-2段
+  if (d) { reg.loc = d.loc || ''; reg.site = d.site || ''; reg.name = d.name || ''; reg.qty = d.qty || 1; $('regName').value = reg.name; $('qN').textContent = reg.qty; }
+  if (p.get('loc')) { reg.loc = p.get('loc'); reg.site = p.get('site') || ''; saveDraft(); showTab('reg'); }   // 棚のQRラベル：dougu.html?loc=1F-A-2段&site=第2置き場   // 棚のQRラベル：dougu.html?loc=1F-A-2段
   if (p.get('q')) $('q').value = p.get('q');
   if (p.get('add')) {   // 段取りアプリの「未登録 → 登録する」から：名前を入れた状態で登録を開く
     reg.name = p.get('add'); $('regName').value = reg.name; saveDraft(); showTab('reg');
