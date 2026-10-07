@@ -846,9 +846,9 @@ function resetForm(){ editDenpyo=null; editKey=null; slipEdit=[]; renderSlips();
 /* ===== 処分伝票（スキャン・写真の添付） ===== */
 const slipReady=()=>SLIP_GAS_URL.indexOf('PASTE_')!==0;
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const SLIP_MAX=3000;       // 保存するときの長い辺の最大ピクセル（切り取った後の伝票。ドット印字の数字も読める大きさ）
+const SLIP_MAX=2000;       // 保存するときの長い辺の最大ピクセル（切り取った後の伝票。ドット印字の数字も読める大きさ）
 const SLIP_SRC_MAX=4096;   // 1枚だけ取り込んだとき、切り取る前に持っておく大きさ（スマホの写真はほぼそのまま。縮めすぎると切り取った後に文字がつぶれる）
-const SLIP_Q=0.9;          // 保存するときのJPEGの画質
+const SLIP_Q=0.82;         // 保存するときのJPEGの画質
 async function slipGet(params){ const r=await fetchT(SLIP_GAS_URL+'?'+params,30000); return r.json(); }
 async function slipPost(body){ const r=await fetch(SLIP_GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
   const d=await r.json(); if(!d.ok) throw new Error(d.error||'slip'); return d; }
