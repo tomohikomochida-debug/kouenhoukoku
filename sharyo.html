@@ -326,7 +326,41 @@ function render() {
   const active = VEH.filter(v => !v.status || v.status === '使用中'), gone = VEH.filter(v => v.status && v.status !== '使用中');
   let h = groups.map(([t, f]) => { const l = active.filter(f); return l.length ? '<div class="sec-title">' + esc(t) + '（' + l.length + '台）</div>' + l.map(vehHtml).join('') : ''; }).join('');
   if (gone.length) h += '<div class="sec-title">返却済・廃車</div>' + gone.map(vehHtml).join('');
-  $('list').innerHTML = h || '<div class="empty">まだ車両がありません。<br>右下の「＋ 車両を追加」から、会社の車とレンタルの車を登録してください。</div>';
+  $('list').innerHTML = (h || '<div class="empty">まだ車両がありません。<br>右下の「＋ 車両を追加」から、会社の車とレンタルの車を登録してください。</div>') +
+    (canDelete() && !DEMO ? '<button type="button" class="btn block" id="importBtn" style="margin:18px 0 70px;flex-direction:column">📥 「庭乃持田園情報管理」から取り込む<br><small style="font-weight:400;color:var(--bark)">車両の表と車検証・検査証のスキャンから、足りない分を登録</small></button>' : '');
+}
+
+/* ============ 庭乃持田園情報管理（Googleドライブ）から取り込む：先に何をするか見せてから登録 ============ */
+const FIELD_JA = { name: '名前', plate: 'ナンバー', model: '車名・型式', shakenDate: '車検の期限', memo: 'メモ', category: '区分', waste: '収集運搬', aliases: '呼び方', firstReg: '初度登録', ownership: '', status: '' };
+function fieldsText(f) { return Object.keys(f).filter(k => FIELD_JA[k] && f[k] !== '' && f[k] != null).map(k => FIELD_JA[k] + '：' + (k === 'waste' ? 'する' : k === 'shakenDate' ? md(f[k]) : String(f[k]).replace(/\n/g, '／'))).join('<br>'); }
+async function importInfo() {
+  openModal('<h3>📥 取り込む内容を調べています…</h3><p class="hint">「庭乃持田園情報管理」の「車両」シートを読んでいます。</p>', null, true);
+  let r;
+  try { r = await postJSON({ mode: 'importInfo', dry: true }); if (!r.ok) throw new Error(r.error); }
+  catch (e) { return openModal('<h3>読み込めませんでした</h3><p>' + esc(/unknown mode/.test(e.message || '') ? '共通GASの更新がまだです（数分で反映されます）' : e.message || NET_ERR) + '</p><button class="btn block" data-act="close">閉じる</button>', ev => { if (ev.target.closest('[data-act]')) closeModal(); }); }
+  const row = (t, sub) => '<div style="padding:8px 0;border-bottom:1px solid var(--line)"><b>' + esc(t) + '</b>' + (sub ? '<div class="hint" style="margin-top:2px">' + sub + '</div>' : '') + '</div>';
+  const n = r.added.length + r.updated.length + r.docs.length;
+  openModal('<h3>📥 取り込む内容</h3>' +
+    (r.added.length ? '<div class="sec-title">新しく登録する車（' + r.added.length + '台）</div>' + r.added.map(x => row(x.label, fieldsText(x.fields))).join('') : '') +
+    (r.updated.length ? '<div class="sec-title">空いている欄を埋める車（' + r.updated.length + '台）</div>' + r.updated.map(x => row(x.label + (x.name && x.name !== x.label.replace(/（.*$/, '') ? '　→ 登録済みの「' + x.name + '」' : ''), fieldsText(x.fields))).join('') : '') +
+    (r.docs.length ? '<div class="sec-title">書類に入れるスキャン（' + r.docs.length + '台）</div>' + r.docs.map(x => row(x.label, esc(x.files.join('・')) + '（元のファイルはそのまま。写しを車のフォルダに置きます）')).join('') : '') +
+    (r.same.length ? '<div class="sec-title">もう登録ずみ（変えません）</div><p class="hint">' + esc(r.same.join('、')) + '</p>' : '') +
+    (n ? '<p class="tip">型式・初度登録が空いている車は、検査証（記録事項）をAIで読んで埋めます。1台に10秒ほどかかります。</p>' : '<p>足りない分はありませんでした。</p>') +
+    '<div class="row2" style="margin-top:14px"><button class="btn" data-act="close">' + (n ? 'やめる' : '閉じる') + '</button>' + (n ? '<button class="btn primary" data-act="go" style="flex:2">取り込む</button>' : '') + '</div>',
+    async ev => {
+      const b = ev.target.closest('[data-act]'); if (!b) return;
+      if (b.dataset.act === 'close') return closeModal();
+      openModal('<h3>📥 取り込んでいます…</h3><p class="hint">スキャンを写して、検査証を読んでいます。1〜2分かかることがあります。画面を閉じずにお待ちください。</p>', null, true);
+      try {
+        const x = await postJSON({ mode: 'importInfo', dry: false }); if (!x.ok) throw new Error(x.error);
+        await load();
+        openModal('<h3>✓ 取り込みました</h3>' +
+          '<p>新しく登録：' + x.added.length + '台／欄を埋めた：' + x.updated.length + '台／スキャンを入れた：' + x.docs.length + '台</p>' +
+          x.added.concat(x.updated).map(y => row(y.label, fieldsText(y.fields))).join('') +
+          (x.notes.length ? '<p class="hint" style="color:var(--danger)">' + x.notes.map(esc).join('<br>') + '</p>' : '') +
+          '<button class="btn block primary" data-act="close" style="margin-top:12px">閉じる</button>', ev2 => { if (ev2.target.closest('[data-act]')) closeModal(); });
+      } catch (e) { openModal('<h3>途中で止まりました</h3><p>' + esc(e.message || NET_ERR) + '</p><p class="hint">もう一度押すと、まだの分だけ取り込みます。</p><button class="btn block" data-act="close">閉じる</button>', ev2 => { if (ev2.target.closest('[data-act]')) { closeModal(); load(); } }); }
+    });
 }
 
 /* ============ 日報との突き合わせ ============ */
@@ -676,7 +710,7 @@ $('modal').addEventListener('click', e => { if (modalHandler) modalHandler(e); }
 $('modalBg').addEventListener('click', e => { if (e.target === $('modalBg') && !modalLocked) closeModal(); });
 
 /* ============ イベント・起動 ============ */
-$('list').addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (b) openVeh(b.dataset.id); });
+$('list').addEventListener('click', e => { if (e.target.closest('#importBtn')) return chooseName(false, importInfo); const b = e.target.closest('[data-id]'); if (b) openVeh(b.dataset.id); });
 $('alerts').addEventListener('click', e => {
   const n = e.target.closest('[data-unm-new]'); if (n) return chooseName(false, () => openEdit({ name: n.dataset.unmNew, aliases: n.dataset.unmNew }));
   const a = e.target.closest('[data-unm-alias]'); if (a) return chooseName(false, () => openAliasPick(a.dataset.unmAlias));

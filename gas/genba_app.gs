@@ -242,6 +242,7 @@ function doPost(e) {
       case 'sharyo:deleteDoc': return withLock_(function () { return deleteVehicleDoc_(b.docId); });
       case 'sharyo:readDoc':   return out_(b.kind === 'inspect' ? readInspect_(b.data, b.mime) : readShaken_(b.data, b.mime));
       case 'sharyo:docUntil':  return withLock_(function () { return setDocUntil_(b.batch, b.until); });
+      case 'sharyo:importInfo': return out_(importVehicleInfo_(b.by, !!b.dry));
       /* 段取り */
       case 'dandori:organize':   return out_(organize_(b));
       case 'dandori:saveCards':  return withLock_(function () { return saveCards_(b.cards, b.by); });
@@ -416,6 +417,105 @@ function readInspect_(b64, mime) {   // 年次点検（特定自主検査）の�
     next = y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2);
   }
   return { ok: true, data: { inspectedOn: on, inspectDate: next, machine: j.machine || '', inspector: j.inspector || '' } };
+}
+/* 「庭乃持田園情報管理」の「車両」シートと、そこからリンクしている車検証・検査証（記録事項）のスキャンを取り込む
+   ・ナンバーで照合（無ければ名前）。無い車は追加、ある車は空いている欄だけ埋める（車検の期限は新しいほうにする）
+   ・スキャンは元のファイルを動かさず、写しを車ごとのフォルダに置いて「車検証」として登録（もう車検証があれば入れない）
+   ・空いている型式・初度登録は、検査証（記録事項）をAIで読んで埋める
+   dry：登録せずに、何をするかだけ返す */
+var INFO_SHEET_ID = '1tYUoSJ2Aeme3AD-hPKD-4PPGWGUg0uZvSDGd_ZgSu0o', INFO_VEH_SHEET = '車両';
+var VEH_ALIAS = { '塵芥車': 'パッカー車、パッカー', 'ユニック': 'ユニック車' };
+function plateKey_(s) { return String(s || '').normalize('NFKC').replace(/[\s\-・･.]/g, ''); }
+function warekiYmd_(v) {
+  if (v instanceof Date) return ymd_(v);
+  var s = String(v || '').normalize('NFKC'), m = s.match(/(令和|平成|R|H)\s*(\d+|元)\s*[年.\/]\s*(\d+)\s*[月.\/]\s*(\d+)/);
+  if (m) { var y = (m[2] === '元' ? 1 : Number(m[2])) + (m[1] === '令和' || m[1] === 'R' ? 2018 : 1988); return y + '-' + ('0' + m[3]).slice(-2) + '-' + ('0' + m[4]).slice(-2); }
+  m = s.match(/(\d{4})[-\/年](\d{1,2})[-\/月](\d{1,2})/);
+  return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : '';
+}
+function linkOf_(formula, rich, plate) {   // HYPERLINK・SWITCH(ナンバー, …)・セルのリンクから、そのナンバーのファイルIDを出す
+  var f = String(formula || ''), id = '';
+  if (/SWITCH\s*\(/i.test(f)) {
+    var re = /"([^"]+)"\s*,\s*HYPERLINK\(\s*"([^"]+)"/g, m;
+    while ((m = re.exec(f))) if (plateKey_(m[1]) === plateKey_(plate)) { id = m[2]; break; }
+  } else { var h = f.match(/HYPERLINK\(\s*"([^"]+)"/i); if (h) id = h[1]; }
+  if (!id && rich) { try { id = rich.getLinkUrl() || ''; if (!id) rich.getRuns().some(function (r) { return (id = r.getLinkUrl() || ''); }); } catch (e) {} }
+  var x = String(id).match(/[-\w]{25,}/); return x ? x[0] : '';
+}
+function importVehicleInfo_(by, dry) {
+  if (!isAdmin_(by)) return { ok: false, error: '取り込みは' + admins_().join('・') + 'だけができます' };
+  var sh; try { sh = SpreadsheetApp.openById(prop_('INFO_SHEET_ID', INFO_SHEET_ID)).getSheetByName(INFO_VEH_SHEET); } catch (e) { return { ok: false, error: '「庭乃持田園情報管理」を開けません：' + e }; }
+  if (!sh) return { ok: false, error: '「' + INFO_VEH_SHEET + '」シートがありません' };
+  var rg = sh.getDataRange(), vals = rg.getDisplayValues(), raw = rg.getValues(), fx = rg.getFormulas(), rich = rg.getRichTextValues(), head = vals[0].map(function (h) { return String(h).trim(); });
+  var col = function (n) { return head.indexOf(n); }, cName = col('車種'), cPlate = col('ナンバー'), cMaker = cName + 1;
+  if (cName < 0 || cPlate < 0) return { ok: false, error: '「車種」「ナンバー」の見出しが見つかりません' };
+  var get = function (r, n) { var c = col(n); return c < 0 ? '' : String(vals[r][c] || '').trim(); };
+  var vehicles = rows_('vehicles'), docs = rows_('vehicleDocs'), out = { ok: true, dry: dry, added: [], updated: [], docs: [], same: [], notes: [] };
+  var baseKey = function (n) { return nameKey_(String(n || '').replace(/[（(].*?[)）]/g, '')); };
+  for (var r = 1; r < vals.length; r++) {
+    var name = String(vals[r][cName] || '').trim(), plate = String(vals[r][cPlate] || '').trim().normalize('NFKC').replace(/^(\D+?)\s*(\d{2,3})\s*([ぁ-ん])\s*([\d\-・]+)$/, '$1 $2 $3 $4');
+    if (!name && !plate) continue;
+    // 照合：ナンバー → 名前 → かっこを外した名前（ナンバーが違う車は別の車）
+    var v = vehicles.filter(function (x) { return plate && plateKey_(x.plate) === plateKey_(plate); })[0] ||
+      vehicles.filter(function (x) { return !x.plate && [x.name].concat(String(x.aliases || '').split(/[、,，]/)).some(function (n) { return nameKey_(n) && nameKey_(n) === nameKey_(name); }); })[0];
+    if (!v) { var c = vehicles.filter(function (x) { if (x.plate) return false; var a = baseKey(x.name), b = baseKey(name); return a && b && (a === b || a.indexOf(b) >= 0 || b.indexOf(a) >= 0); }); if (c.length === 1) v = c[0]; }
+    var maker = cMaker !== cPlate ? String(vals[r][cMaker] || '').trim() : '', type = get(r, '型式');
+    var load = get(r, '最大積載量'), note = get(r, '備考'), shaken = warekiYmd_(raw[r][col('車検')]) || warekiYmd_(get(r, '車検'));
+    var memo = [load ? '最大積載量 ' + load + 'kg' : '', note.replace(/^★/, '')].filter(String).join('／');
+    var want = { name: name, plate: plate, model: [maker, type].filter(String).join(' '), shakenDate: shaken, memo: memo,
+      category: /ユニック|クレーン/.test(name) ? 'ユニック車（クレーン付き）' : '車・トラック', waste: /廃棄物/.test(note) ? '1' : '', ownership: '自社', status: '使用中',
+      aliases: Object.keys(VEH_ALIAS).filter(function (k) { return name.indexOf(k) >= 0; }).map(function (k) { return VEH_ALIAS[k]; }).join('、') };
+    var patch = {}, label = name + (plate ? '（' + plate + '）' : '');
+    if (!v) patch = want;
+    else {
+      ['plate', 'model', 'aliases'].forEach(function (k) { if (want[k] && !String(v[k] || '').trim()) patch[k] = want[k]; });
+      if (want.shakenDate && (!v.shakenDate || String(v.shakenDate) < want.shakenDate)) patch.shakenDate = want.shakenDate;
+      if (want.waste && !v.waste) patch.waste = '1';
+      if (want.category !== '車・トラック' && (!v.category || v.category === '車・トラック')) patch.category = want.category;
+      if (memo && String(v.memo || '').indexOf(memo) < 0) patch.memo = [String(v.memo || '').trim(), memo].filter(String).join('\n');
+    }
+    // スキャン
+    var shakenId = col('車検証等') >= 0 ? linkOf_(fx[r][col('車検証等')], rich[r][col('車検証等')], plate) : '';
+    var recordId = col('検査証') >= 0 ? linkOf_(fx[r][col('検査証')], rich[r][col('検査証')], plate) : '';
+    var hasDoc = v && docs.some(function (d) { return String(d.vehicleId) === String(v.id) && d.type === '車検証' && d.state !== '過去'; });
+    var files = hasDoc ? [] : [['車検証', shakenId], ['検査証（記録事項）', recordId]].filter(function (x) { return x[1]; });
+    if (dry) {
+      if (!v) out.added.push({ label: label, fields: want });
+      else if (Object.keys(patch).length) out.updated.push({ label: label, name: v.name, fields: patch });
+      else out.same.push(label);
+      if (files.length) out.docs.push({ label: label, files: files.map(function (x) { return x[0]; }) });
+      continue;
+    }
+    // AIで記録事項を読み、空いている型式・初度登録を埋める
+    var readOk = null;
+    if (recordId && (!(v && v.model) || !(v && v.firstReg))) {
+      try { var blob = DriveApp.getFileById(recordId).getBlob(); readOk = readShaken_(Utilities.base64Encode(blob.getBytes()), blob.getContentType()).data; } catch (e) { out.notes.push(label + '：検査証を読めませんでした（' + e + '）'); }
+    }
+    if (readOk) {
+      if (readOk.model && !(v && v.model)) patch.model = readOk.model;
+      if (readOk.firstReg && !(v && v.firstReg)) patch.firstReg = readOk.firstReg;
+      if (readOk.shakenDate && !want.shakenDate && !(v && v.shakenDate)) patch.shakenDate = readOk.shakenDate;   // 期限は表のほうを信じる（表に無いときだけ）
+    }
+    var id = v ? v.id : '';
+    if (!v || Object.keys(patch).length) {
+      var res = withLockRaw_(function () { return upsert_('vehicles', 'id', 'V', Object.assign({ id: id }, patch), by); });
+      id = res.id; (v ? out.updated : out.added).push({ label: label, name: v ? v.name : name, fields: patch });
+      if (!v) vehicles.push(Object.assign({ id: id }, patch));
+    } else out.same.push(label);
+    if (files.length) {
+      var veh = rows_('vehicles').filter(function (x) { return String(x.id) === String(id); })[0];
+      var folder = withLockRaw_(function () { return vehicleFolder_(veh); }), batch = 'B' + Date.now(), until = patch.shakenDate || (veh && veh.shakenDate) || '', done = [];
+      files.forEach(function (x, i) {
+        try {
+          var src = DriveApp.getFileById(x[1]), copy = src.makeCopy('車検証_' + (i ? '記録事項_' : '') + src.getName(), folder);
+          withLockRaw_(function () { upsert_('vehicleDocs', 'docId', 'D', { vehicleId: id, type: '車検証', name: copy.getName(), mime: copy.getMimeType(), fileId: copy.getId(), url: copy.getUrl(), note: x[0] + '（庭乃持田園情報管理から）', by: by || '', at: now_(), batch: batch, state: '最新', validUntil: until, page: i + 1 }, by); });
+          done.push(x[0]);
+        } catch (e) { out.notes.push(label + '：' + x[0] + 'のファイルを写せませんでした（' + e + '）'); }
+      });
+      if (done.length) out.docs.push({ label: label, files: done });
+    }
+  }
+  return out;
 }
 function withLockRaw_(fn) { var l = LockService.getScriptLock(); l.waitLock(25000); try { return fn(); } finally { l.releaseLock(); } }
 /* 日報アプリ向け：使用中の車両・重機の名前と呼び方（日報の「使用車両」「使用機械」の選択肢） */
