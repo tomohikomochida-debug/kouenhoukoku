@@ -432,6 +432,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <h3>② 工種を選ぶ</h3>
       <label class="fld">大分類</label>
       <select id="catSel"></select>
+      <button class="btn ghost" id="addWorkBtn" style="margin-top:6px">＋ 工種を追加<small>登録されていない工種を、色・規格を決めて追加します</small></button>
       <label class="fld">細別</label>
       <select id="kindSel"></select>
       <div id="copyWorksBox" style="display:none;margin-top:8px;padding:8px;border:1px dashed var(--line);border-radius:8px;background:rgba(124,58,237,.06)">
@@ -450,6 +451,42 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
         <span id="htWrap">高さ <input id="htInput" type="number" value="1.0" step="0.1" style="width:62px"></span>
       </div>
       <div id="rankLegend" style="display:none;margin-top:8px"></div>
+    </div>
+
+    <div id="workModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:16px">
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:420px;width:100%;max-height:88vh;overflow:auto;padding:16px;color:var(--ink)">
+        <h3 style="margin:0 0 12px;font-size:16px">工種を追加</h3>
+        <label class="fld">工種名（大分類）</label>
+        <input class="txt" id="nwName" placeholder="例：強剪定（着葉木）">
+        <label class="fld">細別（空なら工種名と同じ）</label>
+        <input class="txt" id="nwKind" placeholder="例：着葉木">
+        <label class="fld">種別・単位</label>
+        <select id="nwMode">
+          <option value="tree:本">樹木（本）</option>
+          <option value="tree:個">数えもの（個）</option>
+          <option value="area:㎡">面積（㎡）</option>
+        </select>
+        <label class="fld">点・記号の色</label>
+        <input type="color" id="nwColor" value="#3ddc97" style="width:56px;height:38px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)">
+        <div id="nwRankBox">
+          <label class="fld">規格（幹周ランクなど）</label>
+          <select id="nwRankMode">
+            <option value="inherit">既存に倣う（30cm未満〜300cm）</option>
+            <option value="none">規格なし（一定サイズ）</option>
+            <option value="custom">独自に入力する</option>
+          </select>
+          <div id="nwBandsWrap" style="display:none">
+            <label class="fld">区分（カンマか改行で区切る）</label>
+            <textarea class="txt" id="nwBands" rows="3" placeholder="例：小, 中, 大"></textarea>
+          </div>
+        </div>
+        <label class="fld">単価（任意・円）<span style="color:var(--mut)">わかったら入れる。空なら0円</span></label>
+        <input class="txt" id="nwPrice" inputmode="numeric" placeholder="空でOK">
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="btn ghost" id="nwCancel" style="margin:0;text-align:center">やめる</button>
+          <button class="btn" id="nwOk" style="margin:0;background:#1f6f43;border-color:#1f6f43;color:#fff;text-align:center">この内容で追加</button>
+        </div>
+      </div>
     </div>
 
     <div class="sec">
@@ -638,6 +675,22 @@ const RANK_COLORS={
   "120〜150cm":"#fb923c","150〜180cm":"#f97316","180〜210cm":"#ef4444","210〜240cm":"#dc2626",
   "240〜270cm":"#b91c1c","270〜300cm":"#7f1d1d"};
 
+/* ---------- 追加工種（ユーザーが登録した工種。MASTERにマージして扱う） ---------- */
+const CUSTOM_WORKS_KEY='park_custom_works';
+let CUSTOM_COLORS={};        // "大分類/細別" -> 点の色（登録時に指定）
+let customWorksDefs={};      // 大分類 -> 定義（保存・書き出し用の控え）
+function worksBands(cat){ const m=MASTER[cat]; return (m&&Array.isArray(m.bands)&&m.bands.length)?m.bands:BANDS; }
+function curBands(){ return worksBands($('catSel')?$('catSel').value:''); }
+function mergeCustomWork(cat,def){
+  MASTER[cat]=def; customWorksDefs[cat]=def;
+  if(def._color){ Object.keys(def.kinds||{}).forEach(k=>{ CUSTOM_COLORS[cat+'/'+k]=def._color; }); }
+}
+function loadCustomWorks(){ try{ const o=JSON.parse(localStorage.getItem(CUSTOM_WORKS_KEY)||'{}');
+  Object.keys(o).forEach(cat=>{ if(!MASTER[cat]) mergeCustomWork(cat,o[cat]); }); }catch(e){} }
+function saveCustomWorksLS(){ try{ localStorage.setItem(CUSTOM_WORKS_KEY, JSON.stringify(customWorksDefs)); }catch(e){} }
+function importCustomWorks(obj){ if(!obj||typeof obj!=='object') return;
+  Object.keys(obj).forEach(cat=>{ if(!MASTER[cat]) mergeCustomWork(cat,obj[cat]); }); saveCustomWorksLS(); }
+
 /* ---------- 状態 ---------- */
 let state={img:null, scale:null /*m per imgpx*/, features:[], manual:[]};
 let view={zoom:1,ox:0,oy:0};
@@ -690,7 +743,7 @@ function fillRanks(){
   const show=curKindRanks();
   $('rankLbl').style.display='none';
   $('rankSel').style.display='none';                 // 丸タップで選ぶためプルダウンは隠す（値の保持用に残す）
-  if(show){const r=$('rankSel');const prev=r.value;r.innerHTML='';BANDS.forEach(b=>{const o=document.createElement('option');o.value=b;o.textContent=b;r.appendChild(o);});r.value=(prev&&BANDS.indexOf(prev)>=0)?prev:BANDS[0];}
+  if(show){const r=$('rankSel');const prev=r.value;r.innerHTML='';const BD=curBands();BD.forEach(b=>{const o=document.createElement('option');o.value=b;o.textContent=b;r.appendChild(o);});r.value=(prev&&BD.indexOf(prev)>=0)?prev:BD[0];}
   const lg=$('rankLegend');
   if(isTree){
     lg.style.display='block';
@@ -700,7 +753,7 @@ function fillRanks(){
       const sel=$('rankSel').value;
       h+='<div class="legend" style="margin:8px 0 4px">規格（幹周）＝丸をタップして選択</div>'+
         '<div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">'+
-        BANDS.map(b=>{const d=Math.round((5+BANDS.indexOf(b))*2);const on=(b===sel);
+        curBands().map((b,bi)=>{const d=Math.round((5+bi)*2);const on=(b===sel);
           return `<span data-band="${b}" style="cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;gap:3px;font-size:9px;color:${on?'#0a7d33':'var(--mut)'};font-weight:${on?'700':'400'};padding:4px 5px;border-radius:9px;background:${on?'#e7f6ec':'transparent'};border:1px solid ${on?'#0a7d33':'#00000000'}"><span style="width:${d}px;height:${d}px;border-radius:50%;background:${col};border:2px solid ${on?'#0a7d33':'#ffffff55'};box-shadow:${on?'0 0 0 2px #0a7d3344':'none'}"></span>${b.replace(/cm/g,'')}</span>`;}).join('')+
         '</div>';
     }else{
@@ -731,6 +784,56 @@ function syncToolForCat(){
   if(tool!=='cal'&&tool!=='pan'&&tool!==mode&&!holeMode) setTool(mode);
 }
 $('catSel').onchange=fillKinds; $('kindSel').onchange=()=>{fillRanks();updateHint();refreshDraftBar();};
+
+/* ---------- 工種を追加（モーダル） ---------- */
+function pickNewColor(){ return COLORS[Object.keys(customWorksDefs).length % COLORS.length]; }
+function syncWorkModalMode(){
+  const isTree=$('nwMode').value.indexOf('tree')===0;
+  $('nwRankBox').style.display=isTree?'block':'none';
+  $('nwBandsWrap').style.display=(isTree&&$('nwRankMode').value==='custom')?'block':'none';
+}
+function openWorkModal(){
+  $('nwName').value=''; $('nwKind').value=''; $('nwMode').value='tree:本';
+  $('nwColor').value=pickNewColor(); $('nwRankMode').value='inherit'; $('nwBands').value=''; $('nwPrice').value='';
+  syncWorkModalMode(); $('workModal').style.display='flex';
+}
+function closeWorkModal(){ $('workModal').style.display='none'; }
+$('addWorkBtn').onclick=openWorkModal;
+$('nwCancel').onclick=closeWorkModal;
+$('nwMode').onchange=syncWorkModalMode;
+$('nwRankMode').onchange=syncWorkModalMode;
+$('workModal').addEventListener('click',e=>{ if(e.target===$('workModal')) closeWorkModal(); });
+$('nwOk').onclick=()=>{
+  const name=$('nwName').value.trim();
+  if(!name){ alert('工種名を入れてください。'); return; }
+  if(MASTER[name]){ alert('「'+name+'」という工種はすでにあります。別の名前にしてください。'); return; }
+  const kind=$('nwKind').value.trim()||name;
+  const mu=$('nwMode').value.split(':'), mode=mu[0], unit=mu[1];
+  const color=$('nwColor').value;
+  const price=parseInt(($('nwPrice').value||'').replace(/[^\d]/g,''))||0;
+  let def;
+  if(mode==='area'){
+    def={unit,mode:'area',kinds:{}}; def.kinds[kind]={price:price||0};
+  }else{
+    const rm=$('nwRankMode').value;
+    if(rm==='none'){
+      def={unit,mode:'tree',ranks:false,kinds:{}}; def.kinds[kind]={price:price||0};
+    }else{
+      let bands;
+      if(rm==='custom'){
+        bands=$('nwBands').value.split(/[,、\n]/).map(s=>s.trim()).filter(Boolean);
+        if(!bands.length){ alert('規格の区分を入れてください（カンマか改行で区切り）。'); return; }
+      }else bands=BANDS.slice();
+      const prices={}; bands.forEach(b=>{ prices[b]=price||0; });
+      def={unit,mode:'tree',ranks:true,bands,kinds:{}}; def.kinds[kind]={prices};
+    }
+  }
+  def._color=color; def._custom=true;
+  mergeCustomWork(name,def); saveCustomWorksLS(); buildTreeColors();
+  fillCats(); $('catSel').value=name; fillKinds();
+  closeWorkModal();
+  alert('「'+name+'」を追加しました。大分類からいつでも選べます。');
+};
 
 function fillManual(){
   const s=$('manKind');s.innerHTML='';
@@ -1221,9 +1324,9 @@ function buildTreeColors(){
   Object.keys(MASTER).forEach(cat=>{const m=MASTER[cat];if(m.mode!=='tree')return;
     Object.keys(m.kinds).forEach(kind=>{TREE_COLORS[cat+'/'+kind]=`hsl(${Math.round((i*137.508)%360)} 72% 56%)`;i++;});});
 }
-function treeColor(f){if(f.cat==='巣撤去')return f.kind==='スズメバチの巣'?'#e11d48':'#111827';return TREE_COLORS[f.cat+'/'+f.kind]||colorFor(f.cat+f.kind);}
+function treeColor(f){const ck=f.cat+'/'+f.kind;if(CUSTOM_COLORS[ck])return CUSTOM_COLORS[ck];if(f.cat==='巣撤去')return f.kind==='スズメバチの巣'?'#e11d48':'#111827';return TREE_COLORS[ck]||colorFor(f.cat+f.kind);}
 // 樹木の点：大きさ＝規格（幹周ランク）。細い→小さい、太い→大きい。規格なしは中サイズ
-function treeRadius(f){if(f.cat==='巣撤去')return 9;return f.rank?(5+Math.max(0,BANDS.indexOf(f.rank))*1.0):6.5;}
+function treeRadius(f){if(f.cat==='巣撤去')return 9;return f.rank?(5+Math.max(0,worksBands(f.cat).indexOf(f.rank))*1.0):6.5;}
 function featColor(f){if(f.type==='tree')return treeColor(f);return colorFor(f.cat+f.kind);}
 function centroid(pts){let x=0,y=0;pts.forEach(p=>{x+=p.x;y+=p.y});return{x:x/pts.length,y:y/pts.length};}
 // 選択中の面積/線：頂点（赤）＝移動・ダブルタップ削除／辺中点（＋黄）＝タップで頂点追加
@@ -1543,7 +1646,7 @@ function aggregate(){
 function specOrder(cat,kind,rank){
   const cats=Object.keys(MASTER); let ci=cats.indexOf(cat); if(ci<0)ci=999;
   const m=MASTER[cat]; let ki=m?Object.keys(m.kinds).indexOf(kind):-1; if(ki<0)ki=999;
-  let ri=rank?BANDS.indexOf(rank):-1; if(ri<0)ri=0;
+  let ri=rank?worksBands(cat).indexOf(rank):-1; if(ri<0)ri=0;
   return ci*1e6+ki*1e3+ri;
 }
 function cmpSpec(a,b){return specOrder(a.cat,a.kind,a.rank)-specOrder(b.cat,b.kind,b.rank);}
@@ -2237,6 +2340,7 @@ $('saveJson').onclick=()=>{
   const data={park:$('parkName').value||'未設定',contract:$('contractName').value||'',order,date:$('workDate').value||'',start:$('startDate').value||'',finish:$('finishDate').value||'',agent:$('agentName')?($('agentName').value||''):'',supervisor:$('supervisorName')?($('supervisorName').value||''):'',
     scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,
     rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value},
+    customWorks:customWorksDefs,
     mapImg:state.mapImg||null,saved:new Date().toISOString()};
   const base=(order?order+'_':'')+(data.park);
   dl(JSON.stringify(data),`${base}.json`,'application/json');
@@ -2292,6 +2396,7 @@ function applyParkData(d,kb){
   if($('agentName'))$('agentName').value=d.agent||'';if($('supervisorName'))$('supervisorName').value=d.supervisor||'';
   if(d.rp){const R=d.rp;const sv=(id,v)=>{const el=$(id);if(el&&v!==undefined&&v!==null&&v!=='')el.value=v;};
     sv('rpFy',R.fy);sv('rpNo',R.no);sv('rpSubmit',R.submit);sv('rpKeiyaku',R.keiyaku);sv('rpAddr',R.addr);sv('rpAtena',R.atena);sv('rpUkeoi',R.ukeoi);}
+  if(d.customWorks){ importCustomWorks(d.customWorks); buildTreeColors(); fillCats(); }
   state.cloudId=d.cloudId||state.cloudId||null; state.cloudVer=d.cloudId?(d.cloudVer||null):(state.cloudVer||null);
   if(d.mapImg){state.mapImg=d.mapImg;const b=$('rpMapBtn');if(b)b.firstChild.textContent='🖼 履行場所の図：読み込みました（変えるならもう一度）';}
   state.features=d.features||[];state.manual=d.manual||[];recalcAll();
@@ -2374,6 +2479,7 @@ function parkPayload(){
     scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,
     rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,
         addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value},
+    customWorks:customWorksDefs,
     mapImg:state.mapImg||null,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,saved:new Date().toISOString()};
 }
 $('cloudSave').onclick=async()=>{
@@ -3629,6 +3735,7 @@ $('mCopy').onclick=()=>{
 
 /* ---------- init ---------- */
 $('hint').onclick=()=>$('hint').style.display='none';   // 邪魔なときはタップで一時的に隠す（ツール切替で再表示）
+loadCustomWorks();
 buildTreeColors();
 fillCats();fillManual();renderAgg();renderSansha();setTool('area');updateHint();updateUndoButtons();
 new ResizeObserver(resize).observe(cv.parentElement);resize();
