@@ -1018,7 +1018,7 @@ function placeLabels(L,segs,dots,B,opt){
       const hits=allSegs.reduce((s,g)=>s+(segHitsRect(g[0],g[1],g[2],g[3],R)?1:0),0);
       const R0=rectAt(c.x,c.y,o.w,o.h,0);
       const sx=Math.max(R0.l,Math.min(R0.r,o.ax)), sy=Math.max(R0.t,Math.min(R0.b,o.ay));
-      const gap=Math.hypot(sx-o.ax,sy-o.ay), lead=gap>GAP;
+      const gap=Math.hypot(sx-o.ax,sy-o.ay), lead=gap>(o.gap!=null?o.gap:GAP);
       let lhits=0; if(lead){ const sh=(P)=>({l:P.l+2,r:P.r-2,t:P.t+2,b:P.b-2}); lhits=placed.reduce((s,P)=>s+(segHitsRect(o.ax,o.ay,sx,sy,sh(P))?1:0),0); const me=[o.ax,o.ay,sx,sy]; lhits+=leads.reduce((s,g)=>s+(segCross(me,g)?0.75:0),0)+segs.reduce((s,g)=>s+(segCross(me,g)?0.02:0),0); }
       const score=hits*LW+lhits*400+(lead?30:0)+gap+ci*0.01;
       if(!best||score<best.score) best={score,x:c.x,y:c.y,lead,sx,sy,R};
@@ -2771,10 +2771,12 @@ function rpPoly(widths,pts,close,lw,dash,col){
     +(dash?'<a:prstDash val="dash"/>':'')+'</a:ln></xdr:spPr>'+RP_EMPTY_TX;
   return rpAnchor(widths,x0,y0,w,h,inner);
 }
+// 文字の幅（px）の見積もり：半角は細く、全角（漢字・かな・〜・㎡など）は太く数える
+function rpTextW(t,fs){ let w=0; for(const ch of String(t)){ w+= (ch.charCodeAt(0)<0x2000)? fs*0.78 : fs*1.45; } return w+4; }
 // 文字（テキストボックス）
 function rpText(widths,x,y,s,fs,col,align){
   fs=fs||8;
-  const w=Math.max(14,String(s).length*fs*0.82), h=fs*1.9;
+  const w=Math.max(14,rpTextW(s,fs)), h=fs*1.9;
   const inner=rpSpHead('TextBox',w,h)
     +'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln><a:noFill/></a:ln></xdr:spPr>'
     +'<xdr:txBody><a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"/><a:lstStyle/>'
@@ -2855,7 +2857,7 @@ function rpStripFigureXml(sheet,widths,f,ox,oy,maxW,maxH){
 // （Excelで文字の枠を動かしても、線がついてくる＝あとから見やすく直せる）
 function rpTextBox(widths,x,y,s,fs,col){
   fs=fs||8; col=col||'000000';
-  const w=Math.max(14,String(s).length*fs*0.82), h=fs*1.9;
+  const w=Math.max(14,rpTextW(s,fs)), h=fs*1.9;
   const xml=rpText(widths,x,y,s,fs,col); const id=rpSid;
   return {xml,id,l:x-w/2,t:y-h/2,w,h};
 }
@@ -2877,9 +2879,11 @@ function rpConnector(widths,a,b,stId,stIdx,endId,endIdx,lw,col){
     +'<a:ln w="'+Math.round((lw||0.6)*RP_EMU)+'"><a:solidFill><a:srgbClr val="'+rpHex(col||'444444')+'"/></a:solidFill></a:ln></xdr:spPr></xdr:cxnSp>';
   return rpAnchor(widths,x0,y0,w,h,inner);
 }
-function rpPlaceTexts(sheet,widths,labels,B,segs,lineW){
-  labels.forEach(o=>{o.w=Math.max(14,String(o.s).length*o.fs*0.82);o.h=o.fs*1.9;if(!o.pref)o.pref=[{x:o.ax,y:o.ay}];});
-  placeLabels(labels,segs||[],[],B,{gap:4,lineW:lineW||0});
+function rpDark(c){ const h=rpHex(c); const v=[0,2,4].map(i=>parseInt(h.substr(i,2),16)); const L=(0.3*v[0]+0.59*v[1]+0.11*v[2]);
+  const k=L>110?110/L:1; return v.map(x=>('0'+Math.round(x*k).toString(16)).slice(-2)).join('').toUpperCase(); }
+function rpPlaceTexts(sheet,widths,labels,B,segs,lineW,dots){
+  labels.forEach(o=>{o.w=Math.max(14,rpTextW(o.s,o.fs));o.h=o.fs*1.9;if(!o.pref)o.pref=[{x:o.ax,y:o.ay}];});
+  placeLabels(labels,segs||[],dots||[],B,{lineW:lineW||0,gap:4});
   labels.forEach(o=>{
     const tb=rpTextBox(widths,o.lx,o.ly,o.s,o.fs,o.col);
     rpPush(sheet,tb.xml);
@@ -2929,14 +2933,14 @@ function rpFigureXml(sheet,widths,f,ox,oy,maxW,maxH){
   const LB=[];
   tris.forEach((t,n)=>{
     const cx=(X(pts[t[0]])+X(pts[t[1]])+X(pts[t[2]]))/3, cy=(Y(pts[t[0]])+Y(pts[t[1]])+Y(pts[t[2]]))/3;
-    const s=String(n+1), fs=9; LB.push({ax:cx,ay:cy,s,fs,w:Math.max(14,s.length*fs*0.82),h:fs*1.9,pref:[{x:cx,y:cy}]});
+    const s=String(n+1), fs=9; LB.push({ax:cx,ay:cy,s,fs,w:Math.max(14,rpTextW(s,fs)),h:fs*1.9,pref:[{x:cx,y:cy}]});
   });
   if(sc) Object.keys(em).forEach(key=>{
     const e=em[key], p=pts[e.i], q=pts[e.j];
     const L=dist(p,q)*sc, s=L.toFixed(2), fs=7;
     const mx=(X(p)+X(q))/2, my=(Y(p)+Y(q))/2, ex=X(q)-X(p), ey=Y(q)-Y(p), el=Math.hypot(ex,ey)||1;
     let nx=-ey/el, ny=ex/el; if((mx-cen.x)*nx+(my-cen.y)*ny<0){nx=-nx;ny=-ny;}
-    LB.push({ax:mx,ay:my,s,fs,w:Math.max(14,s.length*fs*0.82),h:fs*1.9,n:{x:nx,y:ny},edge:true,len:el});
+    LB.push({ax:mx,ay:my,s,fs,w:Math.max(14,rpTextW(s,fs)),h:fs*1.9,n:{x:nx,y:ny},edge:true,len:el});
   });
   // 短い線ほど置き場所が少ないので先に
   const order=LB.filter(o=>!o.edge).concat(LB.filter(o=>o.edge).sort((a,b)=>a.len-b.len));
@@ -3086,7 +3090,7 @@ function rpBuildHaichi(wb,park){
       const qty=g.trees?(g.trees+' '+g.unit):(g.m2.toFixed(2)+' ㎡');
       const ltx=g.cat+'　'+g.kind+(g.auto.length&&!g.feats.length?'（機械除草と同範囲）':'')+'　'+qty;
       rpPush('配置図',rpSwatch(WID,ox+2,ly+3,12,9,col));
-      const lw=Math.max(14,String(ltx).length*8*0.82);
+      const lw=Math.max(14,rpTextW(ltx,8));
       rpPush('配置図',rpText(WID,ox+20+lw/2, ly+7, ltx, 8, '000000','l'));   // 左寄せ：色見本の右から書く
       ly+=16;
     });
@@ -3100,20 +3104,31 @@ function rpBuildHaichi(wb,park){
     if(mapURL){
       const ox=RP_PAD, oy=(r-1)*RP_ROWPX+RP_PAD;
       rpPutImage(wb,ws,mapURL,r,box,WID);
-      const NL=[];                                          // 図形の番号（文字どうしが重ならないように置く）
+      // 図形ごとのコメント（①番号＋数量）。文字どうしが重ならない空きへ、離れたら引き出し線
+      const NL=[], DOTS=[], dark=c=>rpDark(c);
       g.auto.forEach(f=>{                                   // 集草（自動）：除草の範囲を集草の色で
         const col=colorFor(g.cat+g.kind);
         drawFeat(f,ox,oy,col);
-        const c=centroid(f.pts); NL.push({ax:ox+c.x*k,ay:oy+c.y*k,s:maru(figNo(f)),fs:10,col:rpHex(col)});
+        const c=centroid(f.pts); NL.push({ax:ox+c.x*k,ay:oy+c.y*k,s:maru(figNo(f))+' '+shusoAmt(f).toFixed(2)+'㎡',fs:9,col:dark(col)});
       });
+      const trees=[];
       g.feats.forEach(f=>{
         drawFeat(f,ox,oy,featColor(f));                     // 画面と同じ配色
-        if(f.type!=='tree'){                                // 図形の番号を添えて求積図と対応づける
+        if(f.type==='tree'){ const c={x:ox+f.pt.x*k,y:oy+f.pt.y*k}; trees.push({f,x:c.x,y:c.y}); DOTS.push({x:c.x,y:c.y,r:Math.max(3,treeRadius(f)*k)+1}); }
+        else{                                               // 図形の番号を添えて求積図と対応づける
           const c=(f.pts&&f.pts.length)?centroid(f.pts):f.pt;
-          if(c) NL.push({ax:ox+c.x*k,ay:oy+c.y*k,s:maru(figNo(f)),fs:10,col:rpHex(featColor(f))});
+          if(c) NL.push({ax:ox+c.x*k,ay:oy+c.y*k,s:maru(figNo(f))+' '+((f.area!=null)?f.area.toFixed(2):'—')+'㎡',fs:9,col:dark(featColor(f))});
         }
       });
-      rpPlaceTexts('配置図',WID,NL,{l:ox+2,t:oy+2,r:ox+box.w-2,b:oy+box.h-2});
+      // 木：近くの同じ規格をまとめて「規格 ×本数」（1本なら規格だけ）
+      const used=new Array(trees.length).fill(false);
+      trees.forEach((t,i)=>{ if(used[i])return; const key=t.f.kind+'|'+(t.f.rank||''); const grp=[t]; used[i]=true;
+        for(let q=0;q<grp.length;q++) trees.forEach((u,j)=>{ if(!used[j]&&u.f.kind+'|'+(u.f.rank||'')===key&&Math.hypot(u.x-grp[q].x,u.y-grp[q].y)<24){used[j]=true;grp.push(u);} });
+        const cx=grp.reduce((a,u)=>a+u.x,0)/grp.length, cy=grp.reduce((a,u)=>a+u.y,0)/grp.length, ymin=Math.min.apply(null,grp.map(u=>u.y));
+        const name=(t.f.rank||String(t.f.kind).replace(/（.*?）/g,'')), unit=(MASTER[t.f.cat]||{}).unit||'本';
+        NL.push({ax:cx,ay:cy,gap:16,pref:[{x:cx,y:ymin-17},{x:cx,y:Math.max.apply(null,grp.map(u=>u.y))+17}],s:name+(grp.length>1?(' ×'+grp.length+unit):''),fs:9,col:dark(featColor(t.f))});
+      });
+      rpPlaceTexts('配置図',WID,NL,{l:ox+2,t:oy+2,r:ox+box.w-2,b:oy+box.h-2},[],0,DOTS);
       r+=Math.ceil(box.h/RP_ROWPX)+1;
     }
     r+=2;
