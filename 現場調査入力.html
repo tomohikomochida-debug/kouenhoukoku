@@ -73,6 +73,12 @@
   .gsiview canvas{ position:absolute; inset:0; touch-action:none; cursor:grab; }
   .gsizoom{ position:absolute; right:10px; top:10px; display:flex; flex-direction:column; gap:6px; }
   .gsizoom button{ width:40px; height:40px; border-radius:8px; border:1px solid var(--line); background:#fff; font-size:20px; }
+  .gsizoom .gap{ height:6px; }
+  .gsinorth{ position:absolute; left:10px; top:10px; width:46px; height:46px; border-radius:50%; border:1px solid var(--line); background:rgba(255,255,255,.92); padding:0; display:flex; align-items:center; justify-content:center; }
+  .gsinorth span{ display:block; font:bold 12px/1 sans-serif; color:#c62828; text-align:center; transition:transform .05s linear; }
+  .gsirot input[type=range]{ flex:1 1 160px; min-width:120px; padding:0; border:none; accent-color:var(--accent); height:28px; }
+  .gsirot #gsiRotTxt{ min-width:7.5em; font-size:14px; }
+  .gsirot .muted{ font-size:12px; }
   .gsifoot{ display:flex; align-items:center; gap:10px; padding:0 12px calc(12px + env(safe-area-inset-bottom)); flex-wrap:wrap; }
   .gsifoot span{ flex:1 1 200px; }
   .gsifoot .primary{ background:var(--accent); color:#fff; border:none; border-radius:10px; padding:13px 18px; font-weight:700; font-size:15px; }
@@ -100,7 +106,7 @@
   .thumb img{ cursor:pointer; }
   .thmove{ position:absolute; bottom:2px; left:2px; right:2px; display:flex; justify-content:space-between; gap:2px; }
   .thmove button{ background:rgba(0,0,0,.55); color:#fff; border:none; border-radius:4px; height:20px; min-width:24px; font-size:11px; padding:0; }
-  .addph{ width:88px; height:66px; border:1px dashed var(--line); border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--sub); font-size:13px; position:relative; background:#fff; }
+  .addph{ width:88px; height:66px; border:1px dashed var(--line); border-radius:8px; display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.3; color:var(--sub); font-size:13px; position:relative; background:#fff; }
   .addph input{ position:absolute; inset:0; opacity:0; }
   .grid3{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   .fld label{ font-size:11px; color:var(--sub); display:block; margin-bottom:2px; }
@@ -351,7 +357,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   <div class="gsibar"><div class="seg" id="gsiLayer"></div><div class="seg" id="gsiFrameSel"></div></div>
   <div class="gsibar"><input id="gsiQ" placeholder="住所で探す（例：川崎市宮前区…）" enterkeyhint="search" onkeydown="if(event.key==='Enter'){event.preventDefault();gsiSearch();}"><button type="button" onclick="gsiSearch()">探す</button><button type="button" onclick="gsiHere()">現在地</button><button type="button" onclick="gsiFitTrees()">木に合わせる</button></div>
   <div id="gsiView" class="gsiview"><canvas id="gsiCv" onpointerdown="gsiPd(event)" onpointermove="gsiPm(event)" onpointerup="gsiPu(event)" onpointercancel="gsiPu(event)" onwheel="gsiWheel(event)"></canvas>
-    <div class="gsizoom"><button type="button" onclick="gsiZoom(1)">＋</button><button type="button" onclick="gsiZoom(-1)">－</button></div></div>
+    <div class="gsizoom"><button type="button" onclick="gsiZoom(1)">＋</button><button type="button" onclick="gsiZoom(-1)">－</button><div class="gap"></div><button type="button" onclick="gsiTurn(-15)" title="左に15°回す">↺</button><button type="button" onclick="gsiTurn(15)" title="右に15°回す">↻</button></div>
+    <button type="button" class="gsinorth" onclick="gsiSetRot(0)" title="北を上に戻す"><span id="gsiNorthArrow">▲<br>N</span></button></div>
+  <div class="gsibar gsirot"><b style="font-size:14px">向き</b><input type="range" id="gsiRot" min="-180" max="180" step="1" value="0" oninput="gsiSetRot(this.value*Math.PI/180)"><span id="gsiRotTxt">北が上</span><button type="button" onclick="gsiSetRot(0)">北を上に</button><span class="muted">2本指でひねっても回せます</span></div>
   <div class="gsifoot"><span id="gsiInfo" class="muted"></span><button type="button" id="gsiMakeBtn" class="primary" onclick="gsiMake()">この範囲で位置図にする</button></div>
 </div>
 <div id="photoEditor" class="peditor" style="display:none">
@@ -3304,10 +3312,16 @@ function fitSimilarity(pairs){
 /* 手で置いた番号のうち、位置もある木（スクショの地図の目印） */
 function mapAnchors(){ return state.trees.filter(t=>t.mx!=null&&t.my!=null&&!t.mauto&&itemGeo(t)); }
 function anchorsSpread(an){ let mx=0; for(let a=0;a<an.length;a++) for(let b=a+1;b<an.length;b++) mx=Math.max(mx,geoDist(itemGeo(an[a]),itemGeo(an[b]))); return mx; }
+/* 回転（画面の向き：+ で時計回り） */
+const rotV=(v,a)=>{ if(!a) return [v[0],v[1]]; const c=Math.cos(a), s=Math.sin(a); return [c*v[0]-s*v[1], s*v[0]+c*v[1]]; };
+/* 地理院で作った位置図：x0,y0,w,h は回す前の枠、rot は枠の中心まわりの回転（北が上なら無し） */
+function geoTransform(G){ const c=[G.x0+G.w/2,G.y0+G.h/2], a=+G.rot||0;
+  return { fwd:p=>{ const d=rotV([p[0]-c[0],p[1]-c[1]],a); return [d[0]/G.w+0.5,d[1]/G.h+0.5]; },
+           inv:uv=>{ const d=rotV([(uv[0]-0.5)*G.w,(uv[1]-0.5)*G.h],-a); return [c[0]+d[0],c[1]+d[1]]; } }; }
 /* 位置図の上の場所（0〜1）⇔ メルカトル。作れないときは null */
 function mapTransform(){
   const G=state.mapGeo;
-  if(G) return { fwd:p=>[(p[0]-G.x0)/G.w,(p[1]-G.y0)/G.h], inv:uv=>[G.x0+uv[0]*G.w,G.y0+uv[1]*G.h] };
+  if(G) return geoTransform(G);
   const sz=state.mapSize; if(!state.mapImage||!sz) return null;
   const an=mapAnchors(); if(an.length<2||anchorsSpread(an)<4) return null; // 近すぎる2本では向き・縮尺が決まらない
   const pairs=an.map(t=>{ const g=itemGeo(t); return [merc(g.lat,g.lon),[t.mx*sz[0],t.my*sz[1]]]; });
@@ -3366,10 +3380,10 @@ function tileGet(url){ let e=tileCache.get(url); if(e) return e;
   return e; }
 function gsiOpen(){
   const G=state.mapGeo, fr=G&&G.frame&&FRAMES[G.frame]?G.frame:"wide";
-  GV={ layer:G&&GSI[G.layer]?G.layer:"photo", frame:fr, cx:0, cy:0, z:17 };
+  GV={ layer:G&&GSI[G.layer]?G.layer:"photo", frame:fr, cx:0, cy:0, z:17, rot:G&&+G.rot||0 };
   document.getElementById("gsiDlg").style.display="flex";
   document.body.style.overflow="hidden";
-  gsiSeg(); gsiResize();
+  gsiSeg(); gsiResize(); gsiSyncRot();
   if(G){ GV.cx=G.x0+G.w/2; GV.cy=G.y0+G.h/2; const f=gsiFrameRect(); GV.z=Math.log2(f.w/G.w); gsiDraw(); return; }
   if(!gsiFitTrees(true)){ // 位置のある木がなければ、工事場所の住所 → いまの位置
     GV.cx=merc(35.681,139.767)[0]; GV.cy=merc(35.681,139.767)[1]; GV.z=12; gsiDraw();
@@ -3398,14 +3412,17 @@ function gsiPaint(){
   x.setTransform(d,0,0,d,0,0); x.fillStyle="#dfe3e6"; x.fillRect(0,0,W,H);
   const tz=Math.max(2,Math.min(GSI_MAX,Math.round(GV.z))), n=2**tz, ts=256*2**(GV.z-tz), S=2**GV.z;
   const tcx=GV.cx/256*n, tcy=GV.cy/256*n;
-  const x0=Math.floor(tcx-W/2/ts), x1=Math.floor(tcx+W/2/ts), y0=Math.max(0,Math.floor(tcy-H/2/ts)), y1=Math.min(n-1,Math.floor(tcy+H/2/ts));
+  const rot=GV.rot||0, RX=rot?Math.hypot(W,H)/2:W/2, RY=rot?RX:H/2; // 回しているときは画面の対角まで取る
+  const x0=Math.floor(tcx-RX/ts), x1=Math.floor(tcx+RX/ts), y0=Math.max(0,Math.floor(tcy-RY/ts)), y1=Math.min(n-1,Math.floor(tcy+RY/ts));
   x.imageSmoothingEnabled=true;
+  x.save(); x.translate(W/2,H/2); if(rot) x.rotate(rot);
   for(let ty=y0;ty<=y1;ty++) for(let tx=x0;tx<=x1;tx++){
-    const e=tileGet(tileURL(GV.layer,tz,tx,ty)), sx=W/2+(tx-tcx)*ts, sy=H/2+(ty-tcy)*ts;
+    const e=tileGet(tileURL(GV.layer,tz,tx,ty)), sx=(tx-tcx)*ts, sy=(ty-tcy)*ts;
     if(e.ok) x.drawImage(e.img,sx,sy,ts+0.5,ts+0.5);
   }
+  x.restore();
   // 位置のある木
-  state.trees.forEach((t,i)=>{ const g=itemGeo(t); if(!g) return; const p=merc(g.lat,g.lon), px=W/2+(p[0]-GV.cx)*S, py=H/2+(p[1]-GV.cy)*S;
+  state.trees.forEach((t,i)=>{ const g=itemGeo(t); if(!g) return; const p=merc(g.lat,g.lon), q=rotV([(p[0]-GV.cx)*S,(p[1]-GV.cy)*S],GV.rot||0), px=W/2+q[0], py=H/2+q[1];
     if(px<-20||py<-20||px>W+20||py>H+20) return;
     x.beginPath(); x.arc(px,py,11,0,Math.PI*2); x.fillStyle="rgba(214,40,40,.92)"; x.fill(); x.lineWidth=2; x.strokeStyle="#fff"; x.stroke();
     x.fillStyle="#fff"; x.font="bold 12px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(i+1),px,py+0.5); });
@@ -3422,11 +3439,11 @@ function gsiPaint(){
 const fmtM=m=>m>=1000?(m/1000).toFixed(m>=10000?0:1)+" km":Math.round(m)+" m";
 /* 位置のある木がすべて枠に入るように */
 function gsiFitTrees(quiet){
-  const ps=state.trees.map(itemGeo).filter(Boolean).map(g=>merc(g.lat,g.lon));
+  const rot=GV.rot||0, ps=state.trees.map(itemGeo).filter(Boolean).map(g=>rotV(merc(g.lat,g.lon),rot)); // 画面の向きにそろえて測る
   if(!ps.length){ if(!quiet) toast("位置のある木がまだありません"); return false; }
   const xs=ps.map(p=>p[0]), ys=ps.map(p=>p[1]), f=gsiFrameRect();
   const minx=Math.min(...xs), maxx=Math.max(...xs), miny=Math.min(...ys), maxy=Math.max(...ys);
-  GV.cx=(minx+maxx)/2; GV.cy=(miny+maxy)/2;
+  const c=rotV([(minx+maxx)/2,(miny+maxy)/2],-rot); GV.cx=c[0]; GV.cy=c[1];
   const lat=unmerc(GV.cx,GV.cy)[0], minW=60/mPerUnit(lat); // 1本だけ・近いときも最低 60m は見せる
   const dx=Math.max(maxx-minx,minW)*1.35, dy=Math.max(maxy-miny,minW/FRAMES[GV.frame].r)*1.35;
   GV.z=Math.min(20,Math.log2(Math.min(f.w/dx,f.h/dy))); gsiDraw(); return true;
@@ -3445,20 +3462,38 @@ async function gsiSearch(quiet){
   }catch(e){ if(!quiet) toast("住所を探せませんでした（ネットにつながっているか確かめてください）"); else gsiHere(true); }
 }
 function gsiZoom(dz,sx,sy){ const {W,H}=gsiView(); if(sx==null){ sx=W/2; sy=H/2; }
-  const S=2**GV.z, wx=GV.cx+(sx-W/2)/S, wy=GV.cy+(sy-H/2)/S;
-  GV.z=Math.max(4,Math.min(20,GV.z+dz)); const S2=2**GV.z; GV.cx=wx-(sx-W/2)/S2; GV.cy=wy-(sy-H/2)/S2; gsiDraw(); }
+  const S=2**GV.z, r=GV.rot||0, d=rotV([(sx-W/2)/S,(sy-H/2)/S],-r), wx=GV.cx+d[0], wy=GV.cy+d[1];
+  GV.z=Math.max(4,Math.min(20,GV.z+dz)); const S2=2**GV.z, d2=rotV([(sx-W/2)/S2,(sy-H/2)/S2],-r); GV.cx=wx-d2[0]; GV.cy=wy-d2[1]; gsiDraw(); }
+/* 地図を回す（枠はそのまま、下の地図が回る）。a はラジアン、+ で時計回り */
+const normAng=a=>{ a=a%(2*Math.PI); if(a>Math.PI) a-=2*Math.PI; if(a<=-Math.PI) a+=2*Math.PI; return Math.abs(a)<1e-9?0:a; };
+function gsiRotateAt(da,sx,sy){ if(!GV||!da) return; const {W,H}=gsiView(); if(sx==null){ sx=W/2; sy=H/2; }
+  const S=2**GV.z, d=rotV([(sx-W/2)/S,(sy-H/2)/S],-(GV.rot||0)), wx=GV.cx+d[0], wy=GV.cy+d[1];
+  GV.rot=normAng((GV.rot||0)+da); const d2=rotV([(sx-W/2)/S,(sy-H/2)/S],-GV.rot); GV.cx=wx-d2[0]; GV.cy=wy-d2[1];
+  gsiSyncRot(); gsiDraw(); }
+function gsiSetRot(a){ if(!GV) return; gsiRotateAt(normAng(+a||0)-(GV.rot||0)); gsiSyncRot(); }
+function gsiTurn(deg){ if(!GV) return; const cur=Math.round((GV.rot||0)*180/Math.PI), step=Math.abs(deg); // 15°刻みにそろえる
+  const nx=deg>0?Math.floor(cur/step)*step+step:Math.ceil(cur/step)*step-step; gsiSetRot(nx*Math.PI/180); }
+function gsiSyncRot(){ if(!GV) return; const deg=Math.round((GV.rot||0)*180/Math.PI);
+  const sl=document.getElementById("gsiRot"); if(sl&&document.activeElement!==sl) sl.value=deg;
+  const tx=document.getElementById("gsiRotTxt"); if(tx) tx.textContent=deg?"北の向き："+(deg>0?"右へ ":"左へ ")+Math.abs(deg)+"°":"北が上";
+  const ar=document.getElementById("gsiNorthArrow"); if(ar) ar.style.transform="rotate("+(GV.rot||0)+"rad)"; }
 /* 指で動かす・2本指で拡大縮小 */
 const gsiPtr=new Map(); let gsiLast=null;
-function gsiPd(e){ e.preventDefault(); e.currentTarget.setPointerCapture&&e.currentTarget.setPointerCapture(e.pointerId); gsiPtr.set(e.pointerId,{x:e.offsetX,y:e.offsetY}); gsiLast=gsiGest(); }
+let gsiTwist={acc:0,on:false}; // 2本指のひねり：少しひねってから回り始める（拡大縮小のときに勝手に回らない）
+function gsiPd(e){ e.preventDefault(); e.currentTarget.setPointerCapture&&e.currentTarget.setPointerCapture(e.pointerId); gsiPtr.set(e.pointerId,{x:e.offsetX,y:e.offsetY}); gsiLast=gsiGest(); gsiTwist={acc:0,on:false}; }
 function gsiPm(e){ if(!gsiPtr.has(e.pointerId)||!GV) return; e.preventDefault(); gsiPtr.set(e.pointerId,{x:e.offsetX,y:e.offsetY});
   const g=gsiGest(); if(!gsiLast||g.n!==gsiLast.n){ gsiLast=g; return; }
-  const S=2**GV.z; GV.cx-=(g.x-gsiLast.x)/S; GV.cy-=(g.y-gsiLast.y)/S;
-  if(g.n>=2&&gsiLast.d>0&&g.d>0) gsiZoom(Math.log2(g.d/gsiLast.d),g.x,g.y); else gsiDraw();
+  const S=2**GV.z, dv=rotV([(g.x-gsiLast.x)/S,(g.y-gsiLast.y)/S],-(GV.rot||0)); GV.cx-=dv[0]; GV.cy-=dv[1];
+  if(g.n>=2&&gsiLast.d>0&&g.d>0){
+    const da=normAng(g.a-gsiLast.a);
+    if(gsiTwist.on) gsiRotateAt(da,g.x,g.y); else { gsiTwist.acc+=da; if(Math.abs(gsiTwist.acc)>0.14) gsiTwist.on=true; }
+    gsiZoom(Math.log2(g.d/gsiLast.d),g.x,g.y);
+  } else gsiDraw();
   gsiLast=g; }
-function gsiPu(e){ gsiPtr.delete(e.pointerId); gsiLast=gsiGest(); }
+function gsiPu(e){ gsiPtr.delete(e.pointerId); gsiLast=gsiGest(); gsiTwist={acc:0,on:false}; }
 function gsiGest(){ const ps=[...gsiPtr.values()]; if(!ps.length) return null;
-  const x=ps.reduce((a,p)=>a+p.x,0)/ps.length, y=ps.reduce((a,p)=>a+p.y,0)/ps.length;
-  return { n:ps.length, x, y, d:ps.length>=2?Math.hypot(ps[0].x-ps[1].x,ps[0].y-ps[1].y):0 }; }
+  const x=ps.reduce((a,p)=>a+p.x,0)/ps.length, y=ps.reduce((a,p)=>a+p.y,0)/ps.length, two=ps.length>=2;
+  return { n:ps.length, x, y, d:two?Math.hypot(ps[0].x-ps[1].x,ps[0].y-ps[1].y):0, a:two?Math.atan2(ps[1].y-ps[0].y,ps[1].x-ps[0].x):0 }; }
 function gsiWheel(e){ e.preventDefault(); gsiZoom(-e.deltaY/300,e.offsetX,e.offsetY); }
 /* 決めた範囲を画像にする：地理院タイルをつなぎ、縮尺・方位・出典を書き込む */
 function tileImg(url){ return new Promise((res,rej)=>{ const ac=new AbortController(), to=setTimeout(()=>ac.abort(),10000);
@@ -3469,11 +3504,13 @@ async function gsiMake(){
   if(!GV) return;
   const btn=document.getElementById("gsiMakeBtn"); btn.disabled=true; btn.textContent="地図を取っています…";
   try{
-    const f=gsiFrameRect(), {W,H}=gsiView(), S=2**GV.z;
-    const G={ layer:GV.layer, frame:GV.frame, x0:GV.cx+(f.x-W/2)/S, y0:GV.cy+(f.y-H/2)/S, w:f.w/S, h:f.h/S };
+    const f=gsiFrameRect(), {W,H}=gsiView(), S=2**GV.z, rot=GV.rot||0;
+    const fc=rotV([(f.x+f.w/2-W/2)/S,(f.y+f.h/2-H/2)/S],-rot), cx=GV.cx+fc[0], cy=GV.cy+fc[1]; // 枠の中心（メルカトル）
+    const G={ layer:GV.layer, frame:GV.frame, x0:cx-f.w/S/2, y0:cy-f.h/S/2, w:f.w/S, h:f.h/S }; if(rot) G.rot=+rot.toFixed(6);
     const r=FRAMES[GV.frame].r, OW=r>=1?GSI_OUT:Math.round(GSI_OUT*r), OH=r>=1?Math.round(GSI_OUT/r):GSI_OUT;
     const z=Math.max(2,Math.min(GSI_MAX,Math.ceil(Math.log2(OW/G.w)-1e-9))), n=2**z, s=256;
-    const fx=G.x0/256*n*s, fy=G.y0/256*n*s, px0=Math.floor(fx), py0=Math.floor(fy), CW=Math.ceil(fx+G.w/256*n*s)-px0, CH=Math.ceil(fy+G.h/256*n*s)-py0;
+    const ca=Math.abs(Math.cos(rot)), sa=Math.abs(Math.sin(rot)), bw=ca*G.w+sa*G.h, bh=sa*G.w+ca*G.h; // 回した枠を囲む範囲だけタイルを取る
+    const fx=(cx-bw/2)/256*n*s, fy=(cy-bh/2)/256*n*s, px0=Math.floor(fx), py0=Math.floor(fy), CW=Math.ceil(fx+bw/256*n*s)-px0, CH=Math.ceil(fy+bh/256*n*s)-py0;
     const src=document.createElement("canvas"); src.width=CW; src.height=CH; const sx=src.getContext("2d"); sx.fillStyle="#fff"; sx.fillRect(0,0,CW,CH); // タイルは整数の位置に（つなぎ目に線が出ない）
     const jobs=[]; for(let tx=Math.floor(px0/s);tx<=Math.floor((px0+CW)/s);tx++) for(let ty=Math.floor(py0/s);ty<=Math.floor((py0+CH)/s);ty++) if(ty>=0&&ty<n) jobs.push([tx,ty]);
     let ok=0, ng=0, i=0;
@@ -3482,7 +3519,8 @@ async function gsiMake(){
     await Promise.all(Array.from({length:8},worker));
     if(!ok){ alert("地図を取れませんでした。ネットにつながっているか確かめて、もう一度お試しください。"); return; }
     const out=document.createElement("canvas"); out.width=OW; out.height=OH; const x=out.getContext("2d");
-    x.imageSmoothingEnabled=true; x.imageSmoothingQuality="high"; x.drawImage(src,fx-px0,fy-py0,G.w/256*n*s,G.h/256*n*s,0,0,OW,OH);
+    x.imageSmoothingEnabled=true; x.imageSmoothingQuality="high"; x.fillStyle="#fff"; x.fillRect(0,0,OW,OH);
+    { const k=OW/G.w*256/(n*s); x.save(); x.translate(OW/2,OH/2); if(rot) x.rotate(rot); x.scale(k,k); x.translate(-(cx/256*n*s-px0),-(cy/256*n*s-py0)); x.drawImage(src,0,0); x.restore(); }
     const lat=unmerc(G.x0+G.w/2,G.y0+G.h/2)[0], mpp=G.w*mPerUnit(lat)/OW, U=OW/900; // U：Excel の枠で 1px になる大きさ
     // 縮尺
     const m=[1,2,5,10,20,25,50,100,200,250,500,1000,2000,5000,10000].filter(v=>v/mpp<=OW*0.22).pop()||1, len=m/mpp;
@@ -3491,10 +3529,17 @@ async function gsiMake(){
     x.fillStyle="#000"; x.fillRect(bx,by,len,4*U); x.fillRect(bx,by-6*U,2*U,10*U); x.fillRect(bx+len-2*U,by-6*U,2*U,10*U);
     x.font=`bold ${Math.round(12*U)}px sans-serif`; x.textAlign="center"; x.textBaseline="bottom"; x.fillText(m>=1000?(m/1000)+"km":m+"m",bx+len/2,by-3*U);
     // 方位
-    const nx=OW-30*U, ny=16*U;
-    x.fillStyle="rgba(255,255,255,.82)"; x.fillRect(nx-18*U,ny-6*U,36*U,50*U);
-    x.fillStyle="#000"; x.beginPath(); x.moveTo(nx,ny); x.lineTo(nx+9*U,ny+22*U); x.lineTo(nx-9*U,ny+22*U); x.closePath(); x.fill();
-    x.font=`bold ${Math.round(13*U)}px sans-serif`; x.textBaseline="top"; x.fillText("N",nx,ny+25*U);
+    if(!rot){ const nx=OW-30*U, ny=16*U;
+      x.fillStyle="rgba(255,255,255,.82)"; x.fillRect(nx-18*U,ny-6*U,36*U,50*U);
+      x.fillStyle="#000"; x.beginPath(); x.moveTo(nx,ny); x.lineTo(nx+9*U,ny+22*U); x.lineTo(nx-9*U,ny+22*U); x.closePath(); x.fill();
+      x.font=`bold ${Math.round(13*U)}px sans-serif`; x.textBaseline="top"; x.fillText("N",nx,ny+25*U);
+    } else { // 回した地図：方位記号ごと、北の向きに回す
+      const R=26*U, ox=OW-R-8*U, oy=R+8*U;
+      x.fillStyle="rgba(255,255,255,.82)"; x.fillRect(ox-R,oy-R,R*2,R*2);
+      x.save(); x.translate(ox,oy); x.rotate(rot); x.fillStyle="#000";
+      x.beginPath(); x.moveTo(0,-19*U); x.lineTo(9*U,3*U); x.lineTo(-9*U,3*U); x.closePath(); x.fill();
+      x.font=`bold ${Math.round(13*U)}px sans-serif`; x.textAlign="center"; x.textBaseline="top"; x.fillText("N",0,5*U); x.restore();
+    }
     // 出典
     const cr="出典：国土地理院（地理院タイル・"+GSI[G.layer].credit+"）";
     x.font=`${Math.round(10*U)}px sans-serif`; const cw=x.measureText(cr).width;
@@ -3507,7 +3552,7 @@ async function gsiMake(){
       if(t.mx==null) continue;
       if(t.mauto){ t.mx=null; t.my=null; t.mauto=false; continue; }
       if(!T){ t.mx=null; t.my=null; lost++; continue; }
-      const w=T.inv([t.mx,t.my]), u=(w[0]-G.x0)/G.w, v=(w[1]-G.y0)/G.h;
+      const [u,v]=geoTransform(G).fwd(T.inv([t.mx,t.my]));
       if(u>=0&&u<=1&&v>=0&&v<=1){ t.mx=u; t.my=v; } else { t.mx=null; t.my=null; lost++; }
     }
     state.mapImage=url; state.mapGeo=G; state.mapSize=[OW,OH];
@@ -3821,7 +3866,7 @@ function normalize(){ if(state.bookTitle===undefined||state.bookTitle===null) st
 function opts(list,val){ return list.map(x=>`<option ${x===val?"selected":""}>${x}</option>`).join(""); }
 function photosHTML(t,i){ const ph=(state.trees[i].photos)||[];
   const thumbs=ph.map((p,k)=>`<div class="thumb"><img src="${p}" onclick="editPhoto(${i},${k})"><button class="rm" onclick="delPhoto(${i},${k})">×</button><div class="thmove"><button onclick="movePhoto(${i},${k},-1)">◀</button><button onclick="editPhoto(${i},${k})">✎</button><button onclick="movePhoto(${i},${k},1)">▶</button></div></div>`).join("");
-  return `<div class="photos">${thumbs}<label class="addph">＋写真<input type="file" accept="image/*" capture="environment" multiple onchange="addPhoto(${i},this)"></label>${camPhotoBtn(i)}</div>`;
+  return `<div class="photos">${thumbs}<label class="addph">📷 撮る<input type="file" accept="image/*" capture="environment" multiple onchange="addPhoto(${i},this)"></label><label class="addph">🖼 写真を<br>選ぶ<input type="file" accept="image/*" multiple onchange="addPhoto(${i},this)"></label>${camPhotoBtn(i)}</div>`;
 }
 function fieldsHTML(t,i){
   if(t.type==="exterior"){
