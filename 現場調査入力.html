@@ -248,6 +248,22 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   .npa button.pri{ flex:1.4; background:var(--accent); color:#fff; border-color:var(--accent); font-size:17px; }
   body.npopen main{ padding-bottom:400px; }
   @media (max-width:560px){ .np{ left:0; right:0; bottom:0; width:auto; border-radius:14px 14px 0 0; padding-bottom:calc(10px + env(safe-area-inset-bottom)); } }
+  /* 優先度 */
+  .prio{ display:flex; align-items:center; gap:6px; margin:0 0 8px; flex-wrap:wrap; }
+  .prio .pl{ font-size:12px; color:var(--sub); font-weight:700; }
+  .pbtn{ border:1.5px solid var(--line); background:#fff; border-radius:999px; padding:5px 14px; font-size:14px; font-weight:700; color:var(--sub); }
+  .pbtn.p1.on{ background:#D62828; border-color:#D62828; color:#fff; } .pbtn.p2.on{ background:#E8890C; border-color:#E8890C; color:#fff; } .pbtn.p3.on{ background:#2E7D55; border-color:#2E7D55; color:#fff; }
+  .no.p1{ background:#D62828; } .no.p2{ background:#E8890C; } .no.p3{ background:#2E7D55; }
+  #prioBar .pbrow,#outPanelBook .pbrow{ display:flex; align-items:center; gap:6px 8px; flex-wrap:wrap; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin:0 0 8px; font-size:13px; }
+  .pchip{ border-radius:999px; padding:2px 10px; font-weight:700; color:#fff; font-size:12.5px; }
+  .pchip.p1{ background:#D62828; } .pchip.p2{ background:#E8890C; } .pchip.p3{ background:#2E7D55; } .pchip.p0{ background:#9a958b; }
+  .psel{ width:auto; max-width:190px; font-size:13px; padding:5px 6px; }
+  .ochk{ display:inline-flex; align-items:center; gap:4px; font-size:13.5px; white-space:nowrap; }
+  .ochk input{ width:18px; height:18px; margin:0; }
+  .osep{ width:1px; height:20px; background:var(--line); margin:0 2px; }
+  .ocnt{ margin-left:auto; color:var(--sub); }
+  .pleg{ display:flex; gap:12px; justify-content:center; font-size:13px; margin-top:6px; }
+  .pleg i{ display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:4px; vertical-align:-1px; }
 </style>
 </head>
 <body>
@@ -303,6 +319,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
         <div class="muted maphint" id="mkhint" style="display:none"></div>
       </div>
     </div>
+    <div id="prioBar"></div>
     <div id="trees"></div>
     <button id="addBtn" class="addbtn" onclick="addTree()">＋ 木を追加</button>
   </section>
@@ -320,7 +337,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     </div>
     <div class="totals" id="totals"></div>
   </section>
-  <section id="book"><div id="bookBody"></div></section>
+  <section id="book"><div id="outPanelBook" class="noprint"></div><div id="bookBody"></div></section>
 </main>
 
 <div id="gsiDlg" class="gsidlg" style="display:none">
@@ -396,13 +413,22 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   function qtyOf(t) { return ty(t) === "exterior" ? (t.qty || "") : 1; }
   function unitOf(t) { return ty(t) === "exterior" ? (t.unit || "") : "本"; }
   function kubun(t) { return ty(t) === "exterior" ? "外構" : "樹木"; }
+  // 優先度（1＝高 2＝中 3＝小）。呼び方は案件ごとに選べる
+  var PRIO_SETS = { hml: ["高", "中", "小"], abc: ["早急", "推奨", "経過観察"], qnl: ["急ぐ", "普通", "後で"], num: ["優先1", "優先2", "優先3"] };
+  var prioSet = "hml";
+  function setPrio(k) { prioSet = PRIO_SETS[k] ? k : "hml"; }
+  function prioName(t) { var p = Number(t && t.prio); return (p >= 1 && p <= 3) ? PRIO_SETS[prioSet][p - 1] : ""; }
+  function prioTag(t) { var n = prioName(t); return n ? "【優先度：" + n + "】" : ""; }
+  function noOf(t, i) { return (t && t.__no) || (i + 1); }   // 出力の番号（絞り込んで元の番号のまま出すとき用）
+  function memoOf(t) { return prioTag(t) + (ty(t) === "exterior" ? "" : (t.memo || "")); }
   function caption(t, no) {
+    var pr = prioName(t) ? "　【" + prioName(t) + "】" : "";
     if (ty(t) === "exterior") {
-      var s = "No." + no + "　" + (t.item || "") + "\n数量：" + (t.qty || "") + " " + (t.unit || "");
+      var s = "No." + no + "　" + (t.item || "") + pr + "\n数量：" + (t.qty || "") + " " + (t.unit || "");
       if (t.memo) s += "\n仕様：" + t.memo;
       return s;
     }
-    var c = "No." + no + "　" + (t.species || "") + "\n" + (t.work || "") + "\nH=" + (t.h || "") + "m　C=" + (t.c || "") + "cm";
+    var c = "No." + no + "　" + (t.species || "") + pr + "\n" + (t.work || "") + "\nH=" + (t.h || "") + "m　C=" + (t.c || "") + "cm";
     if (t.memo) c += "\n備考：" + t.memo;
     return c;
   }
@@ -410,6 +436,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   function buildTreeWorkbook(ExcelJS, state, imgs) {
     imgs = imgs || { photos: {} };
     var trees = state.trees || [];
+    setPrio(state.prioSet);
     var name = state.caseName || "現場調査";
     var date = state.caseDate || "";
     var exs = state.extras || {};
@@ -448,7 +475,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     var r0 = 4;
     trees.forEach(function (t, i) {
       var r = r0 + i;
-      var vals = [i + 1, nameOf(t), specOf(t), qtyOf(t), unitOf(t), num(t.up), { formula: "F" + r + "*D" + r }];
+      var vals = [noOf(t, i), nameOf(t), specOf(t), qtyOf(t), unitOf(t), num(t.up), { formula: "F" + r + "*D" + r }];
       vals.forEach(function (v, k) {
         var c = ws.getCell(r, k + 1); c.value = v; c.font = font(11); c.border = border();
         c.alignment = { horizontal: (k === 0 || k === 3 || k === 4) ? "center" : ((k === 5 || k === 6) ? "right" : "left"), vertical: "middle" };
@@ -491,7 +518,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     });
     trees.forEach(function (t, i) {
       var rr = 5 + i;
-      var vals = [i + 1, kubun(t), nameOf(t), specOf(t), qtyOf(t), unitOf(t), (ty(t) === "exterior" ? "" : (t.memo || ""))];
+      var vals = [noOf(t, i), kubun(t), nameOf(t), specOf(t), qtyOf(t), unitOf(t), memoOf(t)];
       vals.forEach(function (v, k) {
         var c = ms.getCell(rr, k + 1); c.value = v; c.font = font(11); c.border = border();
         c.alignment = { horizontal: (k === 0 || k === 1 || k === 4 || k === 5) ? "center" : "left", vertical: "middle" };
@@ -534,7 +561,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     pb.getCell("A2").value = date + "　全" + trees.length + "件"; pb.getCell("A2").font = font(10);
     var frames = [];
     trees.forEach(function (t, i) {
-      var no = i + 1;
+      var no = noOf(t, i);
       var ph = (t.photos && t.photos.length) ? t.photos : (t.photo ? [t.photo] : []);
       if (ph.length) { ph.forEach(function (p, k) { var cap = caption(t, no) + (ph.length > 1 ? ("\n（" + (k + 1) + "/" + ph.length + "）") : ""); frames.push({ img: p, cap: cap }); }); }
       else { frames.push({ img: null, cap: caption(t, no) }); }
@@ -558,7 +585,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   }
 
   root.buildTreeWorkbook = buildTreeWorkbook;
-  root.surveyText = { nameOf: nameOf, specOf: specOf, qtyOf: qtyOf, unitOf: unitOf, kubun: kubun, caption: caption };
+  root.surveyText = { nameOf: nameOf, specOf: specOf, qtyOf: qtyOf, unitOf: unitOf, kubun: kubun, caption: caption, PRIO_SETS: PRIO_SETS, setPrio: setPrio, prioName: prioName, memoOf: memoOf };
   if (typeof module !== "undefined" && module.exports) module.exports = { buildTreeWorkbook: buildTreeWorkbook };
 })(typeof window !== "undefined" ? window : globalThis);
 
@@ -2957,7 +2984,7 @@ const MAP_CHOOSE=`<div class="mapchoose"><button type="button" class="mapbig" on
 let activePlace=-1;
 function renderMap(){ const box=document.getElementById("mapbox"); const tools=document.getElementById("maptools");
   if(state.mapImage){
-    const mks=state.trees.map((t,i)=>(t.mx!=null&&t.my!=null)?`<div class="mk${t.mauto?" auto":""}" data-i="${i}" title="${t.mauto?"位置から自動で置いた番号。":""}タップでその木のカードへ／ドラッグで移動" onpointerdown="mkDown(event,${i})" onclick="mkAbsorb(event)" style="left:${t.mx*100}%;top:${t.my*100}%">${i+1}</div>`:"").join("");
+    const mks=state.trees.map((t,i)=>(t.mx!=null&&t.my!=null)?`<div class="mk${t.mauto?" auto":""}" data-i="${i}" title="${t.mauto?"位置から自動で置いた番号。":""}タップでその木のカードへ／ドラッグで移動" onpointerdown="mkDown(event,${i})" onclick="mkAbsorb(event)" style="left:${t.mx*100}%;top:${t.my*100}%;${mkColor(t)?"background:"+mkColor(t):""}">${i+1}</div>`:"").join("");
     box.innerHTML = `<div class="mapimgwrap" onclick="mapClick(event)"><img src="${state.mapImage}" onload="mapLoaded(this)">${mks}</div>`;
     if(tools){ tools.style.display="flex"; const c=document.getElementById("mkcount");
       const placed=state.trees.filter(t=>t.mx!=null).length;
@@ -3005,8 +3032,8 @@ function updateToMap(){ const b=document.getElementById("toMapBtn"); if(!b) retu
   b.style.display=show?"block":"none"; }
 window.addEventListener("scroll",updateToMap,{passive:true});
 function clearMarkers(){ if(!state.trees.some(t=>t.mx!=null)) return; if(confirm("地図の番号配置を全て消去しますか？")){ pushUndo("clearpins"); state.trees.forEach(t=>{t.mx=null;t.my=null;}); activePlace=-1; markDirty(); renderTrees(); renderMap(); } }
-function markerPng(n){ const S=84, cv=document.createElement("canvas"); cv.width=S; cv.height=S; const x=cv.getContext("2d");
-  x.beginPath(); x.arc(S/2,S/2,S/2-5,0,Math.PI*2); x.fillStyle="rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=6; x.strokeStyle="#fff"; x.stroke();
+function markerPng(n,color){ const S=84, cv=document.createElement("canvas"); cv.width=S; cv.height=S; const x=cv.getContext("2d");
+  x.beginPath(); x.arc(S/2,S/2,S/2-5,0,Math.PI*2); x.fillStyle=color||"rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=6; x.strokeStyle="#fff"; x.stroke();
   x.fillStyle="#fff"; x.font="bold 44px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(n),S/2,S/2);
   return cv.toDataURL("image/png"); }
 
@@ -3548,20 +3575,22 @@ function renderTrees(){
   document.getElementById("caseDate").value=state.caseDate;
   renderMap();
   const box=document.getElementById("trees");
-  if(!state.trees.length){ box.innerHTML='<div class="empty">「＋ 木を追加」から1本ずつ登録します。</div>'; camAfterRender(); return; }
+  if(!state.trees.length){ box.innerHTML='<div class="empty">「＋ 木を追加」から1本ずつ登録します。</div>'; renderPrioBar(); camAfterRender(); return; }
   box.innerHTML=state.trees.map(treeCardHTML).join("");
+  renderPrioBar();
   if(typeof updateToMap==="function") updateToMap();
   camAfterRender();
 }
 function treeCardHTML(t,i){ return `
    <div class="tree">
-     <div class="top"><div class="no">${i+1}</div><button class="iconbtn drag" onpointerdown="rowDown(event,${i})" title="ドラッグで並べ替え">⠿</button>
+     <div class="top"><div class="no ${prioOf(t)?"p"+prioOf(t):""}">${i+1}</div><button class="iconbtn drag" onpointerdown="rowDown(event,${i})" title="ドラッグで並べ替え">⠿</button>
        <div class="typ"><button class="tbtn ${t.type!=='exterior'?'on':''}" onclick="setType(${i},'tree')">樹木</button><button class="tbtn ${t.type==='exterior'?'on':''}" onclick="setType(${i},'exterior')">外構</button></div>
        <button class="iconbtn pin ${t.mx!=null?'set':''} ${activePlace===i?'act':''}" onclick="placeTarget(${i})">📍${t.mx!=null?'✓':''}</button>
        <div class="sp"></div>
        <button class="iconbtn" onclick="move(${i},-1)">▲</button>
        <button class="iconbtn" onclick="move(${i},1)">▼</button>
        <button class="iconbtn del" onclick="delTree(${i})">削除</button></div>
+     ${prioRowHTML(t,i)}
      ${photosHTML(t,i)}
      ${geoRowHTML(t,i)}
      ${fieldsHTML(t,i)}
@@ -3571,17 +3600,19 @@ function treeCardHTML(t,i){ return `
 function pageHead(sub){ return `<div class="pghead"><h2>${esc(state.bookTitle||"写真帳")}　${esc(state.caseName)}</h2><div class="m">${esc(state.caseDate)}　全${state.trees.length}件${sub?"　"+esc(sub):""}</div></div>`; }
 function frameHTML(fr){ const t=fr.t, no=fr.no;
    var cap = t.type==="exterior"
-     ? `<span class="bn">No.${no}</span><br><b>${esc(t.item)||"（品名未入力）"}</b><br>数量：${esc(t.qty)||"-"} ${esc(t.unit)}${t.memo?`<br>仕様：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`
-     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>幹周：${esc(t.c)||"-"} cm${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
+     ? `<span class="bn">No.${no}</span><br><b>${esc(t.item)||"（品名未入力）"}</b><br>数量：${esc(t.qty)||"-"} ${esc(t.unit)}${prioOf(t)?`<br>優先度：<b>${esc(prioNames()[prioOf(t)-1])}</b>`:""}${t.memo?`<br>仕様：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`
+     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>幹周：${esc(t.c)||"-"} cm${prioOf(t)?`<br>優先度：<b>${esc(prioNames()[prioOf(t)-1])}</b>`:""}${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
    return `<div class="pbitem"><div class="p">${fr.img?`<img src="${fr.img}">`:'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
 }
 function renderBook(){
   const body=document.getElementById("bookBody"); let html="";
-  if(state.mapImage){ const mks=state.trees.map((t,i)=>(t.mx!=null&&t.my!=null)?`<div class="mk" style="left:${t.mx*100}%;top:${t.my*100}%">${i+1}</div>`:"").join("");
-    html+=`<div class="page">${pageHead("位置図")}<div class="mapwrap"><div class="mapimgwrap" style="max-width:100%"><img src="${state.mapImage}">${mks}</div></div></div>`; }
+  const OT=outTrees(); renderPrioBar();
+  if(state.mapImage){ const mks=OT.map(t=>(t.mx!=null&&t.my!=null)?`<div class="mk" style="left:${t.mx*100}%;top:${t.my*100}%;${mkColor(t)?"background:"+mkColor(t):""}">${t.__no}</div>`:"").join("");
+    html+=`<div class="page">${pageHead("位置図")}<div class="mapwrap"><div class="mapimgwrap" style="max-width:100%"><img src="${state.mapImage}">${mks}</div></div>${prioLegendHTML(OT)}</div>`; }
   if(!state.trees.length && !state.mapImage){ body.innerHTML='<div class="empty">まだデータがありません。</div>'; return; }
+  if(state.trees.length&&!OT.length){ body.innerHTML='<div class="empty">出力に選んだ優先度の項目がありません。上の「出力」で選び直してください。</div>'; return; }
   let frames=[];
-  state.trees.forEach((t,i)=>{ const no=i+1; const ph=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
+  OT.forEach(t=>{ const no=t.__no; const ph=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
     if(ph.length) ph.forEach((p,k)=>frames.push({t,no,img:p,sub:ph.length>1?`（${k+1}/${ph.length}）`:""}));
     else frames.push({t,no,img:null,sub:""}); });
   for(let s=0;s<frames.length;s+=6){
@@ -4075,6 +4106,58 @@ document.addEventListener("keydown",e=>{   // パソコンのキーボードで�
   else if(e.key==="Escape") npClose();
 });
 
+/* ---------- 優先度（3段階）と、出力する項目の絞り込み ----------
+   t.prio：1＝高 2＝中 3＝小（呼び方は案件ごとに state.prioSet で切りかえ）。未設定は 0。
+   state.outFilter：{ p:[出す優先度（0＝未設定）], renum:true＝選んだものだけで1から連番／false＝元の番号のまま }
+   写真帳プレビュー・Excel・PDF は outTrees() の並び・番号で出す。 */
+const PRIO_COLORS=["#D62828","#E8890C","#2E7D55"], PRIO_NONE="#8a8a8a";
+const prioNames=()=>window.surveyText.PRIO_SETS[state.prioSet]||window.surveyText.PRIO_SETS.hml;
+const prioOf=t=>{ const p=Number(t&&t.prio); return p>=1&&p<=3?p:0; };
+const anyPrio=()=>state.trees.some(t=>prioOf(t));
+function mkColor(t){ const p=prioOf(t); return p?PRIO_COLORS[p-1]:(anyPrio()?PRIO_NONE:""); }   // 位置図の番号の色（優先度を使っていなければ今までの赤）
+function outFilter(){ const f=state.outFilter||{}; return { p:Array.isArray(f.p)?f.p:[1,2,3,0], renum:f.renum!==false }; }
+function outTrees(){
+  const f=outFilter(), list=state.trees.map((t,i)=>({t,i})).filter(x=>f.p.includes(prioOf(x.t)));
+  return list.map((x,k)=>Object.assign({},x.t,{ __no:f.renum?k+1:x.i+1 }));
+}
+const outAll=()=>outFilter().p.length===4;
+function outSuffix(){ if(outAll()) return ""; const n=prioNames(); return "_"+outFilter().p.slice().sort().map(p=>p?n[p-1]:"未設定").join(""); }
+function prioRowHTML(t,i){
+  const n=prioNames(), p=prioOf(t);
+  return `<div class="prio"><span class="pl">優先度</span>${[1,2,3].map(k=>`<button type="button" class="pbtn p${k} ${p===k?"on":""}" onclick="setPrioOf(${i},${k})">${esc(n[k-1])}</button>`).join("")}</div>`;
+}
+function setPrioOf(i,k){ const t=state.trees[i]; if(!t) return; pushUndo("prio"+i); t.prio=prioOf(t)===k?0:k; markDirty(); refreshCard(i); renderMap(); renderPrioBar(); }
+function renderPrioBar(){
+  const box=document.getElementById("prioBar"); if(!box) return;
+  if(!state.trees.length){ box.innerHTML=""; return; }
+  const n=prioNames(), cnt=[0,0,0,0]; state.trees.forEach(t=>cnt[prioOf(t)]++);
+  box.innerHTML=`<div class="pbrow"><b>優先度</b>`+[1,2,3].map(k=>`<span class="pchip p${k}">${esc(n[k-1])} ${cnt[k]}</span>`).join("")+`<span class="pchip p0">未設定 ${cnt[0]}</span>`+
+    `<span style="flex:1"></span><button type="button" class="iconbtn" onclick="sortByPrio()">優先度順に並べる</button>`+
+    `<select class="psel" onchange="setPrioSet(this.value)" title="優先度の呼び方">${Object.keys(window.surveyText.PRIO_SETS).map(k=>`<option value="${k}" ${k===(state.prioSet||"hml")?"selected":""}>${window.surveyText.PRIO_SETS[k].join("・")}</option>`).join("")}</select></div>`+
+    outPanelHTML();
+  const bk=document.getElementById("outPanelBook"); if(bk) bk.innerHTML=outPanelHTML();
+}
+function outPanelHTML(){   // 出力する項目（写真帳・Excel・PDF）
+  const n=prioNames(), f=outFilter(), out=outTrees().length, nm="renum"+Math.random().toString(36).slice(2,7);
+  return `<div class="pbrow out"><b>出力</b>`+[1,2,3,0].map(k=>`<label class="ochk"><input type="checkbox" ${f.p.includes(k)?"checked":""} onchange="setOutPrio(${k},this.checked)">${k?esc(n[k-1]):"未設定"}</label>`).join("")+
+    `<span class="osep"></span><label class="ochk"><input type="radio" name="${nm}" ${f.renum?"checked":""} onchange="setRenum(true)">選んだものだけで1から番号</label>`+
+    `<label class="ochk"><input type="radio" name="${nm}" ${f.renum?"":"checked"} onchange="setRenum(false)">元の番号のまま</label>`+
+    `<span class="ocnt">${state.trees.length}件中 <b>${out}件</b> を出します</span></div>`;
+}
+function setOutPrio(k,on){ const f=outFilter(); let p=f.p.filter(x=>x!==k); if(on) p.push(k); state.outFilter={p,renum:f.renum}; markDirty(); renderPrioBar(); if(document.getElementById("book").style.display!=="none") renderBook(); }
+function setRenum(v){ const f=outFilter(); state.outFilter={p:f.p,renum:v}; markDirty(); renderPrioBar(); if(document.getElementById("book").style.display!=="none") renderBook(); }
+function setPrioSet(k){ pushUndo("prioset"); state.prioSet=k; window.surveyText.setPrio(k); markDirty(); renderTrees(); }
+function sortByPrio(){
+  if(!state.trees.some(t=>prioOf(t))) return toast("まだ優先度が付いていません");
+  pushUndo("priosort");
+  const r=t=>prioOf(t)||4; state.trees=state.trees.map((t,i)=>({t,i})).sort((a,b)=>r(a.t)-r(b.t)||a.i-b.i).map(x=>x.t);   // 同じ優先度の中は今の順のまま
+  markDirty(); renderTrees(); toast("優先度の高い順に並べました（番号も振り直しました）");
+}
+function prioLegendHTML(OT){   // 位置図の下の色の説明
+  const used=[1,2,3].filter(k=>OT.some(t=>prioOf(t)===k)), n=prioNames(); if(!used.length) return "";
+  return `<div class="pleg">${used.map(k=>`<span><i style="background:${PRIO_COLORS[k-1]}"></i>優先度 ${esc(n[k-1])}</span>`).join("")}${OT.some(t=>!prioOf(t))?`<span><i style="background:${PRIO_NONE}"></i>未設定</span>`:""}</div>`;
+}
+
 /* 起動 */
 document.getElementById("caseName").addEventListener("input",e=>{ state.caseName=e.target.value; markDirty(); });
 document.getElementById("caseDate").addEventListener("input",e=>{ state.caseDate=e.target.value; markDirty(); });
@@ -4086,7 +4169,7 @@ document.getElementById("caseDate").addEventListener("input",e=>{ state.caseDate
   casesIndex=(await idbGet("cases"))||[]; caseId=await idbGet("current");
   if(!casesIndex.length){ const legacy=await idbGet("state"); if(legacy&&legacy.trees){ caseId=newId(); state=Object.assign(emptyState(),legacy); } else { caseId=newId(); state=emptyState(); } normalize(); await save(); }
   else { if(!caseId||!casesIndex.find(c=>c.id===caseId)) caseId=casesIndex[0].id; state=(await idbGet("case_"+caseId))||emptyState(); normalize(); }
-  syncMode(); renderTrees(); renderMap(); renderCaseBar(); updateStorage(); updUndoBtn(); camInit(); })();
+  window.surveyText.setPrio(state.prioSet); syncMode(); renderTrees(); renderMap(); renderCaseBar(); updateStorage(); updUndoBtn(); camInit(); })();
 
 /* --- Excel書き出し（アプリ内生成） --- */
 /* ブラウザ用: 写真を枠にトリミングしてExcel(.xlsx)を端末上で生成・保存（AI不要） */
@@ -4110,22 +4193,23 @@ async function exportExcel(){
     state.caseDate=document.getElementById('caseDate').value;
     if(!window.ExcelJS || !window.buildTreeWorkbook){ alert('Excel生成ライブラリを読み込めませんでした。'); return; }
     if(btn){ btn.textContent='作成中…'; btn.disabled=true; }
+    var OT=outTrees(); if(!OT.length){ alert('出力に選んだ優先度の項目がありません。「出力」で選び直してください。'); if(btn){ btn.textContent='Excel書き出し'; btn.disabled=false; } return; }
     var stCopy = Object.assign({}, state); stCopy.trees = [];
-    for(var i=0;i<state.trees.length;i++){
-      var t=state.trees[i]; var src=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
+    for(var i=0;i<OT.length;i++){
+      var t=OT[i]; var src=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
       var cropped=[]; for(var pi=0; pi<src.length; pi++){ cropped.push(await cropCover(src[pi],250,330)); }
       stCopy.trees.push(Object.assign({}, t, {photos:cropped}));
     }
     var mapImg = state.mapImage || null;
     var markers = [];
-    for(var mmi=0; mmi<state.trees.length; mmi++){ var tt=state.trees[mmi]; if(tt.mx!=null&&tt.my!=null) markers.push({x:tt.mx,y:tt.my,img:markerPng(mmi+1)}); }
+    for(var mmi=0; mmi<OT.length; mmi++){ var tt=OT[mmi]; if(tt.mx!=null&&tt.my!=null) markers.push({x:tt.mx,y:tt.my,img:markerPng(tt.__no,mkColor(tt))}); }
     var msz = mapImg ? (state.mapSize || await imgSize(mapImg)) : null;
     if(mapImg && !/^data:image\/jpeg/.test(mapImg)) mapImg = await toJpeg(mapImg); // Excel には jpeg として入れる
     var wb=window.buildTreeWorkbook(window.ExcelJS, stCopy, {map: mapImg, mapW: msz&&msz[0], mapH: msz&&msz[1], markers: markers});
     var buf=await wb.xlsx.writeBuffer();
     var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=(state.caseName||'現場調査').replace(/[\/:*?"<>|\\]/g,'_')+'_'+(state.caseDate||'')+'.xlsx';
+    a.download=(state.caseName||'現場調査').replace(/[\/:*?"<>|\\]/g,'_')+'_'+(state.caseDate||'')+outSuffix()+'.xlsx';
     a.click();
   }catch(e){ alert('Excel作成でエラー: '+(e&&e.message?e.message:e)); }
   finally{ if(btn){ btn.textContent='Excel書き出し'; btn.disabled=false; } }
@@ -4164,7 +4248,7 @@ function pdfLayout(name,date){
       if(sub){ x.font=pfont(19); x.fillStyle="#555"; x.fillText(sub,X0+20+tw+18,yy+34); x.fillStyle="#000"; } }); y+=TH; };
 
   /* 1. 調査マスター（Excel の「調査マスター」と同じ列） */
-  const trees=state.trees||[], heads=["番号","区分","品名","仕様","数量","単位","摘要"], ws=[6,8,22,22,7,7,16], sum=ws.reduce((a,b)=>a+b,0);
+  const trees=outTrees(), heads=["番号","区分","品名","仕様","数量","単位","摘要"], ws=[6,8,22,22,7,7,16], sum=ws.reduce((a,b)=>a+b,0);
   const cw=ws.map(w=>w/sum*CW), center=[true,true,false,false,true,true,false], FS=21, LH=30, PAD=10;
   const rowH=(vals,head)=>{ mx.font=pfont(FS,head); return Math.max(1,...vals.map((v,k)=>pdfWrap(mx,v,cw[k]-PAD*2).length))*LH+PAD*2-6; };
   const row=(vals,head)=>{ const yy=y, h=rowH(vals,head); add(x=>{ x.font=pfont(FS,head); let cx=X0;
@@ -4177,7 +4261,7 @@ function pdfLayout(name,date){
   const info="案件："+(name||"")+(state.place?"　／　工事場所："+state.place:"")+(date?"　／　調査日："+date:"");
   mx.font=pfont(20); const infoL=pdfWrap(mx,info,CW); { const yy=y; add(x=>{ x.font=pfont(20); x.fillStyle="#000"; infoL.forEach((l,i)=>x.fillText(l,X0,yy+22+i*28)); }); y+=infoL.length*28+12; }
   row(heads,true);
-  trees.forEach((t,i)=>{ const vals=[i+1,ST.kubun(t),ST.nameOf(t),ST.specOf(t),ST.qtyOf(t),ST.unitOf(t),t.type==="exterior"?"":(t.memo||"")];
+  trees.forEach((t,i)=>{ const vals=[t.__no,ST.kubun(t),ST.nameOf(t),ST.specOf(t),ST.qtyOf(t),ST.unitOf(t),ST.memoOf(t)];
     if(rowH(vals,false)>room()){ newPage(); row(heads,true); }
     row(vals,false); });
 
@@ -4187,11 +4271,11 @@ function pdfLayout(name,date){
     newPage(ar>=1); // 横長の地図は横向きのページに
     let w=CW, h=w/ar; if(h>FULL-TH){ h=FULL-TH; w=h*ar; }
     title("位置図");
-    const yy=y, ox=X0+(CW-w)/2, src=state.mapImage, mks=state.trees.map((t,i)=>t.mx!=null&&t.my!=null?[t.mx,t.my,i+1]:null).filter(Boolean);
+    const yy=y, ox=X0+(CW-w)/2, src=state.mapImage, mks=trees.map(t=>t.mx!=null&&t.my!=null?[t.mx,t.my,t.__no,mkColor(t)]:null).filter(Boolean);
     add(async x=>{ const im=await loadImgEl(src); x.imageSmoothingQuality="high"; x.drawImage(im,ox,yy,w,h); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,yy,w,h);
       const d=Math.max(28,Math.min(46,w*0.032));
-      for(const [u,v,n] of mks){ const cx=ox+u*w, cy=yy+v*h;
-        x.beginPath(); x.arc(cx,cy,d/2,0,Math.PI*2); x.fillStyle="rgba(214,40,40,.92)"; x.fill(); x.lineWidth=d*0.08; x.strokeStyle="#fff"; x.stroke();
+      for(const [u,v,n,col] of mks){ const cx=ox+u*w, cy=yy+v*h;
+        x.beginPath(); x.arc(cx,cy,d/2,0,Math.PI*2); x.fillStyle=col||"rgba(214,40,40,.92)"; x.fill(); x.lineWidth=d*0.08; x.strokeStyle="#fff"; x.stroke();
         const lb=String(n); x.fillStyle="#fff"; x.font=pfont(Math.round(d*(lb.length>2?0.42:0.55)),true); x.textAlign="center"; x.textBaseline="middle"; x.fillText(lb,cx,cy+1); }
       x.textAlign="left"; x.textBaseline="alphabetic"; });
     y+=h;
@@ -4200,7 +4284,7 @@ function pdfLayout(name,date){
   /* 3. 写真帳：3列。写真のない項目は入れない（白い枠を作らない）。説明の高さはその段の文字の量に合わせる */
   const frames=[];
   trees.forEach((t,i)=>{ const ph=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
-    ph.forEach((src,k)=>frames.push({src,cap:ST.caption(t,i+1)+(ph.length>1?"\n（"+(k+1)+"/"+ph.length+"）":"")})); });
+    ph.forEach((src,k)=>frames.push({src,cap:ST.caption(t,t.__no)+(ph.length>1?"\n（"+(k+1)+"/"+ph.length+"）":"")})); });
   if(frames.length){
     newPage(false); // 写真帳は縦のページから（枠の幅はこのページの幅で決める）
     const G=20, fw=(CW-G*2)/3, fh=fw*330/250, CLH=26, CPAD=12;
@@ -4266,7 +4350,7 @@ async function exportPdf(){
     cv.width=cv.height=1; // iPhone のメモリを早めに空ける
     const blob=makePdf(pages);
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
-    a.download=(state.caseName||"現場調査").replace(/[\/:*?"<>|\\]/g,"_")+"_"+(state.caseDate||"")+".pdf";
+    a.download=(state.caseName||"現場調査").replace(/[\/:*?"<>|\\]/g,"_")+"_"+(state.caseDate||"")+outSuffix()+".pdf";
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),60000);
     toast("PDFを作りました（"+pages.length+"ページ）");
   }catch(e){ alert("PDF作成でエラー: "+(e&&e.message?e.message:e)); }
