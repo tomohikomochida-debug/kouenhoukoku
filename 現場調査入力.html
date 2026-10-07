@@ -209,6 +209,8 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
 #cph .clist{position:absolute;left:12px;right:12px;top:calc(max(10px,env(safe-area-inset-top)) + 80px);background:#222e;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px;z-index:2;max-height:70vh;overflow:auto}
 #cph .clist button{background:#3a3b36;color:#fff;border:0;border-radius:10px;padding:12px;font-size:16px;text-align:left}#cph .clist button.on{background:#1E88E5}#cph .clist .cx{text-align:center;background:#555}#cph .clist .cnew{background:#2e7d55;text-align:center;font-weight:700}
 #cph .clist p{margin:0 0 4px}#cph .hidden{display:none}
+#cph .csleep{position:absolute;inset:0;z-index:5;background:#000;color:#bbb;border:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font:inherit;padding:24px;text-align:center}
+#cph .csleep.hidden{display:none}#cph .csleep b{font-size:22px;color:#fff}#cph .csleep span{font-size:14px;line-height:1.7}#cph .csleep .hidden{display:none}
 #cph .cbot{position:absolute;left:0;right:0;bottom:0;padding:10px 14px max(18px,env(safe-area-inset-bottom));background:linear-gradient(#0000,#000c)}
 #cph .clens{display:flex;gap:8px;justify-content:center;margin-bottom:12px}
 #cph .clens button{background:#0009;color:#fff;border:1px solid #fff6;border-radius:20px;min-width:52px;height:38px;font-size:14px;font-weight:700}#cph .clens button.on{background:#FDD835;color:#111;border-color:#FDD835}
@@ -3728,13 +3730,15 @@ async function camPhone(hostId){
   const flash=hEl("div",{class:"cflash"}), list=hEl("div",{class:"clist hidden"});
   const nextBtn=hEl("button",{type:"button",class:"cnext"},"＋ 次の番号");
   const posBtn=hEl("button",{type:"button",class:"cpos"},"📍 位置"), posInfo=hEl("span",{},"GPS …");
+  const sleepStat=hEl("span",{}), sleepNote=hEl("span",{});
+  const sleepEl=hEl("button",{type:"button",class:"csleep hidden"},hEl("b",{},"👆 タップで撮影に戻る"),sleepStat,sleepNote);
   const root=hEl("div",{id:"cph"},video,flash,
-    hEl("div",{class:"ctop"},dot,stat),tgt,list,
+    hEl("div",{class:"ctop"},dot,stat),tgt,list,sleepEl,
     hEl("div",{class:"cbot"},hEl("div",{class:"cposrow"},nextBtn,posBtn,posInfo),lens,hEl("div",{class:"crow"},thumb,shutter,stdBtn,std)));
   document.body.append(root);
   let peer=null, conn=null, connecting=false, last=null, stream=null, devs=[], lastPong=0, hiddenAt=0;
   const pending=new Map();
-  const setStat=(t,cls)=>{ stat.textContent=t+(pending.size&&!/枚/.test(t)?"（未送信"+pending.size+"枚はiPhoneに保存中）":""); dot.className="cdot "+(cls||""); };
+  const setStat=(t,cls)=>{ sleepStat.textContent=(cls==="ok"?"🟢 ":cls==="ng"?"🔴 ":"🟠 ")+t; stat.textContent=t+(pending.size&&!/枚/.test(t)?"（未送信"+pending.size+"枚はiPhoneに保存中）":""); dot.className="cdot "+(cls||""); };
   const showTarget=()=>{ if(!last){ tgt.textContent="送り先：—"; return; } tgt.textContent=last.title+" ▸ "+last.label+" ▾"; };
   const send1=it=>{ if(!it.msg.item&&last) it.msg.item=last.item; conn.send(it.msg); };
   tgt.onclick=()=>{
@@ -3805,14 +3809,16 @@ async function camPhone(hostId){
   window.addEventListener("pageshow",e=>{ if(e.persisted){ hiddenAt=hiddenAt||Date.now()-60000; resume(); } });
   // --- カメラ ---
   const lensName=l=>/ultra ?wide|超広角/i.test(l)?"0.5x":/tele|望遠/i.test(l)?"望遠":/dual|triple|デュアル|トリプル/i.test(l)?"オート":"1x";
-  const lensPref=camLS("gc_lens");
+  const lensPref=camLS("gc_lens"); let camDev=null;
   const startCam=async devId=>{
     if(stream) stream.getTracks().forEach(t=>t.stop());
-    const v={ width:{ideal:4032}, height:{ideal:3024}, aspectRatio:{ideal:4/3} };
+    const v={ width:{ideal:2048}, height:{ideal:1536}, aspectRatio:{ideal:4/3} };   // 送る写真は長い辺2000pxまでなので、それに足りる大きさで（電池の節約）
     if(devId) v.deviceId={exact:devId}; else v.facingMode={ideal:"environment"};
     stream=await navigator.mediaDevices.getUserMedia({video:v,audio:false});
+    camDev=devId||((stream.getVideoTracks()[0]||{getSettings:()=>({})}).getSettings().deviceId)||null;
     video.srcObject=stream; try{ await video.play(); }catch(e){}
   };
+  const stopCam=()=>{ if(stream) stream.getTracks().forEach(t=>t.stop()); stream=null; video.srcObject=null; };
   const paintLens=cur=>{
     lens.innerHTML=""; const seen=new Set();
     for(const d of devs){ const n=lensName(d.label); if(seen.has(n)||n==="オート") continue; seen.add(n);
@@ -3829,7 +3835,10 @@ async function camPhone(hostId){
   }catch(e){ setStat("カメラを使えません："+(e.message||e.name)+"（「標準カメラ」で撮れます）","ng"); }
   // --- 撮る・送る ---
   let geoLast=null;   // 撮ったときのiPhoneの位置を写真と一緒に送る（位置図に番号を置くのに使う）
-  try{ if(navigator.geolocation) navigator.geolocation.watchPosition(p=>{ geoLast={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy,ts:Date.now(),src:"iphone"}; posInfo.textContent="GPS "+accText(p.coords.accuracy); },()=>{ posInfo.textContent="GPSなし"; },{enableHighAccuracy:true,maximumAge:0,timeout:60000}); }catch(e){}
+  let geoWatch=null;
+  const stopGeo=()=>{ if(geoWatch!=null) try{ navigator.geolocation.clearWatch(geoWatch); }catch(e){} geoWatch=null; };
+  const startGeo=()=>{ if(geoWatch!=null) return; try{ if(navigator.geolocation) geoWatch=navigator.geolocation.watchPosition(p=>{ geoLast={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy,ts:Date.now(),src:"iphone"}; posInfo.textContent="GPS "+accText(p.coords.accuracy); },()=>{ posInfo.textContent="GPSなし"; },{enableHighAccuracy:true,maximumAge:0,timeout:60000}); }catch(e){} };
+  startGeo();
   posBtn.onclick=()=>{
     if(!geoLast||Date.now()-geoLast.ts>15000) return setStat("GPSの位置がまだ取れていません。少し待ってください","wait");
     if(!conn||!conn.open) return setStat("iPadにつながっていません","ng");
@@ -3863,13 +3872,30 @@ async function camPhone(hostId){
   std.onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return;
     const ex=await exifInfo(f); const r=await shrinkBlob(f,2000);
     await send(r.blob,r.w,r.h,ex&&ex.lat!=null?{lat:ex.lat,lon:ex.lon,acc:ex.acc,ts:ex.time||Date.now(),src:"iphone"}:null); };
-  // 画面を消さない・戻ってきたらカメラを再開
-  const wake=async()=>{ try{ if(navigator.wakeLock) await navigator.wakeLock.request("screen"); }catch(e){} };
+  // 画面を消さない（つながりを保つ）。そのうえで電池を節約する：
+  //  ・1分半 撮らなければ「待機」：カメラとGPSを止めて画面を黒くする（つながりはそのまま。タップで一瞬で戻る）
+  //  ・5分 撮らなければ、画面を消してよい状態にする（iPhoneの自動ロックで消える。戻せば自動でつながる）
+  const IDLE1=(window.__camIdle1||90)*1000, IDLE2=(window.__camIdle2||300)*1000;
+  let wl=null, lastAct=Date.now(), sleeping=false, freed=false;
+  const wake=async()=>{ if(wl||!navigator.wakeLock||document.visibilityState!=="visible") return; try{ wl=await navigator.wakeLock.request("screen"); wl.addEventListener("release",()=>{ wl=null; }); }catch(e){} };
+  const unwake=()=>{ if(wl) try{ wl.release(); }catch(e){} wl=null; };
+  const camBack=async()=>{ if(stream&&stream.getVideoTracks().some(t=>t.readyState==="live")) return; try{ await startCam(camDev); }catch(e){ try{ await startCam(null); }catch(_){} } };
+  const goSleep=()=>{ sleeping=true; stopCam(); stopGeo(); sleepNote.textContent="電池の節約のため、カメラとGPSを止めています。iPadとはつながったままです。"; sleepEl.classList.remove("hidden"); };
+  const wakeUp=async()=>{ sleeping=false; freed=false; lastAct=Date.now(); sleepEl.classList.add("hidden"); wake(); startGeo(); await camBack(); };
+  sleepEl.onclick=wakeUp;
+  root.addEventListener("pointerdown",()=>{ lastAct=Date.now(); },true);
+  setInterval(()=>{
+    if(document.visibilityState!=="visible") return;
+    const idle=Date.now()-lastAct;
+    if(!sleeping&&idle>IDLE1) goSleep();
+    if(sleeping&&idle>IDLE2&&!freed){ freed=true; unwake(); sleepNote.textContent="しばらく撮っていないので、このあと画面が消えます。画面を戻せば、自動でつながります。"; }
+  },2000);
   wake();
   document.addEventListener("visibilitychange",async()=>{
     if(document.visibilityState!=="visible"){ hiddenAt=Date.now(); return; }
-    wake(); resume();
-    if(!stream||stream.getVideoTracks().every(t=>t.readyState==="ended")) try{ const on=lens.querySelector(".on"); const d=devs.find(x=>lensName(x.label)===(on&&on.textContent)); await startCam(d?d.deviceId:null); }catch(e){}
+    resume();
+    if(sleeping) return wakeUp();   // 画面を戻した＝撮るつもり、なので待機もやめる
+    lastAct=Date.now(); wake(); startGeo(); await camBack();
   });
 }
 
