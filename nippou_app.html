@@ -99,6 +99,13 @@
   .tag button{border:none;background:none;color:var(--tape);cursor:pointer;font-size:15px;line-height:1;padding:0}
 
   .move-note{font-size:12px;color:var(--bark);background:var(--field);border-left:3px solid var(--tape);padding:7px 11px;border-radius:0 6px 6px 0;margin-top:4px}
+  .dd-hint{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#eef4ec;border:1px solid #c9dcc4;border-left:4px solid var(--leaf);border-radius:10px;padding:10px 12px;margin:0 0 14px}
+  .dd-hint[hidden]{display:none}
+  .dd-hint .t{flex:1;min-width:180px;font-size:13px;line-height:1.5;color:var(--ink)}
+  .dd-hint .t b{color:var(--leaf)}
+  .dd-hint button{flex:0 0 auto;font-family:inherit;font-size:14px;font-weight:700;border-radius:8px;padding:9px 14px;cursor:pointer;border:1px solid var(--leaf);background:var(--leaf);color:#fff}
+  .dd-hint button.sub{background:transparent;color:var(--bark);border-color:var(--line);font-weight:600}
+  .dd-note{font-size:12px;color:var(--leaf);background:#eef4ec;border-left:3px solid var(--leaf);padding:7px 11px;border-radius:0 6px 6px 0;margin:0 0 12px}
   .dup-note{font-size:12px;color:var(--danger);background:#fbeeea;border-left:3px solid var(--danger);padding:7px 11px;border-radius:0 6px 6px 0;margin-top:4px}
 
   .photo-add{display:inline-flex;align-items:center;cursor:pointer}
@@ -249,6 +256,7 @@
   </div>
 
   <div class="sec-head"><span class="tag">現場</span><h2>今日まわった現場</h2><span class="rule"></span></div>
+  <div class="dd-hint" id="ddHint" hidden></div>
   <div id="sites"></div>
   <button class="add-site" id="addSite">＋ 現場を追加（午後に別の現場へ行ったとき）</button>
 
@@ -524,6 +532,7 @@ function setAuthor(n){
   refreshPeoplePicks();   // 自分を選択肢から外し、過去の混入も掃除
   // ダッシュボードから「直す」で開かれていれば、その日報の編集を開く
   if(window._pendingEdit){ const rid=window._pendingEdit; window._pendingEdit=null; openEditForm(rid); }
+  setTimeout(ddCheck,0);   // その日の段取りがあれば「段取りから入れる」を出す
 }
 document.getElementById('whoami').onclick=()=>{ document.getElementById('overlay').style.display='flex'; };
 
@@ -561,6 +570,7 @@ function cardHTML(id){
       <button class="site-del" data-del>削除</button>
     </div>
     <div class="site-body">
+      ${sites[id].fromDandori?`<div class="dd-note">📋 段取りから入れた下書きです。実際と違うところ（メンバー・車両・機械）は直してください。時間と業務内容は入れてください。${sites[id].ddSiteName&&!sites[id].site?`<br>段取りの現場「${esc(sites[id].ddSiteName)}」は現場の一覧に無いので、種類を選んで「＋追加」を押してください。`:''}</div>`:''}
       <div class="row">
         <div class="field" style="flex:0 0 auto;min-width:150px">
           <label>種類</label><select data-cat>${catOpt}</select>
@@ -863,7 +873,7 @@ function resetForm(){
   Object.keys(sites).forEach(id=>{ const e=document.getElementById('site-'+id); if(e) e.remove(); delete sites[id]; });
   document.getElementById('weather').value=''; document.getElementById('done').value=''; document.getElementById('learn').value='';
   document.getElementById('date').value=todayStr();
-  addSite(); updateSummary(); clearDraft();
+  addSite(); updateSummary(); clearDraft(); setTimeout(ddCheck,0);
 }
 
 document.getElementById('save').onclick=async ()=>{
@@ -982,6 +992,85 @@ function applyPrefill(params){
     addSite(data); });
   refreshPeoplePicks(); updateMoveNotes(); updateSummary();
 }
+/* ===== 段取りカードから下書き =====
+   その日の段取りカード（自分がメンバーに入っている現場）から、現場・一緒に作業した人・使用車両・使用機械を下書きで入れる。
+   自動では入れず、押したときだけ。時間と業務内容は実際のことなので入れない */
+const DD_CACHE={};
+let ddShownFor='';
+async function ddCards(date){
+  if(DD_CACHE[date]) return DD_CACHE[date];
+  const r=await (await fetchT(GENBA_URL+'?app=dandori&action=data&from='+date+'&to='+date, null, 15000)).json();
+  if(!r||!r.ok) throw new Error((r&&r.error)||'');
+  const list=(r.cards||[]).filter(c=>c.date===date && (c.kind||'site')==='site' && c.site);
+  DD_CACHE[date]=list; return list;
+}
+function ddFindSite(name){
+  const g=MASTER.siteGroups, k=vkey(name); if(!k) return null;
+  const all=[]; Object.keys(g).forEach(cat=>{ const v=g[cat];
+    if(Array.isArray(v)) v.forEach(s=>all.push({cat,contract:'',site:s}));
+    else Object.keys(v).forEach(con=>(v[con]||[]).forEach(s=>all.push({cat,contract:con,site:s}))); });
+  return all.find(x=>x.site===name) || all.find(x=>vkey(x.site)===k)
+    || all.find(x=>{ const a=vkey(x.site); return a.length>=2 && (k.includes(a)||a.includes(k)); }) || null;
+}
+function ddVehicles(card){
+  let vl=[]; try{ vl=JSON.parse(localStorage.getItem(VEH_KEY)||'[]')||[]; }catch(e){}
+  const veh=[], mac=[];
+  const put=(arr,n)=>{ if(n && !arr.includes(n)) arr.push(n); };
+  String(card.vehicle||'').replace(/（.*?）|\(.*?\)/g,'').split(/[・、,，\/／]|と/).map(x=>x.trim()).filter(Boolean).forEach(w=>{
+    const k=vkey(w);
+    const v=vl.find(x=>[x.name].concat(String(x.aliases||'').split(/[、,，]/)).some(n=>vkey(n)===k));
+    if(v){ put(/重機/.test(v.category||'')?mac:veh, v.name); return; }
+    const hit=l=>l.find(n=>vkey(n)===k) || l.find(n=>{ const a=vkey(n); return a.length>=2 && (a.includes(k)||k.includes(a)); });
+    const a=hit(MASTER.vehicles), b=hit(MASTER.machines);
+    if(a) put(veh,a); else if(b) put(mac,b); else put(veh,w);
+  });
+  (card.items||[]).forEach(it=>{ const k=vkey(it&&it.name); if(!k) return;
+    const m=MASTER.machines.find(n=>vkey(n)===k) || MASTER.machines.find(n=>{ const a=vkey(n); return a.length>=2 && k.includes(a); });
+    if(m) put(mac,m); });
+  return {veh,mac};
+}
+function ddIsBlank(d){
+  return !d.cat && !d.site && !d.work && !d.start && !d.end && !d.members.length && !d.joiners.length && !d.helpers.length
+    && !d.vehicles.length && !d.machines.length && !d.photos.length && !d.claim;
+}
+function ddHasSite(name){ const k=vkey(name), f=ddFindSite(name);
+  return Object.values(sites).some(d=>(d.site && (vkey(d.site)===k || (f && d.site===f.site))) || (d.ddSiteName && vkey(d.ddSiteName)===k)); }
+async function ddCheck(){
+  const box=document.getElementById('ddHint'); if(!box) return;
+  const date=val('date'); if(!author || !date){ box.hidden=true; return; }
+  const want=author+'|'+date; ddShownFor=want;
+  let list=[]; try{ list=await ddCards(date); }catch(e){ box.hidden=true; return; }
+  if(ddShownFor!==want) return;   // 待っている間に日付・名前が変わった
+  const mine=list.filter(c=>(c.staff||[]).includes(author) && !ddHasSite(c.site));
+  if(!mine.length || sessionStorage.getItem('nippou_dd_skip')===want){ box.hidden=true; return; }
+  box.innerHTML=`<div class="t">📋 <b>${esc(date.slice(5).replace('-','/'))}の段取り</b>：${mine.map(c=>esc(c.site)).join('・')}<br>現場・メンバー・車両・機械を下書きで入れられます</div>
+    <button type="button" id="ddApply">段取りから入れる</button><button type="button" class="sub" id="ddSkip">使わない</button>`;
+  box.hidden=false;
+  document.getElementById('ddSkip').onclick=()=>{ try{ sessionStorage.setItem('nippou_dd_skip',want); }catch(e){} box.hidden=true; };
+  document.getElementById('ddApply').onclick=()=>ddApply(mine);
+}
+function ddApply(cards){
+  Object.keys(sites).forEach(id=>{ if(ddIsBlank(sites[id])){ const e=document.getElementById('site-'+id); if(e) e.remove(); delete sites[id]; } });
+  let miss=[];
+  cards.forEach(c=>{
+    const data=newSiteData(), f=ddFindSite(c.site);
+    if(f) Object.assign(data,{cat:f.cat,contract:f.contract,site:f.site}); else { miss.push(c.site); data.ddSiteName=c.site; }
+    data.members=(c.staff||[]).filter(n=>n!==author && MASTER.staff.includes(n));
+    const vm=ddVehicles(c);
+    data.vehicles=vm.veh; data.machines=vm.mac;
+    data.vehicleList=[...new Set(MASTER.vehicles.concat(vm.veh))]; data.machineList=[...new Set(MASTER.machines.concat(vm.mac))];
+    data.fromDandori=true;
+    addSite(data);
+    if(data.ddSiteName){ const inp=document.querySelector('#site-'+siteSeq+' [data-newsite]'); if(inp) inp.value=data.ddSiteName; }   // 種類を選んで「＋追加」を押すだけに
+  });
+  if(!Object.keys(sites).length) addSite();
+  refreshPeoplePicks(); updateMoveNotes(); updateSummary();
+  document.getElementById('ddHint').hidden=true;
+  toast(miss.length ? '段取りから入れました。「'+miss.join('」「')+'」は現場の一覧に無いので、種類を選んで「＋追加」を押してください'
+                    : '段取りから入れました。時間と業務内容を入れて、違うところは直してください');
+}
+document.getElementById('date').addEventListener('change',()=>ddCheck());
+
 /* ===== 日報を直す（編集）===== */
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function isOwnerName(n){ return n==='親方' || n==='持田智彦'; }
