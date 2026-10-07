@@ -210,6 +210,85 @@
 .home-btn:active{background:rgba(255,255,255,.28)}
 .home-btn .hb-ic{font-size:15px;line-height:1}
 @media (max-width:400px){ .home-btn{padding:5px 8px} .home-btn .hb-t{display:none} }
+/* ===== 新しい画面（ui-new）：準備／入力／仕上げ の3つに分ける。旧画面にはいつでも戻せる ===== */
+#nuMain,#nuSide{display:none}
+body:not(.ui-new) .nu-only{display:none!important}
+.ui-try{background:none;border:1px solid var(--acc);color:var(--acc);border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+body.ui-new{height:100dvh;overflow:hidden}
+body.ui-new .old-only{display:none!important}
+body.ui-new .nu-only{display:inline-flex}
+body.ui-new .app{display:grid!important;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:auto minmax(0,1fr);height:100dvh!important;min-height:0!important;width:100vw}
+body.ui-new .app>.col{display:none!important}
+body.ui-new header{grid-column:1/-1;position:relative!important;flex-wrap:wrap;height:auto;min-height:50px;gap:8px;padding:6px 12px}
+body.ui-new header .meta,body.ui-new header .logo{display:none}
+body.ui-new header .park{width:200px;flex:0 1 200px;min-width:110px}
+body.ui-new #nuMain{display:flex;flex-direction:column;min-height:0;min-width:0;position:relative}
+body.ui-new #nuMain .stage{flex:1 1 auto!important;min-height:0;height:auto!important;order:0}
+body.ui-new #nuSide{display:flex;flex-direction:column;overflow-y:auto;padding:12px 14px;border-left:1px solid var(--line);background:var(--bg);min-height:0;-webkit-overflow-scrolling:touch}
+.nu-tabs{display:inline-flex;gap:4px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:3px}
+.nu-tab{background:none;border:none;color:var(--mut);font-size:14px;font-weight:700;padding:7px 14px;border-radius:8px;cursor:pointer;white-space:nowrap;touch-action:manipulation}
+.nu-tab.on{background:var(--acc);color:#08110b}
+.nu-tab .ok{color:var(--acc);margin-left:3px}
+.nu-tab.on .ok{color:#08110b}
+.nu-hbtn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:7px 11px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;align-items:center;gap:4px;touch-action:manipulation}
+.nu-hbtn.back{color:var(--mut);font-weight:600}
+#nuSideBtn{display:none!important}
+.nu-grp{display:none}
+.nu-grp>.nu-h{font-size:12px;font-weight:700;color:var(--ink);margin:2px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+#nuSide[data-view="prep"] .g-prep,
+#nuSide[data-view="input"] .g-sel,#nuSide[data-view="input"] .g-agg,
+#nuSide[data-view="finish"] .g-out,#nuSide[data-view="finish"] .g-agg,#nuSide[data-view="finish"] .g-sel,#nuSide[data-view="finish"] .g-disp{display:block}
+#nuSide[data-view="finish"] .g-out{order:-1}
+.nu-grp{margin-bottom:16px}
+/* 地図の左：描き方 */
+#nuTools{position:absolute;left:10px;top:10px;display:flex;flex-direction:column;gap:6px;z-index:6}
+body.ui-new #nuTools .btn{width:64px;margin:0;padding:9px 0;text-align:center;font-size:0;border-radius:10px;background:rgba(14,18,24,.86);touch-action:manipulation;box-shadow:0 3px 12px #0006}
+body.ui-new #nuTools .btn::after{content:attr(data-short);font-size:13px;font-weight:700}
+body.ui-new #nuTools .btn small{display:none}
+body.ui-new #nuTools .btn.on{background:var(--acc);color:#08110b}
+body.ui-new .hint{left:84px;max-width:calc(100% - 150px)}
+/* 地図の下：工種ボタン */
+#nuOpts{display:none;padding:6px 12px 0;background:var(--panel);border-top:1px solid var(--line);gap:14px;align-items:flex-end;flex-wrap:wrap}
+#nuOpts.has{display:flex}
+#nuOpts #rankLegend{margin:0}
+#nuOpts label.fld{margin:0 0 3px}
+#nuKinds{display:flex;gap:6px;overflow-x:auto;padding:8px 10px;background:var(--panel);border-top:1px solid var(--line);-webkit-overflow-scrolling:touch;flex:0 0 auto}
+#nuOpts.has+#nuKinds{border-top:none}
+.nu-chip{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;min-height:50px;padding:5px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);cursor:pointer;text-align:left;touch-action:manipulation;font-family:inherit}
+.nu-chip small{font-size:10px;color:var(--mut);white-space:nowrap}
+.nu-chip b{font-size:14px;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.nu-chip .sw{display:inline-block;width:10px;height:10px;border-radius:3px}
+.nu-chip .sw.tree{border-radius:50%}
+.nu-chip.on{background:var(--acc);border-color:var(--acc);color:#08110b}
+.nu-chip.on small{color:#0a3a26}
+.nu-chip.more{border-style:dashed;color:var(--mut);align-items:center}
+#nuAll{display:none;position:absolute;left:10px;right:10px;bottom:76px;max-height:60%;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;z-index:20;box-shadow:0 10px 30px #000a}
+#nuAll.on{display:block}
+#nuAll .cat{font-size:11px;color:var(--mut);margin:8px 0 5px}
+#nuAll .cat:first-child{margin-top:0}
+#nuAll .list{display:flex;flex-wrap:wrap;gap:6px}
+#nuAll .list .nu-chip{min-height:40px}
+@media(max-width:900px){
+  body.ui-new .app{grid-template-columns:minmax(0,1fr)}
+  body.ui-new #nuSide{position:fixed;top:0;right:0;bottom:0;width:min(380px,92vw);z-index:45;transform:translateX(105%);transition:transform .2s;box-shadow:-8px 0 24px #0009;border-left:1px solid var(--line)}
+  body.ui-new.nu-open #nuSide{transform:none}
+  body.ui-new #nuSideBtn{display:inline-flex!important}
+  body.ui-new header .park{flex:1 1 120px;width:auto}
+  #nuSideClose{display:block!important}
+}
+#nuSideClose{display:none;margin:0 0 10px auto;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer}
+
+
+#nuOpts #rankLegend>.legend{display:none}
+#nuOpts #rankLegend::before{content:'規格（幹周）';display:block;font-size:11px;color:var(--mut);margin-bottom:2px}
+#nuSide[data-view="input"] #showAll,#nuSide[data-view="input"] #xlsxBtn{display:none}
+body.ui-new[data-nuview="finish"] #nuOpts,body.ui-new[data-nuview="finish"] #nuKinds,body.ui-new[data-nuview="finish"] #nuAll,
+body.ui-new[data-nuview="prep"] #nuOpts,body.ui-new[data-nuview="prep"] #nuKinds,body.ui-new[data-nuview="prep"] #nuAll{display:none!important}
+@media(max-width:900px){ body.ui-new .blbl{display:none} body.ui-new #undoBtn,body.ui-new #redoBtn{padding:6px 10px;font-size:16px} body.ui-new .home-btn .hb-t{display:none} body.ui-new .nu-tab{padding:7px 11px} }
+body.ui-new[data-nuview="prep"] #nuTools{display:none}
+.g-prep #cloudOpen,.g-prep #openJson{margin-bottom:7px}
+.g-prep #secMap{margin-top:12px}
+.nu-hide{display:none!important}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" defer></script>
@@ -270,11 +349,15 @@
   <header>
     <a class="home-btn" href="index.html" title="アプリ一覧にもどる" aria-label="アプリ一覧（ホーム）にもどる"><span class="hb-ic">🏠</span><span class="hb-t">ホーム</span></a><div class="logo">公園作業記録 <b>/</b> 求積＆出来形</div>
     <input class="park" id="parkName" placeholder="公園名（例：久地さくら緑地）">
+    <span class="nu-only nu-tabs" id="nuTabs"><button class="nu-tab" data-view="prep">準備</button><button class="nu-tab" data-view="input">入力</button><button class="nu-tab" data-view="finish">仕上げ</button></span>
     <span class="meta" id="contractMeta">業務委託</span>
     <span class="sp"></span>
     <button id="undoBtn" title="元に戻す (Ctrl+Z)" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px 10px;font-size:13px;cursor:pointer;margin-right:6px">↶<span class="blbl"> 戻る</span></button>
     <button id="redoBtn" title="やり直す (Ctrl+Y)" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px 10px;font-size:13px;cursor:pointer;margin-right:10px">↷<span class="blbl"> 進む</span></button>
-    <span class="meta">試作版 — データは端末内のみ・JSONで保存/集計</span>
+    <button class="nu-only nu-hbtn" id="nuSave">☁️ 保存</button>
+    <button class="nu-only nu-hbtn" id="nuSideBtn">☰ パネル</button>
+    <button class="nu-only nu-hbtn back" id="uiBack" title="今までの画面にもどします（データはそのまま）">旧画面に戻す</button>
+    <button class="ui-try old-only" id="uiTry" title="入力と仕上げに分けた、すっきりした画面（データはそのまま・いつでも戻せます）">✨ 新しい画面を試す</button>
   </header>
 
   <!-- LEFT: tools -->
@@ -3257,5 +3340,175 @@ buildTreeColors();
 fillCats();fillManual();renderAgg();renderSansha();setTool('area');updateHint();updateUndoButtons();
 new ResizeObserver(resize).observe(cv.parentElement);resize();
 </script>
+<script>
+/* ===== 新しい画面（準備／入力／仕上げ）。部品は旧画面と同じものを並べ替えるだけ。旧画面にはいつでも戻せる ===== */
+(function(){
+  const UI_KEY='park_ui', VIEW_KEY='park_ui_view', RECENT_KEY='park_recent_kinds';
+  const DEFAULT_KINDS=[['除草工','機械除草Ⅰ（肩掛式）'],['中低木刈込工','低木刈込'],['中低木刈込工','中木刈込'],['つる性植物除去','地表・寄植'],
+    ['低木内除草清掃','植込み地'],['樹木撤去','実生木（C=10cm程度）'],['樹木撤去','支障木'],['軽剪定（落葉木）','落葉木'],['基本剪定（落葉木）','落葉木']];
+  const $=id=>document.getElementById(id);
+  const ls={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
+  let built=false, moved=[], view='input', lastKey='', poll=null;
+
+  // 部品を新しい場所へ。元の場所には目印を残して、旧画面に戻す時にそこへ帰す
+  function move(el,to){ if(!el||!to)return; const mk=document.createComment('nu'); el.parentNode.insertBefore(mk,el); moved.push([el,mk]); to.appendChild(el); }
+  function restoreAll(){ for(let i=moved.length-1;i>=0;i--){const [el,mk]=moved[i]; if(mk.parentNode){mk.parentNode.insertBefore(el,mk);mk.remove();}} moved=[]; }
+  function grp(cls,title){ const g=document.createElement('div'); g.className='nu-grp '+cls; if(title){const h=document.createElement('div');h.className='nu-h';h.textContent=title;g.appendChild(h);} return g; }
+  function secOf(id){ const e=$(id); return e?e.closest('.sec'):null; }
+
+  function build(){
+    if(built)return; built=true;
+    const app=document.querySelector('.app');
+    const main=document.createElement('div'); main.id='nuMain';
+    main.innerHTML='<div id="nuAll"></div><div id="nuOpts"></div><div id="nuKinds"></div>';
+    const side=document.createElement('div'); side.id='nuSide';
+    side.innerHTML='<button id="nuSideClose">閉じる ✕</button>';
+    app.appendChild(main); app.appendChild(side);
+    side.dataset.view=view;
+  }
+  function enter(){
+    build();
+    const main=$('nuMain'), side=$('nuSide'), stage=document.querySelector('.stage');
+    // 地図
+    move(stage,main); main.insertBefore(stage,$('nuAll'));
+    let tools=$('nuTools'); if(!tools){tools=document.createElement('div');tools.id='nuTools';}
+    stage.appendChild(tools);
+    [['toolArea','面積'],['toolTree','樹木'],['placeRect','四角'],['toolStrip','幅刈り'],['toolSelect','選ぶ']].forEach(([id,s])=>{const b=$(id);if(b){b.dataset.short=s;move(b,tools);}});
+    // 規格・寸法（工種ボタンの上）
+    const opts=$('nuOpts');
+    ['rankLegend','dimLbl','dimRow'].forEach(id=>move($(id),opts));
+    // パネル：準備
+    const gPrep=grp('g-prep','準備（図面と縮尺）');
+    const openRow=document.createElement('div');
+    gPrep.appendChild(openRow);
+    move($('cloudOpen'),openRow); move($('openJson'),openRow);
+    move($('secMap'),gPrep); move($('secCal'),gPrep);
+    const tip=document.createElement('div'); tip.className='legend'; tip.style.marginTop='4px';
+    tip.textContent='図面を読み込んで縮尺を合わせたら、上の「入力」へ。'; gPrep.appendChild(tip);
+    // パネル：選んだ図形
+    const gSel=grp('g-sel','選んだ図形');
+    move(secOf('sansha'),gSel); move($('copyWorksBox'),gSel);
+    // パネル：集計
+    const gAgg=grp('g-agg','');
+    [secOf('aggArea'),secOf('aggTree'),secOf('manualRows'),secOf('costTotal')].forEach(s=>move(s,gAgg));
+    // パネル：書き出し
+    const gOut=grp('g-out','');
+    move(secOf('rpXlsx'),gOut); move(secOf('aggMulti'),gOut);
+    // パネル：表示と設定
+    const gDisp=grp('g-disp','地図の表示・設定');
+    move(secOf('legendToggle'),gDisp); move($('snapToggle'),gDisp);
+    [gPrep,gSel,gAgg,gOut,gDisp].forEach(g=>side.appendChild(g));
+    // 求積表の見出しを短く
+    const sh=secOf('sansha'); if(sh){const h=sh.querySelector('h3'); if(h){h.dataset.old=h.textContent; h.textContent='求積（三斜・ヘロンの公式）';}}
+    document.body.classList.add('ui-new');
+    renderKinds(); syncOpts();
+    setView(ls.get(VIEW_KEY)||(!state.img?'prep':'input'), true);
+    if(!state.img) setView('prep',true);
+    wasDone=prepDone(); poll=setInterval(tick,600);
+    afterLayout();
+  }
+  function leave(){
+    clearInterval(poll); poll=null;
+    const sh=secOf('sansha'); if(sh){const h=sh.querySelector('h3'); if(h&&h.dataset.old){h.textContent=h.dataset.old;delete h.dataset.old;}}
+    document.body.classList.remove('ui-new','nu-open'); delete document.body.dataset.nuview;
+    restoreAll();
+    const t=$('nuTools'); if(t)t.remove();
+    $('nuAll').classList.remove('on');
+    afterLayout();
+  }
+  function afterLayout(){ requestAnimationFrame(()=>{ try{resize(); if(state.img)fit();}catch(e){} }); }
+
+  // 準備／入力／仕上げ
+  function setView(v,quiet){
+    if(['prep','input','finish'].indexOf(v)<0)v='input';
+    view=v; $('nuSide').dataset.view=v; document.body.dataset.nuview=v; ls.set(VIEW_KEY,v);
+    document.querySelectorAll('.nu-tab').forEach(b=>b.classList.toggle('on',b.dataset.view===v));
+    const narrow=window.matchMedia('(max-width:900px)').matches;
+    if(narrow){ if(!quiet||v==='prep'||v==='finish') document.body.classList.toggle('nu-open',v!=='input'); }
+    $('nuSide').scrollTop=0;
+  }
+  function prepDone(){ return !!(state.img&&state.scale); }
+  let wasDone=null;
+  function tick(){
+    const done=prepDone();
+    const t=document.querySelector('.nu-tab[data-view="prep"]');
+    const th='準備'+(done?'<span class="ok">✓</span>':''); if(t&&t.innerHTML!==th) t.innerHTML=th;
+    if(wasDone===false&&done&&view==='prep') setView('input');    // 縮尺まで終わったら入力へ
+    wasDone=done;
+    const key=$('catSel').value+'\u0000'+$('kindSel').value+'\u0000'+state.features.length;
+    if(key!==lastKey){ lastKey=key; renderKinds(); }
+    syncOpts();
+  }
+  function syncOpts(){
+    const o=$('nuOpts'); if(!o||!document.body.classList.contains('ui-new'))return;
+    // 寸法は、四角・幅刈り・高さが要る工種の時だけ出す（ふつうの面積では隠してすっきり）
+    const g=curGeom(), needDim=(g!=='poly')||curNeedsHeight()||tool==='rect'||tool==='strip';
+    ['dimLbl','dimRow'].forEach(id=>{const e=$(id); if(e)e.classList.toggle('nu-hide',!needDim);});
+    const isTree=(MASTER[$('catSel').value]||{}).mode==='tree';
+    ['placeRect','toolStrip'].forEach(id=>{const e=$(id); if(e)e.classList.toggle('nu-hide',isTree);});   // 樹木の時は四角・幅刈りは出さない
+    const rl=$('rankLegend'); if(rl)rl.classList.toggle('nu-hide',!rl.querySelector('[data-band]'));
+    const vis=[...o.children].some(c=>!c.classList.contains('nu-hide')&&c.style.display&&c.style.display!=='none');
+    o.classList.toggle('has',vis);
+  }
+
+  // 工種ボタン
+  function kindKey(c,k){return c+'\u0000'+k;}
+  function recent(){ try{return JSON.parse(ls.get(RECENT_KEY)||'[]')||[];}catch(e){return [];} }
+  function pushRecent(c,k){ const r=recent().filter(x=>x!==kindKey(c,k)); r.unshift(kindKey(c,k)); ls.set(RECENT_KEY,JSON.stringify(r.slice(0,10))); }
+  function exists(c,k){ return !!(MASTER[c]&&MASTER[c].kinds[k]); }
+  function chipHtml(c,k,on){
+    const tree=MASTER[c].mode==='tree';
+    const col=tree?treeColor({cat:c,kind:k}):colorFor(c+k);
+    return `<button class="nu-chip${on?' on':''}" data-c="${c}" data-k="${k}" title="${c} › ${k}"><small>${c}</small><b><span class="sw${tree?' tree':''}" style="background:${col}"></span>${k}</b></button>`;
+  }
+  function renderKinds(){
+    const bar=$('nuKinds'); if(!bar)return;
+    const cur=kindKey($('catSel').value,$('kindSel').value), list=[];
+    const add=key=>{ if(list.indexOf(key)<0){const [c,k]=key.split('\u0000'); if(exists(c,k))list.push(key);} };
+    recent().forEach(add);
+    state.features.forEach(f=>add(kindKey(f.cat,f.kind)));
+    DEFAULT_KINDS.forEach(([c,k])=>add(kindKey(c,k)));
+    let shown=list.slice(0,12); if(shown.indexOf(cur)<0&&exists(...cur.split('\u0000'))) shown.unshift(cur);
+    bar.innerHTML=shown.map(key=>{const [c,k]=key.split('\u0000');return chipHtml(c,k,key===cur);}).join('')+
+      '<button class="nu-chip more" id="nuMore"><b>＋ ほかの工種</b></button>';
+    bar.querySelectorAll('.nu-chip[data-c]').forEach(b=>b.onclick=()=>pick(b.dataset.c,b.dataset.k));
+    $('nuMore').onclick=()=>{ const a=$('nuAll'); if(a.classList.contains('on')){a.classList.remove('on');return;} renderAll(); a.classList.add('on'); };
+    const on=bar.querySelector('.nu-chip.on'); if(on&&on.scrollIntoView) on.scrollIntoView({block:'nearest',inline:'nearest'});
+  }
+  function renderAll(){
+    const cur=kindKey($('catSel').value,$('kindSel').value);
+    let h='';
+    Object.keys(MASTER).forEach(c=>{ h+=`<div class="cat">${c}（${MASTER[c].unit}）</div><div class="list">`+
+      Object.keys(MASTER[c].kinds).map(k=>chipHtml(c,k,kindKey(c,k)===cur)).join('')+'</div>'; });
+    const a=$('nuAll'); a.innerHTML=h;
+    a.querySelectorAll('.nu-chip[data-c]').forEach(b=>b.onclick=()=>{pick(b.dataset.c,b.dataset.k);a.classList.remove('on');});
+  }
+  function pick(c,k){
+    if(!exists(c,k))return;
+    holeMode=null;
+    $('catSel').value=c; fillKinds();
+    $('kindSel').value=k; $('kindSel').onchange();
+    if(tool==='select'||tool==='pan') setTool(MASTER[c].mode);
+    pushRecent(c,k); lastKey=''; tick();
+    if(view!=='input') setView('input');
+  }
+
+  // 頭のボタン
+  function bind(){
+    document.querySelectorAll('.nu-tab').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+    $('nuSave').onclick=()=>$('cloudSave').click();
+    $('nuSideBtn').onclick=()=>document.body.classList.toggle('nu-open');
+    $('uiBack').onclick=()=>{ ls.set(UI_KEY,'old'); leave(); };
+    $('uiTry').onclick=()=>{ ls.set(UI_KEY,'new'); enter(); };
+    document.addEventListener('click',e=>{ if(e.target&&e.target.id==='nuSideClose')document.body.classList.remove('nu-open'); });
+  }
+  window.parkUI={enter,leave,setView,pick,get view(){return view;}};
+  bind();
+  const q=(location.search.match(/[?&]ui=(new|old)/)||[])[1];
+  if(q) ls.set(UI_KEY,q);
+  if((q||ls.get(UI_KEY))==='new') enter();
+})();
+</script>
+
 </body>
 </html>
