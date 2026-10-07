@@ -991,7 +991,7 @@ function segCross(a,b,c,d){
 }
 function placeLabels(L,segs,dots,B,opt){
   opt=opt||{};
-  const placed=[], allSegs=segs.slice(), leads=[], GAP=opt.gap||5;
+  const placed=[], allSegs=segs.slice(), leads=[], GAP=opt.gap||5, LW=(opt.lineW!=null?opt.lineW:1000);
   const rectAt=(x,y,w,h,m)=>({l:x-w/2-m,r:x+w/2+m,t:y-h/2-m,b:y+h/2+m});
   const over=(A,C)=>A.l<C.r&&C.l<A.r&&A.t<C.b&&C.t<A.b;
   L.forEach(o=>{
@@ -1020,9 +1020,9 @@ function placeLabels(L,segs,dots,B,opt){
       const sx=Math.max(R0.l,Math.min(R0.r,o.ax)), sy=Math.max(R0.t,Math.min(R0.b,o.ay));
       const gap=Math.hypot(sx-o.ax,sy-o.ay), lead=gap>GAP;
       let lhits=0; if(lead){ const sh=(P)=>({l:P.l+2,r:P.r-2,t:P.t+2,b:P.b-2}); lhits=placed.reduce((s,P)=>s+(segHitsRect(o.ax,o.ay,sx,sy,sh(P))?1:0),0); const me=[o.ax,o.ay,sx,sy]; lhits+=leads.reduce((s,g)=>s+(segCross(me,g)?0.75:0),0)+segs.reduce((s,g)=>s+(segCross(me,g)?0.02:0),0); }
-      const score=hits*1000+lhits*400+(lead?30:0)+gap+ci*0.01;
+      const score=hits*LW+lhits*400+(lead?30:0)+gap+ci*0.01;
       if(!best||score<best.score) best={score,x:c.x,y:c.y,lead,sx,sy,R};
-      if(hits===0&&!lead&&ci<8) break;     // 線の脇にきれいに置けた
+      if((hits===0||LW<1)&&!lead&&ci<8) break;     // きれいに置けた
     }
     if(!best){ const R=rectAt(o.ax,o.ay,o.w,o.h,1.5); best={x:o.ax,y:o.ay,lead:false,sx:o.ax,sy:o.ay,R}; }
     o.lx=best.x; o.ly=best.y; o.leader=best.lead; o.sx=best.sx; o.sy=best.sy;
@@ -1277,6 +1277,7 @@ function computeGroups(){
   const R=90/view.zoom;
   const items=[];
   state.features.forEach(f=>{
+    if(exportFilter&&!exportFilter(f))return;            // 書き出しで絞っている時は、その図形だけでまとめる
     if(f.type==='box'&&!f.sym){ items.push({f,mode:'area',unit:'',key:'b|'+f.cat+'|'+f.kind+'|'+(f.round?'c':'b')+'|'+((f.area||0).toFixed(2)),x:f.pt.x,y:f.pt.y}); }
     else if(f.type==='tree'&&f.cat!=='巣撤去'){ items.push({f,mode:'count',unit:'本',key:'t|'+f.cat+'|'+f.kind+'|'+(f.rank||''),x:f.pt.x,y:f.pt.y}); }
   });
@@ -2838,19 +2839,22 @@ function rpStripFigureXml(sheet,widths,f,ox,oy,maxW,maxH){
   const M=p=>({x:ox+pad+(p.x-minx)*k, y:oy+pad+(p.y-miny)*k});
   rpPush(sheet,rpPoly(widths,out.map(M),true,1.4));               // 外周
   rpPush(sheet,rpPoly(widths,c.map(M),false,0.7,true));           // 中心線（破線）
+  const LB=[];
   for(let i=0;i<c.length-1;i++){
-    const a=M(c[i]), b=M(c[i+1]);
+    const a=M(c[i]), b=M(c[i+1]), mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
     const L=stripSegLen(f,i), w=(f.strip.w[i]!=null?f.strip.w[i]:f.strip.w[0])||0;
-    rpPush(sheet,rpText(widths,(a.x+b.x)/2,(a.y+b.y)/2,(i+1)+'→'+(i+2),8));
-    rpPush(sheet,rpText(widths,(a.x+b.x)/2,(a.y+b.y)/2+13,'L='+L.toFixed(2)+'m　W='+w.toFixed(2)+'m',7));
+    LB.push({ax:mx,ay:my,s:(i+1)+'→'+(i+2),fs:8});
+    LB.push({ax:mx,ay:my+19,pref:[{x:mx,y:my+19}],s:'L='+L.toFixed(2)+'m　W='+w.toFixed(2)+'m',fs:7});
   }
+  // 文字どうしが重ならないように（線の上に乗るのはかまわない）
+  rpPlaceTexts(sheet,widths,LB,{l:ox+2,t:oy+2,r:ox+Math.round(bw*k+2*pad)-2,b:oy+Math.round(bh*k+2*pad)-2});
   return {w:Math.round(bw*k+2*pad), h:Math.round(bh*k+2*pad)};
 }
 /* --- 求積図：外周・対角線・番号・辺の長さを図形で --- */
 // 文字は線・点・ほかの文字に重ならない空きへ。離れた時は引き出し線を「コネクタ」で文字の枠と点につなぐ
 // （Excelで文字の枠を動かしても、線がついてくる＝あとから見やすく直せる）
 function rpTextBox(widths,x,y,s,fs,col){
-  fs=fs||8;
+  fs=fs||8; col=col||'000000';
   const w=Math.max(14,String(s).length*fs*0.82), h=fs*1.9;
   const xml=rpText(widths,x,y,s,fs,col); const id=rpSid;
   return {xml,id,l:x-w/2,t:y-h/2,w,h};
@@ -2872,6 +2876,20 @@ function rpConnector(widths,a,b,stId,stIdx,endId,endIdx,lw,col){
     +'<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom>'
     +'<a:ln w="'+Math.round((lw||0.6)*RP_EMU)+'"><a:solidFill><a:srgbClr val="'+rpHex(col||'444444')+'"/></a:solidFill></a:ln></xdr:spPr></xdr:cxnSp>';
   return rpAnchor(widths,x0,y0,w,h,inner);
+}
+function rpPlaceTexts(sheet,widths,labels,B,segs,lineW){
+  labels.forEach(o=>{o.w=Math.max(14,String(o.s).length*o.fs*0.82);o.h=o.fs*1.9;if(!o.pref)o.pref=[{x:o.ax,y:o.ay}];});
+  placeLabels(labels,segs||[],[],B,{gap:4,lineW:lineW||0});
+  labels.forEach(o=>{
+    const tb=rpTextBox(widths,o.lx,o.ly,o.s,o.fs,o.col);
+    rpPush(sheet,tb.xml);
+    if(o.leader){
+      const S=[{x:tb.l+tb.w/2,y:tb.t},{x:tb.l,y:tb.t+tb.h/2},{x:tb.l+tb.w/2,y:tb.t+tb.h},{x:tb.l+tb.w,y:tb.t+tb.h/2}];
+      let bi=0; S.forEach((p,i)=>{ if(Math.hypot(p.x-o.ax,p.y-o.ay)<Math.hypot(S[bi].x-o.ax,S[bi].y-o.ay)) bi=i; });
+      const d=rpDot(widths,o.ax,o.ay,1.3,o.col||'444444'); rpPush(sheet,d.xml);
+      rpPush(sheet,rpConnector(widths,{x:o.ax,y:o.ay-1.3},S[bi],d.id,0,tb.id,bi,0.6,o.col||'444444'));
+    }
+  });
 }
 function rpFigureXml(sheet,widths,f,ox,oy,maxW,maxH){
   const pts=f.pts; if(!pts||pts.length<3) return {w:0,h:0};
@@ -3068,8 +3086,8 @@ function rpBuildHaichi(wb,park){
       const qty=g.trees?(g.trees+' '+g.unit):(g.m2.toFixed(2)+' ㎡');
       const ltx=g.cat+'　'+g.kind+(g.auto.length&&!g.feats.length?'（機械除草と同範囲）':'')+'　'+qty;
       rpPush('配置図',rpSwatch(WID,ox+2,ly+3,12,9,col));
-      rpPush('配置図',rpText(WID,ox+20+ (String(ltx).length*4.2), ly+7,
-        ltx, 8, '000000'));
+      const lw=Math.max(14,String(ltx).length*8*0.82);
+      rpPush('配置図',rpText(WID,ox+20+lw/2, ly+7, ltx, 8, '000000','l'));   // 左寄せ：色見本の右から書く
       ly+=16;
     });
     r+=Math.ceil((groups.length*16+8)/RP_ROWPX)+2;
@@ -3082,18 +3100,20 @@ function rpBuildHaichi(wb,park){
     if(mapURL){
       const ox=RP_PAD, oy=(r-1)*RP_ROWPX+RP_PAD;
       rpPutImage(wb,ws,mapURL,r,box,WID);
+      const NL=[];                                          // 図形の番号（文字どうしが重ならないように置く）
       g.auto.forEach(f=>{                                   // 集草（自動）：除草の範囲を集草の色で
         const col=colorFor(g.cat+g.kind);
         drawFeat(f,ox,oy,col);
-        const c=centroid(f.pts); rpPush('配置図',rpText(WID,ox+c.x*k,oy+c.y*k,maru(figNo(f)),10,rpHex(col)));
+        const c=centroid(f.pts); NL.push({ax:ox+c.x*k,ay:oy+c.y*k,s:maru(figNo(f)),fs:10,col:rpHex(col)});
       });
       g.feats.forEach(f=>{
         drawFeat(f,ox,oy,featColor(f));                     // 画面と同じ配色
         if(f.type!=='tree'){                                // 図形の番号を添えて求積図と対応づける
           const c=(f.pts&&f.pts.length)?centroid(f.pts):f.pt;
-          if(c) rpPush('配置図',rpText(WID,ox+c.x*k,oy+c.y*k,maru(figNo(f)),10,rpHex(featColor(f))));
+          if(c) NL.push({ax:ox+c.x*k,ay:oy+c.y*k,s:maru(figNo(f)),fs:10,col:rpHex(featColor(f))});
         }
       });
+      rpPlaceTexts('配置図',WID,NL,{l:ox+2,t:oy+2,r:ox+box.w-2,b:oy+box.h-2});
       r+=Math.ceil(box.h/RP_ROWPX)+1;
     }
     r+=2;
