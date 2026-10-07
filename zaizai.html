@@ -237,6 +237,18 @@
   .crop-foot button.on{background:#e0a52a;border-color:#e0a52a;color:#222}
   .crop-foot button.primary{background:var(--leaf);border-color:var(--leaf)}
 
+  /* 伝票を実物大で見る */
+  .slip-item img{cursor:zoom-in}
+  .sv{position:fixed;inset:0;z-index:85;background:#000;display:flex;flex-direction:column}
+  .sv[hidden]{display:none}
+  .sv-head{display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top));color:#fff}
+  .sv-head .t{flex:1;min-width:0;font-size:14px;font-weight:700;line-height:1.35}
+  .sv-head .t small{display:block;font-size:12px;font-weight:400;opacity:.7}
+  .sv-head button{flex:0 0 auto;height:42px;padding:0 14px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}
+  .sv-body{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:8px;text-align:center}
+  .sv-body img{max-width:100%;height:auto;display:inline-block;background:#fff;vertical-align:top}
+  .sv-body.zoom img{max-width:none}
+
   /* 伝票からの仮入力 */
   .ai-fill{outline:2px solid #e0a52a !important;outline-offset:1px;background:#fff8e6 !important}
   .pick.ai-fill{border-radius:10px;padding:4px}
@@ -481,6 +493,12 @@
       <button id="pdfSave" class="primary" style="display:none">保存する</button>
     </div>
   </div>
+</div>
+
+<div class="sv" id="slipView" hidden>
+  <div class="sv-head"><div class="t">伝票<small id="svInfo"></small></div>
+    <button type="button" id="svZoom">🔍 拡大</button><button type="button" id="svClose">閉じる</button></div>
+  <div class="sv-body" id="svBody"><img id="svImg" alt="伝票"></div>
 </div>
 
 <div class="crop-modal" id="cropModal" hidden>
@@ -828,8 +846,8 @@ function resetForm(){ editDenpyo=null; editKey=null; slipEdit=[]; renderSlips();
 /* ===== 処分伝票（スキャン・写真の添付） ===== */
 const slipReady=()=>SLIP_GAS_URL.indexOf('PASTE_')!==0;
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const SLIP_MAX=2800;       // 保存するときの長い辺の最大ピクセル（切り取った後の伝票。細かい文字も読める大きさ）
-const SLIP_SRC_MAX=3600;   // 取り込んだ直後に持っておく大きさ（切り取る前。ここで縮めすぎると、切り取った後に文字がつぶれる）
+const SLIP_MAX=3000;       // 保存するときの長い辺の最大ピクセル（切り取った後の伝票。ドット印字の数字も読める大きさ）
+const SLIP_SRC_MAX=4096;   // 1枚だけ取り込んだとき、切り取る前に持っておく大きさ（スマホの写真はほぼそのまま。縮めすぎると切り取った後に文字がつぶれる）
 const SLIP_Q=0.9;          // 保存するときのJPEGの画質
 async function slipGet(params){ const r=await fetchT(SLIP_GAS_URL+'?'+params,30000); return r.json(); }
 async function slipPost(body){ const r=await fetch(SLIP_GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
@@ -850,8 +868,8 @@ function fitCanvas(src,w,h,max){ max=max||SLIP_MAX;
   const c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d');
   x.imageSmoothingQuality='high'; x.fillStyle='#fff'; x.fillRect(0,0,W,H); x.drawImage(cur,0,0,W,H); return c; }
 function shrinkTo(c,max){ return Math.max(c.width,c.height)>max ? fitCanvas(c,c.width,c.height,max) : c; }
-async function imageToCanvas(file){ const url=URL.createObjectURL(file);
-  try{ const img=await loadImg(url); return fitCanvas(img,img.naturalWidth,img.naturalHeight,SLIP_SRC_MAX); } finally{ URL.revokeObjectURL(url); } }
+async function imageToCanvas(file,max){ const url=URL.createObjectURL(file);
+  try{ const img=await loadImg(url); return fitCanvas(img,img.naturalWidth,img.naturalHeight,max||SLIP_SRC_MAX); } finally{ URL.revokeObjectURL(url); } }
 let pdfjsP=null;
 function loadPdfjs(){ if(pdfjsP) return pdfjsP;
   pdfjsP=new Promise((ok,ng)=>{ const s=document.createElement('script');
@@ -870,9 +888,8 @@ async function pdfToCanvases(file){ const lib=await loadPdfjs();
 function rotCanvas(c,rot){ rot=((rot%360)+360)%360; if(!rot) return c; const o=document.createElement('canvas'); const sw=rot%180!==0;
   o.width=sw?c.height:c.width; o.height=sw?c.width:c.height; const x=o.getContext('2d');
   x.translate(o.width/2,o.height/2); x.rotate(rot*Math.PI/180); x.drawImage(c,-c.width/2,-c.height/2); return o; }
-function thumbOf(c,rot){ const r=rotCanvas(c,rot); const s=260/Math.max(r.width,r.height); const t=document.createElement('canvas');
-  t.width=Math.max(1,Math.round(r.width*s)); t.height=Math.max(1,Math.round(r.height*s)); t.getContext('2d').drawImage(r,0,0,t.width,t.height);
-  return t.toDataURL('image/jpeg',.75); }
+function thumbOf(c,rot){ const r=rotCanvas(c,rot), t=fitCanvas(r,r.width,r.height,640);   // 一覧の見本（タップすると実物大を出す）
+  return t.toDataURL('image/jpeg',.85); }
 async function addSlipFiles(files){
   if(!files||!files.length) return;
   toast('伝票を読み込んでいます…');
@@ -880,7 +897,7 @@ async function addSlipFiles(files){
   for(const f of files){
     try{
       if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){ (await pdfToCanvases(f)).forEach(c=>slipEdit.push({canvas:c,rot:0,thumb:thumbOf(c,0)})); }
-      else { const c=await imageToCanvas(f); slipEdit.push({canvas:c,rot:0,thumb:thumbOf(c,0)}); }
+      else { const c=await imageToCanvas(f, files.length===1?SLIP_SRC_MAX:SLIP_MAX); slipEdit.push({canvas:c,rot:0,thumb:thumbOf(c,0)}); }
     }catch(e){ bad++; }
   }
   renderSlips(); if(bad) toast('読み込めないファイルがありました（'+bad+'件）',true);
@@ -897,28 +914,80 @@ function renderSlips(){
     </div>`).join('');
   g.querySelectorAll('.slip-item').forEach(el=>{ const s=slipEdit[+el.dataset.i];
     const cr=el.querySelector('[data-crop]'); if(cr) cr.onclick=()=>openCrop(+el.dataset.i);
+    const im=el.querySelector('img'); if(im) im.onclick=()=>openSlipView(+el.dataset.i);
     const r=el.querySelector('[data-rot]'); if(r) r.onclick=()=>{ s.rot=(s.rot+90)%360; s.thumb=thumbOf(s.canvas,s.rot); renderSlips(); };
     el.querySelector('[data-del]').onclick=()=>{ if(s.id){ if(!confirm('この伝票を外します（記録するときに削除されます）。よろしいですか？')) return; s.removed=true; }
       else slipEdit.splice(+el.dataset.i,1); renderSlips(); };
   });
 }
+/* ===== 伝票を実物大で見る（保存される画像そのもの） ===== */
+const SV_Z=[1,2,4]; let svZoom=0;
+function applySvZoom(){ const body=$('#svBody'), img=$('#svImg'), f=SV_Z[svZoom];
+  body.classList.toggle('zoom',f>1); img.style.width = f>1 ? Math.round((body.clientWidth-16)*f)+'px' : '';
+  $('#svZoom').textContent = f>1 ? '🔍 '+f+'倍' : '🔍 拡大'; }
+async function openSlipView(i){
+  const s=slipEdit[i]; if(!s) return; let url,w,h;
+  try{
+    if(s.canvas){ const c=shrinkTo(rotCanvas(s.canvas,s.rot),SLIP_MAX); w=c.width; h=c.height; url=c.toDataURL('image/jpeg',SLIP_Q); }
+    else { toast('伝票を読み込んでいます…'); const d=await getSlipData(s.id); url='data:'+d.mime+';base64,'+d.data;
+      const im=await loadImg(url); w=im.naturalWidth; h=im.naturalHeight; }
+  }catch(e){ toast('伝票を開けませんでした。電波を確認してください',true); return; }
+  $('#svInfo').textContent=(s.canvas?'このまま保存されます':'保存されている画像')+'（'+w+'×'+h+'）';
+  svZoom=0; $('#svImg').src=url; $('#slipView').hidden=false; document.body.style.overflow='hidden'; applySvZoom(); $('#svBody').scrollTo(0,0);
+}
+$('#svZoom').onclick=()=>{ svZoom=(svZoom+1)%SV_Z.length; applySvZoom(); };
+$('#svClose').onclick=()=>{ $('#slipView').hidden=true; document.body.style.overflow=''; $('#svImg').removeAttribute('src'); };
+
 /* ===== 伝票のトリミング（必要なところだけ切り取る） ===== */
 const crop={i:-1,base:null,src:null,box:null,drag:null,after:null,enh:false};
 try{ crop.enh=localStorage.getItem('zaizai_crop_enh')==='1'; }catch(e){}
-/* 「くっきり」：うすい伝票（感圧紙・カーボン）の文字を濃くする。白黒にして、紙の白と文字の黒の幅を広げる */
+/* 「くっきり」：スキャナのように仕上げる。
+   ①細かいざらつきを軽くならす → ②場所ごとの紙の明るさ（影・四隅の暗さ）を見つけて割り戻し、紙を白くそろえる
+   → ③文字だけを濃くする。白黒にして、紙のざらつきは白に飛ばす */
 function enhanceDoc(c){
-  const o=document.createElement('canvas'); o.width=c.width; o.height=c.height; const x=o.getContext('2d');
-  x.drawImage(c,0,0); const im=x.getImageData(0,0,o.width,o.height), d=im.data, n=d.length/4;
-  const hist=new Uint32Array(256), L=new Uint8ClampedArray(n);
-  for(let i=0,j=0;j<n;i+=4,j++){ const v=(d[i]*299+d[i+1]*587+d[i+2]*114)/1000|0; L[j]=v; hist[v]++; }
-  const pct=q=>{ let a=0,t=n*q; for(let v=0;v<256;v++){ a+=hist[v]; if(a>=t) return v; } return 255; };
-  const lo=pct(0.01), hi=Math.max(lo+40,pct(0.90));   // 下1%＝いちばん濃い文字、上10%より上＝紙の白
-  const lut=new Uint8ClampedArray(256);
-  for(let v=0;v<256;v++){ const t=Math.min(1,Math.max(0,(v-lo)/(hi-lo))); lut[v]=Math.round(255*Math.pow(t,1.35)); }   // 中間を少し濃く（文字を太く見せる）
-  for(let i=0,j=0;j<n;i+=4,j++){ const v=lut[L[j]]; d[i]=d[i+1]=d[i+2]=v; d[i+3]=255; }
+  const W=c.width,H=c.height,n=W*H;
+  const o=document.createElement('canvas'); o.width=W; o.height=H; const x=o.getContext('2d');
+  x.drawImage(c,0,0); const im=x.getImageData(0,0,W,H), d=im.data;
+  const L=new Uint8ClampedArray(n);
+  for(let i=0,j=0;j<n;i+=4,j++) L[j]=(d[i]*77+d[i+1]*150+d[i+2]*29)>>8;
+  // ① 3×3 でならす（横→縦）
+  const T=new Uint16Array(n), S=new Uint8ClampedArray(n);
+  for(let y=0;y<H;y++){ const r=y*W; for(let xx=0;xx<W;xx++){ const a=xx>0?xx-1:0, b=xx<W-1?xx+1:W-1; T[r+xx]=L[r+a]+L[r+xx]+L[r+b]; } }
+  for(let y=0;y<H;y++){ const u=(y>0?y-1:0)*W, v=y*W, w=(y<H-1?y+1:H-1)*W; for(let xx=0;xx<W;xx++) S[v+xx]=(T[u+xx]+T[v+xx]+T[w+xx])/9; }
+  // ② 紙の明るさの地図：小さいマスごとの明るいところ → まわりにひろげて文字を消す → ならす
+  const B=Math.max(12,Math.round(Math.min(W,H)/36)), bw=Math.ceil(W/B), bh=Math.ceil(H/B);
+  let g=new Float32Array(bw*bh);
+  for(let by=0;by<bh;by++) for(let bx=0;bx<bw;bx++){
+    let m=0; const y1=Math.min(H,(by+1)*B), x1=Math.min(W,(bx+1)*B);
+    for(let y=by*B;y<y1;y+=2){ const r=y*W; for(let xx=bx*B;xx<x1;xx+=2){ const v=S[r+xx]; if(v>m) m=v; } }
+    g[by*bw+bx]=m; }
+  const pass=(src,fn)=>{ const out=new Float32Array(bw*bh);
+    for(let by=0;by<bh;by++) for(let bx=0;bx<bw;bx++){ let acc=fn===1?0:-1,cnt=0;
+      for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const yy=by+dy, xq=bx+dx; if(yy<0||xq<0||yy>=bh||xq>=bw) continue;
+        const v=src[yy*bw+xq]; if(fn===1){ acc+=v; cnt++; } else if(v>acc) acc=v; }
+      out[by*bw+bx]=fn===1?acc/cnt:acc; } return out; };
+  g=pass(g,0); g=pass(g,0); g=pass(g,1); g=pass(g,1);
+  // 割り戻し（マスの真ん中どうしを線でつないで、なめらかに）
+  const N=new Uint8ClampedArray(n), hist=new Uint32Array(256);
+  for(let y=0;y<H;y++){ let fy=(y+0.5)/B-0.5; if(fy<0)fy=0; let y0=fy|0; if(y0>bh-2)y0=Math.max(0,bh-2); const ty=Math.min(1,fy-y0), y1=Math.min(bh-1,y0+1);
+    for(let xx=0;xx<W;xx++){ let fx=(xx+0.5)/B-0.5; if(fx<0)fx=0; let x0=fx|0; if(x0>bw-2)x0=Math.max(0,bw-2); const tx=Math.min(1,fx-x0), x1=Math.min(bw-1,x0+1);
+      const bg=(g[y0*bw+x0]*(1-tx)+g[y0*bw+x1]*tx)*(1-ty)+(g[y1*bw+x0]*(1-tx)+g[y1*bw+x1]*tx)*ty;
+      const v=Math.min(255,S[y*W+xx]*255/Math.max(40,bg)); N[y*W+xx]=v; hist[v|0]++; } }
+  // ③ 濃さ：いちばん濃い文字を黒、紙（白に近いところ）は白へ。中間はやや濃く
+  let acc=0,lo=-1,mid=255; for(let v=0;v<256;v++){ acc+=hist[v]; if(lo<0&&acc>=n*0.004) lo=v; if(acc>=n*0.5){ mid=v; break; } }
+  if(lo<0) lo=0;
+  // 紙の明るさ（半分以上は紙）から少し下を白の境目に → 紙のざらつき・薄い影は白に飛ぶ
+  const hi=Math.min(238,Math.max(lo+60,mid-30)), lut=new Uint8ClampedArray(256);
+  for(let v=0;v<256;v++){ const t=Math.min(1,Math.max(0,(v-lo)/(hi-lo))); lut[v]=Math.round(255*Math.pow(t,1.8)); }
+  for(let j=0;j<n;j++) L[j]=lut[N[j]];
+  // ④ 文字を少し太らせる（点で打った数字の点どうしをつなげて読みやすく）
+  for(let y=0,j=0,i=0;y<H;y++) for(let xx=0;xx<W;xx++,j++,i+=4){
+    let m=L[j]; const l=xx>0?L[j-1]:255, r=xx<W-1?L[j+1]:255, u=y>0?L[j-W]:255, w=y<H-1?L[j+W]:255;
+    const k=Math.min(l,r,u,w); if(k<m) m=(m+k*3)>>2;
+    d[i]=d[i+1]=d[i+2]=m; d[i+3]=255; }
   x.putImageData(im,0,0); return o;
 }
-function cropApplyEnh(){ crop.src=crop.enh?enhanceDoc(crop.base):crop.base;
+function cropApplyEnh(){ crop.src=crop.enh?enhanceDoc(shrinkTo(crop.base,1400)):crop.base;   // 画面の見本だけ。切り取りは元の画像から
   const b=$('#cropEnh'); if(b) b.classList.toggle('on',crop.enh); }
 function finishCrop(){ const fn=crop.after; crop.after=null; if(fn) fn(); }   // 切り取り画面を閉じた後にすること（伝票の読み取り）
 const CROP_MIN=40;   // 枠の最小（画面px）
@@ -983,8 +1052,8 @@ $('#cropOk').onclick=()=>{
   const sw=Math.max(1,Math.min(B.width-sx,Math.round(b.w*k))), sh=Math.max(1,Math.min(B.height-sy,Math.round(b.h*k)));
   let out=document.createElement('canvas'); out.width=sw; out.height=sh;
   const x=out.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,sw,sh); x.drawImage(crop.base,sx,sy,sw,sh,0,0,sw,sh);
-  if(crop.enh) out=enhanceDoc(out);   // くっきりは切り取った範囲だけで濃さを決める（机などの写り込みに引っぱられない）
-  const kept=shrinkTo(out,SLIP_MAX);
+  let kept=shrinkTo(out,SLIP_MAX);
+  if(crop.enh) kept=enhanceDoc(kept);   // くっきりは切り取った範囲だけで決める（机などの写り込みに引っぱられない）
   const fresh={canvas:kept,rot:0,thumb:thumbOf(kept,0)};
   if(s.canvas){ slipEdit[crop.i]=fresh; }                       // まだ送っていない伝票：そのまま置きかえ
   else { s.removed=true; slipEdit.splice(crop.i+1,0,fresh); }   // 送った伝票：切り取った画像に差しかえ（記録するときに入れかわる）
