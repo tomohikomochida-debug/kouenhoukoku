@@ -99,6 +99,12 @@ dl.facts dd{margin:0}
 .route .grow{flex:1;min-width:0}
 .route .to{font-size:12px;font-weight:700;color:var(--bark)}
 .route .what{font-weight:700;font-size:15px}
+.route .acts{display:flex;flex-direction:column;gap:6px;align-items:stretch;flex:none}
+.route .mini{border:1px solid var(--line);background:var(--field);border-radius:8px;font:inherit;font-size:12.5px;padding:3px 8px;cursor:pointer;color:var(--ink)}
+.r-add{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.fl{display:block;font-size:13px;font-weight:700;color:var(--bark);margin:12px 0 4px}
+.modal input[type=date]{font:inherit;font-size:16px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink);width:100%}
+.modal textarea.sm{min-height:76px}
 .route .sub{font-size:13px;color:var(--bark)}
 .route .btn{flex:none}
 .route.done .btn{background:var(--leaf-soft);color:var(--leaf);border-color:var(--leaf-soft)}
@@ -509,7 +515,8 @@ function renderResult(noScroll) {
     (r.words.length ? '<div class="sec">言葉の言い換え（押すと意味）</div><div>' + r.words.map(w => '<button type="button" class="word" data-term="' + esc(w.term) + '"><s>' + esc(w.said) + '</s> → <b>' + esc(w.term) + '</b></button>').join('') + '</div>' : '') +
     (r.corrections.length ? '<div class="fix">聞き間違いを直しました：' + esc(r.corrections.join('、')) + '</div>' : '') +
     '</div>') +
-    (r.routes.length ? '<div class="card"><div class="sec" style="margin-top:0">行き先ごとに入れる（押したものだけ入ります）</div>' + r.routes.map(routeRow).join('') + '</div>' : '') +
+    '<div class="card"><div class="sec" style="margin-top:0">行き先ごとに入れる（押したものだけ入ります）</div>' + (r.routes.length ? r.routes.map(routeRow).join('') : '<p class="hint">段取りや買い出しに入れるものは見つかりませんでした。必要なら下から足せます。</p>') +
+    '<div class="r-add"><button type="button" class="mini" data-radd="plan">＋ 段取りカード</button><button type="button" class="mini" data-radd="shop">＋ 買い出し</button>' + (isAdmin() ? '<button type="button" class="mini" data-radd="calendar">＋ カレンダー</button>' : '') + '</div></div>' +
     '<div class="card"><div class="sec" style="display:flex;align-items:center">送る文（直してから送れます）<button type="button" class="btn sm" id="remakeBtn" style="margin-left:auto;font-weight:400">↻ 作り直す</button></div><textarea class="msg" id="msg">' + esc(r.message) + '</textarea>' +
     '<div class="row2" style="margin-top:10px"><button class="btn" type="button" id="copyBtn">コピー</button><button class="btn ok" type="button" id="shareBtn" style="flex:2">LINEで送る</button></div>' +
     '<p class="hint" id="saveHint">' + (r.to === '自分用メモ' ? '送ると、自分の記録にも自動で残ります' : '送ると、記録にも自動で残ります（' + (r.to === '親方へ' ? '親方' : 'みんな') + 'がアプリで見られます）') + '</p>' +
@@ -581,7 +588,62 @@ function routeRow(x, i) {
   const L = routeLine(x);
   return '<div class="route' + (x.done ? ' done' : '') + '"><span class="ic">' + L.ic + '</span><div class="grow"><div class="to">' + L.to + '</div><div class="what">' + esc(L.what) + '</div><div class="sub">' + esc(L.sub) + '</div></div>' +
     (x.type === 'calendar' && !x.done ? '<input type="date" class="rdate" data-rdate="' + i + '" value="' + esc(x.date || '') + '" aria-label="日付">' : '') +
-    '<button type="button" class="btn sm' + (x.done ? '' : ' primary') + '" data-route="' + i + '"' + (x.done ? ' disabled' : '') + '>' + (x.done ? '✓ 入れました' : routeVerb(x)) + '</button></div>';
+    '<div class="acts"><button type="button" class="btn sm' + (x.done ? '' : ' primary') + '" data-route="' + i + '"' + (x.done ? ' disabled' : '') + '>' + (x.done ? '✓ 入れました' : routeVerb(x)) + '</button>' +
+    (x.done ? (x.type !== 'calendar' ? '<a class="mini" style="text-align:center;text-decoration:none" href="dandori.html">段取りで直す</a>' : '') : '<button type="button" class="mini" data-redit="' + i + '">✏️ 直す</button>') + '</div></div>';
+}
+/* 行き先ごとのカードを、入れる前に直す・足す */
+const itemsText = items => (items || []).map(it => it.name + (it.qty ? ' ' + it.qty + (it.unit || '') : '')).join('\n');
+function parseItems(text) {
+  return String(text || '').split(/\n|、|，|,/).map(l => l.trim().normalize('NFKC')).filter(Boolean).map(l => {
+    const m = l.match(/^(.+?)\s*[×x*]?\s*(\d+(?:\.\d+)?)\s*(本|個|束|枚|台|袋|丁|足|株|m|メートル|つ|kg|キロ|箱|巻|缶|L|リットル)?$/);
+    if (!m) return { name: l, qty: '', unit: '' };
+    const w = matchWord(m[1].trim(), toolWords(true)), t = w && termById(w.termId);
+    return { name: t ? t.term : m[1].trim(), qty: Number(m[2]), unit: m[3] || '' };
+  });
+}
+const lines = t => String(t || '').split('\n').map(x => x.trim()).filter(Boolean);
+const names = t => String(t || '').split(/[、,，・\s]+/).map(x => x.trim()).filter(Boolean);
+function openRouteEdit(i, newType) {
+  const isNew = i < 0, x = isNew ? { type: newType, items: [], steps: [], notes: [], members: [], date: '' } : RESULT.routes[i];
+  if (!x) return;
+  const dl = (id, list) => '<datalist id="' + id + '">' + list.filter(Boolean).map(v => '<option value="' + esc(v) + '">').join('') + '</datalist>';
+  const head = { plan: '🗓 段取りカード', shop: '🛒 買い出し', calendar: '📅 カレンダー' }[x.type];
+  let body = '';
+  if (x.type === 'plan') body =
+    '<label class="fl">現場（現場の作業でなければ空のまま）</label><input type="text" id="reSite" list="reSites" value="' + esc(x.site || '') + '" placeholder="現場名">' +
+    '<label class="fl">現場でないときの件名</label><input type="text" id="reTitle" value="' + esc(x.title || '') + '" placeholder="例：ブロワー修理に出す">' +
+    '<label class="fl">日にち</label><input type="date" id="reDate" value="' + esc(x.date || '') + '"><input type="text" id="reDateNote" value="' + esc(x.dateNote || '') + '" placeholder="日が決まっていなければ：来週中 など" style="margin-top:6px">' +
+    '<label class="fl">やること（1行に1つ）</label><textarea class="sm" id="reSteps">' + esc((x.steps || []).join('\n')) + '</textarea>' +
+    '<label class="fl">人（「、」で区切る）</label><input type="text" id="reMembers" list="reStaff" value="' + esc((x.members || []).join('、')) + '">' +
+    '<label class="fl">持ち物（1行に1つ。数は後ろに：例「土嚢袋 10袋」）</label><textarea class="sm" id="reItems">' + esc(itemsText(x.items)) + '</textarea>' +
+    '<label class="fl">メモ（1行に1つ）</label><textarea class="sm" id="reNotes">' + esc((x.notes || []).join('\n')) + '</textarea>';
+  else if (x.type === 'shop') body =
+    '<label class="fl">お店（決まっていなければ空のまま）</label><input type="text" id="rePlace" list="reShops" value="' + esc(x.place || '') + '" placeholder="例：コメリ">' +
+    '<label class="fl">いつまでに</label><input type="date" id="reDate" value="' + esc(x.date || '') + '">' +
+    '<label class="fl">買う物（1行に1つ。数は後ろに：例「スターターロープ 2本」）</label><textarea id="reItems">' + esc(itemsText(x.items)) + '</textarea>';
+  else body =
+    '<label class="fl">種類</label><input type="text" id="reKind" list="reKinds" value="' + esc(x.kind || '') + '" placeholder="例：時期の約束・見積期限">' +
+    '<label class="fl">件名</label><input type="text" id="reTitle" value="' + esc(x.title || '') + '" placeholder="例：○○邸 剪定">' +
+    '<label class="fl">日にち</label><input type="date" id="reDate" value="' + esc(x.date || '') + '">' +
+    '<label class="fl">メモ</label><input type="text" id="reNote" value="' + esc(x.note || '') + '">';
+  openModal('<h3>' + head + (isNew ? 'を足す' : 'を直す') + '</h3>' + body +
+    dl('reSites', SITES) + dl('reStaff', STAFF) + dl('reShops', SUP.map(s => s.name)) + dl('reKinds', ['時期の約束', '見積期限', '期限']) +
+    '<div class="row2" style="margin-top:16px">' + (isNew ? '' : '<button class="btn danger" data-act="del">この行を消す</button>') + '<button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="ok">' + (isNew ? '足す' : '直す') + '</button></div>',
+    e => {
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      if (b.dataset.act === 'cancel') return closeModal();
+      if (b.dataset.act === 'del') { if (!confirm('この行を消しますか？')) return; RESULT.routes.splice(i, 1); closeModal(); renderResult(true); return toast('消しました'); }
+      const v = id => ($(id) ? $(id).value.trim() : '');
+      const y = Object.assign({}, x);
+      if (x.type === 'plan') Object.assign(y, { site: v('reSite'), title: v('reTitle'), date: v('reDate'), dateNote: v('reDateNote'), steps: lines(v('reSteps')), members: names(v('reMembers')), items: parseItems(v('reItems')), notes: lines(v('reNotes')) });
+      else if (x.type === 'shop') Object.assign(y, { place: v('rePlace'), date: v('reDate'), items: parseItems(v('reItems')) });
+      else Object.assign(y, { kind: v('reKind'), title: v('reTitle'), date: v('reDate'), note: v('reNote'), whenText: x.date === v('reDate') ? x.whenText : '' });
+      if (y.type === 'plan' && !y.site && !y.title && !y.steps.length) return toast('現場か件名か、やることを入れてください');
+      if (y.type === 'shop' && !y.items.length) return toast('買う物を入れてください');
+      if (y.type === 'calendar' && !y.title) return toast('件名を入れてください');
+      if (isNew) RESULT.routes.push(y); else RESULT.routes[i] = y;
+      closeModal(); renderResult(true); toast(isNew ? '足しました。「' + routeVerb(y) + '」を押すと入ります' : '直しました');
+    });
 }
 function routeVerb(x) { return x.type === 'shop' ? '買い出しに入れる' : x.type === 'calendar' ? 'カレンダーに入れる' : '段取りカードにする'; }
 function routeDateChanged(el) {
@@ -991,6 +1053,8 @@ $('result').addEventListener('click', e => {
   const ed = e.target.closest('[data-ed-del]'); if (ed) { ed.closest('.ed-row').remove(); return; }
   const et = e.target.closest('[data-ed-act]'); if (et) return finishEdit(et.dataset.edAct === 'ok');
   const rt = e.target.closest('[data-route]'); if (rt) return doRoute(Number(rt.dataset.route), rt);
+  const re = e.target.closest('[data-redit]'); if (re) return openRouteEdit(Number(re.dataset.redit));
+  const ra = e.target.closest('[data-radd]'); if (ra) return openRouteEdit(-1, ra.dataset.radd);
 });
 $('result').addEventListener('change', e => {
   const d = e.target.closest('[data-rdate]'); if (d) routeDateChanged(d);
