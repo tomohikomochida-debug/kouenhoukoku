@@ -131,7 +131,7 @@ dl.info dd{margin:0;min-width:0;overflow-wrap:anywhere}
 // 現場アプリGAS（段取り・道具管理・要点まとめ・現場ノートなどで共通の1本）
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';   // 名簿
-const LS = { me: 'dandori_me', cache: 'note_cache', kind: 'note_kind', layer: 'note_layer' };
+const LS = { me: 'dandori_me', cache: 'note_cache', kind: 'note_kind', layer: 'note_layer2' };   // 地図の種類（最初は航空写真）
 const NET_ERR = '電波を確認して、もう一度お試しください';
 const KINDS = ['マンション', '公共', '法人', '個人', '寺院', 'その他'];
 const CAUTION_KINDS = ['危険', '駐車', '搬入', '近隣', 'お客さんの要望', '設備・埋設物', 'その他'];
@@ -264,7 +264,7 @@ const y2lat = (y, z) => { const n = Math.PI - 2 * Math.PI * y / WS(z); return 18
 class TileMap {
   constructor(el, o) {
     this.el = el; this.lat = o.lat; this.lng = o.lng; this.z = Math.max(5, Math.min(18, o.z || 17)); this.pins = o.pins || []; this.site = o.site || null; this.me = null;
-    this.onPin = o.onPin; this.onMove = o.onMove; this.layer = lsGet(LS.layer, 'std');
+    this.onPin = o.onPin; this.onMove = o.onMove; this.layer = lsGet(LS.layer, 'photo');   // 最初は航空写真。「地図」ボタンで普通の地図に切り替え
     el.className = 'tmap' + (o.tall ? ' tall' : '');
     el.innerHTML = '<div class="layer"></div>' + (o.cross ? '<div class="cross"><span></span></div>' : '') +
       '<div class="ctl"><button type="button" data-z="1" aria-label="大きく">＋</button><button type="button" data-z="-1" aria-label="小さく">－</button><button type="button" class="txt" data-layer>' + (this.layer === 'std' ? '写真' : '地図') + '</button><button type="button" data-gps aria-label="現在地">📍</button></div><div class="credit">地理院タイル</div>';
