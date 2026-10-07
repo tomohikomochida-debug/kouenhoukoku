@@ -389,6 +389,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <div id="genzaiStat" style="display:none;font-size:12px;margin-top:6px;padding:6px 8px;border-radius:8px;background:rgba(227,179,65,.12);color:#e3b341"></div>
       <div id="genzaiList" style="display:none;margin-top:6px"></div>
       <div class="legend" style="font-size:11px;color:var(--mut);margin-top:4px">複数の公園をまとめて処分した回は、発生材を付ける1つの公園だけチェックを入れ、ほかの公園はチェックを外してください。</div>
+      <button class="btn ghost" id="genzaiSlipPdf" style="margin-top:8px">🖨 この発生材の処分伝票をA4にまとめる<small>使った処分記録の伝票を、A4に4枚（2×2）並べたPDFにします</small></button>
       <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
       <h3 style="margin:0 0 6px">クラウド</h3>
       <button class="btn ghost" id="cloudCfg">クラウドの確認<small>みんなの共有（Googleドライブ）につながるか・前のクラウドから移す</small></button>
@@ -3722,6 +3723,39 @@ $('rpGenzaiNote').addEventListener('input',()=>{ $('rpGenzaiNote').dataset.auto=
 // 設定を開いたとき、数量が空なら自動で探して仮置きする
 $('cfgBtn').addEventListener('click',()=>{
   if($('rpGenzaiOn').checked && !$('rpGenzaiQty').value && ($('parkName').value||'').trim()) genzaiFetch(true);
+});
+// 使った処分記録の伝票を、残材処分アプリでA4（2×2）のPDFにする
+$('genzaiSlipPdf').onclick=()=>{
+  const keys=[...new Set((genzaiSrc||[]).map(s=>s.k).filter(Boolean))];
+  if(!keys.length){ alert('まだ残材処分の記録を選んでいません。\n先に「残材処分の記録から数量を取る」で、使う記録にチェックを入れてください。'); return; }
+  window.open('zaizai.html?pdf='+encodeURIComponent(keys.join(','))+'&from='+encodeURIComponent(($('parkName').value||'').trim()),'_blank');
+};
+
+/* ---------- 公園名・委託名を、日報の現場マスタ（公共）から選べるようにする ----------
+   残材処分・日報と同じ名前になるので、発生材の記録が名前ちがいで見つからないことが減る。手入力もそのままできる。 */
+const PK_MASTERS_URL='https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec?action=masters';
+let pkParks=[];   // [{park, contract}]
+function pkFill(siteGroups){
+  const g=(siteGroups||{})['公共']; if(!g||Array.isArray(g)) return;
+  pkParks=[]; Object.keys(g).forEach(c=>(g[c]||[]).forEach(p=>pkParks.push({park:p,contract:c})));
+  const esc2=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  let dp=document.getElementById('dlParks'), dc=document.getElementById('dlContracts');
+  if(!dp){ dp=document.createElement('datalist'); dp.id='dlParks'; document.body.appendChild(dp); }
+  if(!dc){ dc=document.createElement('datalist'); dc.id='dlContracts'; document.body.appendChild(dc); }
+  dp.innerHTML=pkParks.map(x=>`<option value="${esc2(x.park)}">${esc2(x.contract)}</option>`).join('');
+  dc.innerHTML=Object.keys(g).map(c=>`<option value="${esc2(c)}"></option>`).join('');
+  $('parkName').setAttribute('list','dlParks'); $('contractName').setAttribute('list','dlContracts');
+}
+try{ const m=JSON.parse(localStorage.getItem('nippou_masters')||'null'); if(m&&m.siteGroups) pkFill(m.siteGroups); }catch(e){}
+fetch(PK_MASTERS_URL).then(r=>r.json()).then(m=>{ if(m&&m.siteGroups){ pkFill(m.siteGroups);
+  try{ const old=JSON.parse(localStorage.getItem('nippou_masters')||'null')||{}; localStorage.setItem('nippou_masters',JSON.stringify({staff:m.staff||old.staff||[],siteGroups:m.siteGroups})); }catch(e){} } }).catch(()=>{});
+// 新しい画面の公園名欄にも同じ候補を出す
+document.addEventListener('focusin',e=>{ if(e.target&&e.target.id==='nuPark'&&pkParks.length) e.target.setAttribute('list','dlParks'); });
+// 一覧にある公園を選んだら、委託名が空なら入れる
+$('parkName').addEventListener('change',()=>{
+  const p=($('parkName').value||'').trim(), c=$('contractName'); if(!p||!c||c.value.trim()) return;
+  const hit=pkParks.filter(x=>x.park===p); const cs=[...new Set(hit.map(x=>x.contract))];
+  if(cs.length===1){ c.value=cs[0]; c.dispatchEvent(new Event('input',{bubbles:true})); c.dispatchEvent(new Event('change',{bubbles:true})); }
 });
 // 選んだ画像を、わくの縦横比に合わせて白地の中央に置き直す（つぶれ防止）。印刷用に3倍解像度。
 function rpFitMap(dataURL){
