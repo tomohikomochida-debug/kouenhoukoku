@@ -296,7 +296,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     <div class="casebar2">
       <span class="muted" id="capText"></span>
       <span style="flex:1"></span>
-      <button class="iconbtn" id="lightBtn" onclick="lightenPhotos()">写真を軽く</button>
+      <button class="iconbtn" id="lightBtn" onclick="capBox(true)">容量</button>
       <button class="iconbtn" onclick="backupAll()">バックアップ</button>
       <button class="iconbtn" onclick="document.getElementById('impAll').click()">復元</button>
       <input id="impAll" type="file" accept="application/json" style="display:none" onchange="restoreAll(event)">
@@ -2939,11 +2939,71 @@ function rowUp(){ if(reIdx<0) return; reIdx=-1; window.removeEventListener("poin
 function moveCard(from,to){ if(to<0||to>=state.trees.length||from===to) return; pushUndo("reorder"); const x=state.trees.splice(from,1)[0]; state.trees.splice(to,0,x); markDirty(); renderTrees(); renderMap(); }
 
 /* IndexedDB */
-function idb(){ return new Promise((res,rej)=>{ const r=indexedDB.open("genbaDB",1);
+const DB_NAME="genbaDB", DB_TMP="genbaDB_tmp";
+let _db=null, dbBusy=null;   // dbBusy：片付けの最中（ほかの保存は終わるまで待つ）
+function idbOpen(name){ return new Promise((res,rej)=>{ const r=indexedDB.open(name,1);
   r.onupgradeneeded=()=>r.result.createObjectStore("kv"); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
-async function idbSet(k,v){ const db=await idb(); return new Promise((res,rej)=>{ const t=db.transaction("kv","readwrite"); t.objectStore("kv").put(v,k); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }
-async function idbGet(k){ const db=await idb(); return new Promise((res,rej)=>{ const t=db.transaction("kv","readonly"); const q=t.objectStore("kv").get(k); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); }
-async function idbDel(k){ const db=await idb(); return new Promise((res,rej)=>{ const t=db.transaction("kv","readwrite"); t.objectStore("kv").delete(k); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }
+function idb(){ if(dbBusy) return dbBusy.then(()=>idb()); if(_db) return _db;   // つなぎっぱなしにする（毎回つなぐと重い）。切れていたら、つなぎ直す
+  _db=idbOpen(DB_NAME).then(db=>{ db.onversionchange=()=>{ try{ db.close(); }catch(e){} _db=null; }; db.onclose=()=>{ _db=null; }; return db; },e=>{ _db=null; throw e; });
+  return _db; }
+async function idbRun(mode,fn){
+  for(let tryNo=0;;tryNo++){
+    try{ const db=await idb(); return await new Promise((res,rej)=>{ const t=db.transaction("kv",mode); let out; const q=fn(t.objectStore("kv"));
+      if(q) q.onsuccess=()=>{ out=q.result; }; t.oncomplete=()=>res(out); t.onerror=()=>rej(t.error); t.onabort=()=>rej(t.error||new Error("abort")); }); }
+    catch(e){ if(tryNo>=1) throw e; _db=null; }   // iPadでアプリを切りかえると切れることがあるので、1回だけつなぎ直す
+  } }
+async function idbSet(k,v){ return idbRun("readwrite",s=>{ s.put(v,k); }); }
+async function idbGet(k){ return idbRun("readonly",s=>s.get(k)); }
+async function idbDel(k){ return idbRun("readwrite",s=>{ s.delete(k); }); }
+async function idbKeys(range){ return idbRun("readonly",s=>s.getAllKeys(range)); }
+
+/* 写真の置き場：写真は案件の中に文字で持たず、1枚ずつ「ph_番号」に画像のまま置く
+   （文字にすると約3割重くなる。案件には「gcph:番号」だけを書くので、直すたびの保存も軽い。同じ写真は1つだけ） */
+const PH_KEY="ph_", PH_REF="gcph:", PH_RE=/^gcph:[0-9a-f]{16,}$/;
+let phHash=new Map(), phKnown=null, phAdded=new Map();
+function phCyrb(str,seed){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
+  for(let i=0;i<str.length;i++){ const c=str.charCodeAt(i); h1=Math.imul(h1^c,2654435761); h2=Math.imul(h2^c,1597334677); }
+  h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909); h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
+  return (h2>>>0).toString(16).padStart(8,"0")+(h1>>>0).toString(16).padStart(8,"0"); }
+function phHashOf(v,cache){ let h=phHash.get(v); if(!h){ h=phCyrb(v,3)+phCyrb(v,11)+v.length.toString(16); if(cache) phHash.set(v,h); } return h; }
+const isPhotoStr=v=>typeof v==="string"&&v.length>500&&v.startsWith("data:image/");
+function dataUrlToBlob(u){ const i=u.indexOf(","), mime=u.slice(5,u.indexOf(";")), b=atob(u.slice(i+1)), a=new Uint8Array(b.length);
+  for(let k=0;k<b.length;k++) a[k]=b.charCodeAt(k); return new Blob([a],{type:mime}); }
+function blobToDataUrl(b){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsDataURL(b); }); }
+async function phKeys(){ if(!phKnown) phKnown=new Set((await idbKeys(IDBKeyRange.bound(PH_KEY,PH_KEY+"￿"))).map(k=>String(k).slice(PH_KEY.length))); return phKnown; }
+function phRefs(v,out){ out=out||new Set();
+  if(typeof v==="string"){ if(PH_RE.test(v)) out.add(v.slice(PH_REF.length)); }
+  else if(Array.isArray(v)) v.forEach(x=>phRefs(x,out)); else if(v&&typeof v==="object") for(const k in v) phRefs(v[k],out);
+  return out; }
+// 案件を置く（写真は置き場へ、案件には番号だけ）。cur：いま開いている案件（番号の控えを使い回す）
+async function casePut(id,st,cur){
+  const known=await phKeys(), fresh={}, used=cur?new Map():null;
+  const walk=v=>{ if(isPhotoStr(v)){ const h=phHashOf(v,cur); if(used) used.set(v,h); if(!known.has(h)) fresh[h]=v; return PH_REF+h; }
+    if(Array.isArray(v)) return v.map(x=>x===undefined?null:walk(x));
+    if(v&&typeof v==="object"){ const o={}; for(const k in v){ const x=v[k]; if(x!==undefined&&typeof x!=="function") o[k]=walk(x); } return o; }
+    return v; };
+  const sk=walk(st); sk._ph=1;
+  for(const h in fresh){ let val; try{ val=dataUrlToBlob(fresh[h]); }catch(e){ val=fresh[h]; } await idbSet(PH_KEY+h,val); known.add(h); phAdded.set(h,Date.now()); }
+  await idbSet("case_"+id,sk);
+  if(used) phHash=used;   // 控えは、いま開いている案件の写真だけにする（ほかの案件の写真を覚えておかない）
+}
+// 案件を出す（番号を写真に戻す）。古い形（写真が文字のまま）はそのまま返す
+async function caseGet(id,cur){
+  const sk=await idbGet("case_"+id); if(!sk||!sk._ph) return sk;
+  const map={}, miss=[];
+  for(const h of phRefs(sk)){ const b=await idbGet(PH_KEY+h); if(b==null){ miss.push(h); continue; } map[h]=typeof b==="string"?b:await blobToDataUrl(b); }
+  if(cur){ phHash=new Map(); for(const h in map) phHash.set(map[h],h); }
+  const back=v=>{ if(typeof v==="string") return PH_RE.test(v)?(map[v.slice(PH_REF.length)]||""):v;
+    if(Array.isArray(v)) return v.filter(x=>!(typeof x==="string"&&PH_RE.test(x)&&!map[x.slice(PH_REF.length)])).map(back);   // 見つからない写真は並びから外す
+    if(v&&typeof v==="object"){ const o={}; for(const k in v) if(k!=="_ph") o[k]=back(v[k]); return o; } return v; };
+  const st=back(sk); if(miss.length) console.warn("写真が見つかりません",miss.length);
+  return st; }
+// どの案件にも使われていない写真を消す（直前に置いた写真は、案件の保存が終わる前かもしれないので残す）
+async function phCleanup(){
+  const t0=Date.now(), known=await phKeys(), used=new Set();
+  for(const k of await idbKeys(IDBKeyRange.bound("case_","case_￿"))) phRefs(await idbGet(k),used);
+  let n=0; for(const h of [...known]){ if(used.has(h)) continue; const a=phAdded.get(h); if(a&&a>t0-120000) continue; await idbDel(PH_KEY+h); known.delete(h); n++; }
+  return n; }
 function markDirty(){ document.getElementById("saveState").textContent="保存中…";
   clearTimeout(saveTimer); saveTimer=setTimeout(save,500); }
 let caseId=null, casesIndex=[];
@@ -2951,7 +3011,7 @@ function newId(){ return "c"+Date.now()+Math.floor(Math.random()*1000); }
 function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", mapImage:"", mapGeo:null, mapSize:null, mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] }; }
 function touchIndex(){ const meta={id:caseId,name:state.caseName||"(無題)",date:state.caseDate||"",updatedAt:Date.now(),n:(state.trees||[]).length}; const e=casesIndex.find(c=>c.id===caseId); if(e) Object.assign(e,meta); else casesIndex.unshift(meta); }
 async function save(){ try{ if(!caseId) caseId=newId(); touchIndex();
-  await idbSet("case_"+caseId, JSON.parse(JSON.stringify(state))); await idbSet("cases",casesIndex); await idbSet("current",caseId);
+  await casePut(caseId, state, true); await idbSet("cases",casesIndex); await idbSet("current",caseId);
   document.getElementById("saveState").textContent="保存済"; renderCaseBar(); updateStorage();
 }catch(e){ document.getElementById("saveState").textContent="保存失敗"; } }
 function renderCaseBar(){ const sel=document.getElementById("caseSel"); if(!sel) return;
@@ -2959,17 +3019,17 @@ function renderCaseBar(){ const sel=document.getElementById("caseSel"); if(!sel)
   sel.innerHTML=list.map(c=>`<option value="${esc(c.id)}" ${c.id===caseId?"selected":""}>${esc(c.name||"(無題)")}｜${esc(c.date)}（${c.n||0}件）</option>`).join(""); }
 async function updateStorage(){ try{ if(navigator.storage&&navigator.storage.estimate){ const e=await navigator.storage.estimate(); const mb=((e.usage||0)/1048576).toFixed(1); const el=document.getElementById("capText"); if(el) el.textContent="使用容量 "+mb+"MB／案件 "+casesIndex.length+"件"; } }catch(e){} }
 async function newCase(){ await save(); caseId=newId(); state=emptyState(); undoStack=[]; redoStack=[]; normalize(); await save(); syncMode(); renderTrees(); renderMap(); renderCaseBar(); showTab("input"); }
-async function switchCase(id){ if(!id||id===caseId){ return; } await save(); const st=await idbGet("case_"+id); if(!st) return; state=st; caseId=id; undoStack=[]; redoStack=[]; normalize(); await idbSet("current",id); syncMode(); renderTrees(); renderMap(); renderCaseBar(); updUndoBtn(); showTab("input"); }
+async function switchCase(id){ if(!id||id===caseId){ return; } await save(); const st=await caseGet(id,true); if(!st) return; state=st; caseId=id; undoStack=[]; redoStack=[]; normalize(); await idbSet("current",id); syncMode(); renderTrees(); renderMap(); renderCaseBar(); updUndoBtn(); showTab("input"); }
 async function deleteCase(){ if(!caseId||!casesIndex.length) return; if(!confirm("この案件を削除しますか？（元に戻せません）")) return;
   casesIndex=casesIndex.filter(c=>c.id!==caseId); try{ await idbDel("case_"+caseId); }catch(e){}
-  if(casesIndex.length){ caseId=casesIndex[0].id; state=(await idbGet("case_"+caseId))||emptyState(); }
+  if(casesIndex.length){ caseId=casesIndex[0].id; state=(await caseGet(caseId,true))||emptyState(); }
   else { caseId=newId(); state=emptyState(); }
-  undoStack=[]; redoStack=[]; normalize(); await save(); syncMode(); renderTrees(); renderMap(); renderCaseBar(); }
-async function backupAll(){ await save(); const out={version:1,cases:[]}; for(const c of casesIndex){ const st=await idbGet("case_"+c.id); out.cases.push({meta:c,state:st}); }
+  undoStack=[]; redoStack=[]; normalize(); await save(); syncMode(); renderTrees(); renderMap(); renderCaseBar(); setTimeout(()=>phCleanup().then(updateStorage).catch(()=>{}),3000); }
+async function backupAll(){ await save(); const out={version:1,cases:[]}; for(const c of casesIndex){ const st=await caseGet(c.id); out.cases.push({meta:c,state:st}); }
   const blob=new Blob([JSON.stringify(out)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="現場調査_全案件バックアップ_"+new Date().toISOString().slice(0,10)+".json"; a.click(); }
 function restoreAll(ev){ const f=ev.target.files[0]; if(!f) return; const rd=new FileReader();
   rd.onload=async()=>{ try{ const d=JSON.parse(rd.result); if(!d.cases) throw 0;
-    for(const c of d.cases){ const id=(c.meta&&c.meta.id)||newId(); await idbSet("case_"+id,c.state); if(!casesIndex.find(x=>x.id===id)) casesIndex.push(Object.assign({},c.meta,{id})); }
+    for(const c of d.cases){ const id=(c.meta&&c.meta.id)||newId(); await casePut(id,c.state); if(!casesIndex.find(x=>x.id===id)) casesIndex.push(Object.assign({},c.meta,{id})); }
     await idbSet("cases",casesIndex); alert("復元しました（"+d.cases.length+"件）"); renderCaseBar(); updateStorage(); }catch(e){ alert("復元できませんでした"); } };
   rd.readAsText(f); ev.target.value=""; }
 
@@ -2982,6 +3042,91 @@ function shrink(file,max,q){ return new Promise(res=>{ const img=new Image(); co
     const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
     cv.getContext("2d").drawImage(img,0,0,w,h); res(cv.toDataURL("image/jpeg",q||0.72)); }; img.src=rd.result; };
   rd.readAsDataURL(file); }); }
+/* 容量：内訳を見る・まとめて整理する */
+async function storageReport(){
+  const r={cases:0,oldCases:0,caseBytes:0,photos:0,photoBytes:0,usage:null};
+  for(const k of await idbKeys(IDBKeyRange.bound("case_","case_￿"))){ const sk=await idbGet(k); if(!sk) continue; r.cases++;
+    let txt=0; const walk=v=>{ if(isPhotoStr(v)){ r.photoBytes+=v.length*3/4; r.photos++; return; } if(typeof v==="string"){ txt+=v.length*2; return; }
+      if(Array.isArray(v)) v.forEach(walk); else if(v&&typeof v==="object") for(const x in v) walk(v[x]); };
+    walk(sk); r.caseBytes+=txt; if(!sk._ph) r.oldCases++; }
+  for(const k of await idbKeys(IDBKeyRange.bound(PH_KEY,PH_KEY+"￿"))){ const b=await idbGet(k); r.photos++; r.photoBytes+=b==null?0:(typeof b==="string"?b.length*2:b.size); }
+  try{ if(navigator.storage&&navigator.storage.estimate) r.usage=(await navigator.storage.estimate()).usage||0; }catch(e){}
+  return r; }
+// 全部の案件を新しい置き方にして、使っていない写真を消す（画質はそのまま）
+async function convertAll(step){
+  await save();
+  for(let i=0;i<casesIndex.length;i++){ const id=casesIndex[i].id; if(step) step(i+1,casesIndex.length);
+    const sk=await idbGet("case_"+id); if(!sk||sk._ph) continue;
+    await casePut(id,sk,id===caseId); }
+  return phCleanup(); }
+// 空き領域の片付け：中身を別の入れ物へ写して、元の入れ物を作り直す（iPadは消した分の場所をすぐ返さないことがあるため）
+async function rebuildDb(step){
+  const copy=async(from,to,label)=>{ const keys=await new Promise((res,rej)=>{ const q=from.transaction("kv","readonly").objectStore("kv").getAllKeys(); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); });
+    for(let i=0;i<keys.length;i++){ if(step&&i%10===0) step(label,i,keys.length);
+      const v=await new Promise((res,rej)=>{ const q=from.transaction("kv","readonly").objectStore("kv").get(keys[i]); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); });
+      await new Promise((res,rej)=>{ const t=to.transaction("kv","readwrite"); t.objectStore("kv").put(v,keys[i]); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }
+    const n=await new Promise((res,rej)=>{ const q=to.transaction("kv","readonly").objectStore("kv").count(); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); });
+    if(n<keys.length) throw new Error("写しが足りません（"+n+"/"+keys.length+"）"); return n; };
+  const del=name=>new Promise((res,rej)=>{ const r=indexedDB.deleteDatabase(name); r.onsuccess=res; r.onerror=()=>rej(r.error); r.onblocked=()=>{}; });
+  await save(); clearTimeout(saveTimer);
+  const cur=await idb(); await del(DB_TMP).catch(()=>{});
+  let done; dbBusy=new Promise(r=>{ done=r; });
+  try{
+  const tmp=await idbOpen(DB_TMP);
+  try{ localStorage.setItem("gc_rebuild","copy"); }catch(e){}
+  await copy(cur,tmp,"控えに写しています");
+  try{ localStorage.setItem("gc_rebuild","back"); }catch(e){}
+  cur.close(); _db=null; await del(DB_NAME);
+  const main=await idbOpen(DB_NAME); await copy(tmp,main,"元に戻しています"); main.close();
+  tmp.close(); await del(DB_TMP).catch(()=>{});
+  try{ localStorage.removeItem("gc_rebuild"); }catch(e){}
+  }finally{ _db=null; dbBusy=null; done(); }
+  phKnown=null; }
+// 片付けの途中で閉じてしまったときの立て直し（起動のとき）
+async function rebuildRecover(){
+  let flag=null; try{ flag=localStorage.getItem("gc_rebuild"); }catch(e){}
+  let hasTmp=flag!=null; try{ if(!hasTmp&&indexedDB.databases) hasTmp=(await indexedDB.databases()).some(d=>d.name===DB_TMP); }catch(e){}
+  if(!hasTmp) return;
+  const main=await idb(), tmp=await idbOpen(DB_TMP);
+  const cnt=db=>new Promise(res=>{ const q=db.transaction("kv","readonly").objectStore("kv").count(); q.onsuccess=()=>res(q.result); q.onerror=()=>res(0); });
+  const [nm,nt]=[await cnt(main),await cnt(tmp)];
+  if(flag==="back"||(nm<nt&&nt>0)){   // 作り直しの途中 → 控えから戻す
+    const keys=await new Promise(res=>{ const q=tmp.transaction("kv","readonly").objectStore("kv").getAllKeys(); q.onsuccess=()=>res(q.result); });
+    for(const k of keys){ const v=await new Promise(res=>{ const q=tmp.transaction("kv","readonly").objectStore("kv").get(k); q.onsuccess=()=>res(q.result); }); await idbSet(k,v); }
+  }
+  tmp.close(); await new Promise(res=>{ const r=indexedDB.deleteDatabase(DB_TMP); r.onsuccess=res; r.onerror=res; r.onblocked=res; });
+  try{ localStorage.removeItem("gc_rebuild"); }catch(e){} }
+function capBox(on){ let el=document.getElementById("capBox");
+  if(!el){ el=document.createElement("div"); el.id="capBox"; el.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:none;align-items:center;justify-content:center;padding:16px";
+    el.innerHTML='<div style="background:var(--card);border-radius:14px;max-width:520px;width:100%;padding:18px;box-shadow:0 8px 30px rgba(0,0,0,.3)"><div style="display:flex;align-items:center;margin-bottom:10px"><b style="font-size:17px;flex:1">容量の内訳と整理</b><button class="iconbtn" onclick="capBox(false)">閉じる</button></div><div id="capBody"></div></div>';
+    el.addEventListener("click",e=>{ if(e.target===el) capBox(false); }); document.body.appendChild(el); }
+  el.style.display=on?"flex":"none"; if(on) capDraw(); }
+async function capDraw(msg){ const b=document.getElementById("capBody"); if(!b) return;
+  b.innerHTML='<div class="muted">調べています…</div>';
+  const r=await storageReport(), mb=x=>(x/1048576).toFixed(x>1048576*100?0:1)+"MB";
+  const ours=r.photoBytes+r.caseBytes, other=r.usage!=null?Math.max(0,r.usage-ours):null;
+  const row=(l,v,sub)=>`<div style="display:flex;padding:6px 0;border-bottom:1px solid var(--line)"><span style="flex:1">${l}${sub?`<div class="muted" style="font-size:12px">${sub}</div>`:""}</span><b>${v}</b></div>`;
+  b.innerHTML=(msg?`<div style="background:#e8f3ec;border-radius:8px;padding:8px 10px;margin-bottom:10px">${esc(msg)}</div>`:"")
+    +row("現場調査の写真",mb(r.photoBytes),r.photos+"枚")
+    +row("現場調査の案件の文字・地図など",mb(r.caseBytes),r.cases+"件"+(r.oldCases?`（うち${r.oldCases}件は古い置き方：整理すると約3割軽くなります）`:""))
+    +(r.usage!=null?row("このサイト全体の使用容量",mb(r.usage),"ほかのアプリ（樹木カルテ・日報など）の分と、消したあとの空き場所も入ります"):"")
+    +(other!=null?row("└ 現場調査以外・空き場所",mb(other)):"")
+    +`<div style="display:grid;gap:8px;margin-top:14px">
+      <button class="iconbtn" style="padding:10px" onclick="capRun('convert')">① まとめて整理する（画質はそのまま）<div class="muted" style="font-size:12px">写真を画像のまま置き直し、使っていない写真を消します</div></button>
+      <button class="iconbtn" style="padding:10px" onclick="capRun('light')">② 写真を軽くする（A4用：長い辺1200ピクセル）<div class="muted" style="font-size:12px">大きく取り込んだ昔の写真を小さくします</div></button>
+      <button class="iconbtn" style="padding:10px" onclick="capRun('rebuild')">③ 空き場所を片付ける<div class="muted" style="font-size:12px">①②のあと、使用容量が減らないときに。数分かかることがあります</div></button></div>`; }
+async function capRun(kind){ const b=document.getElementById("capBody"), say=t=>{ if(b) b.innerHTML='<div class="muted">'+esc(t)+'</div>'; };
+  const before=await storageReport(); let msg="";
+  try{
+    if(kind==="convert"){ const n=await convertAll((i,n)=>say("整理しています… "+i+"/"+n+"件")); msg="整理しました（使っていない写真 "+n+"枚を消しました）。"; }
+    if(kind==="light"){ capBox(false); await lightenPhotos(); capBox(true); return; }
+    if(kind==="rebuild"){ if(!confirm("空き場所を片付けます。\n途中でアプリを閉じないでください（閉じても、次に開いたときに元に戻します）。\n続けますか？")) { capDraw(); return; }
+      await rebuildDb((l,i,n)=>say(l+"… "+i+"/"+n)); msg="片付けました。"; }
+    const after=await storageReport();
+    if(before.usage!=null&&after.usage!=null){ msg+="　使用容量："+(before.usage/1048576).toFixed(0)+"MB → "+(after.usage/1048576).toFixed(0)+"MB";
+      if(kind!=="rebuild"&&after.usage>=before.usage*0.95) msg+="（iPadは消した分をすぐには減らさないことがあります。減らないときは③を押してください）"; }
+  }catch(e){ msg="うまくいきませんでした："+(e&&e.message||e)+"（データはそのままです）"; }
+  updateStorage(); capDraw(msg); }
 /* これまでに入れた写真を軽くする（長い辺1200px・画質0.7。軽くならないものはそのまま） */
 function lightOne(url){ return new Promise(res=>{ if(typeof url!=="string"||!/^data:image\/(jpeg|png)/.test(url)||url.length<180000){ res(url); return; }
   const img=new Image(); img.onload=()=>{ let w=img.naturalWidth,h=img.naturalHeight; if(Math.max(w,h)>PHOTO_MAX){ const s=PHOTO_MAX/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
@@ -2994,17 +3139,17 @@ async function lightenPhotos(){
   const btn=document.getElementById("lightBtn"), label=btn?btn.textContent:"";
   let before=0, after=0, n=0;
   for(let ci=0;ci<casesIndex.length;ci++){
-    const id=casesIndex[ci].id, cur=(id===caseId), st=cur?state:await idbGet("case_"+id); if(!st) continue;
+    const id=casesIndex[ci].id, cur=(id===caseId), st=cur?state:await caseGet(id); if(!st) continue;
     let changed=false;
     for(const t of (st.trees||[])){ const ph=t.photos||[];
       for(let k=0;k<ph.length;k++){ if(btn) btn.textContent="軽くしています… "+(ci+1)+"/"+casesIndex.length+"件";
         const o=ph[k], v=await lightOne(o); before+=(o||"").length; after+=(v||"").length; if(v!==o){ ph[k]=v; changed=true; n++; } } }
     if(!changed) continue;
     if(cur){ undoStack=[]; redoStack=[]; updUndoBtn(); markDirty(); }
-    else { await idbSet("case_"+id,st); if(window.gcSync&&window.gcSync.touch) window.gcSync.touch(id); }
+    else { await casePut(id,st); if(window.gcSync&&window.gcSync.touch) window.gcSync.touch(id); }
   }
   if(btn) btn.textContent=label;
-  await save(); renderTrees(); updateStorage();
+  await save(); await phCleanup().catch(()=>{}); renderTrees(); updateStorage();
   const mb=x=>(x*3/4/1048576).toFixed(1);
   alert(n?("写真 "+n+"枚を軽くしました。\n写真の合計：約"+mb(before)+"MB → 約"+mb(after)+"MB"):"軽くできる写真はありませんでした（もう十分に軽いです）。"); }
 
@@ -4329,9 +4474,10 @@ document.getElementById("caseDate").addEventListener("input",e=>{ state.caseDate
   dl.innerHTML=SPECIES.map(s=>`<option value="${s}">`).join(""); document.body.appendChild(dl);
   const il=document.createElement("datalist"); il.id="ilist";
   il.innerHTML=ITEMS.map(s=>`<option value="${s}">`).join(""); document.body.appendChild(il);
+  try{ await rebuildRecover(); }catch(e){}
   casesIndex=(await idbGet("cases"))||[]; caseId=await idbGet("current");
   if(!casesIndex.length){ const legacy=await idbGet("state"); if(legacy&&legacy.trees){ caseId=newId(); state=Object.assign(emptyState(),legacy); } else { caseId=newId(); state=emptyState(); } normalize(); await save(); }
-  else { if(!caseId||!casesIndex.find(c=>c.id===caseId)) caseId=casesIndex[0].id; state=(await idbGet("case_"+caseId))||emptyState(); normalize(); }
+  else { if(!caseId||!casesIndex.find(c=>c.id===caseId)) caseId=casesIndex[0].id; state=(await caseGet(caseId,true))||emptyState(); normalize(); }
   window.surveyText.setPrio(state.prioSet); syncMode(); renderTrees(); renderMap(); renderCaseBar(); updateStorage(); updUndoBtn(); camInit(); })();
 
 /* --- Excel書き出し（アプリ内生成） --- */
@@ -4593,7 +4739,7 @@ async function exportPdf(){
 
   /* ---- 送る ---- */
   async function upload(id){
-    const st=await idbGet("case_"+id); if(!st) return;
+    const st=await caseGet(id); if(!st) return;
     const m=M(id), seq=m.seq, info=casesIndex.find(c=>c.id===id)||{};
     if(!m.ver && !String(st.caseName||"").trim() && !(st.trees||[]).length && !st.mapImage){ m.dirty=false; await saveMeta(); return; }   // 空の案件は送らない
     const p=pack(st), hs=Object.keys(p.imgs);
@@ -4614,10 +4760,10 @@ async function exportPdf(){
   }
   // ほかの人が先に保存し直していた：自分の変更は新しい番号の別案件にして送る（元の番号はほかの人の版として残る）
   async function fork(id,r){
-    const st=await idbGet("case_"+id); if(!st) return;
+    const st=await caseGet(id); if(!st) return;
     const nid=newId(), who=me()||"この端末";
     st.caseName=(st.caseName||"(無題)")+"（"+who+"の変更）";
-    await idbSet("case_"+nid,st); await idbDel("case_"+id);
+    await casePut(nid,st,caseId===id); await idbDel("case_"+id);
     const e=casesIndex.find(c=>c.id===id); if(e){ e.id=nid; e.name=st.caseName; e.updatedAt=Date.now(); }
     if(caseId===id){ caseId=nid; state.caseName=st.caseName; const cn=$("caseName"); if(cn) cn.value=st.caseName; await idbSet("current",nid); }
     await idbSet("cases",casesIndex);
@@ -4663,7 +4809,7 @@ async function exportPdf(){
     const seq0=meta[id]?meta[id].seq:0;
     const data=JSON.parse(g.data), need=[...refsOf(data)], have={};
     // この端末にもう同じ写真があれば使う（単価だけ直した、などのとき写真を取り直さない）
-    try{ const old=await idbGet("case_"+id); if(old) Object.values(pack(old).imgs).forEach(v=>{ have[hashOf(v)]=v; }); }catch(e){}
+    try{ const old=await caseGet(id); if(old) Object.values(pack(old).imgs).forEach(v=>{ have[hashOf(v)]=v; }); }catch(e){}
     if(typeof state==="object") Object.values(pack(state).imgs).forEach(v=>{ have[hashOf(v)]=v; });
     const miss=need.filter(h=>!have[h]);
     for(let i=0;i<miss.length;i+=4){
@@ -4675,7 +4821,7 @@ async function exportPdf(){
     progress="";
     const st=unpack(data,have);
     if(meta[id]&&meta[id].seq!==seq0&&meta[id].dirty) return null;   // 取り込み中にこの端末で直した → 取り込まない（送るときに別案件として残る）
-    await idbSet("case_"+id,st);
+    await casePut(id,st,caseId===id);
     const it=g.item||{}, e=casesIndex.find(c=>c.id===id), row={id,name:st.caseName||it.name||"(無題)",date:st.caseDate||"",updatedAt:Date.now(),n:(st.trees||[]).length};
     if(e) Object.assign(e,row); else casesIndex.unshift(row);
     await idbSet("cases",casesIndex);
