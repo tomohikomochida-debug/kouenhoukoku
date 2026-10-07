@@ -254,6 +254,7 @@ function doPost(e) {
       /* 現場ノート */
       /* 日報：音声入力の文を、用語集・現場名で直す */
       case 'nippou:fixText':   return out_(fixText_(b));
+      case 'nippou:transcribe': return out_(transcribe_(b));
       case 'nippou:addSite':   return withLock_(function () { return addSitesFromNippou_(b.sites || [b.site], b.by); });
       case 'note:saveSite':      return withLock_(function () { return saveSite_(b.site, b.by); });
       case 'note:importBukken':  return withLock_(function () { return importBukken_(b.by); });
@@ -2015,7 +2016,8 @@ function fixText_(b) {
     '・現場名は現場の一覧の書き方に合わせる\n' +
     '・道具・機械・資材の名前は道具の一覧の正式名に、お店・業者・処分場などの名前は取引先の一覧の正式名に直す（呼び方・聞き間違いも）\n' +
     '・数字は半角。句読点は日報らしく最小限\n' +
-    '・自信がない所は直さずそのまま\n' +
+    '・音声入力は同じ読みの別の漢字に変わりやすい。漢字が違っても、読み（音）が同じ・近い言葉が一覧にあれば、一覧の言葉に直す（例：「竹谷」→「竹屋」、「勝谷」→「掛矢」）。人名や地名に見えても、一覧の言葉の読みと同じなら直す\n' +
+    '・一覧にも無く、造園の話としても意味が通らない所だけは、直さずそのまま\n' +
     'JSONだけ返す：{"text":"直した文","changes":[{"from":"元の言葉","to":"直した言葉"}]}（changes は直した所だけ。言いよどみを取っただけの所は入れない）\n\n' +
     (b.site ? 'この日報の現場：' + b.site + '\n' : '') +
     '用語集（正式名（社内の呼び方））：\n' + v.terms + '\n\n' +
@@ -2028,5 +2030,30 @@ function fixText_(b) {
   var out = String(j.text || '').trim() || text;
   var ch = (Array.isArray(j.changes) ? j.changes : []).filter(function (c) { return c && c.from && c.to && String(c.from) !== String(c.to); }).slice(0, 20);
   return { ok: true, text: out, raw: text, changes: ch };
+}
+/* 録音した声を、Gemini が用語集・道具・取引先・現場名を手がかりに直接聞き取って文字にする
+   （端末の音声認識は専門用語に弱いので、声そのものを渡して聞き取らせる） */
+function transcribe_(b) {
+  var audio = String(b.audio || ''), mime = String(b.mime || 'audio/wav');
+  if (!audio) return { ok: false, error: '録音がありません' };
+  if (audio.length > 20 * 1024 * 1024) return { ok: false, error: '録音が長すぎます（3分くらいまでにしてください）' };
+  var v = fixVocab_();
+  var prompt =
+    'この音声は、造園会社（植木屋）のスタッフが日報の「' + (b.field || '業務内容') + '」を話したものです。聞き取って日本語の文にしてください。\n' +
+    'ルール：\n' +
+    '・話した内容だけを書く。足さない・まとめない・言い換えない。話した順番のまま\n' +
+    '・「えー」「あの」「えっと」などの言いよどみ、言い直す前の言葉、同じ言葉のくり返しは書かない\n' +
+    '・造園の用語・道具・機械・資材・お店や業者・現場の名前は、下の一覧の書き方で書く（社内の呼び方・なまり・早口でも、音が近ければ一覧の言葉を優先する。同じ読みの別の漢字にしない：「たけや」は「竹谷」ではなく一覧の「竹屋」）\n' +
+    '・数字は半角。句読点は日報らしく最小限\n' +
+    '・聞き取れない所は推測で埋めず「（聞き取れず）」と書く。何も話していなければ text を空にする\n' +
+    'JSONだけ返す：{"text":"聞き取った文","unsure":["自信のない言葉"]}\n\n' +
+    (b.site ? 'この日報の現場：' + b.site + '\n' : '') +
+    '用語集（正式名（社内の呼び方））：\n' + v.terms + '\n\n' +
+    (v.tools ? '道具・資材の一覧（正式名（社内の呼び方））：\n' + v.tools + '\n\n' : '') +
+    (v.suppliers ? '取引先の一覧（正式名（読み・呼び方）：扱う品）：\n' + v.suppliers + '\n\n' : '') +
+    '現場の一覧（正式名（別名））：\n' + v.sites + '\n\n' +
+    'これまでの日報の業務内容（書き方の見本）：\n' + v.works;
+  var j = gemini_([{ inlineData: { mimeType: mime, data: audio } }, { text: prompt }], { fast: true, models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite'] });
+  return { ok: true, text: String(j.text || '').trim(), unsure: (Array.isArray(j.unsure) ? j.unsure : []).map(String).slice(0, 8) };
 }
 

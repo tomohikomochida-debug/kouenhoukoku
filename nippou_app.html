@@ -1249,6 +1249,29 @@ async function fixWorkText(text, site){
     body:JSON.stringify({app:'nippou',mode:'fixText',field:'業務内容',text,site:site||''})},25000);
   const j=await res.json(); if(!j.ok) throw new Error(j.error||'直せませんでした'); return j;
 }
+/* 録音した声を Gemini に聞き取らせる（端末の音声認識より専門用語に強い）。声は 16kHz・モノラルの WAV にして送る */
+const CAN_REC=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder&&(window.AudioContext||window.webkitAudioContext));
+async function toWav16k(blob){
+  const AC=window.AudioContext||window.webkitAudioContext, ac=new AC();
+  const buf=await new Promise((ok,ng)=>{ blob.arrayBuffer().then(ab=>{ const p=ac.decodeAudioData(ab,ok,ng); if(p&&p.then) p.then(ok,ng); },ng); });
+  try{ ac.close&&ac.close(); }catch(e){}
+  const OAC=window.OfflineAudioContext||window.webkitOfflineAudioContext, rate=16000;
+  const off=new OAC(1, Math.max(1,Math.ceil(buf.duration*rate)), rate);
+  const src=off.createBufferSource(); src.buffer=buf; src.connect(off.destination); src.start(0);
+  const out=await off.startRendering(), pcm=out.getChannelData(0), n=pcm.length;
+  const dv=new DataView(new ArrayBuffer(44+n*2)), w=(o,t)=>{ for(let i=0;i<t.length;i++) dv.setUint8(o+i,t.charCodeAt(i)); };
+  w(0,'RIFF'); dv.setUint32(4,36+n*2,true); w(8,'WAVE'); w(12,'fmt '); dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true);
+  dv.setUint32(24,rate,true); dv.setUint32(28,rate*2,true); dv.setUint16(32,2,true); dv.setUint16(34,16,true); w(36,'data'); dv.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){ const v=Math.max(-1,Math.min(1,pcm[i])); dv.setInt16(44+i*2, v<0?v*0x8000:v*0x7FFF, true); }
+  return {blob:new Blob([dv],{type:'audio/wav'}), sec:buf.duration};
+}
+function blobToB64(blob){ return new Promise((ok,ng)=>{ const r=new FileReader(); r.onload=()=>ok(String(r.result).split(',')[1]||''); r.onerror=ng; r.readAsDataURL(blob); }); }
+async function transcribeWork(wav, site){
+  const audio=await blobToB64(wav);
+  const res=await fetchT(GENBA_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({app:'nippou',mode:'transcribe',field:'業務内容',audio,mime:'audio/wav',site:site||''})},90000);
+  const j=await res.json(); if(!j.ok) throw new Error(j.error||'聞き取れませんでした'); return j;
+}
 function voiceBox(ta, getSite){
   if(!ta||ta._voice) return; ta._voice=true;
   const bar=document.createElement('div'); bar.className='vbar';
@@ -1280,9 +1303,48 @@ function voiceBox(ta, getSite){
   }
   fixB.onclick=()=>{ const t=ta.value.trim(); if(!t){ toast('先に業務内容を入れてください'); return; } if(!busy) run(t,'all'); };
   const stop=()=>{ if(rec){ try{ rec.stop(); }catch(e){} } };
+  let mr=null, chunks=[], tick=null, t0=0, lastWav=null;
+  const resetMic=()=>{ mic.classList.remove('rec'); mic.textContent='🎤 話して入力'; clearInterval(tick); tick=null; };
+  async function sendWav(wav){
+    const before=ta.value, sep=before.trim()?'　':'';
+    busy=true; fixB.disabled=true; mic.disabled=true; live.textContent='✨ AIが聞き取っています…（用語集・道具・取引先・現場名で）';
+    try{
+      const j=await transcribeWork(wav, getSite&&getSite());
+      live.textContent='';
+      if(!j.text){ toast('声が聞き取れませんでした。もう一度、マイクに近づいて話してください'); return; }
+      setVal(before.replace(/\s+$/,'')+sep+j.text); lastWav=null;
+      note.innerHTML='🤖 AIが聞き取って入れました'+((j.unsure||[]).length?'。自信のない言葉：<b>'+j.unsure.map(esc).join('、')+'</b>（違っていたら直してください）':'')+'<button type="button">入れた文を消す</button>';
+      note.style.display='';
+      note.querySelector('button').onclick=()=>{ setVal(before); note.style.display='none'; toast('聞き取った文を消しました'); };
+    }catch(e){
+      lastWav=wav; live.textContent='';
+      note.innerHTML='聞き取りに失敗しました（'+esc(e.name==='AbortError'?'時間切れ':(e.message||'通信できません'))+'）。<button type="button">もう一度送る</button>';
+      note.style.display=''; note.querySelector('button').onclick=()=>{ note.style.display='none'; if(lastWav) sendWav(lastWav); };
+    }finally{ busy=false; fixB.disabled=false; mic.disabled=false; }
+  }
+  async function startRec(){
+    let stream;
+    try{ stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}}); }
+    catch(e){ toast('マイクが使えません。設定でこのページのマイクを許可してください'); return; }
+    chunks=[]; mr=new MediaRecorder(stream);
+    mr.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
+    mr.onstop=async()=>{
+      stream.getTracks().forEach(t=>t.stop()); const type=mr.mimeType||'audio/webm'; mr=null; resetMic();
+      const blob=new Blob(chunks,{type}); chunks=[];
+      if(blob.size<800){ live.textContent=''; toast('声が録れていませんでした'); return; }
+      try{ live.textContent='音声をまとめています…'; const w=await toWav16k(blob); if(w.sec<0.6){ live.textContent=''; toast('短すぎました。もう一度話してください'); return; } await sendWav(w.blob); }
+      catch(e){ live.textContent=''; toast('録音を読み込めませんでした（'+(e.message||e)+'）'); }
+    };
+    mr.start(); t0=Date.now(); note.style.display='none';
+    mic.classList.add('rec'); mic.textContent='■ 話し終わったら押す';
+    const show=()=>{ const s=Math.floor((Date.now()-t0)/1000); live.textContent='● 録音中 '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0')+'（3分まで）'; if(s>=180&&mr) mr.stop(); };
+    show(); tick=setInterval(show,500);
+  }
   mic.onclick=()=>{
     if(busy) return;
+    if(mr){ mr.stop(); return; }
     if(rec){ stop(); return; }
+    if(CAN_REC){ startRec(); return; }
     if(!SR){ ta.focus(); toast('この端末ではアプリの音声入力が使えません。キーボードのマイクで話して、終わったら「✨ 誤字を直す」を押してください'); return; }
     finals=[]; rec=new SR(); rec.lang='ja-JP'; rec.continuous=true; rec.interimResults=true;
     mic.classList.add('rec'); mic.textContent='■ 話し終わったら押す'; live.textContent='🎙 聞いています… 業務内容を話してください';
