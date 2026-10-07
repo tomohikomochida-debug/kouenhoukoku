@@ -3687,7 +3687,13 @@ function renderZzCands(){
 // チェックした記録の合計を、発生材の数量（t）に仮置きする
 function applyZz(){
   const sel=zzCands.filter(c=>c.on);
-  const kg=sel.reduce((a,c)=>a+(c.full?c.totalKg:c.kg),0);
+  // 1公園に伝票が何枚あっても合計する。全量を付けた伝票は、同じ伝票の行を二重に数えない
+  const fullKeys=new Set(sel.filter(c=>c.full).map(c=>c.k)), done=new Set();
+  let kg=0;
+  sel.forEach(c=>{
+    if(fullKeys.has(c.k)){ if(!done.has(c.k)){ kg+=c.totalKg; done.add(c.k); } }
+    else kg+=c.kg;
+  });
   const q=$('rpGenzaiQty'), n=$('rpGenzaiNote');
   q.value = kg>0 ? String(Math.round(kg/10)/100) : '';
   q.style.borderColor = kg>0 ? '#e3b341' : '';
