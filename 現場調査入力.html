@@ -3328,7 +3328,7 @@ async function addPhoto(i,input){ if(!input.files||!input.files.length) return; 
   if(!t.pgeo) photosGeo(files,exs).then(g=>{ if(!g||t.pgeo||!state.trees.includes(t)) return; t.pgeo=g; autoPlace(); markDirty(); renderTrees(); }); }
 function delPhoto(i,k){ pushUndo("photo"+i); (state.trees[i].photos||[]).splice(k,1); markDirty(); renderTrees(); }
 function movePhoto(i,k,dir){ const ph=state.trees[i].photos; if(!ph) return; const j=k+dir; if(j<0||j>=ph.length) return; pushUndo("photomove"); const x=ph[k]; ph[k]=ph[j]; ph[j]=x; markDirty(); renderTrees(); }
-/* 写真の編集：ペン・マーカー・丸・矢印で書き込み、選んで動かす・大きさを変える・消す、回転、切り取り
+/* 写真の編集：ペン・マーカー・丸・矢印で書き込み、選んで動かす・回す・大きさを変える・消す、写真の回転、切り取り
    書き込みは写真の大きさに対する割合で持ち、「適用」で写真に焼き込む（適用したあとも ↶元に戻す で戻せる） */
 let edState=null, edDrag=null;
 const ED_COLORS=[["#E53935","赤"],["#FDD835","黄"],["#1E88E5","青"],["#FFFFFF","白"],["#111111","黒"]];
@@ -3348,7 +3348,7 @@ function edTools(){
   else if(ED.tool==="select"&&!pk) h+=`<div class="eg"><span class="eh">書いた線や丸をタップして選び、ドラッグで動かします</span></div>`;
   else h+=`<div class="eg">${ED_COLORS.map(([c,l])=>b("ec",col===c,`onclick="edSet('color','${c}')" style="--c:${c}" aria-label="${l}"`,"")).join("")}`+
     `<span class="esep"></span>${ED_SIZES.map(([k,l])=>b("es",siz===k,`onclick="edSet('size','${k}')"`,l)).join("")}`+
-    (pk?`<span class="esep"></span>${b("edel",false,`onclick="edDelPick()" title="ドラッグで動かす・青い点で大きさ"`,"🗑 消す")}`:"")+`</div>`;
+    (pk?`<span class="esep"></span>${b("edel",false,`onclick="edDelPick()" title="ドラッグで動かす・青い点で大きさ・上の白い丸で回す"`,"🗑 消す")}`:"")+`</div>`;
   document.getElementById("edTools").innerHTML=h;
   const u=document.getElementById("edUndoBtn"); if(u&&edState) u.disabled=!edState.hist.length&&!edState.sel;
 }
@@ -3381,7 +3381,7 @@ function edDraw(x,W,H,strokes){   // 書き込みを描く（画面の紙にも�
     const P=s.pts.map(p=>[p[0]*W,p[1]*H]), lw=edLW(s,L);
     x.save(); x.strokeStyle=s.c; x.fillStyle=s.c; x.lineWidth=lw; x.lineCap="round"; x.lineJoin="round"; x.globalAlpha=s.t==="marker"?.4:1;
     if(s.t==="pen"||s.t==="marker"){ x.beginPath(); P.forEach((p,k)=>k?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])); if(P.length===1) x.lineTo(P[0][0]+.1,P[0][1]); x.stroke(); }
-    else if(s.t==="circle"&&P.length>1){ const [a,b]=P; x.beginPath(); x.ellipse((a[0]+b[0])/2,(a[1]+b[1])/2,Math.max(1,Math.abs(b[0]-a[0])/2),Math.max(1,Math.abs(b[1]-a[1])/2),0,0,Math.PI*2); x.stroke(); }
+    else if(s.t==="circle"&&P.length>1){ const [a,b]=P; x.beginPath(); x.ellipse((a[0]+b[0])/2,(a[1]+b[1])/2,Math.max(1,Math.abs(b[0]-a[0])/2),Math.max(1,Math.abs(b[1]-a[1])/2),s.r||0,0,Math.PI*2); x.stroke(); }
     else if(s.t==="arrow"&&P.length>1){ const [a,b]=P, ang=Math.atan2(b[1]-a[1],b[0]-a[0]), hl=Math.max(lw*4,12);
       x.beginPath(); x.moveTo(a[0],a[1]); x.lineTo(b[0]-Math.cos(ang)*hl*.6,b[1]-Math.sin(ang)*hl*.6); x.stroke();
       x.beginPath(); x.moveTo(b[0],b[1]); x.lineTo(b[0]-hl*Math.cos(ang-.45),b[1]-hl*Math.sin(ang-.45)); x.lineTo(b[0]-hl*Math.cos(ang+.45),b[1]-hl*Math.sin(ang+.45)); x.closePath(); x.fill(); }
@@ -3391,11 +3391,25 @@ function edDraw(x,W,H,strokes){   // 書き込みを描く（画面の紙にも�
 // 選んでいる図形：点線の枠と、大きさ・向きを変える青い点
 function edHandles(s){ if(s.t==="circle"||s.t==="arrow") return s.pts.slice(0,2); return []; }
 function edBox(s,W,H){ const xs=s.pts.map(p=>p[0]*W), ys=s.pts.map(p=>p[1]*H); return [Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]; }
+const edRot=(q,c,a)=>{ const dx=q[0]-c[0], dy=q[1]-c[1], co=Math.cos(a), si=Math.sin(a); return [c[0]+dx*co-dy*si, c[1]+dx*si+dy*co]; };   // 点 q を c のまわりに a だけ回す（画面の点で）
+function edCenter(s,W,H){ const [x0,y0,x1,y1]=edBox(s,W,H); return [(x0+x1)/2,(y0+y1)/2]; }
+const edAng=s=>s.t==="circle"?(s.r||0):0;   // 丸は角度で持つ。線・矢印は点そのものを回す
+function edHandlesPx(s,W,H){ const c=edCenter(s,W,H); return edHandles(s).map(q=>edRot([q[0]*W,q[1]*H],c,edAng(s))); }
+function edKnob(s,W,H,d){ const [x0,y0,x1,y1]=edBox(s,W,H), c=[(x0+x1)/2,(y0+y1)/2], pad=edLW(s,Math.max(W,H))/2+6*d;
+  let top=[c[0],y0-pad], kn=[c[0],y0-pad-34*d];
+  if(kn[1]<14*d){ top=[c[0],y1+pad]; kn=[c[0],y1+pad+34*d]; }   // 写真の上の端にかかるときは、つまみを下に出す
+  return { top:edRot(top,c,edAng(s)), knob:edRot(kn,c,edAng(s)) }; }
 function edDrawPick(x,W,H,s){
-  const d=window.devicePixelRatio||1, pad=edLW(s,Math.max(W,H))/2+6*d, [x0,y0,x1,y1]=edBox(s,W,H);
-  x.save(); x.setLineDash([6*d,4*d]); x.lineWidth=1.5*d; x.strokeStyle="#fff"; x.strokeRect(x0-pad,y0-pad,x1-x0+pad*2,y1-y0+pad*2);
-  x.strokeStyle="#1E88E5"; x.lineDashOffset=5*d; x.strokeRect(x0-pad,y0-pad,x1-x0+pad*2,y1-y0+pad*2); x.setLineDash([]);
-  for(const p of edHandles(s)){ x.beginPath(); x.arc(p[0]*W,p[1]*H,9*d,0,Math.PI*2); x.fillStyle="#1E88E5"; x.fill(); x.lineWidth=2.5*d; x.strokeStyle="#fff"; x.stroke(); }
+  const d=window.devicePixelRatio||1, pad=edLW(s,Math.max(W,H))/2+6*d, [x0,y0,x1,y1]=edBox(s,W,H), c=[(x0+x1)/2,(y0+y1)/2];
+  x.save(); x.translate(c[0],c[1]); x.rotate(edAng(s)); x.translate(-c[0],-c[1]);
+  x.setLineDash([6*d,4*d]); x.lineWidth=1.5*d; x.strokeStyle="#fff"; x.strokeRect(x0-pad,y0-pad,x1-x0+pad*2,y1-y0+pad*2);
+  x.strokeStyle="#1E88E5"; x.lineDashOffset=5*d; x.strokeRect(x0-pad,y0-pad,x1-x0+pad*2,y1-y0+pad*2); x.setLineDash([]); x.restore();
+  x.save();
+  const k=edKnob(s,W,H,d);   // 回すつまみ（上の白い丸）
+  x.beginPath(); x.moveTo(k.top[0],k.top[1]); x.lineTo(k.knob[0],k.knob[1]); x.lineWidth=2*d; x.strokeStyle="#1E88E5"; x.stroke();
+  x.beginPath(); x.arc(k.knob[0],k.knob[1],11*d,0,Math.PI*2); x.fillStyle="#fff"; x.fill(); x.lineWidth=3*d; x.strokeStyle="#1E88E5"; x.stroke();
+  x.beginPath(); x.arc(k.knob[0],k.knob[1],5*d,-.3,Math.PI*1.4); x.lineWidth=2*d; x.stroke();
+  for(const p of edHandlesPx(s,W,H)){ x.beginPath(); x.arc(p[0],p[1],9*d,0,Math.PI*2); x.fillStyle="#1E88E5"; x.fill(); x.lineWidth=2.5*d; x.strokeStyle="#fff"; x.stroke(); }
   x.restore();
 }
 // どの図形に触ったか（上に描いたものから順に）。ir＝画面上の写真の位置
@@ -3403,13 +3417,14 @@ function edHit(p,ir){
   const W=ir.width, H=ir.height, L=Math.max(W,H), X=p[0]*W, Y=p[1]*H, near=16;
   const segD=(a,b)=>{ const dx=b[0]-a[0], dy=b[1]-a[1], l=dx*dx+dy*dy; let t=l?((X-a[0])*dx+(Y-a[1])*dy)/l:0; t=Math.max(0,Math.min(1,t)); return Math.hypot(X-a[0]-t*dx,Y-a[1]-t*dy); };
   const pk=edState.pick>=0?edState.strokes[edState.pick]:null;
-  if(pk) for(const [k,q] of edHandles(pk).entries()) if(Math.hypot(X-q[0]*W,Y-q[1]*H)<near+6) return { i:edState.pick, handle:k };
+  if(pk){ const kn=edKnob(pk,W,H,1).knob; if(Math.hypot(X-kn[0],Y-kn[1])<near+8) return { i:edState.pick, handle:null, rotate:true };
+    for(const [k,q] of edHandlesPx(pk,W,H).entries()) if(Math.hypot(X-q[0],Y-q[1])<near+6) return { i:edState.pick, handle:k }; }
   for(let i=edState.strokes.length-1;i>=0;i--){
     const s=edState.strokes[i], P=s.pts.map(q=>[q[0]*W,q[1]*H]), tol=edLW(s,L)/2+near;
     if(s.t==="pen"||s.t==="marker"){ if(P.length===1?Math.hypot(X-P[0][0],Y-P[0][1])<tol:P.some((q,k)=>k&&segD(P[k-1],q)<tol)) return { i, handle:null }; }
     else if(s.t==="arrow"){ if(segD(P[0],P[1])<tol) return { i, handle:null }; }
-    else if(s.t==="circle"){ const cx=(P[0][0]+P[1][0])/2, cy=(P[0][1]+P[1][1])/2, rx=Math.max(1,Math.abs(P[1][0]-P[0][0])/2), ry=Math.max(1,Math.abs(P[1][1]-P[0][1])/2);
-      if(((X-cx)/(rx+tol))**2+((Y-cy)/(ry+tol))**2<=1) return { i, handle:null }; }   // 丸は、線の上でも内側でもつかめる
+    else if(s.t==="circle"){ const cx=(P[0][0]+P[1][0])/2, cy=(P[0][1]+P[1][1])/2, rx=Math.max(1,Math.abs(P[1][0]-P[0][0])/2), ry=Math.max(1,Math.abs(P[1][1]-P[0][1])/2), q=edRot([X,Y],[cx,cy],-(s.r||0));
+      if(((q[0]-cx)/(rx+tol))**2+((q[1]-cy)/(ry+tol))**2<=1) return { i, handle:null }; }   // 丸は、線の上でも内側でもつかめる
   }
   return null;
 }
@@ -3422,13 +3437,20 @@ function edDown(ev){ if(!edState) return; ev.preventDefault();
   const p=edPt(ev,edDrag.ir), hit=edHit(p,edDrag.ir);
   // 選ぶ道具なら触った図形を、ほかの道具でも「いま選んでいる図形」に触ったら、動かす（大きさを変える）
   if(hit&&(ED.tool==="select"||hit.i===edState.pick)){
-    edSnap(); edState.pick=hit.i; edDrag.move={ p0:p, orig:edClone(edState.strokes[hit.i].pts), handle:hit.handle }; edDrag.moved=false; edPaint(); edTools(); return; }
+    const s0=edState.strokes[hit.i];
+    edSnap(); edState.pick=hit.i; edDrag.move={ p0:p, orig:edClone(s0.pts), r0:s0.r||0, handle:hit.handle, rotate:!!hit.rotate, c:edCenter(s0,edDrag.ir.width,edDrag.ir.height) }; edDrag.moved=false; edPaint(); edTools(); return; }
   if(ED.tool==="select"){ edState.pick=-1; edPaint(); edTools(); return; }
   edState.pick=-1;
   const w=ED_SIZES.find(s=>s[0]===ED.size)[2]; edDrag.stroke={t:ED.tool,c:ED.color,w:w,pts:ED.tool==="pen"||ED.tool==="marker"?[p]:[p,p]}; edPaint(); edTools(); }
 function edMove(ev){ if(!edDrag||ev.pointerId!==edDrag.id) return; ev.preventDefault(); const sr=edDrag.sr, ir=edDrag.ir;
   if(edDrag.move){ const m=edDrag.move, p=edPt(ev,ir), s=edState.strokes[edState.pick]; if(!s) return;
-    if(m.handle!=null){ s.pts[m.handle]=p; }
+    const W=ir.width, H=ir.height;
+    if(m.rotate){   // 回す：つまみの向きの変わった分だけ回す（0°・90°… の近くでは吸いつく）
+      let da=Math.atan2(p[1]*H-m.c[1],p[0]*W-m.c[0])-Math.atan2(m.p0[1]*H-m.c[1],m.p0[0]*W-m.c[0]);
+      if(s.t==="circle"){ let r=m.r0+da; const q=Math.PI/2, n=Math.round(r/q); if(Math.abs(r-n*q)<.06) r=n*q; s.r=r; }
+      else s.pts=m.orig.map(q=>{ const v=edRot([q[0]*W,q[1]*H],m.c,da); return [v[0]/W,v[1]/H]; });
+    }
+    else if(m.handle!=null){ if(s.t==="circle"&&s.r){ const v=edRot([p[0]*W,p[1]*H],m.c,-s.r); s.pts[m.handle]=[v[0]/W,v[1]/H]; } else s.pts[m.handle]=p; }
     else { let dx=p[0]-m.p0[0], dy=p[1]-m.p0[1];   // はみ出さないように
       const xs=m.orig.map(q=>q[0]), ys=m.orig.map(q=>q[1]); dx=Math.max(-Math.min(...xs),Math.min(1-Math.max(...xs),dx)); dy=Math.max(-Math.min(...ys),Math.min(1-Math.max(...ys),dy));
       s.pts=m.orig.map(q=>[q[0]+dx,q[1]+dy]); }
