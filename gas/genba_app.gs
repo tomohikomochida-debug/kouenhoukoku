@@ -241,6 +241,8 @@ function doPost(e) {
       case 'sharyo:addDoc':    return out_(addVehicleDoc_(b));
       case 'sharyo:deleteDoc': return withLock_(function () { return deleteVehicleDoc_(b.docId); });
       case 'sharyo:readDoc':   return out_(b.kind === 'inspect' ? readInspect_(b.data, b.mime) : readShaken_(b.data, b.mime));
+      /* 残材処分：伝票の読み取り（仮入力用） */
+      case 'zaizai:readSlip':  return out_(readSlip_(b.data, b.mime, b.hints));
       case 'sharyo:docUntil':  return withLock_(function () { return setDocUntil_(b.batch, b.until); });
       case 'sharyo:importInfo': return out_(importVehicleInfo_(b.by, !!b.dry));
       /* 段取り */
@@ -421,6 +423,27 @@ function readInspect_(b64, mime) {   // 年次点検（特定自主検査）の�
     next = y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2);
   }
   return { ok: true, data: { inspectedOn: on, inspectDate: next, machine: j.machine || '', inspector: j.inspector || '' } };
+}
+/* 残材処分：処分場の計量票・受付伝票・領収書の写真から、搬入日・処分場所・種類・正味重量・金額を読む（入力欄への仮入力用） */
+function readSlip_(b64, mime, hints) {
+  hints = hints || {};
+  var places = (hints.places || []).filter(String), types = (hints.types || ['枝葉', '幹', '草']).filter(String);
+  var prompt = 'これはごみ処理センター・チップ工場・産業廃棄物の処理場などの「計量票」「受付伝票」「領収書」の写真です。造園会社が剪定枝・幹・草を処分した記録です。' +
+    '次の項目を読み取り、JSONだけ返してください。' +
+    '{"date":"搬入日 YYYY-MM-DD（令和n年＝2018+n年。年が書かれていなければ空）",' +
+    '"place":"処分場所。次の候補のどれかに当たるなら候補の文字のまま1つ：' + JSON.stringify(places) + '。どれにも当たらなければ伝票に書かれた施設名",' +
+    '"item":"品目（伝票の書き方のまま）",' +
+    '"type":"次の候補から1つ：' + JSON.stringify(types) + '。剪定枝・枝・葉・木くず・せん定くずは枝葉、幹・丸太・太い木は幹、草・刈草・雑草は草。決められなければ空",' +
+    '"netKg":"正味重量（総重量−空車重量。搬入量）を kg の数値で。t表記なら kg に直す。無ければ空",' +
+    '"amount":"支払った金額（手数料・処分費の税込合計）を円の数値で。無ければ空",' +
+    '"plate":"車両番号（ナンバー）"}。読めない項目は空文字。推測で埋めない。';
+  var j = gemini_([{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
+  var num = function (v) { var n = Number(String(v == null ? '' : v).replace(/[^\d.]/g, '')); return isFinite(n) && n > 0 ? n : ''; };
+  var d = String(j.date || '').replace(/\//g, '-');
+  var m = d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  d = m ? (m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2)) : '';
+  return { ok: true, data: { date: d, place: String(j.place || '').trim(), item: String(j.item || '').trim(),
+    type: types.indexOf(j.type) >= 0 ? j.type : '', netKg: num(j.netKg), amount: num(j.amount), plate: String(j.plate || '').trim() } };
 }
 /* 「庭乃持田園情報管理」の「車両」シートと、そこからリンクしている車検証・検査証（記録事項）のスキャンを取り込む
    ・ナンバーで照合（無ければ名前）。無い車は追加、ある車は空いている欄だけ埋める（車検の期限は新しいほうにする）

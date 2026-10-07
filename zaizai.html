@@ -235,6 +235,12 @@
   .crop-foot{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
   .crop-foot button{flex:1;height:48px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer}
   .crop-foot button.primary{background:var(--leaf);border-color:var(--leaf)}
+
+  /* 伝票からの仮入力 */
+  .ai-fill{outline:2px solid #e0a52a !important;outline-offset:1px;background:#fff8e6 !important}
+  .pick.ai-fill{border-radius:10px;padding:4px}
+  .slip-ai{display:none;margin-top:10px;font-size:13px;line-height:1.6;border-radius:8px;padding:10px 12px;background:#fff8e6;border:1px solid #f0d08a;color:#6b4e12}
+  .slip-ai.err{background:#fbece8;border-color:#e8b9ad;color:var(--danger,#B0533F)}
   /* 区分でしぼる・まとめる */
   .catbar{display:flex;align-items:center;gap:8px;margin:-2px 0 14px;flex-wrap:wrap}
   .catbar .lbl{margin-right:2px}
@@ -381,11 +387,13 @@
     <div class="slip-btns">
       <button type="button" class="mini-btn" id="slipCamBtn">📷 撮影</button>
       <button type="button" class="mini-btn" id="slipFileBtn">🖼 選ぶ（写真・PDF）</button>
+      <button type="button" class="mini-btn" id="slipReadBtn">🔎 伝票から仮入力</button>
       <input type="file" accept="image/*" capture="environment" id="slipCam" style="display:none">
       <input type="file" accept="image/*,application/pdf" multiple id="slipFile" style="display:none">
     </div>
     <div class="slip-grid" id="slipGrid"></div>
-    <span class="hlp">伝票は「記録する」で一緒に送ります。向きがちがうときは ⟳ で直せます。PDFは1ページを1枚として取り込みます。</span>
+    <div class="slip-ai" id="slipAiMsg"></div>
+    <span class="hlp">撮った伝票は、日付・処分場所・種類・数量・金額を読み取って、空いている欄に仮入力します（黄色の枠）。伝票は「記録する」で一緒に送ります。向きがちがうときは ⟳ で直せます。PDFは1ページを1枚として取り込みます。</span>
     <div class="slip-off" id="slipOff" style="display:none">伝票の保管先（伝票GAS）がまだ設定されていません。</div>
   </div>
 </main>
@@ -810,6 +818,7 @@ function apply(d){ d=d||{};
   setChipsOn(pickElems.vehicle,d.vehicle||[]); $('#vehicleOther').value=d.vehicleOther||'';
   refreshPlaceMode(); normalizeTo100(); syncSliders(); recalc(); }
 function resetForm(){ editDenpyo=null; editKey=null; slipEdit=[]; renderSlips();
+  if(typeof clearAiMarks==='function'){ clearAiMarks(); slipAiMsg(''); }
   $('#editBadge').classList.remove('show'); $('#pvDelete').style.display='none'; $('#btnDelete').style.display='none';
   apply({date:todayStr()}); clearDraft(); }
 
@@ -882,7 +891,8 @@ function renderSlips(){
   });
 }
 /* ===== 伝票のトリミング（必要なところだけ切り取る） ===== */
-const crop={i:-1,src:null,box:null,drag:null};
+const crop={i:-1,src:null,box:null,drag:null,after:null};
+function finishCrop(){ const fn=crop.after; crop.after=null; if(fn) fn(); }   // 切り取り画面を閉じた後にすること（伝票の読み取り）
 const CROP_MIN=40;   // 枠の最小（画面px）
 function cropDisp(){ const im=$('#cropImg'); return {w:im.clientWidth,h:im.clientHeight}; }
 function cropDraw(){ const b=crop.box,el=$('#cropBox'); el.style.left=b.x+'px'; el.style.top=b.y+'px'; el.style.width=b.w+'px'; el.style.height=b.h+'px'; }
@@ -933,7 +943,7 @@ $('#cropWrap').addEventListener('pointermove',e=>{
   crop.box=b; cropDraw();
 });
 ['pointerup','pointercancel'].forEach(ev=>$('#cropWrap').addEventListener(ev,()=>{ crop.drag=null; }));
-$('#cropCancel').onclick=closeCrop;
+$('#cropCancel').onclick=()=>{ closeCrop(); finishCrop(); };
 $('#cropAll').onclick=cropFull;
 $('#cropRot').onclick=()=>{ if(!crop.src) return; crop.src=rotCanvas(crop.src,90); cropShow(); };
 $('#cropOk').onclick=()=>{
@@ -948,6 +958,69 @@ $('#cropOk').onclick=()=>{
   else { s.removed=true; slipEdit.splice(crop.i+1,0,fresh); }   // 送った伝票：切り取った画像に差しかえ（記録するときに入れかわる）
   closeCrop(); renderSlips();
   toast(s.canvas?'切り取りました':'切り取りました（「記録する」で差しかえます）');
+  finishCrop();
+};
+
+/* ===== 伝票から仮入力（AIで読み取り → 空いている欄だけ埋める） ===== */
+let slipReading=false;   // 読み取りは現場アプリGAS（GENBA_GAS_URL）の zaizai:readSlip
+function slipAiMsg(html,err){ const el=$('#slipAiMsg'); if(!el) return; el.style.display=html?'block':'none'; el.innerHTML=html||''; el.classList.toggle('err',!!err); }
+async function slipImageB64(s){
+  let c;
+  if(s.canvas) c=rotCanvas(s.canvas,s.rot);
+  else { const d=await getSlipData(s.id); const img=await loadImg('data:'+d.mime+';base64,'+d.data); c=fitCanvas(img,img.naturalWidth,img.naturalHeight); }
+  const k=Math.min(1,1600/Math.max(c.width,c.height));   // 読み取りには1600pxで十分（送る量を減らす）
+  if(k<1){ const o=document.createElement('canvas'); o.width=Math.round(c.width*k); o.height=Math.round(c.height*k);
+    const x=o.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,o.width,o.height); x.drawImage(c,0,0,o.width,o.height); c=o; }
+  return c.toDataURL('image/jpeg',.85).split(',')[1];
+}
+function markAi(el){ if(!el) return; el.classList.add('ai-fill'); }
+function clearAiMarks(){ document.querySelectorAll('.ai-fill').forEach(el=>el.classList.remove('ai-fill')); }
+// 読み取った内容を、空いている欄にだけ入れる（入れたものは黄色の枠）
+function applySlipRead(d){
+  const done=[];
+  if(d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date) && d.date!==$('#f_date').value){ $('#f_date').value=d.date; markAi($('#f_date')); done.push('日付'); }
+  if(d.place && !chipsOn(pickElems.place).length && !$('#placeOther').value.trim()){
+    if(PLACES.includes(d.place)) setChipsOn(pickElems.place,[d.place]); else $('#placeOther').value=d.place;
+    markAi(PLACES.includes(d.place)?pickElems.place:$('#placeOther')); refreshPlaceMode(); done.push('処分場所');
+  }
+  if(!chipsOn(pickElems.type).length && !$('#typeOther').value.trim()){
+    if(d.type && TYPES.includes(d.type)){ setChipsOn(pickElems.type,[d.type]); markAi(pickElems.type); done.push('種類'); }
+    else if(d.item){ $('#typeOther').value=d.item; markAi($('#typeOther')); done.push('種類'); }
+  }
+  if(d.netKg){
+    const box=currentIsPublic?$('#f_govqty'):$('#f_qty');
+    if(!box.value.trim()){ if(qtyUnit!=='kg') setUnit('kg'); box.value=String(Math.round(d.netKg)); markAi(box); done.push('数量（'+Math.round(d.netKg).toLocaleString()+'kg）'); }
+  }
+  if(d.amount && !currentIsPublic && !$('#f_amount').value.trim()){ $('#f_amount').value=String(Math.round(d.amount)); markAi($('#f_amount')); done.push('処分費'); }
+  recalc(); saveDraft();
+  return done;
+}
+async function readSlipToForm(i){
+  if(slipReading) return;
+  const s=slipEdit[i]; if(!s||s.removed) return;
+  slipReading=true; const btn=$('#slipReadBtn'); btn.disabled=true;
+  slipAiMsg('🔎 伝票を読み取っています…（10秒ほどかかります）');
+  try{
+    const data=await slipImageB64(s);
+    const res=await fetch(GENBA_GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({app:'zaizai',mode:'readSlip',data,mime:'image/jpeg',by:author,
+        hints:{places:[...new Set(PLACES.concat(cand.places||[]))],types:TYPES}})});
+    const r=await res.json();
+    if(!r.ok) throw new Error(r.error||'読み取りに失敗しました');
+    const done=applySlipRead(r.data||{});
+    slipAiMsg(done.length
+      ? '伝票から仮入力しました：<b>'+done.join('・')+'</b><br>黄色の枠のところを確認して、ちがえば直してください。'
+      : '伝票から入れられる項目がありませんでした（読めなかったか、もう入力済みです）。');
+  }catch(e){ slipAiMsg('伝票を読み取れませんでした。手で入力してください。<br><small>'+esc(e&&e.message?e.message:e)+'</small>',true); }
+  finally{ slipReading=false; btn.disabled=false; }
+}
+// 黄色の枠は、そこを手で触ったら消す
+document.addEventListener('input',e=>{ if(e.target.classList&&e.target.classList.contains('ai-fill')) e.target.classList.remove('ai-fill'); },true);
+document.addEventListener('click',e=>{ const p=e.target.closest&&e.target.closest('.pick.ai-fill'); if(p) p.classList.remove('ai-fill'); },true);
+$('#slipReadBtn').onclick=()=>{
+  const live=slipEdit.map((s,i)=>({s,i})).filter(o=>!o.s.removed);
+  if(!live.length){ toast('先に伝票を撮るか選んでください',true); return; }
+  readSlipToForm(live[live.length-1].i);   // いちばん新しい伝票を読む
 };
 
 function liveSlipCount(){ return slipEdit.filter(s=>!s.removed).length; }
@@ -985,8 +1058,10 @@ $('#slipCamBtn').onclick=()=>$('#slipCam').click();
 $('#slipFileBtn').onclick=()=>$('#slipFile').click();
 ['slipCam','slipFile'].forEach(id=>$('#'+id).addEventListener('change',async e=>{ const fs=[...e.target.files]; e.target.value='';
   const before=slipEdit.length; await addSlipFiles(fs);
-  // 撮影した1枚は、そのまま切り取り画面を開く（必要なところだけ残す）
-  if(id==='slipCam' && slipEdit.length===before+1 && slipEdit[before].canvas) openCrop(before);
+  // 撮影した1枚は、そのまま切り取り画面を開く（必要なところだけ残す）→ 閉じたら読み取って仮入力
+  if(id==='slipCam' && slipEdit.length===before+1 && slipEdit[before].canvas){ crop.after=()=>readSlipToForm(before); openCrop(before); }
+  // 写真・PDFを1枚だけ選んだときは、すぐ読み取って仮入力
+  else if(id==='slipFile' && slipEdit.length===before+1) readSlipToForm(before);
 }));
 
 /* ===== 伝票PDF（A4に2×2） ===== */
