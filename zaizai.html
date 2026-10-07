@@ -201,6 +201,44 @@
 
   .editbadge{display:none;background:var(--tape);color:#fff;font-size:12px;font-weight:700;border-radius:6px;padding:3px 10px;margin-left:8px;cursor:pointer}
   .editbadge.show{display:inline-block}
+  /* 処分伝票（入力） */
+  .slip-btns{display:flex;gap:8px;flex-wrap:wrap}
+  .slip-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;margin-top:12px}
+  .slip-grid:empty{display:none}
+  .slip-item{position:relative;border:1px solid var(--line);border-radius:8px;background:var(--field);
+    aspect-ratio:3/4;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .slip-item img{max-width:100%;max-height:100%;display:block}
+  .slip-item .ld{font-size:12px;color:var(--bark)}
+  .slip-item .slip-no{position:absolute;left:5px;top:5px;background:var(--tape);color:#fff;font-size:11px;font-weight:700;border-radius:5px;padding:1px 7px}
+  .slip-item .slip-ops{position:absolute;right:4px;top:4px;display:flex;gap:4px}
+  .slip-item .slip-ops button{width:32px;height:32px;border-radius:50%;border:none;background:rgba(34,35,31,.72);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .slip-item .new{position:absolute;left:5px;bottom:5px;background:var(--leaf);color:#fff;font-size:10px;font-weight:700;border-radius:5px;padding:1px 6px}
+  .slip-off{font-size:13px;color:var(--bark);background:var(--field);border:1px dashed var(--line);border-radius:8px;padding:10px 12px;margin-top:10px}
+
+  /* 伝票PDF（一覧で選ぶ） */
+  .rec .mtag.s{border-color:var(--ok);color:var(--ok);font-weight:700}
+  body.picking .rec{position:relative;padding-left:52px}
+  body.picking .rec .ck{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:7px;
+    border:2px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:800}
+  body.picking .rec.sel{border-color:var(--leaf);background:var(--leaf-soft)}
+  body.picking .rec.sel .ck{background:var(--leaf);border-color:var(--leaf)}
+  body.picking .rec.noslip{opacity:.45;cursor:default}
+  body.picking .rec.noslip .ck{border-style:dashed;background:transparent}
+  .rec .ck{display:none}
+  body.picking .rec .ck{display:flex}
+  .pick-hint{display:none;font-size:13px;color:var(--leaf);background:var(--leaf-soft);border-radius:8px;padding:10px 12px;margin-bottom:12px;line-height:1.6}
+  body.picking .pick-hint{display:block}
+  .pdfbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(246,245,240,.96);backdrop-filter:blur(6px);
+    border-top:1px solid var(--line);padding:10px 14px;display:none}
+  body.picking .pdfbar{display:block}
+  .pdfbar .in{max-width:680px;margin:0 auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .pdfbar .sum{flex:1;min-width:150px;font-size:13px;color:var(--bark)}
+  .pdfbar .sum b{color:var(--leaf);font-size:18px}
+  .pdfbar .save{padding:12px 20px;font-size:15px}
+  .pdfbar .save.danger-btn{padding:12px 14px}
+  .pdf-prog{font-size:14px;color:var(--bark);margin:6px 0 4px}
+  .pdf-bar{height:8px;background:var(--leaf-soft);border-radius:999px;overflow:hidden}
+  .pdf-bar i{display:block;height:100%;width:0;background:var(--leaf);transition:width .2s}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 .home-btn{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;color:#fff;text-decoration:none;font-family:inherit;font-size:13px;font-weight:700;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.32);border-radius:999px;padding:5px 11px 5px 9px;white-space:nowrap;line-height:1.2;vertical-align:middle}
 .home-btn:active{background:rgba(255,255,255,.28)}
@@ -284,6 +322,19 @@
     <div class="addable"><input type="text" id="vehicleOther" placeholder="その他（例：3tダンプ）"></div>
     <div class="suggest" id="vehicleSuggest"></div>
   </div>
+
+  <div class="sec-head"><span class="tag">06</span><h2>処分伝票（スキャン・写真）</h2><span class="rule"></span></div>
+  <div class="card">
+    <div class="slip-btns">
+      <button type="button" class="mini-btn" id="slipCamBtn">📷 撮影</button>
+      <button type="button" class="mini-btn" id="slipFileBtn">🖼 選ぶ（写真・PDF）</button>
+      <input type="file" accept="image/*" capture="environment" id="slipCam" style="display:none">
+      <input type="file" accept="image/*,application/pdf" multiple id="slipFile" style="display:none">
+    </div>
+    <div class="slip-grid" id="slipGrid"></div>
+    <span class="hlp">伝票は「記録する」で一緒に送ります。向きがちがうときは ⟳ で直せます。PDFは1ページを1枚として取り込みます。</span>
+    <div class="slip-off" id="slipOff" style="display:none">伝票の保管先（伝票GAS）がまだ設定されていません。</div>
+  </div>
 </main>
 
 <!-- ===== 一覧 ===== -->
@@ -297,7 +348,9 @@
   <div class="splitmode" style="margin-bottom:12px">
     <span class="lbl">表示</span>
     <span class="seg"><button id="listDenpyo" class="on">一台ごと</button><button id="listSite">現場ごと</button></span>
+    <button class="mini-btn" id="btnPick" style="margin-left:auto">🖨 伝票をA4にまとめる</button>
   </div>
+  <div class="pick-hint">伝票の付いた記録をタップして選び、下の「PDFを作る」を押してください。<br>A4に4枚（左上→右上→左下→右下）、日付の古い順に並べます。</div>
   <button id="btnListBack" class="backbtn" style="display:none">← 現場一覧にもどる</button>
   <div class="totals" id="totals"></div>
   <div id="recList"></div>
@@ -322,6 +375,28 @@
   </div>
 </div>
 
+<div class="pdfbar" id="pdfbar"><div class="in">
+  <div class="sum">選択 <b class="tnum" id="pkCount">0</b> 枚 <span id="pkPages"></span></div>
+  <button class="balance" id="pkAll">全部選ぶ</button>
+  <button class="save danger-btn" id="pkCancel">やめる</button>
+  <button class="save" id="pkMake">PDFを作る</button>
+</div></div>
+
+<div class="modal" id="pdfModal">
+  <div class="sheet">
+    <h3 id="pdfTitle">伝票PDFを作っています</h3>
+    <p class="lead" id="pdfLead">伝票を取り寄せています…</p>
+    <div class="pdf-bar"><i id="pdfBarIn"></i></div>
+    <div class="pdf-prog" id="pdfProg"></div>
+    <div class="acts">
+      <button id="pdfClose">閉じる</button>
+      <button id="pdfOpen" style="display:none">開く・印刷</button>
+      <button id="pdfShare" style="display:none">共有</button>
+      <button id="pdfSave" class="primary" style="display:none">保存する</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -330,6 +405,8 @@
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbz3eI72jQip1qDuZp1rBgQQB4vmDlaP8kjptoFWquxKf2x1Y45ZbjG_wUksPmZ113zM/exec';
 /* 名簿・現場マスタは日報アプリと共有（日報の GAS から取得） */
 const NIPPOU_GAS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
+/* ↓↓↓ 処分伝票の GAS（残材処分_伝票GAS.gs をデプロイしたURL）↓↓↓ */
+const SLIP_GAS_URL = 'https://script.google.com/macros/s/AKfycbyg7bNSii4BEARNVa1PTO_K4JM4C9ALgFlZ91_3-_7SWoGGTbDbQtZ0e_sabnaSck6J8Q/exec';
 
 const FALLBACK_STAFF = ['親方','樋上','山口','甲斐','澤崎','荒木'];
 const FALLBACK_SITEGROUPS = {
@@ -361,6 +438,12 @@ let editDenpyo=null;
 let allRecords=[];
 let listMode='denpyo';       // 'denpyo'（一台ごと） | 'site'（現場ごと）
 let drilledFromSite=false;   // 現場ごと一覧から現場を選んで絞り込み中か
+let editKey=null;            // 編集中の記録のキー（denpyo か 'r'+rid）＝伝票の紐づけ先
+let slipsAll=[];             // 伝票GASの台帳（一覧用）
+let slipEdit=[];             // 入力画面の伝票 {id?,w,h,thumb,removed} または {canvas,rot,thumb}
+const slipCache={};          // id -> {mime,data,w,h}
+let picking=false;           // 伝票PDFの選択中か
+const picked=new Set();      // 選んだ記録のキー
 
 const $=s=>document.querySelector(s);
 const num=v=>{const n=Number(String(v).replace(/[^\d.-]/g,''));return isFinite(n)?n:0;};
@@ -629,8 +712,202 @@ function apply(d){ d=d||{};
   setChipsOn(pickElems.place,d.place||[]); $('#placeOther').value=d.placeOther||'';
   setChipsOn(pickElems.vehicle,d.vehicle||[]); $('#vehicleOther').value=d.vehicleOther||'';
   refreshPlaceMode(); normalizeTo100(); syncSliders(); recalc(); }
-function resetForm(){ editDenpyo=null; $('#editBadge').classList.remove('show'); $('#pvDelete').style.display='none'; $('#btnDelete').style.display='none';
+function resetForm(){ editDenpyo=null; editKey=null; slipEdit=[]; renderSlips();
+  $('#editBadge').classList.remove('show'); $('#pvDelete').style.display='none'; $('#btnDelete').style.display='none';
   apply({date:todayStr()}); clearDraft(); }
+
+/* ===== 処分伝票（スキャン・写真の添付） ===== */
+const slipReady=()=>SLIP_GAS_URL.indexOf('PASTE_')!==0;
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const SLIP_MAX=2000;   // 長い辺の最大ピクセル（A4の1/4に印刷して十分読める大きさ）
+async function slipGet(params){ const r=await fetchT(SLIP_GAS_URL+'?'+params,30000); return r.json(); }
+async function slipPost(body){ const r=await fetch(SLIP_GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
+  const d=await r.json(); if(!d.ok) throw new Error(d.error||'slip'); return d; }
+async function loadSlipList(){ if(!slipReady()) return; try{ const d=await slipGet('action=list'); if(d.ok) slipsAll=d.slips||[]; }catch(e){} }
+async function getSlipData(id){ if(slipCache[id]) return slipCache[id];
+  const d=await slipGet('action=get&id='+encodeURIComponent(id)); if(!d.ok) throw new Error(d.error||'get');
+  slipCache[id]={mime:d.mime||'image/jpeg',data:d.data,w:num(d.w),h:num(d.h)}; return slipCache[id]; }
+
+function loadImg(src){ return new Promise((ok,ng)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ng; i.src=src; }); }
+function fitCanvas(src,w,h){ const s=Math.min(1,SLIP_MAX/Math.max(w,h)); const c=document.createElement('canvas');
+  c.width=Math.max(1,Math.round(w*s)); c.height=Math.max(1,Math.round(h*s)); const x=c.getContext('2d');
+  x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(src,0,0,c.width,c.height); return c; }
+async function imageToCanvas(file){ const url=URL.createObjectURL(file);
+  try{ const img=await loadImg(url); return fitCanvas(img,img.naturalWidth,img.naturalHeight); } finally{ URL.revokeObjectURL(url); } }
+let pdfjsP=null;
+function loadPdfjs(){ if(pdfjsP) return pdfjsP;
+  pdfjsP=new Promise((ok,ng)=>{ const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=()=>{ window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; ok(window.pdfjsLib); };
+    s.onerror=()=>{ pdfjsP=null; ng(new Error('pdfjs')); }; document.head.appendChild(s); });
+  return pdfjsP; }
+async function pdfToCanvases(file){ const lib=await loadPdfjs();
+  const doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise; const out=[];
+  for(let p=1;p<=doc.numPages;p++){ const page=await doc.getPage(p); const v0=page.getViewport({scale:1});
+    const v=page.getViewport({scale:SLIP_MAX/Math.max(v0.width,v0.height)});
+    const c=document.createElement('canvas'); c.width=Math.round(v.width); c.height=Math.round(v.height);
+    const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height);
+    await page.render({canvasContext:x,viewport:v}).promise; out.push(c); }
+  return out; }
+function rotCanvas(c,rot){ rot=((rot%360)+360)%360; if(!rot) return c; const o=document.createElement('canvas'); const sw=rot%180!==0;
+  o.width=sw?c.height:c.width; o.height=sw?c.width:c.height; const x=o.getContext('2d');
+  x.translate(o.width/2,o.height/2); x.rotate(rot*Math.PI/180); x.drawImage(c,-c.width/2,-c.height/2); return o; }
+function thumbOf(c,rot){ const r=rotCanvas(c,rot); const s=260/Math.max(r.width,r.height); const t=document.createElement('canvas');
+  t.width=Math.max(1,Math.round(r.width*s)); t.height=Math.max(1,Math.round(r.height*s)); t.getContext('2d').drawImage(r,0,0,t.width,t.height);
+  return t.toDataURL('image/jpeg',.75); }
+async function addSlipFiles(files){
+  if(!files||!files.length) return;
+  toast('伝票を読み込んでいます…');
+  let bad=0;
+  for(const f of files){
+    try{
+      if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){ (await pdfToCanvases(f)).forEach(c=>slipEdit.push({canvas:c,rot:0,thumb:thumbOf(c,0)})); }
+      else { const c=await imageToCanvas(f); slipEdit.push({canvas:c,rot:0,thumb:thumbOf(c,0)}); }
+    }catch(e){ bad++; }
+  }
+  renderSlips(); if(bad) toast('読み込めないファイルがありました（'+bad+'件）',true);
+}
+function renderSlips(){
+  const g=$('#slipGrid'); if(!g) return;
+  $('#slipOff').style.display=slipReady()?'none':'block';
+  $('#slipCamBtn').disabled=$('#slipFileBtn').disabled=!slipReady();
+  const items=slipEdit.map((s,i)=>({s,i})).filter(o=>!o.s.removed);
+  g.innerHTML=items.map((o,n)=>`<div class="slip-item" data-i="${o.i}">
+      ${o.s.thumb?`<img src="${o.s.thumb}" alt="伝票${n+1}">`:'<span class="ld">読み込み中…</span>'}
+      <span class="slip-no">${n+1}</span>${o.s.canvas?'<span class="new">未送信</span>':''}
+      <div class="slip-ops">${o.s.canvas?'<button type="button" data-rot title="右に回す">⟳</button>':''}<button type="button" data-del title="外す">✕</button></div>
+    </div>`).join('');
+  g.querySelectorAll('.slip-item').forEach(el=>{ const s=slipEdit[+el.dataset.i];
+    const r=el.querySelector('[data-rot]'); if(r) r.onclick=()=>{ s.rot=(s.rot+90)%360; s.thumb=thumbOf(s.canvas,s.rot); renderSlips(); };
+    el.querySelector('[data-del]').onclick=()=>{ if(s.id){ if(!confirm('この伝票を外します（記録するときに削除されます）。よろしいですか？')) return; s.removed=true; }
+      else slipEdit.splice(+el.dataset.i,1); renderSlips(); };
+  });
+}
+function liveSlipCount(){ return slipEdit.filter(s=>!s.removed).length; }
+async function loadEditSlips(key){
+  slipEdit=slipsAll.filter(s=>s.denpyo===key).sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt)))
+    .map(s=>({id:s.id,w:s.w,h:s.h,thumb:null}));
+  renderSlips();
+  for(const s of slipEdit){ if(!s.id) continue;
+    try{ const d=await getSlipData(s.id); if(editKey!==key) return;
+      const img=await loadImg('data:'+d.mime+';base64,'+d.data); s.thumb=thumbOf(fitCanvas(img,img.naturalWidth,img.naturalHeight),0);
+    }catch(e){ s.thumb=''; }
+    renderSlips(); }
+}
+function recKey(r){ return r.denpyo||('r'+r.rid); }
+async function fetchRecordKeys(){ const r=await fetch(GAS_URL+'?action=list'); const d=await r.json(); return d.records||[]; }
+/* 新しく記録した一台のキーを探す（保存前後の一覧の差分から） */
+async function findNewKey(beforeKeys,rows){
+  const recs=await fetchRecordKeys(); allRecords=recs.slice();
+  const date=rows[0]?rows[0].date:''; const tot=rows.reduce((a,r)=>a+num(r.total),0);
+  const groups={}; recs.forEach(r=>{ const k=recKey(r); if(beforeKeys.has(k)) return; (groups[k]=groups[k]||[]).push(r); });
+  let cands=Object.keys(groups).filter(k=>normDate(groups[k][0].date)===date);
+  if(cands.length>1){ const a=cands.filter(k=>groups[k][0].author===author); if(a.length) cands=a; }
+  if(cands.length>1){ const t=cands.filter(k=>Math.round(groups[k].reduce((s,r)=>s+num(r.total),0))===Math.round(tot)); if(t.length) cands=t; }
+  return cands[0]||null;
+}
+async function sendSlips(key,rows,onProg){
+  const adds=slipEdit.filter(s=>s.canvas&&!s.removed), dels=slipEdit.filter(s=>s.id&&s.removed);
+  const total=adds.length+dels.length; let done=0;
+  const site=rows.map(r=>r.site).filter(Boolean).join('・'), place=rows[0]?rows[0].place:'', date=rows[0]?rows[0].date:'';
+  for(const s of dels){ await slipPost({mode:'remove',id:s.id}); onProg(++done,total); }
+  for(const s of adds){ const c=rotCanvas(s.canvas,s.rot); const data=c.toDataURL('image/jpeg',.82).split(',')[1];
+    await slipPost({mode:'upload',denpyo:key,date,place,site,author,mime:'image/jpeg',data,w:c.width,h:c.height}); onProg(++done,total); }
+}
+$('#slipCamBtn').onclick=()=>$('#slipCam').click();
+$('#slipFileBtn').onclick=()=>$('#slipFile').click();
+['slipCam','slipFile'].forEach(id=>$('#'+id).addEventListener('change',async e=>{ const fs=[...e.target.files]; e.target.value=''; await addSlipFiles(fs); }));
+
+/* ===== 伝票PDF（A4に2×2） ===== */
+function slipsOfKey(k){ return slipsAll.filter(s=>s.denpyo===k); }
+function setPicking(on){ picking=on; picked.clear(); document.body.classList.toggle('picking',on);
+  $('#btnPick').textContent=on?'✕ 選ぶのをやめる':'🖨 伝票をA4にまとめる';
+  if(on){ drilledFromSite=false; if(listMode!=='denpyo'){ setListMode('denpyo'); return; } }
+  renderList(); }
+function updatePickBar(){
+  let n=0; picked.forEach(k=>n+=slipsOfKey(k).length);
+  $('#pkCount').textContent=n; $('#pkPages').textContent=n?'（A4 '+Math.ceil(n/4)+'ページ）':'';
+  $('#pkMake').disabled=!n;
+  const vis=[...$('#recList').querySelectorAll('.rec[data-k]:not(.noslip)')].map(el=>el.dataset.k);
+  $('#pkAll').textContent=(vis.length&&vis.every(k=>picked.has(k)))?'全部はずす':'全部選ぶ';
+}
+$('#btnPick').onclick=()=>{ if(!slipReady()){ toast('伝票GASのURLを設定してください',true); return; } setPicking(!picking); };
+$('#pkCancel').onclick=()=>setPicking(false);
+$('#pkAll').onclick=()=>{ const vis=[...$('#recList').querySelectorAll('.rec[data-k]:not(.noslip)')].map(el=>el.dataset.k);
+  const all=vis.length&&vis.every(k=>picked.has(k)); vis.forEach(k=>all?picked.delete(k):picked.add(k)); renderList(); };
+
+function b64ToBytes(b64){ const s=atob(b64); const u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u; }
+function jpegSize(u){ let i=2; while(i<u.length){ if(u[i]!==0xFF){ i++; continue; } const m=u[i+1];
+    if(m>=0xC0&&m<=0xCF&&m!==0xC4&&m!==0xC8&&m!==0xCC) return {h:(u[i+5]<<8)|u[i+6], w:(u[i+7]<<8)|u[i+8]};
+    i+=2+((u[i+2]<<8)|u[i+3]); } return null; }
+async function toJpegBytes(d){ // 保存形式がJPEG以外ならJPEGに直す
+  if(/jpe?g/i.test(d.mime)){ const b=b64ToBytes(d.data); const sz=jpegSize(b); if(sz) return {bytes:b,w:sz.w,h:sz.h}; }
+  const img=await loadImg('data:'+d.mime+';base64,'+d.data); const c=fitCanvas(img,img.naturalWidth,img.naturalHeight);
+  return {bytes:b64ToBytes(c.toDataURL('image/jpeg',.85).split(',')[1]),w:c.width,h:c.height}; }
+/* JPEGを並べた A4縦のPDFを作る（1ページに2×2、左上→右上→左下→右下） */
+function buildSlipPdf(imgs){
+  const enc=new TextEncoder(); const parts=[]; let len=0; const offs=[];
+  const push=x=>{ const b=typeof x==='string'?enc.encode(x):x; parts.push(b); len+=b.length; };
+  const f=n=>(Math.round(n*100)/100).toString();
+  const W=595.28, H=841.89, M=28.35, G=17;          // A4（pt）・外余白10mm・すき間6mm
+  const cw=(W-2*M-G)/2, ch=(H-2*M-G)/2;
+  const np=Math.ceil(imgs.length/4), imgBase=3+np*2, N=imgBase+imgs.length;
+  const obj=(n,body)=>{ offs[n]=len; push(n+' 0 obj\n'); push(body); push('\nendobj\n'); };
+  push('%PDF-1.4\n'); push(new Uint8Array([37,226,227,207,211,10]));
+  obj(1,'<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2,'<< /Type /Pages /Kids ['+Array.from({length:np},(_,p)=>(3+p*2)+' 0 R').join(' ')+'] /Count '+np+' >>');
+  for(let p=0;p<np;p++){
+    let cs='', res='';
+    for(let k=0;k<4;k++){ const j=p*4+k; if(j>=imgs.length) break; const im=imgs[j];
+      const x=M+(k%2)*(cw+G), y=H-M-ch-Math.floor(k/2)*(ch+G);
+      const rot=im.w>im.h;                              // 横長はセル（縦長）に合わせて左に90°回す
+      const ew=rot?im.h:im.w, eh=rot?im.w:im.h, s=Math.min(cw/ew,ch/eh), dw=ew*s, dh=eh*s;
+      const ox=x+(cw-dw)/2, oy=y+(ch-dh)/2;
+      cs+= rot ? `q 0 ${f(im.w*s)} ${f(-im.h*s)} 0 ${f(ox+dw)} ${f(oy)} cm /I${j} Do Q\n`
+               : `q ${f(dw)} 0 0 ${f(dh)} ${f(ox)} ${f(oy)} cm /I${j} Do Q\n`;
+      res+=`/I${j} ${imgBase+j} 0 R `; }
+    const cb=enc.encode(cs);
+    obj(3+p*2,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << ${res}>> >> /Contents ${4+p*2} 0 R >>`);
+    offs[4+p*2]=len; push((4+p*2)+' 0 obj\n<< /Length '+cb.length+' >>\nstream\n'); push(cb); push('\nendstream\nendobj\n');
+  }
+  imgs.forEach((im,j)=>{ const n=imgBase+j; offs[n]=len;
+    push(n+' 0 obj\n<< /Type /XObject /Subtype /Image /Width '+im.w+' /Height '+im.h+' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+im.bytes.length+' >>\nstream\n');
+    push(im.bytes); push('\nendstream\nendobj\n'); });
+  const xref=len; let x='xref\n0 '+N+'\n0000000000 65535 f \n';
+  for(let n=1;n<N;n++) x+=String(offs[n]).padStart(10,'0')+' 00000 n \n';
+  push(x+'trailer\n<< /Size '+N+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n');
+  return new Blob(parts,{type:'application/pdf'});
+}
+let pdfOut=null; // {blob,name,url}
+function pdfModalState(done,lead,prog,pct){
+  $('#pdfTitle').textContent=done?'伝票PDFができました':'伝票PDFを作っています';
+  $('#pdfLead').textContent=lead; $('#pdfProg').textContent=prog||''; $('#pdfBarIn').style.width=(pct||0)+'%';
+  ['pdfSave','pdfOpen'].forEach(id=>$('#'+id).style.display=done?'':'none');
+  $('#pdfShare').style.display=(done&&navigator.canShare&&pdfOut&&navigator.canShare({files:[new File([pdfOut.blob],pdfOut.name,{type:'application/pdf'})]}))?'':'none';
+}
+$('#pkMake').onclick=async()=>{
+  const recDate=k=>{ const r=allRecords.find(x=>recKey(x)===k); return r?normDate(r.date):''; };
+  const list=[]; picked.forEach(k=>slipsOfKey(k).forEach(s=>list.push(Object.assign({_d:recDate(k)||normDate(s.date)},s))));
+  if(!list.length) return;
+  list.sort((a,b)=>(a._d||'').localeCompare(b._d||'')||String(a.denpyo).localeCompare(String(b.denpyo))||String(a.createdAt).localeCompare(String(b.createdAt)));
+  pdfOut&&URL.revokeObjectURL(pdfOut.url); pdfOut=null;
+  $('#pdfModal').classList.add('show'); pdfModalState(false,'伝票を取り寄せています…','0 / '+list.length,0);
+  try{
+    const imgs=[];
+    for(let i=0;i<list.length;i++){ imgs.push(await toJpegBytes(await getSlipData(list[i].id)));
+      pdfModalState(false,'伝票を取り寄せています…',(i+1)+' / '+list.length,Math.round((i+1)/list.length*100)); }
+    const blob=buildSlipPdf(imgs);
+    const d1=list[0]._d, d2=list[list.length-1]._d;
+    const name='処分伝票_'+(d1===d2?d1:d1+'〜'+d2)+'_'+list.length+'枚.pdf';
+    pdfOut={blob,name,url:URL.createObjectURL(blob)};
+    pdfModalState(true,name,'A4 '+Math.ceil(list.length/4)+'ページ・'+list.length+'枚（左上→右上→左下→右下・日付順）',100);
+  }catch(e){ pdfModalState(false,'伝票を取り寄せられませんでした。電波を確認して、もう一度お試しください。','',0); }
+};
+$('#pdfClose').onclick=()=>$('#pdfModal').classList.remove('show');
+$('#pdfSave').onclick=()=>{ if(!pdfOut) return; const a=document.createElement('a'); a.href=pdfOut.url; a.download=pdfOut.name; document.body.appendChild(a); a.click(); a.remove(); };
+$('#pdfOpen').onclick=()=>{ if(pdfOut) window.open(pdfOut.url,'_blank'); };
+$('#pdfShare').onclick=async()=>{ if(!pdfOut) return;
+  try{ await navigator.share({files:[new File([pdfOut.blob],pdfOut.name,{type:'application/pdf'})],title:pdfOut.name}); }catch(e){} };
 
 /* ===== 行の組み立て ===== */
 function buildRows(){
@@ -671,6 +948,7 @@ function openPreview(){
   html+=`<div class="pv-row"><span class="k">記入者</span><span class="v">${author||'—'}</span></div>`;
   html+=`<div class="pv-row"><span class="k">民間処分費 / 公共ぶん</span><span class="v">¥${yen(t.amount)} / ¥${yen(t.govfee)}</span></div>`;
   html+=`<div class="pv-row"><span class="k">処分量 / 単価</span><span class="v">${fmtKg(t.qtyKg)} / ${fmtUp(unitPrice(t.total,t.qtyKg))}</span></div>`;
+  if(slipReady()) html+=`<div class="pv-row"><span class="k">処分伝票</span><span class="v">${liveSlipCount()?liveSlipCount()+'枚':'なし'}</span></div>`;
   html+=`<div class="pv-row big"><span class="k">集計用金額（合計）</span><span class="v">¥${yen(t.total)}</span></div>`;
   $('#pvBody').innerHTML=html;
   $('#pvTitle').textContent=editDenpyo?'この内容に更新します':'この内容で記録します';
@@ -683,14 +961,29 @@ $('#btnSave').onclick=openPreview;
 $('#pvConfirm').onclick=async()=>{
   if(GAS_URL==='PASTE_YOUR_GAS_URL_HERE'){ toast('GAS の URL を設定してください',true); return; }
   const rows=buildRows();
+  const wasEdit=!!editDenpyo;
+  const slipWork=slipReady() && slipEdit.some(s=>(s.canvas&&!s.removed)||(s.id&&s.removed));
   $('#pvConfirm').disabled=true; $('#pvConfirm').textContent='送信中…';
+  let saved=false;
   try{
+    // 新規で伝票を付けるときは、保存前の一覧を覚えておき、保存後の差分で新しい一台を見つける
+    let beforeKeys=null;
+    if(slipWork && !editKey) beforeKeys=new Set((await fetchRecordKeys()).map(recKey));
     const body=editDenpyo?{mode:'update',denpyo:editDenpyo,editor:author,rows}:{rows};
     const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
     const d=await res.json(); if(!d.ok) throw new Error(d.error||'');
-    $('#modal').classList.remove('show'); toast(editDenpyo?'更新しました':'記録しました');
-    resetForm(); allRecords=[]; await loadMasters(); renderCandSuggest();
-  }catch(e){ toast('電波を確認して、もう一度お試しください',true);
+    saved=true;
+    let slipMsg='';
+    if(slipWork){
+      try{
+        const key=editKey || d.denpyo || await findNewKey(beforeKeys,rows);
+        if(!key) throw new Error('nokey');
+        await sendSlips(key,rows,(n,t)=>{ $('#pvConfirm').textContent='伝票を送信中 '+n+'/'+t; });
+      }catch(e){ slipMsg='（伝票の送信に失敗しました。一覧から開いて付け直してください）'; }
+    }
+    $('#modal').classList.remove('show'); toast((wasEdit?'更新しました':'記録しました')+slipMsg, !!slipMsg);
+    resetForm(); allRecords=[]; slipsAll=[]; await loadMasters(); renderCandSuggest();
+  }catch(e){ if(!saved) toast('電波を確認して、もう一度お試しください',true);
   }finally{ $('#pvConfirm').disabled=false; $('#pvConfirm').textContent='記録する'; }
 };
 async function doDelete(){
@@ -698,7 +991,8 @@ async function doDelete(){
   try{ const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
     body:JSON.stringify({mode:'delete',denpyo:editDenpyo})});
     const d=await res.json(); if(!d.ok) throw new Error();
-    $('#modal').classList.remove('show'); toast('削除しました'); resetForm(); allRecords=[]; switchTab('list');
+    if(slipReady() && editKey && slipsOfKey(editKey).length){ try{ await slipPost({mode:'removeDenpyo',denpyo:editKey}); }catch(e){} }
+    $('#modal').classList.remove('show'); toast('削除しました'); resetForm(); allRecords=[]; slipsAll=[]; switchTab('list');
   }catch(e){ toast('電波を確認して、もう一度お試しください',true); }
 }
 $('#pvDelete').onclick=doDelete;
@@ -707,6 +1001,7 @@ $('#editBadge').onclick=()=>{ if(confirm('編集をやめて新規入力にも�
 
 /* ===== タブ ===== */
 function switchTab(which){ const input=which==='input';
+  if(input&&picking){ picking=false; picked.clear(); document.body.classList.remove('picking'); $('#btnPick').textContent='🖨 伝票をA4にまとめる'; }
   $('#tabInput').classList.toggle('on',input); $('#tabList').classList.toggle('on',!input);
   $('#viewInput').style.display=input?'':'none'; $('#viewList').style.display=input?'none':'';
   $('#savebar').style.display=input?'flex':'none'; if(!input) loadList(); }
@@ -717,7 +1012,8 @@ async function loadList(force){
   if(GAS_URL==='PASTE_YOUR_GAS_URL_HERE'){ $('#recList').innerHTML='<div class="empty">GAS の URL を設定してください</div>'; return; }
   if(allRecords.length&&!force){ renderList(); return; }
   $('#recList').innerHTML='<div class="empty">読み込み中…</div>';
-  try{ const res=await fetch(GAS_URL+'?action=list'); const d=await res.json();
+  try{ const sp=loadSlipList();
+    const res=await fetch(GAS_URL+'?action=list'); const d=await res.json(); await sp;
     allRecords=(d.records||[]).slice(); fillYearMonth(); renderList();
   }catch(e){ $('#recList').innerHTML='<div class="empty">電波を確認して、もう一度お試しください</div>'; }
 }
@@ -754,7 +1050,7 @@ function renderList(){
     <div class="stat"><div class="k">処分金額</div><div class="v"><small>¥</small>${yen(sum.amount)}</div></div>
     <div class="stat"><div class="k">役所処分料</div><div class="v"><small>¥</small>${yen(sum.govfee)}</div></div>
     <div class="stat"><div class="k">集計金額 合計</div><div class="v"><small>¥</small>${yen(sum.total)}</div></div>`;
-  if(!rows.length){ $('#recList').innerHTML='<div class="empty">記録がありません</div>'; return; }
+  if(!rows.length){ $('#recList').innerHTML='<div class="empty">記録がありません</div>'; if(picking) updatePickBar(); return; }
   if(listMode==='site'){ renderBySite(rows); return; }
   // 一台ごと（伝票ごと）
   const groups={}; rows.forEach(r=>{ const k=r.denpyo||('r'+r.rid); (groups[k]=groups[k]||[]).push(r); });
@@ -771,10 +1067,16 @@ function renderList(){
     const tags=[]; if(r0.author) tags.push(`<span class="mtag a">記入 ${String(r0.author).replace(/</g,'&lt;')}</span>`);
     if(r0.type) tags.push(`<span class="mtag t">${r0.type}</span>`);
     if(r0.place) tags.push(`<span class="mtag">${r0.place}</span>`); if(r0.vehicle) tags.push(`<span class="mtag">${r0.vehicle}</span>`);
-    return `<div class="rec" data-k="${c.k}"><div class="top"><span class="date">${c.date}</span><span class="amt">¥${yen(c.tot)}</span></div>
+    const ns=slipsOfKey(c.k).length; if(ns) tags.push(`<span class="mtag s">📎 伝票 ${ns}枚</span>`);
+    const cls=picking?(ns?(picked.has(c.k)?' sel':''):' noslip'):'';
+    return `<div class="rec${cls}" data-k="${esc(c.k)}"><span class="ck">✓</span><div class="top"><span class="date">${c.date}</span><span class="amt">¥${yen(c.tot)}</span></div>
       <div class="sites">${slines}</div>${qline}<div class="meta">${tags.join('')}</div></div>`;
   }).join('');
-  $('#recList').querySelectorAll('.rec').forEach(el=>{ el.onclick=()=>openEdit(el.dataset.k); });
+  $('#recList').querySelectorAll('.rec').forEach(el=>{ el.onclick=()=>{
+    if(!picking){ openEdit(el.dataset.k); return; }
+    const k=el.dataset.k; if(!slipsOfKey(k).length){ toast('この記録には伝票が付いていません'); return; }
+    picked.has(k)?picked.delete(k):picked.add(k); el.classList.toggle('sel',picked.has(k)); updatePickBar(); }; });
+  if(picking) updatePickBar();
 }
 function renderBySite(rows){
   const map={};
@@ -815,8 +1117,10 @@ function openEdit(k){
     qty:totalKg? conv(totalKg) : '',
     amount:amount||'', govqty:govqty||'',
     place:p.on, placeOther:p.other, vehicle:v.on, vehicleOther:v.other });
+  editKey=k;
   $('#editBadge').classList.add('show'); $('#btnDelete').style.display='';
   switchTab('input'); window.scrollTo(0,0);
+  loadEditSlips(k);
 }
 
 /* ===== 起動 ===== */
@@ -832,7 +1136,7 @@ pickElems.typeWatch=0;
   const saved=localStorage.getItem(LS.author);
   if(saved){ setAuthor(saved); $('#overlay').classList.add('hide'); } else renderNameGrid();
   let dr=null; try{ dr=JSON.parse(localStorage.getItem(LS.draft)||'null'); }catch(e){}
-  apply(dr||{date:todayStr()});
+  apply(dr||{date:todayStr()}); renderSlips();
   if(GAS_URL==='PASTE_YOUR_GAS_URL_HERE') toast('GAS の URL を設定してください',true);
 })();
 </script>
