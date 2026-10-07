@@ -85,6 +85,13 @@ dl.facts dd{margin:0}
 .word{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--field);border-radius:8px;padding:4px 9px;font-size:13.5px;margin:0 6px 6px 0;cursor:pointer;font-family:inherit;color:var(--ink)}
 .word s{color:var(--bark)}
 .fix{font-size:12.5px;color:var(--bark);margin-top:6px}
+.res-head .edit{flex:none;margin-left:auto}
+.ed-row{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.ed-row input{flex:1;min-width:0}
+.card.editing{border-color:var(--leaf);outline:2px solid var(--leaf-soft)}
+.card.editing input[type=date]{font:inherit;font-size:16px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink);width:100%}
+.card.editing dl.facts{grid-template-columns:52px 1fr;align-items:center}
+.ed-kinds{display:flex;flex-wrap:wrap;gap:6px}
 .msg{min-height:140px}
 .route{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
 .route:last-child{border-bottom:0}
@@ -459,7 +466,7 @@ function composeMessage(r) {
   if (TO === '自分用メモ') { L.push('・' + r.headline); rest.forEach(p => L.push('・' + p)); }
   else {
     L.push((TO === '親方へ' ? '親方、' : 'みなさん、') + (r.kind === '困りごと' || r.kind === 'お願い' || r.kind === '相談' ? r.kind + 'です。' : 'お疲れさまです。'));
-    if (r.site || r.when) L.push((r.when ? md(r.when) + ' ' : '') + (r.site || ''));
+    if (r.site || r.when || r.whenNote) L.push(((r.when ? md(r.when) + ' ' : '') + (r.whenNote ? r.whenNote + ' ' : '') + (r.site || '')).trim());
     L.push(r.headline + (/[。！？]$/.test(r.headline) ? '' : '。'));
     rest.slice(0, 3).forEach(p => L.push('・' + p));
   }
@@ -481,9 +488,11 @@ function needRow(n, i) {
   return '<div class="need"><div class="grow"><div class="nm">' + esc(term ? term.term : n.name) + (n.qty ? ' <span>' + esc(n.qty) + esc(n.unit || '') + '</span>' : '') + where + '</div>' +
     (n.why ? '<div class="sub">' + esc(n.why) + '</div>' : '') + (tool && tool.qty ? '<div class="sub">会社にある数：' + esc(tool.qty) + '</div>' : '') + '</div></div>';
 }
+let SHOWN = null;   // いま表示しているまとめ（同じまとめを描き直すときは、送る文の欄に自分で書いた分を残す）
 function renderResult(noScroll) {
   const r = RESULT, box = $('result');
-  if (!r) { box.innerHTML = ''; keepResult(); return; }
+  if (!r) { box.innerHTML = ''; SHOWN = null; keepResult(); return; }
+  const typed = SHOWN === r && $('msg') ? $('msg').value : null; SHOWN = r;
   const facts = [];
   if (r.site) facts.push(['現場', esc(r.site)]);
   if (r.when || r.whenNote) facts.push(['いつ', esc(md(r.when)) + (r.whenNote ? '（' + esc(r.whenNote) + '）' : '')]);
@@ -492,22 +501,75 @@ function renderResult(noScroll) {
   box.innerHTML =
     (r.missing.length ? '<div class="card missing"><h3>💬 あと、これを話すと伝わります</h3>' + r.missing.map((q, i) =>
       '<div class="q"><span class="t">' + esc(q) + '</span><button class="btn sm" type="button" data-ans="' + i + '">🎤 答える</button></div>').join('') + '</div>' : '') +
-    '<div class="card"><div class="res-head"><span class="kind k-' + esc(r.kind) + '">' + esc(r.kind) + '</span><div class="headline">' + esc(r.headline) + '</div></div>' +
+    (EDITING ? editCardHtml(r) :
+    '<div class="card"><div class="res-head"><span class="kind k-' + esc(r.kind) + '">' + esc(r.kind) + '</span><div class="headline">' + esc(r.headline) + '</div><button type="button" class="btn sm edit" id="editBtn">✏️ 直す・足す</button></div>' +
     (r.points.length ? '<div class="sec">要点</div><ol class="points">' + r.points.map(p => '<li>' + esc(p) + '</li>').join('') + '</ol>' : '') +
     (facts.length ? '<div class="sec">いつ・どこ・だれ</div><dl class="facts">' + facts.map(f => '<dt>' + f[0] + '</dt><dd>' + f[1] + '</dd>').join('') + '</dl>' : '') +
     (r.needs.length ? '<div class="sec">必要なもの（道具管理と照合）</div>' + r.needs.map(needRow).join('') : '') +
     (r.words.length ? '<div class="sec">言葉の言い換え（押すと意味）</div><div>' + r.words.map(w => '<button type="button" class="word" data-term="' + esc(w.term) + '"><s>' + esc(w.said) + '</s> → <b>' + esc(w.term) + '</b></button>').join('') + '</div>' : '') +
     (r.corrections.length ? '<div class="fix">聞き間違いを直しました：' + esc(r.corrections.join('、')) + '</div>' : '') +
-    '</div>' +
+    '</div>') +
     (r.routes.length ? '<div class="card"><div class="sec" style="margin-top:0">行き先ごとに入れる（押したものだけ入ります）</div>' + r.routes.map(routeRow).join('') + '</div>' : '') +
-    '<div class="card"><div class="sec">送る文（直してから送れます）</div><textarea class="msg" id="msg">' + esc(r.message) + '</textarea>' +
+    '<div class="card"><div class="sec" style="display:flex;align-items:center">送る文（直してから送れます）<button type="button" class="btn sm" id="remakeBtn" style="margin-left:auto;font-weight:400">↻ 作り直す</button></div><textarea class="msg" id="msg">' + esc(r.message) + '</textarea>' +
     '<div class="row2" style="margin-top:10px"><button class="btn" type="button" id="copyBtn">コピー</button><button class="btn ok" type="button" id="shareBtn" style="flex:2">LINEで送る</button></div>' +
     '<p class="hint" id="saveHint">' + (r.to === '自分用メモ' ? '送ると、自分の記録にも自動で残ります' : '送ると、記録にも自動で残ります（' + (r.to === '親方へ' ? '親方' : 'みんな') + 'がアプリで見られます）') + '</p>' +
     '<button class="btn block" type="button" id="saveBtn" style="margin-top:8px"></button>' +
     '<button class="btn block" type="button" id="moreBtn" style="margin-top:8px">🎤 言い足りないことを話す</button></div>';
+  if (typed != null) $('msg').value = typed;
   $('msg').addEventListener('input', () => { saveBtnState(); keepResult(); });
   saveBtnState(); keepResult();
   if (!noScroll) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+/* まとめを直す・足す（AIのまとめが違っていたとき、言い足りないとき） */
+let EDITING = false;
+const KINDS = ['連絡', '報告', 'お願い', '困りごと', '相談'];
+function edPointRow(p) { return '<div class="ed-row"><input type="text" data-ed="point" value="' + esc(p || '') + '" placeholder="要点（1つずつ）"><button type="button" class="btn sm" data-ed-del aria-label="消す">✕</button></div>'; }
+function edNeedRow(n) { n = n || {}; return '<div class="ed-row"><input type="text" data-ed="nname" value="' + esc(n.name || '') + '" placeholder="道具・資材" list="edTools" style="flex:3"><input type="text" data-ed="nqty" value="' + esc(String(n.qty || '') + (n.qty ? (n.unit || '') : '')) + '" placeholder="数" style="flex:1"><button type="button" class="btn sm" data-ed-del aria-label="消す">✕</button></div>'; }
+function editCardHtml(r) {
+  const dl = (id, list) => '<datalist id="' + id + '">' + list.filter(Boolean).map(v => '<option value="' + esc(v) + '">').join('') + '</datalist>';
+  return '<div class="card editing" id="edCard"><div class="res-head"><b style="color:var(--leaf)">✏️ まとめを直す・足す</b></div>' +
+    '<div class="sec">一言でいうと</div><input type="text" id="edHead" value="' + esc(r.headline) + '">' +
+    '<div class="sec">種類</div><div class="ed-kinds">' + KINDS.map(k => '<button type="button" class="chip' + (k === r.kind ? ' on' : '') + '" data-ed-kind="' + k + '">' + k + '</button>').join('') + '</div>' +
+    '<div class="sec">要点</div><div id="edPoints">' + (r.points.length ? r.points : ['']).map(edPointRow).join('') + '</div>' +
+    '<button type="button" class="btn sm" data-ed-add="point">＋ 要点を足す</button>' +
+    '<div class="sec">いつ・どこ・だれ</div><dl class="facts">' +
+    '<dt>現場</dt><dd><input type="text" id="edSite" list="edSites" value="' + esc(r.site || '') + '" placeholder="現場名"></dd>' +
+    '<dt>いつ</dt><dd><input type="date" id="edWhen" value="' + esc(/^\d{4}-\d{2}-\d{2}$/.test(r.when || '') ? r.when : '') + '"><input type="text" id="edWhenNote" value="' + esc(r.whenNote || (/^\d{4}-\d{2}-\d{2}$/.test(r.when || '') ? '' : (r.when || ''))) + '" placeholder="日が決まっていなければ：10月中旬 など" style="margin-top:6px"></dd>' +
+    '<dt>人</dt><dd><input type="text" id="edPeople" list="edStaff" value="' + esc(r.people.join('、')) + '" placeholder="名前を「、」で区切る"></dd>' +
+    '<dt>車両</dt><dd><input type="text" id="edVeh" list="edVehs" value="' + esc(r.vehicles.join('、')) + '" placeholder="車両を「、」で区切る"></dd></dl>' +
+    '<div class="sec">必要なもの</div><div id="edNeeds">' + r.needs.map(edNeedRow).join('') + '</div>' +
+    '<button type="button" class="btn sm" data-ed-add="need">＋ 必要なものを足す</button>' +
+    dl('edSites', SITES) + dl('edStaff', STAFF) + dl('edVehs', VEH.map(v => v.name)) + dl('edTools', toolWords(true).map(w => (termById(w.termId) || {}).term).filter((v, i, a) => v && a.indexOf(v) === i)) +
+    '<div class="row2" style="margin-top:14px"><button type="button" class="btn" data-ed-act="cancel">やめる</button><button type="button" class="btn primary" data-ed-act="ok" style="flex:2">直した内容にする</button></div></div>';
+}
+function startEdit() { EDITING = true; renderResult(true); const c = $('edCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+function edAdd(kind) {
+  const box = $(kind === 'need' ? 'edNeeds' : 'edPoints');
+  box.insertAdjacentHTML('beforeend', kind === 'need' ? edNeedRow() : edPointRow(''));
+  const ins = box.lastElementChild.querySelector('input'); if (ins) ins.focus();
+}
+function finishEdit(ok) {
+  if (!ok) { EDITING = false; return renderResult(true); }
+  const r = RESULT, list = s => String(s || '').split(/[、,，・\/／\s]+/).map(x => x.trim()).filter(Boolean);
+  const head = $('edHead').value.trim(), points = [...document.querySelectorAll('#edPoints [data-ed="point"]')].map(i => i.value.trim()).filter(Boolean);
+  if (!head && !points.length) return toast('「一言でいうと」か「要点」を入れてください');
+  const k = document.querySelector('[data-ed-kind].on');
+  const needs = [...document.querySelectorAll('#edNeeds .ed-row')].map(row => {
+    const name = row.querySelector('[data-ed="nname"]').value.trim(), q = row.querySelector('[data-ed="nqty"]').value.trim().normalize('NFKC');
+    if (!name) return null;
+    const old = r.needs.find(n => n.name === name) || {}, m = q.match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
+    return { name, qty: m ? Number(m[1]) : q, unit: m ? m[2] : '', why: old.why || '' };
+  }).filter(Boolean);
+  const before = r.message, msgNow = $('msg') ? $('msg').value : r.message;
+  Object.assign(r, { headline: head || points[0], kind: k ? k.dataset.edKind : r.kind, points, site: $('edSite').value.trim(), when: $('edWhen').value, whenNote: $('edWhenNote').value.trim(),
+    people: list($('edPeople').value), vehicles: list($('edVeh').value), needs, edited: true });
+  // 埋まった聞き返しは消す
+  r.missing = r.missing.filter(q => !((/いつ/.test(q) && (r.when || r.whenNote)) || (/現場/.test(q) && r.site) || (/いくつ/.test(q) && r.needs.length && r.needs.every(n => n.qty))));
+  // 送る文：自分で直していなければ、直したまとめで作り直す。直していたら聞く
+  if (msgNow === before || confirm('送る文も、直したまとめで作り直しますか？\n（「キャンセル」なら、送る文は今のままにします）')) r.message = composeMessage(r);
+  else r.message = msgNow;
+  if (r.savedMsg != null) r.dirtyEdit = true;   // 記録済みなら「記録を更新」できるように
+  EDITING = false; renderResult(true); $('msg').value = r.message; saveBtnState(); keepResult(); toast('まとめを直しました');
 }
 function routeLine(x) {
   if (x.type === 'calendar') return { ic: '📅', to: 'あなたのカレンダー（標準）', what: '【' + (x.kind || '期限') + '】' + (x.title || ''), sub: (x.whenText ? x.whenText + ' → ' : '') + (x.date ? md(x.date) : '日付を入れてください') + '（1週間前に通知）' };
@@ -564,6 +626,7 @@ function applyResult(r, text, previous) {
       .filter(x => x.type !== 'shop' || x.items.length);
     const keep = previous && RESULT ? { savedId: RESULT.savedId || '', localId: RESULT.localId || '' } : { savedId: '', localId: '' };   // 聞き返しに答えたときは、同じ記録を上書きする
     if (previous && RESULT) (RESULT.routes || []).filter(x => x.done).forEach(x => { if (!r.routes.some(y => y.type === x.type && routeLine(y).what === routeLine(x).what)) r.routes.push(x); else r.routes.find(y => y.type === x.type && routeLine(y).what === routeLine(x).what).done = x.done; });
+    EDITING = false;
     RESULT = Object.assign(r, keep, { rawText: text, to: TO, savedMsg: null });
     renderResult();
   }
@@ -651,7 +714,7 @@ function memoOf(r) {
 let SAVING = false;
 function saveBtnState() {
   const b = $('saveBtn'); if (!b || !RESULT) return;
-  const changed = RESULT.savedMsg != null && $('msg').value !== RESULT.savedMsg;
+  const changed = RESULT.savedMsg != null && ($('msg').value !== RESULT.savedMsg || !!RESULT.dirtyEdit);
   b.disabled = SAVING || (RESULT.savedMsg != null && !changed);
   b.textContent = SAVING ? '保存中…' : RESULT.savedMsg == null ? '📋 送らずに記録だけ残す' : changed ? '📋 直した文で記録を更新' : (RESULT.savedId ? '✓ 記録に残しました' : '✓ この端末に残しました');
 }
@@ -660,7 +723,7 @@ async function save(auto, keepalive) {
   if (!me()) return chooseName(true, () => save(auto));
   const msg = $('msg') ? $('msg').value : RESULT.message;
   const routesKey = (RESULT.routes || []).filter(x => x.done).length;
-  if (RESULT.savedId && RESULT.savedMsg === msg && RESULT.savedRoutes === routesKey) { if (auto) toast('送りました（記録済み）'); return; }
+  if (RESULT.savedId && RESULT.savedMsg === msg && RESULT.savedRoutes === routesKey && !RESULT.dirtyEdit) { if (auto) toast('送りました（記録済み）'); return; }
   SAVING = true; saveBtnState();
   const memo = memoOf(RESULT);
   if (RESULT.savedId) memo.memoId = RESULT.savedId;
@@ -675,7 +738,7 @@ async function save(auto, keepalive) {
     const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'save', memo, by: me() }, keepalive);
     if (!r.ok) throw new Error(r.error);
     entry.memoId = r.id; entry.local = false; lsSet(LS.local, local.slice(0, 30));
-    RESULT.savedId = r.id; RESULT.localId = r.id; RESULT.savedMsg = msg; RESULT.savedRoutes = routesKey;
+    RESULT.savedId = r.id; RESULT.localId = r.id; RESULT.savedMsg = msg; RESULT.savedRoutes = routesKey; RESULT.dirtyEdit = false;
     if (auto || !RESULT._quiet) toast(auto ? '送りました。記録にも残しました' : '記録に残しました'); lsSet(LS.draft, '');
     loadMemos();
   } catch (e) {
@@ -921,6 +984,12 @@ $('result').addEventListener('click', e => {
   if (e.target.closest('#shareBtn')) return share();
   if (e.target.closest('#saveBtn')) return save();
   if (e.target.closest('#moreBtn')) return openAnswer('');
+  if (e.target.closest('#editBtn')) return startEdit();
+  if (e.target.closest('#remakeBtn')) { if ($('msg').value !== RESULT.message && !confirm('送る文を、上のまとめから作り直します。\n自分で直した分は消えます。よろしいですか？')) return; RESULT.message = composeMessage(RESULT); $('msg').value = RESULT.message; saveBtnState(); keepResult(); return toast('送る文を作り直しました'); }
+  const ek = e.target.closest('[data-ed-kind]'); if (ek) { document.querySelectorAll('[data-ed-kind]').forEach(b => b.classList.toggle('on', b === ek)); return; }
+  const ea = e.target.closest('[data-ed-add]'); if (ea) return edAdd(ea.dataset.edAdd);
+  const ed = e.target.closest('[data-ed-del]'); if (ed) { ed.closest('.ed-row').remove(); return; }
+  const et = e.target.closest('[data-ed-act]'); if (et) return finishEdit(et.dataset.edAct === 'ok');
   const rt = e.target.closest('[data-route]'); if (rt) return doRoute(Number(rt.dataset.route), rt);
 });
 $('result').addEventListener('change', e => {
