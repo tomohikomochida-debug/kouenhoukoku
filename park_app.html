@@ -480,8 +480,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
             <textarea class="txt" id="nwBands" rows="3" placeholder="例：小, 中, 大"></textarea>
           </div>
         </div>
-        <label class="fld">単価（任意・円）<span style="color:var(--mut)">わかったら入れる。空なら0円</span></label>
-        <input class="txt" id="nwPrice" inputmode="numeric" placeholder="空でOK">
+        <div id="nwPriceBox"></div>
         <div style="display:flex;gap:8px;margin-top:14px">
           <button class="btn ghost" id="nwCancel" style="margin:0;text-align:center">やめる</button>
           <button class="btn" id="nwOk" style="margin:0;background:#1f6f43;border-color:#1f6f43;color:#fff;text-align:center">この内容で追加</button>
@@ -787,14 +786,30 @@ $('catSel').onchange=fillKinds; $('kindSel').onchange=()=>{fillRanks();updateHin
 
 /* ---------- 工種を追加（モーダル） ---------- */
 function pickNewColor(){ return COLORS[Object.keys(customWorksDefs).length % COLORS.length]; }
+function nwCustomBands(){ return $('nwBands').value.split(/[,、\n]/).map(s=>s.trim()).filter(Boolean); }
+function priceRowsHTML(bands){
+  return '<label class="fld">単価（規格ごと・任意・円）<span style="color:var(--mut)">わかった規格だけでOK。空は0円</span></label>'
+    + bands.map(b=>`<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="flex:0 0 100px;font-size:12px;color:var(--mut)">${b}</span><input class="txt nwp" data-band="${b}" inputmode="numeric" placeholder="空でOK" style="flex:1"></div>`).join('');
+}
+function rebuildPriceInputs(){
+  const box=$('nwPriceBox'); const isTree=$('nwMode').value.indexOf('tree')===0; const rm=$('nwRankMode').value;
+  if(isTree && rm!=='none'){
+    const bands = (rm==='custom') ? nwCustomBands() : BANDS.slice();
+    if(rm==='custom' && !bands.length){ box.innerHTML='<div style="font-size:12px;color:var(--mut);margin-top:8px">↑ 規格の区分を入れると、区分ごとの単価欄が出ます。</div>'; return; }
+    box.innerHTML=priceRowsHTML(bands);
+  }else{
+    box.innerHTML='<label class="fld">単価（任意・円）<span style="color:var(--mut)">空なら0円</span></label><input class="txt nwp" data-flat="1" inputmode="numeric" placeholder="空でOK">';
+  }
+}
 function syncWorkModalMode(){
   const isTree=$('nwMode').value.indexOf('tree')===0;
   $('nwRankBox').style.display=isTree?'block':'none';
   $('nwBandsWrap').style.display=(isTree&&$('nwRankMode').value==='custom')?'block':'none';
+  rebuildPriceInputs();
 }
 function openWorkModal(){
   $('nwName').value=''; $('nwKind').value=''; $('nwMode').value='tree:本';
-  $('nwColor').value=pickNewColor(); $('nwRankMode').value='inherit'; $('nwBands').value=''; $('nwPrice').value='';
+  $('nwColor').value=pickNewColor(); $('nwRankMode').value='inherit'; $('nwBands').value='';
   syncWorkModalMode(); $('workModal').style.display='flex';
 }
 function closeWorkModal(){ $('workModal').style.display='none'; }
@@ -802,6 +817,7 @@ $('addWorkBtn').onclick=openWorkModal;
 $('nwCancel').onclick=closeWorkModal;
 $('nwMode').onchange=syncWorkModalMode;
 $('nwRankMode').onchange=syncWorkModalMode;
+$('nwBands').addEventListener('input',rebuildPriceInputs);
 $('workModal').addEventListener('click',e=>{ if(e.target===$('workModal')) closeWorkModal(); });
 $('nwOk').onclick=()=>{
   const name=$('nwName').value.trim();
@@ -810,21 +826,24 @@ $('nwOk').onclick=()=>{
   const kind=$('nwKind').value.trim()||name;
   const mu=$('nwMode').value.split(':'), mode=mu[0], unit=mu[1];
   const color=$('nwColor').value;
-  const price=parseInt(($('nwPrice').value||'').replace(/[^\d]/g,''))||0;
+  const numv=el=>parseInt(((el&&el.value)||'').replace(/[^\d]/g,''))||0;
+  const box=$('nwPriceBox');
+  const flat=()=>{ const el=box.querySelector('[data-flat]'); return numv(el); };
   let def;
   if(mode==='area'){
-    def={unit,mode:'area',kinds:{}}; def.kinds[kind]={price:price||0};
+    def={unit,mode:'area',kinds:{}}; def.kinds[kind]={price:flat()};
   }else{
     const rm=$('nwRankMode').value;
     if(rm==='none'){
-      def={unit,mode:'tree',ranks:false,kinds:{}}; def.kinds[kind]={price:price||0};
+      def={unit,mode:'tree',ranks:false,kinds:{}}; def.kinds[kind]={price:flat()};
     }else{
       let bands;
       if(rm==='custom'){
-        bands=$('nwBands').value.split(/[,、\n]/).map(s=>s.trim()).filter(Boolean);
+        bands=nwCustomBands();
         if(!bands.length){ alert('規格の区分を入れてください（カンマか改行で区切り）。'); return; }
       }else bands=BANDS.slice();
-      const prices={}; bands.forEach(b=>{ prices[b]=price||0; });
+      const prices={}; box.querySelectorAll('.nwp[data-band]').forEach(el=>{ prices[el.dataset.band]=numv(el); });
+      bands.forEach(b=>{ if(!(b in prices)) prices[b]=0; });
       def={unit,mode:'tree',ranks:true,bands,kinds:{}}; def.kinds[kind]={prices};
     }
   }
