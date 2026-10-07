@@ -23,8 +23,11 @@
   main{ padding:12px; max-width:820px; margin:0 auto; }
   .case{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; }
   .case label{ font-size:12px; color:var(--sub); display:block; margin:6px 0 3px; }
-  .casebar{ display:flex; gap:8px; margin-bottom:8px; }
-  .casebar select{ flex:1; font-size:15px; }
+  .casebar{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
+  .casebar select{ flex:1 1 220px; min-width:0; font-size:15px; min-height:44px; }
+  .newcase{ background:#E8711A; color:#fff; border:none; border-radius:10px; padding:11px 18px; font-size:16px; font-weight:700; min-height:44px; box-shadow:0 2px 6px rgba(0,0,0,.18); white-space:nowrap; }
+  .newcase:active{ transform:translateY(1px); box-shadow:0 1px 3px rgba(0,0,0,.18); }
+  .casebar .delcase{ color:#b3261e; font-size:13px; padding:7px 9px; }
   .casebar2{ display:flex; align-items:center; gap:8px; margin-bottom:12px; }
   .modebar{ display:flex; gap:8px; margin-bottom:12px; }
   .modebar .mbtn{ flex:1; padding:11px; border:1px solid var(--accent); background:#fff; color:var(--accent); border-radius:10px; font-weight:700; font-size:15px; }
@@ -295,9 +298,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
 <main>
   <section id="input">
     <div class="casebar">
-      <select id="caseSel" onchange="switchCase(this.value)"></select>
-      <button class="iconbtn" onclick="newCase()">＋新規</button>
-      <button class="iconbtn" onclick="deleteCase()">削除</button>
+      <button class="newcase" onclick="newCase()">＋ 新しい現場調査</button>
+      <select id="caseSel" onchange="switchCase(this.value)" title="これまでの案件を開く"></select>
+      <button class="iconbtn delcase" onclick="deleteCase()">この案件を削除</button>
     </div>
     <div class="casebar2">
       <span class="muted" id="capText"></span>
@@ -3026,7 +3029,7 @@ function renderCaseBar(){ const sel=document.getElementById("caseSel"); if(!sel)
   const list=casesIndex.slice().sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
   sel.innerHTML=list.map(c=>`<option value="${esc(c.id)}" ${c.id===caseId?"selected":""}>${esc(c.name||"(無題)")}｜${esc(c.date)}（${c.n||0}件）</option>`).join(""); }
 async function updateStorage(){ try{ if(navigator.storage&&navigator.storage.estimate){ const e=await navigator.storage.estimate(); const mb=((e.usage||0)/1048576).toFixed(1); const el=document.getElementById("capText"); if(el) el.textContent="使用容量 "+mb+"MB／案件 "+casesIndex.length+"件"; } }catch(e){} }
-async function newCase(){ await save(); caseId=newId(); state=emptyState(); undoStack=[]; redoStack=[]; normalize(); await save(); syncMode(); renderTrees(); renderMap(); renderCaseBar(); showTab("input"); }
+async function newCase(){ await save(); caseId=newId(); state=emptyState(); undoStack=[]; redoStack=[]; normalize(); await save(); syncMode(); renderTrees(); renderMap(); renderCaseBar(); showTab("input"); window.scrollTo({top:0,behavior:"smooth"}); toast("新しい現場調査を作りました。案件名から入れてください"); }
 async function switchCase(id){ if(!id||id===caseId){ return; } await save(); const st=await caseGet(id,true); if(!st) return; state=st; caseId=id; undoStack=[]; redoStack=[]; normalize(); await idbSet("current",id); syncMode(); renderTrees(); renderMap(); renderCaseBar(); updUndoBtn(); showTab("input"); }
 async function deleteCase(){ if(!caseId||!casesIndex.length) return; if(!confirm("この案件を削除しますか？（元に戻せません）")) return;
   casesIndex=casesIndex.filter(c=>c.id!==caseId); try{ await idbDel("case_"+caseId); }catch(e){}
