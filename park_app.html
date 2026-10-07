@@ -972,6 +972,65 @@ function chip(x,px,py,text,col,fs){
 }
 // 三斜図を指定ボックスに収めて描画（頂点番号・各辺長＝小数1位・三角形番号、数字は下地付き）
 // 求積図を白黒の線画で出すための色の置きかえ（CADの図に寄せる）
+/* ---------- 求積図の文字の置き場所：線・点・ほかの文字に重ならない空きを探す。離れたら引き出し線 ---------- */
+// L: [{ax,ay,w,h,pref:[{x,y}],n:{x,y}}]（並び順に置く）／segs: [[x1,y1,x2,y2]]／dots: [{x,y,r}]／B: {l,t,r,b}
+// 結果：各ラベルに lx,ly（中心）, leader(引き出し線が要るか), sx,sy（線の行き先＝枠のいちばん近い所）
+function segHitsRect(x1,y1,x2,y2,R){
+  let t0=0,t1=1; const dx=x2-x1, dy=y2-y1;
+  const P=[-dx,dx,-dy,dy], Q=[x1-R.l,R.r-x1,y1-R.t,R.b-y1];
+  for(let i=0;i<4;i++){
+    if(Math.abs(P[i])<1e-9){ if(Q[i]<0) return false; }
+    else{ const r=Q[i]/P[i]; if(P[i]<0){ if(r>t1) return false; if(r>t0) t0=r; } else { if(r<t0) return false; if(r<t1) t1=r; } }
+  }
+  return t0<=t1;
+}
+function segCross(a,b,c,d){
+  const o=(p,q,r)=>(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);
+  const A=[a[0],a[1]],B2=[a[2],a[3]],C=[b[0],b[1]],D=[b[2],b[3]];
+  return (o(A,B2,C)*o(A,B2,D)<0)&&(o(C,D,A)*o(C,D,B2)<0);
+}
+function placeLabels(L,segs,dots,B,opt){
+  opt=opt||{};
+  const placed=[], allSegs=segs.slice(), leads=[], GAP=opt.gap||5;
+  const rectAt=(x,y,w,h,m)=>({l:x-w/2-m,r:x+w/2+m,t:y-h/2-m,b:y+h/2+m});
+  const over=(A,C)=>A.l<C.r&&C.l<A.r&&A.t<C.b&&C.t<A.b;
+  L.forEach(o=>{
+    const cands=[];
+    // 第一候補：線のすぐ脇（辺の長さ）／呼び出し側の希望の位置
+    if(o.n){
+      const n=o.n, t={x:-n.y,y:n.x}, e=Math.abs(n.x)*o.w/2+Math.abs(n.y)*o.h/2+2.5;
+      [1,-1].forEach(sg=>{ cands.push({x:o.ax+n.x*e*sg,y:o.ay+n.y*e*sg}); });
+      [0.8,1.6].forEach(s=>[1,-1].forEach(sg=>[1,-1].forEach(sd=>{
+        cands.push({x:o.ax+n.x*e*sg+t.x*o.w*s*sd,y:o.ay+n.y*e*sg+t.y*o.w*s*sd}); })));
+    }
+    (o.pref||[]).forEach(p=>cands.push(p));
+    // 空きが無ければ、まわりをぐるっと探す（遠くなるほど引き出し線つき）
+    const a0=o.pref&&o.pref[0]?Math.atan2(o.pref[0].y-o.ay,o.pref[0].x-o.ax):(o.n?Math.atan2(o.n.y,o.n.x):-Math.PI/2);
+    const base=Math.max(o.h,o.w*0.6);
+    [0.9,1.4,2,2.8,3.8,5,6.5,8.5].forEach(k=>{ for(let i=0;i<16;i++){ const a=a0+(i%2?1:-1)*Math.ceil(i/2)*Math.PI/8;
+      cands.push({x:o.ax+Math.cos(a)*(base*k+4),y:o.ay+Math.sin(a)*(base*k+4)}); } });
+    let best=null;
+    for(let ci=0;ci<cands.length;ci++){
+      const c=cands[ci], R=rectAt(c.x,c.y,o.w,o.h,1.5);
+      if(R.l<B.l||R.r>B.r||R.t<B.t||R.b>B.b) continue;
+      if(placed.some(P=>over(R,P))) continue;
+      if(dots.some(d=>d.x>R.l-d.r&&d.x<R.r+d.r&&d.y>R.t-d.r&&d.y<R.b+d.r)) continue;
+      const hits=allSegs.reduce((s,g)=>s+(segHitsRect(g[0],g[1],g[2],g[3],R)?1:0),0);
+      const R0=rectAt(c.x,c.y,o.w,o.h,0);
+      const sx=Math.max(R0.l,Math.min(R0.r,o.ax)), sy=Math.max(R0.t,Math.min(R0.b,o.ay));
+      const gap=Math.hypot(sx-o.ax,sy-o.ay), lead=gap>GAP;
+      let lhits=0; if(lead){ const sh=(P)=>({l:P.l+2,r:P.r-2,t:P.t+2,b:P.b-2}); lhits=placed.reduce((s,P)=>s+(segHitsRect(o.ax,o.ay,sx,sy,sh(P))?1:0),0); const me=[o.ax,o.ay,sx,sy]; lhits+=leads.reduce((s,g)=>s+(segCross(me,g)?0.75:0),0)+segs.reduce((s,g)=>s+(segCross(me,g)?0.02:0),0); }
+      const score=hits*1000+lhits*400+(lead?30:0)+gap+ci*0.01;
+      if(!best||score<best.score) best={score,x:c.x,y:c.y,lead,sx,sy,R};
+      if(hits===0&&!lead&&ci<8) break;     // 線の脇にきれいに置けた
+    }
+    if(!best){ const R=rectAt(o.ax,o.ay,o.w,o.h,1.5); best={x:o.ax,y:o.ay,lead:false,sx:o.ax,sy:o.ay,R}; }
+    o.lx=best.x; o.ly=best.y; o.leader=best.lead; o.sx=best.sx; o.sy=best.sy;
+    placed.push(best.R);
+    if(best.lead){ allSegs.push([o.ax,o.ay,best.sx,best.sy]); leads.push([o.ax,o.ay,best.sx,best.sy]); }
+  });
+  return L;
+}
 var TRI_MONO=false;
 function TC(col){
   if(!TRI_MONO)return col;
@@ -1008,20 +1067,21 @@ function drawTri(x,f,ox,oy,boxW,boxH){
     h.forEach((p,i)=>{let dx=X(p)-hcen.x,dy=Y(p)-hcen.y,dl=Math.hypot(dx,dy)||1;LB.push({ax:X(p),ay:Y(p),lx:X(p)+dx/dl*11,ly:Y(p)+dy/dl*11,t:String(i+1),c:TC('#cc6f00'),fs:9});});
   });
   tris.forEach((t,k)=>{const cx=(X(pts[t[0]])+X(pts[t[1]])+X(pts[t[2]]))/3,cy=(Y(pts[t[0]])+Y(pts[t[1]])+Y(pts[t[2]]))/3;LB.push({ax:cx,ay:cy,lx:cx,ly:cy,t:'△'+(k+1),c:TC('#0b2a44'),fs:12});});
-  Object.values(edgeMap).forEach(({i,j})=>{const p=pts[i],q=pts[j],Lm=dist(p,q)*(sc||1);let mx=(X(p)+X(q))/2,my=(Y(p)+Y(q))/2,ex=X(q)-X(p),ey=Y(q)-Y(p),el=Math.hypot(ex,ey)||1,nx=-ey/el,ny=ex/el;if((mx-CEN.x)*nx+(my-CEN.y)*ny<0){nx=-nx;ny=-ny;}const off=isB(i,j)?15:0;LB.push({ax:mx,ay:my,lx:mx+nx*off,ly:my+ny*off,t:Lm.toFixed(1)+un,c:isB(i,j)?TC('#1463c7'):TC('#0a8a6a'),fs:10});});
+  Object.values(edgeMap).forEach(({i,j})=>{const p=pts[i],q=pts[j],Lm=dist(p,q)*(sc||1);let mx=(X(p)+X(q))/2,my=(Y(p)+Y(q))/2,ex=X(q)-X(p),ey=Y(q)-Y(p),el=Math.hypot(ex,ey)||1,nx=-ey/el,ny=ex/el;if((mx-CEN.x)*nx+(my-CEN.y)*ny<0){nx=-nx;ny=-ny;}const off=isB(i,j)?15:0;LB.push({ax:mx,ay:my,n:{x:nx,y:ny},lx:mx+nx*off,ly:my+ny*off,t:Lm.toFixed(1)+un,c:isB(i,j)?TC('#1463c7'):TC('#0a8a6a'),fs:10});});
   pts.forEach((p,i)=>{let dx=X(p)-CEN.x,dy=Y(p)-CEN.y,dl=Math.hypot(dx,dy)||1;LB.push({ax:X(p),ay:Y(p),lx:X(p)+dx/dl*15,ly:Y(p)+dy/dl*15,t:String(i+1),c:TC('#13324a'),fs:10});});
-  const clamp=o=>{o.lx=Math.max(ox+o.w/2+1,Math.min(ox+boxW-o.w/2-1,o.lx));o.ly=Math.max(oy+o.h/2+1,Math.min(oy+boxH-o.h/2-1,o.ly));};
-  const measureAll=()=>{x.save();LB.forEach(o=>{x.font='bold '+o.fs+'px sans-serif';o.w=x.measureText(o.t).width+7;o.h=o.fs+5;});x.restore();};
-  const separate=(P)=>{LB.forEach(clamp);for(let it=0;it<180;it++){let moved=false;
-      for(let a=0;a<LB.length;a++)for(let b=a+1;b<LB.length;b++){const A=LB[a],B=LB[b];
-        const oX=(A.w+B.w)/2+P-Math.abs(A.lx-B.lx),oY=(A.h+B.h)/2+P-Math.abs(A.ly-B.ly);
-        if(oX>0&&oY>0){let dx=A.lx-B.lx,dy=A.ly-B.ly;if(Math.abs(dx)<.01&&Math.abs(dy)<.01){dx=Math.random()-.5;dy=Math.random()-.5;}
-          if(oX<oY){const s=(dx>=0?1:-1)*oX/2;A.lx+=s;B.lx-=s;}else{const s=(dy>=0?1:-1)*oY/2;A.ly+=s;B.ly-=s;}moved=true;}}
-      LB.forEach(clamp);if(!moved)break;}};
-  const markOv=()=>{let n=0;LB.forEach(o=>o._o=false);for(let a=0;a<LB.length;a++)for(let b=a+1;b<LB.length;b++){const A=LB[a],B=LB[b];if((A.w+B.w)/2-Math.abs(A.lx-B.lx)>0&&(A.h+B.h)/2-Math.abs(A.ly-B.ly)>0){A._o=B._o=true;n++;}}return n;};
-  measureAll();separate(3);
-  let _p=0;while(markOv()>0&&_p<6){LB.forEach(o=>{if(o._o&&o.fs>7.5)o.fs=Math.max(7.5,o.fs-1);});measureAll();separate(3);_p++;}
-  LB.forEach(o=>{if(Math.hypot(o.lx-o.ax,o.ly-o.ay)>11){x.beginPath();x.moveTo(o.ax,o.ay);x.lineTo(o.lx,o.ly);x.setLineDash([3,3]);x.lineWidth=1;x.strokeStyle=(TRI_MONO?'#444':'rgba(20,40,60,0.33)');x.stroke();x.setLineDash([]);}});
+  // 文字の置き場所：外周・対角線・穴の線や頂点の点、ほかの文字に重ならない空きへ。離れたら引き出し線
+  x.save();LB.forEach(o=>{x.font='bold '+o.fs+'px sans-serif';o.w=x.measureText(o.t).width+7;o.h=o.fs+6;
+    o.pr=/^△/.test(o.t)?0:/^\d+$/.test(o.t)?1:/^除/.test(o.t)?3:2;});x.restore();
+  const SEG=[]; pts.forEach((p,i)=>{const q=pts[(i+1)%np];SEG.push([X(p),Y(p),X(q),Y(q)]);});
+  Object.values(edgeMap).forEach(({i,j})=>{if(!isB(i,j))SEG.push([X(pts[i]),Y(pts[i]),X(pts[j]),Y(pts[j])]);});
+  (f.holes||[]).forEach(h=>{ if(!h||h.length<3)return; h.forEach((p,i)=>{const q=h[(i+1)%h.length];SEG.push([X(p),Y(p),X(q),Y(q)]);});
+    const ht=earClipTris(h),hb=(i,j)=>{const d=Math.abs(i-j);return d===1||d===h.length-1;};
+    ht.forEach(t=>[[t[0],t[1]],[t[1],t[2]],[t[2],t[0]]].forEach(([i,j])=>{if(!hb(i,j))SEG.push([X(h[i]),Y(h[i]),X(h[j]),Y(h[j])]);})); });
+  const DOT=pts.map(p=>({x:X(p),y:Y(p),r:4}));
+  LB.forEach(o=>{o.pref=[{x:o.lx,y:o.ly}];});
+  placeLabels(LB.slice().sort((a,b)=>a.pr-b.pr),SEG,DOT,{l:ox+1,t:oy+1,r:ox+boxW-1,b:oy+boxH-1},{gap:10});
+  LB.forEach(o=>{if(o.leader){x.beginPath();x.moveTo(o.ax,o.ay);x.lineTo(o.sx,o.sy);x.lineWidth=0.9;x.strokeStyle=(TRI_MONO?'#333':'rgba(20,40,60,0.6)');x.stroke();
+    x.beginPath();x.arc(o.ax,o.ay,1.8,0,7);x.fillStyle=(TRI_MONO?'#333':'rgba(20,40,60,0.75)');x.fill();}});
   pts.forEach(p=>{x.beginPath();x.arc(X(p),Y(p),3.6,0,7);x.fillStyle=TC('#13324a');x.fill();});
   (f.holes||[]).forEach(h=>{(h||[]).forEach(p=>{x.beginPath();x.arc(X(p),Y(p),3,0,7);x.fillStyle=TC('#e07b1a');x.fill();});});
   LB.forEach(o=>chip(x,o.lx,o.ly,o.t,o.c,o.fs));
@@ -2787,13 +2847,39 @@ function rpStripFigureXml(sheet,widths,f,ox,oy,maxW,maxH){
   return {w:Math.round(bw*k+2*pad), h:Math.round(bh*k+2*pad)};
 }
 /* --- 求積図：外周・対角線・番号・辺の長さを図形で --- */
+// 文字は線・点・ほかの文字に重ならない空きへ。離れた時は引き出し線を「コネクタ」で文字の枠と点につなぐ
+// （Excelで文字の枠を動かしても、線がついてくる＝あとから見やすく直せる）
+function rpTextBox(widths,x,y,s,fs,col){
+  fs=fs||8;
+  const w=Math.max(14,String(s).length*fs*0.82), h=fs*1.9;
+  const xml=rpText(widths,x,y,s,fs,col); const id=rpSid;
+  return {xml,id,l:x-w/2,t:y-h/2,w,h};
+}
+function rpDot(widths,x,y,r,col,hidden){
+  const inner=rpSpHead('Point',r*2,r*2)
+    +'<a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>'
+    +(hidden?'<a:noFill/>':'<a:solidFill><a:srgbClr val="'+rpHex(col||'000000')+'"/></a:solidFill>')
+    +'<a:ln><a:noFill/></a:ln></xdr:spPr>'+RP_EMPTY_TX;
+  const xml=rpAnchor(widths,x-r,y-r,r*2,r*2,inner); return {xml,id:rpSid};
+}
+function rpConnector(widths,a,b,stId,stIdx,endId,endIdx,lw,col){
+  const x0=Math.min(a.x,b.x), y0=Math.min(a.y,b.y), w=Math.max(0.5,Math.abs(b.x-a.x)), h=Math.max(0.5,Math.abs(b.y-a.y));
+  const fl=(b.x<a.x?' flipH="1"':'')+(b.y<a.y?' flipV="1"':'');
+  const id=++rpSid;
+  const inner='<xdr:cxnSp macro=""><xdr:nvCxnSpPr><xdr:cNvPr id="'+id+'" name="引き出し線 '+id+'"/><xdr:cNvCxnSpPr>'
+    +'<a:stCxn id="'+stId+'" idx="'+stIdx+'"/><a:endCxn id="'+endId+'" idx="'+endIdx+'"/></xdr:cNvCxnSpPr></xdr:nvCxnSpPr>'
+    +'<xdr:spPr><a:xfrm'+fl+'><a:off x="0" y="0"/><a:ext cx="'+Math.round(w*RP_EMU)+'" cy="'+Math.round(h*RP_EMU)+'"/></a:xfrm>'
+    +'<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom>'
+    +'<a:ln w="'+Math.round((lw||0.6)*RP_EMU)+'"><a:solidFill><a:srgbClr val="'+rpHex(col||'444444')+'"/></a:solidFill></a:ln></xdr:spPr></xdr:cxnSp>';
+  return rpAnchor(widths,x0,y0,w,h,inner);
+}
 function rpFigureXml(sheet,widths,f,ox,oy,maxW,maxH){
   const pts=f.pts; if(!pts||pts.length<3) return {w:0,h:0};
   let all=pts.slice(); (f.holes||[]).forEach(h=>{all=all.concat(h);});
   const xs=all.map(p=>p.x), ys=all.map(p=>p.y);
   const minx=Math.min.apply(null,xs), maxx=Math.max.apply(null,xs);
   const miny=Math.min.apply(null,ys), maxy=Math.max.apply(null,ys);
-  const bw=Math.max(1,maxx-minx), bh=Math.max(1,maxy-miny), pad=26;
+  const bw=Math.max(1,maxx-minx), bh=Math.max(1,maxy-miny), pad=34;
   const k=Math.min((maxW-2*pad)/bw,(maxH-2*pad)/bh);
   const W=Math.round(bw*k+2*pad), H=Math.round(bh*k+2*pad);
   const X=p=>ox+pad+(p.x-minx)*k, Y=p=>oy+pad+(p.y-miny)*k;
@@ -2808,24 +2894,47 @@ function rpFigureXml(sheet,widths,f,ox,oy,maxW,maxH){
   tris.forEach(t=>[[t[0],t[1]],[t[1],t[2]],[t[2],t[0]]].forEach(ij=>{
     const i=ij[0],j=ij[1]; em[i<j?i+'_'+j:j+'_'+i]={i:i,j:j};
   }));
+  const SEG=[];
+  pts.forEach((p,i)=>{const q=pts[(i+1)%np];SEG.push([X(p),Y(p),X(q),Y(q)]);});
   Object.keys(em).forEach(key=>{
     const e=em[key];
-    if(!isB(e.i,e.j)) rpPush(sheet,rpPoly(widths,[M(pts[e.i]),M(pts[e.j])],false,0.75));
-  });
-  // 三角形の番号
-  tris.forEach((t,n)=>{
-    const cx=(X(pts[t[0]])+X(pts[t[1]])+X(pts[t[2]]))/3, cy=(Y(pts[t[0]])+Y(pts[t[1]])+Y(pts[t[2]]))/3;
-    rpPush(sheet,rpText(widths,cx,cy,String(n+1),9));
-  });
-  // 辺の長さ
-  Object.keys(em).forEach(key=>{
-    const e=em[key], p=pts[e.i], q=pts[e.j];
-    if(!sc) return;
-    const L=dist(p,q)*sc;
-    rpPush(sheet,rpText(widths,(X(p)+X(q))/2,(Y(p)+Y(q))/2,L.toFixed(2),7));
+    if(!isB(e.i,e.j)){ rpPush(sheet,rpPoly(widths,[M(pts[e.i]),M(pts[e.j])],false,0.75)); SEG.push([X(pts[e.i]),Y(pts[e.i]),X(pts[e.j]),Y(pts[e.j])]); }
   });
   // 穴（除外）
-  (f.holes||[]).forEach(h=>{ if(h&&h.length>=3) rpPush(sheet,rpPoly(widths,h.map(M),true,1,true)); });
+  (f.holes||[]).forEach(h=>{ if(h&&h.length>=3){ rpPush(sheet,rpPoly(widths,h.map(M),true,1,true));
+    h.forEach((p,i)=>{const q=h[(i+1)%h.length];SEG.push([X(p),Y(p),X(q),Y(q)]);}); } });
+  // 頂点の点
+  const DOT=pts.map(p=>({x:X(p),y:Y(p),r:3}));
+  pts.forEach(p=>rpPush(sheet,rpDot(widths,X(p),Y(p),1.6,'000000').xml));
+  // 文字（三角形の番号 → 辺の長さ の順に、空いている所へ）
+  const cen={x:pts.reduce((s,p)=>s+X(p),0)/np,y:pts.reduce((s,p)=>s+Y(p),0)/np};
+  const LB=[];
+  tris.forEach((t,n)=>{
+    const cx=(X(pts[t[0]])+X(pts[t[1]])+X(pts[t[2]]))/3, cy=(Y(pts[t[0]])+Y(pts[t[1]])+Y(pts[t[2]]))/3;
+    const s=String(n+1), fs=9; LB.push({ax:cx,ay:cy,s,fs,w:Math.max(14,s.length*fs*0.82),h:fs*1.9,pref:[{x:cx,y:cy}]});
+  });
+  if(sc) Object.keys(em).forEach(key=>{
+    const e=em[key], p=pts[e.i], q=pts[e.j];
+    const L=dist(p,q)*sc, s=L.toFixed(2), fs=7;
+    const mx=(X(p)+X(q))/2, my=(Y(p)+Y(q))/2, ex=X(q)-X(p), ey=Y(q)-Y(p), el=Math.hypot(ex,ey)||1;
+    let nx=-ey/el, ny=ex/el; if((mx-cen.x)*nx+(my-cen.y)*ny<0){nx=-nx;ny=-ny;}
+    LB.push({ax:mx,ay:my,s,fs,w:Math.max(14,s.length*fs*0.82),h:fs*1.9,n:{x:nx,y:ny},edge:true,len:el});
+  });
+  // 短い線ほど置き場所が少ないので先に
+  const order=LB.filter(o=>!o.edge).concat(LB.filter(o=>o.edge).sort((a,b)=>a.len-b.len));
+  placeLabels(order,SEG,DOT,{l:ox+2,t:oy+2,r:ox+W-2,b:oy+H-2},{gap:4});
+  order.forEach(o=>{
+    const tb=rpTextBox(widths,o.lx,o.ly,o.s,o.fs);
+    rpPush(sheet,tb.xml);
+    if(o.leader){
+      // 枠の上・左・下・右の真ん中のうち、点にいちばん近い所へつなぐ
+      const S=[{x:tb.l+tb.w/2,y:tb.t},{x:tb.l,y:tb.t+tb.h/2},{x:tb.l+tb.w/2,y:tb.t+tb.h},{x:tb.l+tb.w,y:tb.t+tb.h/2}];
+      let bi=0; S.forEach((p,i)=>{ if(Math.hypot(p.x-o.ax,p.y-o.ay)<Math.hypot(S[bi].x-o.ax,S[bi].y-o.ay)) bi=i; });
+      const d=rpDot(widths,o.ax,o.ay,1.3,'444444');
+      rpPush(sheet,d.xml);
+      rpPush(sheet,rpConnector(widths,{x:o.ax,y:o.ay-1.3},S[bi],d.id,0,tb.id,bi,0.6,'444444'));
+    }
+  });
   return {w:W,h:H};
 }
 
