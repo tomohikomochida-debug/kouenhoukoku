@@ -86,6 +86,15 @@ dl.facts dd{margin:0}
 .word s{color:var(--bark)}
 .fix{font-size:12.5px;color:var(--bark);margin-top:6px}
 .msg{min-height:140px}
+.route{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.route:last-child{border-bottom:0}
+.route .ic{font-size:22px;line-height:1.2;flex:none}
+.route .grow{flex:1;min-width:0}
+.route .to{font-size:12px;font-weight:700;color:var(--bark)}
+.route .what{font-weight:700;font-size:15px}
+.route .sub{font-size:13px;color:var(--bark)}
+.route .btn{flex:none}
+.route.done .btn{background:var(--leaf-soft);color:var(--leaf);border-color:var(--leaf-soft)}
 /* 履歴 */
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:10px}
 .seg button{flex:1;border:0;background:var(--card);font:inherit;font-size:14px;padding:8px 0;cursor:pointer;color:var(--bark)}
@@ -448,6 +457,7 @@ function renderResult() {
     (r.words.length ? '<div class="sec">言葉の言い換え（押すと意味）</div><div>' + r.words.map(w => '<button type="button" class="word" data-term="' + esc(w.term) + '"><s>' + esc(w.said) + '</s> → <b>' + esc(w.term) + '</b></button>').join('') + '</div>' : '') +
     (r.corrections.length ? '<div class="fix">聞き間違いを直しました：' + esc(r.corrections.join('、')) + '</div>' : '') +
     '</div>' +
+    (r.routes.length ? '<div class="card"><div class="sec" style="margin-top:0">行き先ごとに入れる（押したものだけ入ります）</div>' + r.routes.map(routeRow).join('') + '</div>' : '') +
     '<div class="card"><div class="sec">送る文（直してから送れます）</div><textarea class="msg" id="msg">' + esc(r.message) + '</textarea>' +
     '<div class="row2" style="margin-top:10px"><button class="btn" type="button" id="copyBtn">コピー</button><button class="btn ok" type="button" id="shareBtn" style="flex:2">LINEで送る</button></div>' +
     '<p class="hint" id="saveHint">' + (r.to === '自分用メモ' ? '送ると、自分の記録にも自動で残ります' : '送ると、記録にも自動で残ります（' + (r.to === '親方へ' ? '親方' : 'みんな') + 'がアプリで見られます）') + '</p>' +
@@ -457,6 +467,30 @@ function renderResult() {
   saveBtnState();
   box.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+function routeLine(x) {
+  if (x.type === 'shop') return { ic: '🛒', to: '段取りの買い出し', what: (x.place || '店は未定') + '：' + x.items.map(i => i.name + (i.qty ? ' ' + i.qty + (i.unit || '') : '')).join('・'), sub: x.date ? md(x.date) + 'までに' : '日にちは仮で明日に入れます' };
+  return { ic: '🗓', to: '段取りカード', what: (x.site || x.title || '予定') + (x.steps.length ? '：' + x.steps.join('、') : ''),
+    sub: [x.date ? md(x.date) : (x.dateNote || '日にち未定'), x.members.length ? x.members.join('・') : '', x.items.length ? '持ち物 ' + x.items.map(i => i.name).join('・') : ''].filter(Boolean).join('　') };
+}
+function routeRow(x, i) {
+  const L = routeLine(x);
+  return '<div class="route' + (x.done ? ' done' : '') + '"><span class="ic">' + L.ic + '</span><div class="grow"><div class="to">' + L.to + '</div><div class="what">' + esc(L.what) + '</div><div class="sub">' + esc(L.sub) + '</div></div>' +
+    '<button type="button" class="btn sm' + (x.done ? '' : ' primary') + '" data-route="' + i + '"' + (x.done ? ' disabled' : '') + '>' + (x.done ? '✓ 入れました' : (x.type === 'shop' ? '買い出しに入れる' : '段取りカードにする')) + '</button></div>';
+}
+async function doRoute(i, btn) {
+  const x = RESULT.routes[i]; if (!x || x.done) return;
+  if (!me()) return chooseName(true, () => doRoute(i));
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loading"></span>'; }
+  const items = x.items.map(it => { const w = matchWord(it.name, toolWords(true)); const t = w && termById(w.termId); const tool = t && toolOfTerm(t.termId); return { name: t ? t.term : it.name, termId: t ? t.termId : '', toolId: tool ? tool.id : '', qty: it.qty || '', unit: it.unit || '' }; });
+  try {
+    const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'route', route: Object.assign({}, x, { items }), by: me(), memoBy: me() });
+    if (!r.ok) throw new Error(r.error);
+    x.done = r.date || 'ok'; x.cardId = r.cardId;
+    toast(x.type === 'shop' ? '段取りの買い出しに入れました' : (r.merged ? '段取りの同じ日のカードに足しました' : '段取りカードを作りました'));
+    renderResult();
+    if (RESULT.savedId) { RESULT._quiet = true; save(false).finally(() => { RESULT._quiet = false; }); }   // 記録済みなら、どこに入れたかも記録に残す
+  } catch (e) { toast(/unknown mode/.test(e.message || '') ? '共通GASの更新後に使えます' : (e.message || NET_ERR)); if (btn) { btn.disabled = false; btn.textContent = x.type === 'shop' ? '買い出しに入れる' : '段取りカードにする'; } }
+}
 async function runSummarize(text, previous) {
   const b = $('goBtn'); b.disabled = true; b.innerHTML = '<span class="loading"></span> まとめ中…';
   try {
@@ -464,7 +498,12 @@ async function runSummarize(text, previous) {
     ['points', 'needs', 'vehicles', 'people', 'missing', 'words', 'corrections'].forEach(k => { r[k] = arr(r[k]); });
     r.needs = r.needs.map(n => typeof n === 'string' ? { name: n } : n).filter(n => n && n.name);
     r.words = r.words.filter(w => w && w.said && w.term && norm(w.said) !== norm(w.term));
+    const official = it => { const w = matchWord(it.name, toolWords(true)); const t = w && termById(w.termId); return Object.assign({}, it, { name: t ? t.term : it.name }); };   // 社内の呼び方を正式名に
+    r.routes = arr(r.routes).filter(x => x && (x.type === 'plan' || x.type === 'shop'))
+      .map(x => Object.assign({ items: [], steps: [], notes: [], members: [] }, x, { items: arr(x.items).filter(i => i && i.name).map(official), steps: arr(x.steps), notes: arr(x.notes), members: arr(x.members), done: '' }))
+      .filter(x => x.type === 'plan' || x.items.length);
     const keep = previous && RESULT ? { savedId: RESULT.savedId || '', localId: RESULT.localId || '' } : { savedId: '', localId: '' };   // 聞き返しに答えたときは、同じ記録を上書きする
+    if (previous && RESULT) (RESULT.routes || []).filter(x => x.done).forEach(x => { if (!r.routes.some(y => y.type === x.type && routeLine(y).what === routeLine(x).what)) r.routes.push(x); else r.routes.find(y => y.type === x.type && routeLine(y).what === routeLine(x).what).done = x.done; });
     RESULT = Object.assign(r, keep, { rawText: text, to: TO, savedMsg: null });
     renderResult();
   } catch (e) { toast(e.message || NET_ERR); }
@@ -527,7 +566,8 @@ async function copyMsg() {
   try { await navigator.clipboard.writeText(text); toast('コピーしました'); } catch (e) { const t = $('msg'); t.select(); document.execCommand('copy'); toast('コピーしました'); }
 }
 function memoOf(r) {
-  return { to: r.to, kind: r.kind, headline: r.headline, points: JSON.stringify(r.points), needs: JSON.stringify(r.needs), vehicles: JSON.stringify(r.vehicles), site: r.site, when: r.when || r.whenNote || '', people: JSON.stringify(r.people), missing: JSON.stringify(r.missing), message: $('msg') ? $('msg').value : r.message, rawText: r.rawText };
+  return { to: r.to, kind: r.kind, headline: r.headline, points: JSON.stringify(r.points), needs: JSON.stringify(r.needs), vehicles: JSON.stringify(r.vehicles), site: r.site, when: r.when || r.whenNote || '', people: JSON.stringify(r.people), missing: JSON.stringify(r.missing), message: $('msg') ? $('msg').value : r.message, rawText: r.rawText,
+    routes: JSON.stringify((r.routes || []).filter(x => x.done).map(x => { const L = routeLine(x); return { type: x.type, to: L.to, what: L.what, date: x.done }; })) };
 }
 let SAVING = false;
 function saveBtnState() {
@@ -540,7 +580,8 @@ async function save(auto, keepalive) {
   if (!RESULT || SAVING) return;
   if (!me()) return chooseName(true, () => save(auto));
   const msg = $('msg') ? $('msg').value : RESULT.message;
-  if (RESULT.savedId && RESULT.savedMsg === msg) { if (auto) toast('送りました（記録済み）'); return; }
+  const routesKey = (RESULT.routes || []).filter(x => x.done).length;
+  if (RESULT.savedId && RESULT.savedMsg === msg && RESULT.savedRoutes === routesKey) { if (auto) toast('送りました（記録済み）'); return; }
   SAVING = true; saveBtnState();
   const memo = memoOf(RESULT);
   if (RESULT.savedId) memo.memoId = RESULT.savedId;
@@ -555,8 +596,8 @@ async function save(auto, keepalive) {
     const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'save', memo, by: me() }, keepalive);
     if (!r.ok) throw new Error(r.error);
     entry.memoId = r.id; entry.local = false; lsSet(LS.local, local.slice(0, 30));
-    RESULT.savedId = r.id; RESULT.localId = r.id; RESULT.savedMsg = msg;
-    toast(auto ? '送りました。記録にも残しました' : '記録に残しました'); lsSet(LS.draft, '');
+    RESULT.savedId = r.id; RESULT.localId = r.id; RESULT.savedMsg = msg; RESULT.savedRoutes = routesKey;
+    if (auto || !RESULT._quiet) toast(auto ? '送りました。記録にも残しました' : '記録に残しました'); lsSet(LS.draft, '');
     loadMemos();
   } catch (e) {
     RESULT.savedMsg = msg;
@@ -638,6 +679,7 @@ function memoDetail(m) {
     ((m.site || m.when) ? '<div class="hint">' + esc([m.site, md(m.when)].filter(Boolean).join('　')) + '</div>' : '') +
     (needs.length ? '<div class="hint">必要なもの：' + esc(needs.map(n => (n.name || n) + (n.qty ? ' ' + n.qty + (n.unit || '') : '')).join('・')) + '</div>' : '') +
     (veh.length ? '<div class="hint">車両：' + esc(veh.join('・')) + '</div>' : '') +
+    arr(m.routes).map(x => '<div class="hint" style="color:var(--leaf)">✓ ' + esc(x.to) + 'に入れました：' + esc(x.what) + '</div>').join('') +
     reps.map(r => replyHtml(r, m)).join('') +
     (SERVER_LIST && !m.local && isReplier() && m.to !== '自分用メモ' ? '<span class="btn primary block" data-reply="' + esc(m.memoId) + '" style="margin-top:10px">🎤 返事する</span>' : '') +
     '<div class="sec">送った文</div><div class="raw">' + esc(m.message) + '</div>' +
@@ -800,6 +842,7 @@ $('result').addEventListener('click', e => {
   if (e.target.closest('#shareBtn')) return share();
   if (e.target.closest('#saveBtn')) return save();
   if (e.target.closest('#moreBtn')) return openAnswer('');
+  const rt = e.target.closest('[data-route]'); if (rt) return doRoute(Number(rt.dataset.route), rt);
 });
 $('listSeg').addEventListener('click', e => { const b = e.target.closest('[data-seg]'); if (!b) return; SEG = b.dataset.seg; document.querySelectorAll('#listSeg button').forEach(x => x.classList.toggle('on', x === b)); renderList(); });
 $('memoList').addEventListener('click', e => {
@@ -817,6 +860,7 @@ $('meBtn').addEventListener('click', () => chooseName(true));
   $('raw').value = lsGet(LS.draft, '') || '';
   if (!LIVE) $('micStatus').textContent = 'まとまらなくて大丈夫。🎤を押して、キーボードのマイクで話してください';
   const q = new URLSearchParams(location.search);
+  if (q.get('from') === 'dandori' && $('raw').value.trim()) { TO = '親方へ'; drawTo(); setTimeout(go, 400); }
   if (q.get('tab') === 'list' || q.get('memo')) { if (q.get('memo')) OPEN_ID = q.get('memo'); if (q.get('seg')) { SEG = q.get('seg'); document.querySelectorAll('#listSeg button').forEach(x => x.classList.toggle('on', x.dataset.seg === SEG)); } switchTab('list'); }
   load();
 })();

@@ -867,10 +867,12 @@ function openSpeak(fixed) {
     '<p class="hint" style="margin-bottom:10px">順番は気にせず、思いついた順に話してください。「明日」「木曜」などの日付や、複数の現場が混ざってもOKです。</p>' +
     '<textarea id="spk" placeholder="例：明日は○○邸ね、その前に△△さんとこで植木もらって、竹屋で竹12本。持田と佐藤で、唐鍬とスコップ。抜根してから植える。それと木曜の□□公園は高所作業車の手配。">' + esc(fixed ? '' : d) + '</textarea>' +
     '<p class="hint">🎤 iPhone・iPad はキーボードのマイクを押して話します。</p>' +
+    (fixed ? '' : '<button type="button" class="addnotice" data-act="yoten" style="margin-top:8px">📨 予定ではなく報告・相談なら「要点まとめ」で伝える</button>') +
     '<div class="row2" style="margin-top:14px"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="go">整理する</button></div>',
     async e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.act === 'cancel') return closeModal();
+      if (b.dataset.act === 'yoten') { lsSet('yoten_draft', $('spk').value); location.href = 'yoten.html?from=dandori'; return; }   // 話した内容を持って要点まとめへ
       if (b.dataset.act !== 'go') return;
       const text = $('spk').value.trim(); if (!text) return toast('話した内容がありません');
       b.disabled = true; b.innerHTML = '<span class="loading"></span> 整理中…';

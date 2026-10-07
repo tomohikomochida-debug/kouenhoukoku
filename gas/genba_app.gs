@@ -38,7 +38,7 @@ var SHEETS = {
   vehicleLog:{ name: '車両の記録',   head: ['logId', 'vehicleId', 'date', 'type', 'content', 'shop', 'cost', 'odometer', 'by', 'at'] },
   toolRepair:{ name: '修理履歴',     head: ['logId', 'toolId', 'date', 'type', 'content', 'shop', 'cost', 'by', 'at'] },
   vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at', 'batch', 'state', 'validUntil', 'page'] },
-  memos:     { name: '要点メモ',     head: ['memoId', 'at', 'by', 'to', 'kind', 'headline', 'points', 'needs', 'vehicles', 'site', 'when', 'people', 'missing', 'message', 'rawText', 'readBy', 'status', 'doneAt', 'doneBy'] },
+  memos:     { name: '要点メモ',     head: ['memoId', 'at', 'by', 'to', 'kind', 'headline', 'points', 'needs', 'vehicles', 'site', 'when', 'people', 'missing', 'message', 'rawText', 'readBy', 'status', 'doneAt', 'doneBy', 'routes'] },
   replies:   { name: '要点メモの返事', head: ['replyId', 'memoId', 'at', 'by', 'text', 'scope', 'showAt', 'actions', 'readBy'] }
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
@@ -240,6 +240,7 @@ function doPost(e) {
       case 'yoten:read':       return withLock_(function () { return readMemo_(b.memoId, b.by); });
       case 'yoten:delete':     return withLock_(function () { return deleteMemo_(b.memoId, b.by); });
       case 'yoten:interpret':  return out_(interpretReply_(b));
+      case 'yoten:route':      return withLock_(function () { return route_(b.route, b.by, b.memoBy); });
       case 'yoten:reply':      return withLock_(function () { return reply_(b); });
       case 'yoten:done':       return withLock_(function () { return setDone_(b.memoId, b.by, b.done); });
       case 'yoten:readReply':  return withLock_(function () { return readReplies_(b.replyIds, b.by); });
@@ -797,9 +798,14 @@ function summarize_(b) {
     '・missing は「聞く人が知りたいのに、話に出ていないこと」。いつ・どこ・何を・いくつ・誰が・なぜ・どうしてほしいか のうち、用件に本当に必要なものだけ。スタッフがそのまま答えられる短い質問で、最大4つ（例：「何本必要ですか？」「いつまでに必要ですか？」）。足りていれば空\n' +
     '・words は話の中の専門用語・社内の呼び方で、辞書の正式名に直したもの {"said":"話した言葉","term":"正式名"}。直していないものは書かない\n' +
     '・corrections は聞き間違いを直したもの（「元の言葉→直した言葉」）\n' +
+    '・routes は、話の中で「ほかのアプリに入れるとよいもの」を行き先ごとに分けたもの（なければ空の配列）：\n' +
+    '  - type "plan"：これからやる予定（「金曜に続きをやりたい」「明日は〇〇公園で剪定」）。段取りカードになる。date（YYYY-MM-DD、分からなければ空）、dateNote（「金曜あたり」「今週中に」など話した言い方）、site（現場マスタの名前。現場のない用事なら空にして title に短い名前）、members（名簿の名前。話に出た人だけ）、steps（作業を順に短く）、items（持って行く道具・資材、辞書の正式名）、notes（注意点）。済んだことや今日やったことは入れない\n' +
+    '  - type "shop"：買う・取ってくる・補充する物（「土のう袋が足りない」「竹を10本買っておいて」）。date（いつまでに必要か、分からなければ空）、place（取引先の正式名、分からなければ空）、items [{name, qty, unit}]（辞書の正式名）\n' +
+    '  - 1つの話に予定や買う物がいくつもあれば、日付・現場・店ごとに分ける。話に出ていないことは入れない\n' +
     '・message は宛先にそのまま送れる文。' + (to === '自分用メモ' ? '自分用のメモなので、短い箇条書き（「・」で始める）' : 'LINEで送る短い文。です・ます調で3〜6行。最初の1行で用件が分かるように。宛先が親方なら「親方、」、みんななら「みなさん、」で始める') + '。missing の内容は勝手に埋めない\n' +
     'JSONだけ返す：{"kind":"","headline":"","points":[""],"needs":[{"name":"正式名","qty":数または空,"unit":"","why":""}],"vehicles":["車両名"],' +
-    '"site":"","when":"YYYY-MM-DD または空","whenNote":"","people":["名簿の名前"],"missing":["質問"],"words":[{"said":"","term":""}],"corrections":[""],"message":""}\n\n' +
+    '"site":"","when":"YYYY-MM-DD または空","whenNote":"","people":["名簿の名前"],"missing":["質問"],"words":[{"said":"","term":""}],"corrections":[""],"message":"",' +
+    '"routes":[{"type":"plan","date":"","dateNote":"","site":"","title":"","members":[],"steps":[],"items":[{"name":"","qty":"","unit":""}],"notes":[]},{"type":"shop","date":"","place":"","items":[{"name":"","qty":"","unit":""}]}]}\n\n' +
     '名簿（正式な名前（呼び名））：\n' + (b.roster || '') + '\n' +
     '現場マスタ：\n' + (b.masterSites || []).join('、') + '\n' +
     (b.vehicles ? '車両一覧（名前：呼び方）：\n' + b.vehicles + '\n' : '') +
@@ -813,8 +819,40 @@ function summarize_(b) {
   return { ok: true, result: {
     kind: MEMO_KINDS.indexOf(j.kind) >= 0 ? j.kind : 'その他', headline: String(j.headline || ''), points: arr(j.points).map(String),
     needs: arr(j.needs), vehicles: arr(j.vehicles).map(String), site: String(j.site || ''), when: String(j.when || ''), whenNote: String(j.whenNote || ''),
-    people: arr(j.people).map(String), missing: arr(j.missing).map(String).slice(0, 4), words: arr(j.words), corrections: arr(j.corrections).map(String), message: String(j.message || '')
+    people: arr(j.people).map(String), missing: arr(j.missing).map(String).slice(0, 4), words: arr(j.words), corrections: arr(j.corrections).map(String), message: String(j.message || ''),
+    routes: arr(j.routes).filter(function (r) { return r && (r.type === 'plan' || (r.type === 'shop' && arr(r.items).length)); })
   } };
+}
+/* 行き先ごとに入れる：予定 → 段取りカード、買う物 → 段取りの買い出し（立ち寄り先つきの「買い出し」カード）
+   同じ日・同じ現場（または同じ名前の用事）のカードがすでにあれば、そこに追記する */
+function route_(r, by, memoBy) {
+  r = r || {};
+  var today = ymd_(new Date()), date = /^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? r.date : '';
+  var from = '（要点まとめ：' + (memoBy || by || '') + 'より）';
+  var list = cards_(), card;
+  if (r.type === 'shop') {
+    var d = date || addDays_(today, 1), place = r.place || '買い出し（店は未定）';
+    var stop = { order: 1, place: place, done: false, items: (r.items || []).map(function (it) { return { name: it.name || '', termId: it.termId || '', qty: it.qty || '', unit: it.unit || '', done: false }; }) };
+    card = list.filter(function (c) { return c.date === d && c.kind === 'task' && c.title === '買い出し'; })[0];
+    if (card) {
+      var st = card.stops.filter(function (s) { return s.place === place; })[0];
+      if (st) stop.items.forEach(function (it) { if (!st.items.some(function (x) { return x.name === it.name; })) st.items.push(it); });
+      else { stop.order = card.stops.length + 1; card.stops.push(stop); }
+      if (card.notes.indexOf(from) < 0) card.notes.push(from);
+    } else card = { kind: 'task', title: '買い出し', date: d, dateNote: date ? '' : (r.dateNote || '日にちは仮'), site: '', eventId: '', meetTime: '', staff: [], vehicle: '', stops: [stop], items: [], steps: [], notes: [from], rawText: '' };
+  } else {
+    var kind = r.site ? 'site' : 'task', title = kind === 'task' ? (r.title || 'やること') : '';
+    card = list.filter(function (c) { return date && c.date === date && ((kind === 'site' && c.site === r.site) || (kind === 'task' && c.kind === 'task' && c.title === title)); })[0];
+    var items = (r.items || []).map(function (it) { return { name: it.name || '', termId: it.termId || '', toolId: it.toolId || '', qty: it.qty || '', unit: it.unit || '', loaded: false, returned: false }; });
+    if (card) {
+      (r.steps || []).forEach(function (x) { if (card.steps.indexOf(x) < 0) card.steps.push(x); });
+      items.forEach(function (it) { if (!card.items.some(function (x) { return x.name === it.name; })) card.items.push(it); });
+      (r.members || []).forEach(function (x) { if (card.staff.indexOf(x) < 0) card.staff.push(x); });
+      (r.notes || []).concat([from]).forEach(function (x) { if (card.notes.indexOf(x) < 0) card.notes.push(x); });
+    } else card = { kind: kind, title: title, date: date, dateNote: r.dateNote || (date ? '' : '日にち未定'), site: r.site || '', eventId: '', meetTime: '', staff: r.members || [], vehicle: '', stops: [], items: items, steps: r.steps || [], notes: (r.notes || []).concat([from]), rawText: '' };
+  }
+  var res = saveCards_([card], by);
+  return { ok: true, cardId: (res.cardIds || [])[0] || '', date: card.date, merged: !!card.cardId && list.some(function (c) { return c.cardId === card.cardId; }) };
 }
 function memoList_(days) {
   var from = Utilities.formatDate(new Date(Date.now() - days * 86400000), TZ, 'yyyy-MM-dd');
