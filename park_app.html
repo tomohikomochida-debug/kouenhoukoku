@@ -386,7 +386,7 @@
       <button id="multiToggle" title="複数選択（タップで追加／解除）">多</button>
       <button id="grpToggle" class="on" title="×Nまとめ表示（近接の同一中木をまとめ）">×N</button>
     </div>
-    <div id="selActions" style="position:absolute;left:50%;transform:translateX(-50%);bottom:16px;display:none;gap:8px;z-index:30">
+    <div id="selActions" style="position:absolute;left:50%;transform:translateX(-50%);bottom:16px;display:none;gap:8px;z-index:30;width:max-content;max-width:calc(100% - 20px);flex-wrap:wrap;justify-content:center;white-space:nowrap">
       <span id="selCount" style="display:none;align-items:center;color:#fff;background:#334155;border-radius:22px;padding:11px 12px;font-size:13px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)"></span>
       <button id="dupSelBtn" style="display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;border:none;border-radius:22px;padding:11px 16px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">⧉ 複製</button>
       <button id="delSelBtn" style="display:inline-flex;align-items:center;gap:6px;background:#e11d48;color:#fff;border:none;border-radius:22px;padding:11px 16px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">🗑 削除</button>
@@ -738,6 +738,19 @@ function autoDeductList(f){
   return out;
 }
 function autoDeductM2(f){return autoDeductList(f).reduce((s,d)=>s+d.area,0);}
+// 機械除草（除草工のうち「除草」の付く細別）には、同じ面積の「集草」を自動でつける。
+// ・その範囲の中に手で描いた集草がある場合は二重に数えない（手描きを優先）
+// ・範囲ごとに「集草をつけない」も選べる（f.noShuso）
+const SHUSO_KIND='集草';
+function isMowing(f){return !!f&&f.type==='area'&&f.cat==='除草工'&&/除草/.test(f.kind||'');}
+function hasManualShuso(f,feats){
+  return (feats||state.features).some(g=>g!==f&&g.type==='area'&&g.cat==='除草工'&&g.kind===SHUSO_KIND&&g.pts&&g.pts.length&&f.pts&&pointInPoly(centroid(g.pts),f.pts));
+}
+function shusoSourcesOf(feats){return (feats||[]).filter(f=>isMowing(f)&&!f.noShuso&&!hasManualShuso(f,feats));}
+function shusoSources(){return shusoSourcesOf(state.features);}
+function shusoM2Of(feats){return shusoSourcesOf(feats).reduce((a,f)=>a+(f.area||0),0);}
+function shusoAutoM2(){return shusoM2Of(state.features);}
+function shusoPrice(){const k=((MASTER['除草工']||{}).kinds||{})[SHUSO_KIND];return (k&&k.price)||0;}
 // 全featureを再計算。除草は内側の刈込・低木面積を自動控除して計上面積にする。
 function recalcAll(){
   state.features.forEach(f=>recalcAreaFeature(f));            // まず各自の投影/面積
@@ -1029,7 +1042,15 @@ function syncDelBtn(){const n=multiSel.length,any=(n>0||selected),single=(n<=1);
   if(rl)rl.style.display=canRot?'inline-flex':'none'; if(rr)rr.style.display=canRot?'inline-flex':'none';
   const sel=multiSel.length?multiSel:(selected?[selected]:[]); const hasBox=sel.some(f=>f&&f.type==='box');
   if(sy)sy.style.display=hasBox?'inline-flex':'none';
-  if(sc){sc.style.display=n>1?'inline-flex':'none'; sc.textContent=n>1?(n+'個'):'';}}
+  if(sc){sc.style.display=n>1?'inline-flex':'none'; sc.textContent=n>1?(n+'個'):'';}
+  placeSelActions();}
+// 「✓確定」バーが出ている間は、複製・削除・選択解除をその上にずらして重ならないようにする
+function placeSelActions(){
+  const d=$('selActions'),bar=$('draftbar'); if(!d||!bar)return;
+  const on=bar.classList.contains('on');
+  if(on){const b=parseFloat(getComputedStyle(bar).bottom)||16, h=bar.offsetHeight||58; d.style.bottom=Math.round(b+h+10)+'px';}
+  else d.style.bottom='16px';
+}
 /* ---------- 図形の番号と、画面に何を出すか ---------- */
 const MARU='①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚';
 function maru(n){ return (n>=1&&n<=MARU.length)?MARU[n-1]:('('+n+')'); }
@@ -1158,10 +1179,13 @@ function draw(){
       ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=isSel(f)?SEL:(isNest?'#fff':'#0008');ctx.stroke();
       if(isNest){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad+3/view.zoom,0,7);ctx.lineWidth=1.8/view.zoom;ctx.strokeStyle=col;ctx.stroke();}
       if(isNest) label(f.pt.x,f.pt.y+rad+2/view.zoom,f.kind,col,f);   // 巣は位置が重要：出力でも常に表示
-      else if(!exporting && (isSel(f) || view.zoom>1.4) && !(_grouped&&_grouped.has(f)) && labelVisible(f)) label(f.pt.x,f.pt.y+rad+2/view.zoom,(f.rank?f.rank:f.kind),col,f);
+      else if(!exporting && (isSel(f) || (disp.mode==='full'&&view.zoom>1.4)) && !(_grouped&&_grouped.has(f)) && labelVisible(f)) label(f.pt.x,f.pt.y+rad+2/view.zoom,(f.rank?f.rank:f.kind),col,f);
     }
   });
   if(_gmap){ _gmap.clusters.forEach(cl=>{
+    // 番号だけモードでは、まとめ表示（×N本）も選んでいる時だけ出す（面積と同じ：選択解除で消える）
+    const _clOn=exporting||(labelVisible(cl.members[0])&&(disp.mode!=='num'||cl.members.some(m=>isSel(m))));
+    if(!_clOn)return;
     ctx.save();ctx.lineWidth=1/view.zoom;ctx.strokeStyle='rgba(20,40,60,.5)';ctx.setLineDash([4/view.zoom,3/view.zoom]);
     cl.members.forEach(m=>{ctx.beginPath();ctx.moveTo(cl.cx,cl.cy);ctx.lineTo(m.pt.x,m.pt.y);ctx.stroke();});
     ctx.setLineDash([]);ctx.restore();
@@ -1169,7 +1193,7 @@ function draw(){
     let _gt;
     if(cl.mode==='count'){ _gt=`${cl.kind}${cl.dim?' '+cl.dim:''}\n× ${N}${cl.unit||'本'}`; }
     else { const a=Math.round(cl.area*100)/100; _gt=`${cl.kind} ${cl.dim}\n${a.toFixed(2)}㎡ × ${N} ＝ ${(a*N).toFixed(2)}㎡`; }
-    if(exporting||labelVisible(cl.members[0])) label(cl.cx,cl.cy,_gt,cl.col,cl.members[0],true);   // ×N のまとめ数字も動かせるように
+    label(cl.cx,cl.cy,_gt,cl.col,cl.members[0],true);   // ×N のまとめ数字も動かせるように
   }); }
   flushLabels(); _labels=null;
   // draft（作図中：破線＋点で視認。面積=赤、縮尺=青） 
@@ -1256,6 +1280,8 @@ function aggregate(){
     if(f.type==='area'||f.type==='line'||f.type==='box'){const k=f.cat+' › '+f.kind;(areas[k]=areas[k]||{cat:f.cat,kind:f.kind,col:colorFor(f.cat+f.kind),m2:0,line:f.type==='line'}).m2+=f.area||0;}
     else{const k=f.cat+' › '+f.kind+(f.rank?' '+f.rank:'');(trees[k]=trees[k]||{cat:f.cat,kind:f.kind,rank:f.rank||'',col:treeColor(f),rad:treeRadius(f),unit:(MASTER[f.cat]||{}).unit||'本',n:0}).n+=1;}
   });
+  const sm=shusoAutoM2();   // 機械除草と同面積の集草（自動）
+  if(sm>0){const k='除草工 › '+SHUSO_KIND;const a=(areas[k]=areas[k]||{cat:'除草工',kind:SHUSO_KIND,col:colorFor('除草工'+SHUSO_KIND),m2:0,line:false});a.m2+=sm;a.auto=(a.auto||0)+sm;}
   return {areas,trees};
 }
 // 仕様書順（MASTER定義順 → 大分類→細別→規格）でソートするためのキー
@@ -1412,6 +1438,7 @@ function moveDrag(f,ring,dx,dy){ if(ring==null)moveFeature(f,dx,dy); else if(f.h
 function refreshDraftBar(){
   const bar=$('draftbar'),active=!!(draft&&(tool==='area'||tool==='strip'||tool==='cal'));
   bar.classList.toggle('on',active);
+  placeSelActions();
   if(active){
     // 幅刈りも「✓ 確定」で閉じる。線なので2点あればよい。
     const canFin=(tool==='area'||tool==='strip');
@@ -1761,6 +1788,11 @@ function renderSansha(){
   if(sk!==1){const base=(selected.footprint!=null?(selected.footprint-(isWeeding(selected)?(selected.autoDeduct||0):0)):null);
     h+=`<tr><td style="color:#2f9e57">斜面補正 投影${base!=null?base.toFixed(2):'—'}×${sk}</td><td class="num" style="color:#2f9e57">${base!=null?(base*sk).toFixed(2)+' ㎡':'—'}</td></tr>`;}
   h+=`<tr><td>計上面積（積算に使用）</td><td class="num" style="color:var(--acc);font-weight:700">${selected.area!=null?selected.area.toFixed(2)+' ㎡':'—'}</td></tr>`;
+  if(isMowing(selected)){
+    const man=hasManualShuso(selected);
+    h+=`<tr><td style="color:#2f6f9e"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="shusoChk"${(!selected.noShuso)?' checked':''}${man?' disabled':''}>＋ 集草を同じ面積で計上</label>`+
+       (man?'<span style="font-size:10px;color:var(--mut)">この範囲は手で描いた集草で計上中</span>':'')+`</td><td class="num" style="color:#2f6f9e">${(!man&&!selected.noShuso&&selected.area!=null)?selected.area.toFixed(2)+' ㎡':'—'}</td></tr>`;
+  }
   h+='</table>';
   const inHole=(holeMode===selected);
   if(holes.length){
@@ -1783,6 +1815,7 @@ function renderSansha(){
     if(ssel)ssel.onchange=()=>{const v=ssel.value;pushHistory();if(v==='custom'){selected.slopeKind='直接入力';if(!selected.slopeK)selected.slopeK=1.15;}else{selected.slopeKind=PRE[v][0];selected.slopeK=PRE[v][1];}recalcAll();renderAgg();renderSansha();draw();};
     if(sin)sin.onchange=()=>{const v=parseFloat(sin.value);if(isNaN(v)||v<=0)return;pushHistory();selected.slopeK=v;if(v===1)selected.slopeKind='平坦';else if(!selected.slopeKind||selected.slopeKind==='平坦')selected.slopeKind='直接入力';recalcAll();renderAgg();renderSansha();draw();};
   })();
+  {const sc=document.getElementById('shusoChk'); if(sc)sc.onchange=()=>{pushHistory(); if(sc.checked)delete selected.noShuso; else selected.noShuso=true; renderAgg();renderSansha();draw();};}
   el.querySelectorAll('.holerow').forEach(r=>r.onclick=()=>{hlHole=parseInt(r.dataset.hi);renderSansha();draw();});
   el.querySelectorAll('.holedel').forEach(b=>b.onclick=(e)=>{e.stopPropagation();deleteHole(selected,parseInt(b.dataset.hi));});
   $('addHole').onclick=inHole?endHole:startHole;
@@ -1867,12 +1900,13 @@ function renderAgg(){
     if(f.type==='area'||f.type==='line'||f.type==='box'){const key=f.cat+' › '+f.kind;am[key]=am[key]||{m2:0,col:colorFor(f.cat+f.kind),price:unitPrice(f),cat:f.cat,kind:f.kind,rank:''};am[key].m2+=f.area||0;}
     else{const key=f.cat+(f.rank?' › '+f.kind+' '+f.rank:' › '+f.kind);tm[key]=tm[key]||{n:0,col:featColor(f),price:unitPrice(f),cat:f.cat,kind:f.kind,rank:f.rank||'',unit:(MASTER[f.cat]||{}).unit||'本'};tm[key].n+=1;}
   });
+  {const sm=shusoAutoM2(); if(sm>0){const key='除草工 › '+SHUSO_KIND;am[key]=am[key]||{m2:0,col:colorFor('除草工'+SHUSO_KIND),price:shusoPrice(),cat:'除草工',kind:SHUSO_KIND,rank:''};am[key].m2+=sm;am[key].auto=(am[key].auto||0)+sm;}}
   // area table
   const ae=$('aggArea');let h='';
   const ak=Object.keys(am).sort((x,y)=>cmpSpec(am[x],am[y]));
   if(!ak.length)h='<div class="empty">面積の注記なし</div>';
   else{h='<table><tr><th>工種</th><th class="num">㎡</th></tr>';
-    ak.forEach(k=>{h+=`<tr><td><span class="swatch" style="background:${am[k].col}"></span>${k}</td><td class="num">${am[k].m2.toFixed(2)}</td></tr>`;cost+=am[k].m2*am[k].price;});h+='</table>';}
+    ak.forEach(k=>{h+=`<tr><td><span class="swatch" style="background:${am[k].col}"></span>${k}${am[k].auto?'<div style="font-size:10px;color:var(--mut)">機械除草と同じ面積を自動で計上'+(am[k].auto<am[k].m2-0.005?'（うち自動 '+am[k].auto.toFixed(2)+'）':'')+'</div>':''}</td><td class="num">${am[k].m2.toFixed(2)}</td></tr>`;cost+=am[k].m2*am[k].price;});h+='</table>';}
   ae.innerHTML=h;
   // tree table
   const te=$('aggTree');const tk=Object.keys(tm).sort((x,y)=>cmpSpec(tm[x],tm[y]));
@@ -2229,6 +2263,7 @@ function buildTriSection(){
     if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);h+='<tr><td colspan="7" style="text-align:right">側面 ＝ 周長×高さ('+(b.f.height||0).toFixed(1)+'m)</td><td class="num">'+side.toFixed(2)+'</td></tr>';}
     if(b.f.slopeK&&b.f.slopeK!==1)h+='<tr><td colspan="7" style="text-align:right">斜面補正 ×'+b.f.slopeK+'（'+b.f.slopeKind+'）</td><td class="num">投影×係数</td></tr>';
     h+='<tr><td colspan="7" style="text-align:right"><b>計上面積</b></td><td class="num"><b>'+(b.f.area!=null?b.f.area.toFixed(2):'—')+' ㎡</b></td></tr>';
+    if(shusoSources().indexOf(b.f)>=0)h+='<tr><td colspan="7" style="text-align:right">＋ 集草（同じ面積を自動で計上）</td><td class="num">'+(b.f.area||0).toFixed(2)+' ㎡</td></tr>';
     h+='</table></div>';
   });
   return h;
@@ -2296,6 +2331,7 @@ $('multiFile').onchange=e=>{
       if(ft.type==='area'||ft.type==='line'||ft.type==='box'){key=ft.cat+' › '+ft.kind;unit='㎡';val=ft.area||0;}
       else{key=ft.cat+(ft.rank?' › '+ft.kind+' '+ft.rank:' › '+ft.kind);unit=(MASTER[ft.cat]||{}).unit||'本';val=1;}
       agg[key]=agg[key]||{v:0,unit,parks:new Set()};agg[key].v+=val;agg[key].parks.add(d.park);});
+    {const sm=shusoM2Of(d.features||[]); if(sm>0){const key='除草工 › '+SHUSO_KIND;agg[key]=agg[key]||{v:0,unit:'㎡',parks:new Set()};agg[key].v+=sm;agg[key].parks.add(d.park);}}
     (d.manual||[]).forEach(m=>{const key=m.kind;agg[key]=agg[key]||{v:0,unit:(MANUAL[m.kind]||{}).unit||'',parks:new Set()};agg[key].v+=m.qty;agg[key].parks.add(d.park);});
     }catch(err){}
     if(++done===files.length)showMulti(agg);
@@ -2319,6 +2355,7 @@ function blockHoleSum(f){const holes=f.holes||[];return state.scale?holesAreaM2(
 function buildSummary(blocks){
   const byKind={};let grand=0;
   blocks.forEach(b=>{const a=(b.f.area!=null)?b.f.area:((b.t.total-blockHoleSum(b.f)-(b.f.autoDeduct||0))*(b.f.slopeK||1));byKind[b.f.kind]=(byKind[b.f.kind]||0)+a;grand+=a;});  // 計上面積(f.area=穴・控除・斜面・側面を反映済み)を一次ソースに
+  blocks.forEach(b=>{if(shusoSources().indexOf(b.f)>=0){const a=b.f.area||0;byKind[SHUSO_KIND]=(byKind[SHUSO_KIND]||0)+a;grand+=a;}});   // 機械除草と同面積の集草
   return {byKind,grand,unit:blocks[0]?blocks[0].t.unit:'m'};
 }
 function showAllSansha(){
@@ -2329,7 +2366,7 @@ function showAllSansha(){
   let h='<div style="font-size:12px;color:#5b6b78;margin-bottom:8px">各三角形を<b>3辺の長さ</b>からヘロンの公式で算出（s=(a+b+c)/2、面積=√(s(s-a)(s-b)(s-c))）。図の<span style="color:#1463c7">青＝外周辺</span>・<span style="color:#0a8a6a">緑＝対角線</span>の数値が表の辺長に対応します。<b>「辺a＝頂点1–2」は、辺aが頂点1と頂点2を結ぶ辺という意味</b>です（図の角の番号と対応）。</div>';
   blocks.forEach((b,idx)=>{
     const col=featColor(b.f);
-    if(b.f.noFig){ h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.cat}　${b.f.kind} ＃${idx+1}<span class="a">${b.f.area!=null?b.f.area.toFixed(2):b.t.total.toFixed(2)} ${u}²</span></div><div style="color:#5b6b78;font-size:12px;padding:4px 0">範囲コピー（求積図は省略）</div></div>`; return; }
+    if(b.f.noFig){ h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.cat}　${b.f.kind} ＃${idx+1}<span class="a">${b.f.area!=null?b.f.area.toFixed(2):b.t.total.toFixed(2)} ${u}²</span></div><div style="color:#5b6b78;font-size:12px;padding:4px 0">範囲コピー（求積図は省略）${shusoSources().indexOf(b.f)>=0?'／＋集草 '+(b.f.area||0).toFixed(2)+' ㎡（同面積を自動計上）':''}</div></div>`; return; }
     h+=`<div class="block"><div class="bh"><span class="swatch" style="background:${col};margin:0"></span>${b.f.cat}　${b.f.kind} ＃${idx+1}<span class="a">${b.f.area!=null?b.f.area.toFixed(2):b.t.total.toFixed(2)} ${u}²</span></div>`;
     if(selfIntersects(b.f.pts))h+='<div style="color:#b91c1c;font-weight:700;font-size:12px;margin:4px 0">⚠ 頂点が交差している可能性。形状を確認してください（求積表が実面積と一致しない場合があります）。</div>';
     const dg=triDiagramDataURL(b.f,560); if(dg)h+=`<img src="${dg.url}" style="display:block;max-width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;margin:0 0 6px">`;
@@ -2346,7 +2383,9 @@ function showAllSansha(){
     const ded=isWeeding(b.f)?autoDeductList(b.f):[];
     ded.forEach(d=>h+=`<tr><td colspan="7" style="text-align:right;color:#ff8c00">内側控除 − ${d.kind}</td><td class="num" style="color:#ff8c00">-${d.area.toFixed(2)} ㎡</td></tr>`);
     if((b.f.slopeK||1)!==1)h+=`<tr><td colspan="7" style="text-align:right;color:#2f9e57">斜面補正 ×${b.f.slopeK}（${b.f.slopeKind||''}）</td><td class="num" style="color:#2f9e57">投影×係数</td></tr>`;
-    h+=`<tr><td colspan="7" style="text-align:right">計上面積</td><td class="num" style="color:var(--acc);font-weight:700">${b.f.area!=null?b.f.area.toFixed(2)+' ㎡':'—'}</td></tr></table>`;
+    h+=`<tr><td colspan="7" style="text-align:right">計上面積</td><td class="num" style="color:var(--acc);font-weight:700">${b.f.area!=null?b.f.area.toFixed(2)+' ㎡':'—'}</td></tr>`;
+    if(shusoSources().indexOf(b.f)>=0)h+=`<tr><td colspan="7" style="text-align:right;color:#2f6f9e">＋ 集草（同じ面積を自動で計上）</td><td class="num" style="color:#2f6f9e">${(b.f.area||0).toFixed(2)} ㎡</td></tr>`;
+    h+='</table>';
     h+=`<button class="btn ghost imgsave" data-i="${idx}" style="margin-top:6px;width:auto;padding:6px 12px">この図＋表を画像で保存（PNG）</button></div>`;
   });
   h+='<div class="grand"><h2>工種別 面積集計</h2><table><tr><th>工種</th><th class="num">面積('+u+'²)</th></tr>';
@@ -2394,6 +2433,7 @@ function exportExcel(){
       if(sk!==1)aoa.push([`斜面補正 ×${sk}（${b.f.slopeKind||''}）`,'','','','','','','']);
       if(b.f.calc==='trim'){const per=perimeterM(b.f.pts),side=per*(b.f.height||0);aoa.push([`側面（周長×高さ${(b.f.height||0).toFixed(1)}m）`,'','','','','','',Math.round(side*100)/100]);}
       aoa.push(['計上面積','','','','','','',Math.round((b.f.area!=null?b.f.area:b.t.total)*100)/100]);
+      if(shusoSources().indexOf(b.f)>=0)aoa.push(['＋集草（同じ面積を自動で計上）','','','','','','',Math.round((b.f.area||0)*100)/100]);
       aoa.push([]);
     });
     const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:16},{wch:8},{wch:10},{wch:8},{wch:10},{wch:8},{wch:10},{wch:12}];ws['!merges']=merges;
@@ -2653,6 +2693,13 @@ function rpKindGroups(){
     if(f.type==='tree'){ g.trees++; g.unit=(MASTER[f.cat]||{}).unit||'本'; }
     else g.m2+=(f.area||0);
   });
+  Object.keys(map).forEach(k=>map[k].auto=[]);
+  const src=shusoSources();     // 機械除草と同じ範囲の集草（自動）
+  if(src.length){
+    const key='除草工\u0000'+SHUSO_KIND;
+    const g=map[key]||(map[key]={cat:'除草工',kind:SHUSO_KIND,rank:'',feats:[],m2:0,trees:0,unit:'本',auto:[]});
+    src.forEach(f=>{g.auto.push(f);g.m2+=(f.area||0);});
+  }
   return Object.keys(map).map(k=>map[k]).sort(cmpSpec);
 }
 // 列幅（文字数）→ ピクセル
@@ -2700,7 +2747,7 @@ function rpStyle(cell,opt){
 /* ===== 配置図シート ===== */
 function rpBuildHaichi(wb,park){
   if(!state.img) return null;
-  const groups=rpKindGroups().filter(g=>g.feats.length);
+  const groups=rpKindGroups().filter(g=>g.feats.length||g.auto.length);
   if(!groups.length) return null;
   const ws=wb.addWorksheet('配置図',{pageSetup:{paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,
     margins:{left:0.4,right:0.4,top:0.5,bottom:0.4,header:0.3,footer:0.3}}});
@@ -2733,28 +2780,34 @@ function rpBuildHaichi(wb,park){
     r+=1;
     const ox=RP_PAD, oy=(r-1)*RP_ROWPX+RP_PAD;
     rpPutImage(wb,ws,mapURL,r,box,WID);
-    groups.forEach(g=>{ const col=featColor(g.feats[0]); g.feats.forEach(f=>drawFeat(f,ox,oy,col)); });
+    groups.forEach(g=>{ if(!g.feats.length)return; const col=featColor(g.feats[0]); g.feats.forEach(f=>drawFeat(f,ox,oy,col)); });   // 自動の集草は除草と同じ範囲なので重ねて描かない
     r+=Math.ceil(box.h/RP_ROWPX)+1;
     // 凡例
     let ly=(r-1)*RP_ROWPX+4;
     groups.forEach((g,i)=>{
-      const col=featColor(g.feats[0]);
+      const col=g.feats.length?featColor(g.feats[0]):colorFor(g.cat+g.kind);
       const qty=g.trees?(g.trees+' '+g.unit):(g.m2.toFixed(2)+' ㎡');
+      const ltx=g.cat+'　'+g.kind+(g.auto.length&&!g.feats.length?'（機械除草と同範囲）':'')+'　'+qty;
       rpPush('配置図',rpSwatch(WID,ox+2,ly+3,12,9,col));
-      rpPush('配置図',rpText(WID,ox+20+ (String(g.cat+'　'+g.kind+'　'+qty).length*4.2), ly+7,
-        g.cat+'　'+g.kind+'　'+qty, 8, '000000'));
+      rpPush('配置図',rpText(WID,ox+20+ (String(ltx).length*4.2), ly+7,
+        ltx, 8, '000000'));
       ly+=16;
     });
     r+=Math.ceil((groups.length*16+8)/RP_ROWPX)+2;
   }
   groups.forEach((g,i)=>{
     const qty=g.trees?(g.trees+' '+g.unit):(g.m2.toFixed(2)+' ㎡');
-    ws.getCell('B'+r).value=g.cat+'　'+g.kind+'　（'+qty+'）';
+    ws.getCell('B'+r).value=g.cat+'　'+g.kind+'　（'+qty+'）'+(g.auto.length?'　※機械除草と同じ範囲を含む':'');
     rpStyle(ws.getCell('B'+r),{size:11,bold:true,al:'left'});
     r+=1;
     if(mapURL){
       const ox=RP_PAD, oy=(r-1)*RP_ROWPX+RP_PAD;
       rpPutImage(wb,ws,mapURL,r,box,WID);
+      g.auto.forEach(f=>{                                   // 集草（自動）：除草の範囲を集草の色で
+        const col=colorFor(g.cat+g.kind);
+        drawFeat(f,ox,oy,col);
+        const c=centroid(f.pts); rpPush('配置図',rpText(WID,ox+c.x*k,oy+c.y*k,maru(figNo(f)),10,rpHex(col)));
+      });
       g.feats.forEach(f=>{
         drawFeat(f,ox,oy,featColor(f));                     // 画面と同じ配色
         if(f.type!=='tree'){                                // 図形の番号を添えて求積図と対応づける
@@ -2770,7 +2823,8 @@ function rpBuildHaichi(wb,park){
 }
 /* ===== 求積図シート ===== */
 function rpBuildKyuseki(wb,park){
-  const groups=rpKindGroups().filter(g=>g.feats.some(f=>f.type!=='tree'));
+  const groups=rpKindGroups().filter(g=>g.feats.some(f=>f.type!=='tree')||g.auto.length);
+  const areaCell=new Map();                  // 図形 → その「計上面積」のセル（集草＝同面積の参照に使う）
   if(!groups.length) return null;
   const ws=wb.addWorksheet('求積図',{pageSetup:{paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,
     margins:{left:0.4,right:0.4,top:0.5,bottom:0.4,header:0.3,footer:0.3}}});
@@ -2814,7 +2868,7 @@ function rpBuildKyuseki(wb,park){
         ws.getCell('G'+r).value={formula:'SUM(G'+first+':G'+last+')'};
         rpStyle(ws.getCell('B'+r),{size:10,al:'right',border:true,bold:true});
         rpStyle(ws.getCell('G'+r),{size:11,border:true,bold:true,fmt:'0.00'});
-        kindTotalRows.push('G'+r); r+=2;
+        areaCell.set(f,'G'+r); kindTotalRows.push('G'+r); r+=2;
       }
       else if(f.type==='area'){
         const t=heronTable(f.pts);
@@ -2867,7 +2921,7 @@ function rpBuildKyuseki(wb,park){
         ws.getCell('G'+r).value=(f.area!=null)?Math.round(f.area*100)/100:null;
         rpStyle(ws.getCell('B'+r),{size:10,al:'right',border:true,bold:true});
         rpStyle(ws.getCell('G'+r),{size:11,border:true,bold:true,fmt:'0.00'});
-        kindTotalRows.push('G'+r); r+=2;
+        areaCell.set(f,'G'+r); kindTotalRows.push('G'+r); r+=2;
       } else if(f.type==='box'){
         // 生垣・円柱：展開して足す
         ws.getCell('B'+r).value=fno+' '+f.kind+(f.round?('　φ'+f.L+'m'):('　W'+f.L+'m H'+(f.H||0)+'m D'+f.D+'m'));
@@ -2907,6 +2961,22 @@ function rpBuildKyuseki(wb,park){
         kindTotalRows.push('G'+r); r+=2;
       }
     });
+    // 集草（自動）：機械除草の計上面積をそのまま参照する
+    if(g.auto.length){
+      ws.getCell('B'+r).value='機械除草と同じ範囲・同じ面積で計上';
+      rpStyle(ws.getCell('B'+r),{size:10,bold:true,al:'left'});
+      r+=1;
+      g.auto.forEach(f=>{
+        ws.mergeCells('B'+r+':F'+r);
+        ws.getCell('B'+r).value=maru(figNo(f))+' '+f.kind+' の計上面積と同じ';
+        const ref=areaCell.get(f);
+        ws.getCell('G'+r).value=ref?{formula:ref,result:Math.round((f.area||0)*100)/100}:Math.round((f.area||0)*100)/100;
+        rpStyle(ws.getCell('B'+r),{size:10,al:'right',border:true});
+        rpStyle(ws.getCell('G'+r),{size:11,border:true,bold:true,fmt:'0.00'});
+        kindTotalRows.push('G'+r); r+=1;
+      });
+      r+=1;
+    }
     // 細別の合計（報告書の数量と一致する）
     if(kindTotalRows.length){
       ws.mergeCells('B'+r+':F'+r);
@@ -3129,6 +3199,7 @@ function allSanshaCsv(){
     (isWeeding(b.f)?autoDeductList(b.f):[]).forEach(d=>c+=`内側控除 ${d.kind},,,,,,,-${d.area.toFixed(2)}\n`);
     if((b.f.slopeK||1)!==1)c+=`斜面補正 ×${b.f.slopeK}（${b.f.slopeKind||''}）,,,,,,,\n`;
     c+=`計上面積,,,,,,,${(b.f.area!=null?b.f.area:b.t.total).toFixed(2)}\n`;
+    if(shusoSources().indexOf(b.f)>=0)c+=`＋集草（同じ面積を自動で計上）,,,,,,,${(b.f.area||0).toFixed(2)}\n`;
   });
   dl(c,`${$('parkName').value||'公園'}_求積表.csv`,'text/csv');
 }
