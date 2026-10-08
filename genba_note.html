@@ -84,7 +84,7 @@ dl.info dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .tmap .cross span{display:grid;place-items:center;width:34px;height:34px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--tape);border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.4)}
 .tmap .ctl{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px}
 .tmap .ctl button{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.95);font-size:18px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--ink)}
-.tmap .ctl button.txt{font-size:11px}
+.tmap .ctl button.txt{font-size:11px;line-height:1.1}
 .tmap .credit{position:absolute;left:6px;bottom:4px;font-size:10px;color:#333;background:rgba(255,255,255,.75);padding:0 4px;border-radius:3px}
 .photo-pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .photo-pick img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
@@ -131,7 +131,7 @@ dl.info dd{margin:0;min-width:0;overflow-wrap:anywhere}
 // 現場アプリGAS（段取り・道具管理・要点まとめ・現場ノートなどで共通の1本）
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';   // 名簿
-const LS = { me: 'dandori_me', cache: 'note_cache', kind: 'note_kind', layer: 'note_layer2' };   // 地図の種類（最初は航空写真）
+const LS = { me: 'dandori_me', cache: 'note_cache', kind: 'note_kind', layer: 'note_layer3' };   // 地図の種類（最初は OpenStreetMap）
 const NET_ERR = '電波を確認して、もう一度お試しください';
 const KINDS = ['マンション', '公共', '法人', '個人', '寺院', 'その他'];
 const CAUTION_KINDS = ['危険', '駐車', '搬入', '近隣', 'お客さんの要望', '設備・埋設物', 'その他'];
@@ -256,8 +256,13 @@ async function geocodeSite(s) {   // 住所から位置を出す（国土地理�
   } catch (e) { return null; }
 }
 
-/* ============ 地図（国土地理院の地図。外部の部品は使わず、タイルを並べて表示） ============ */
-const TILES = { std: 'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', photo: 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg' };
+/* ============ 地図（OpenStreetMap・国土地理院の地図。外部の部品は使わず、タイルを並べて表示） ============ */
+const TILES = { osm: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', std: 'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', photo: 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg' };
+const LAYERS = [   // ボタンを押すたびに この順で切りかわる
+  { k: 'osm', btn: '線画', name: 'OpenStreetMap（新しい道・建物が早く載る地図）', credit: '© OpenStreetMap contributors' },
+  { k: 'std', btn: '地理院', name: '地理院の標準地図', credit: '地理院タイル' },
+  { k: 'photo', btn: '写真', name: '地理院の航空写真（撮影は数年前のことがあります）', credit: '地理院タイル（航空写真）' } ];
+const layerOf = k => LAYERS.find(l => l.k === k) || LAYERS[0];
 const WS = z => 256 * Math.pow(2, z);
 const lon2x = (lon, z) => (lon + 180) / 360 * WS(z);
 const lat2y = (lat, z) => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * WS(z); };
@@ -266,10 +271,10 @@ const y2lat = (y, z) => { const n = Math.PI - 2 * Math.PI * y / WS(z); return 18
 class TileMap {
   constructor(el, o) {
     this.el = el; this.lat = o.lat; this.lng = o.lng; this.z = Math.max(5, Math.min(18, o.z || 17)); this.pins = o.pins || []; this.site = o.site || null; this.me = null;
-    this.onPin = o.onPin; this.onMove = o.onMove; this.layer = lsGet(LS.layer, 'photo');   // 最初は航空写真。「地図」ボタンで普通の地図に切り替え
+    this.onPin = o.onPin; this.onMove = o.onMove; this.layer = layerOf(lsGet(LS.layer, 'osm')).k;   // 最初は OpenStreetMap。ボタンで 線画 → 地理院 → 写真 と切りかえ
     el.className = 'tmap' + (o.tall ? ' tall' : '');
     el.innerHTML = '<div class="layer"></div>' + (o.cross ? '<div class="cross"><span></span></div>' : '') +
-      '<div class="ctl"><button type="button" data-z="1" aria-label="大きく">＋</button><button type="button" data-z="-1" aria-label="小さく">－</button><button type="button" class="txt" data-layer>' + (this.layer === 'std' ? '写真' : '地図') + '</button><button type="button" data-gps aria-label="現在地">📍</button></div><div class="credit">地理院タイル</div>';
+      '<div class="ctl"><button type="button" data-z="1" aria-label="大きく">＋</button><button type="button" data-z="-1" aria-label="小さく">－</button><button type="button" class="txt" data-layer title="地図の種類を切りかえ">' + layerOf(this.layer).btn + '<br>▸</button><button type="button" data-gps aria-label="現在地">📍</button></div><div class="credit">' + layerOf(this.layer).credit + '</div>';
     this.lay = el.querySelector('.layer');
     this.ptr = new Map(); this.moved = false;
     el.addEventListener('pointerdown', e => this.down(e));
@@ -279,7 +284,7 @@ class TileMap {
     el.querySelector('.ctl').addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return; e.stopPropagation();
       if (b.dataset.z) return this.zoomBy(Number(b.dataset.z));
-      if (b.hasAttribute('data-layer')) { this.layer = this.layer === 'std' ? 'photo' : 'std'; lsSet(LS.layer, this.layer); b.textContent = this.layer === 'std' ? '写真' : '地図'; return this.render(); }
+      if (b.hasAttribute('data-layer')) { const i = LAYERS.findIndex(l => l.k === this.layer), L = LAYERS[(i + 1) % LAYERS.length]; this.layer = L.k; lsSet(LS.layer, L.k); b.innerHTML = L.btn + '<br>▸'; this.el.querySelector('.credit').textContent = L.credit; toast(L.name); return this.render(); }
       if (b.hasAttribute('data-gps')) return this.locate();
     });
     this.lay.addEventListener('click', e => { const p = e.target.closest('.pin'); if (p && !this.moved && this.onPin) this.onPin(p.dataset.id); });

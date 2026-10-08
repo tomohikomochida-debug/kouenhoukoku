@@ -597,7 +597,7 @@ dialog.wide{max-width:720px}
   <h2 id="mpTitle">🗺 位置図の設定</h2>
   <p class="hint">Excelに出すとき、この路線の「位置図」シートを作ります。木は判定の色の丸（中に番号）で置かれ、Excelで動かして微調整できます。<span id="mpInfo"></span></p>
   <div class="fld"><span>背景</span><div class="seg sm" id="mpBg"></div></div>
-  <p class="hint" style="margin:4px 0 8px">地理院地図は、Excelに出すときにネットから取ります（事務所などネットにつながる所で出してください）。</p>
+  <p class="hint" style="margin:4px 0 8px">背景の地図は、Excelに出すときにネットから取ります（事務所などネットにつながる所で出してください）。</p>
   <div id="mpImgBox" class="hidden">
     <div class="row" style="align-items:center"><label class="btn">🖼 路線図の画像を選ぶ<input type="file" id="mpFile" accept="image/*" hidden></label><span class="hint">PDFはスクリーンショットして画像にしてください。</span></div>
     <div id="mpImgArea" class="hidden">
@@ -6912,8 +6912,9 @@ const GSI = {
   pale: { name: '地理院地図（淡色地図）', url: 'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', max: 18 },
   std: { name: '地理院地図（標準地図）', url: 'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', max: 18 },
   photo: { name: '地理院地図（航空写真）', url: 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', max: 18 },
+  osm: { name: 'OpenStreetMap', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, credit: '© OpenStreetMap contributors' },
 };
-const MAP_BG = [['pale', '地理院 淡色地図'], ['std', '地理院 標準地図'], ['photo', '地理院 航空写真'], ['image', '路線図の画像'], ['none', '背景なし']];
+const MAP_BG = [['pale', '地理院 淡色地図'], ['std', '地理院 標準地図'], ['osm', '線画（OpenStreetMap）'], ['photo', '地理院 航空写真'], ['image', '路線図の画像'], ['none', '背景なし']];
 const MAP_SIZE = { s: 180000, m: 252000, l: 324000 }; // 丸の直径（EMU）：5・7・9mm
 const settingsMap = () => { try { return localStorage.getItem('jk_map') !== '0'; } catch (e) { return true; } };
 const MX = { W: 9720000, H: 5580000, ROW1: 304800, ROWH: 190500 }; // 地図の枠 27×15.5cm、1行目 24pt、ほかの行 15pt
@@ -6982,8 +6983,8 @@ async function routeMapLayout(items, meta) {
   out.scale = { m, len: m * emuPerM };
   if (bg !== 'none') {
     const r = await gsiCanvas(layer, cx, cy, z, CW, CH);
-    if (r.ok) { out.bg = { blob: await canvasBlob(r.canvas, layer === 'photo' ? .85 : .9), ext: 'jpeg', x: X0, y: Y0, w: W, h: H }; out.credit = `出典：国土地理院（地理院タイル・${GSI[layer].name.replace(/^地理院地図（|）$/g, '')}）`; }
-    else out.notes.push('地理院地図を取れませんでした（ネットにつながっているときに出し直してください）');
+    if (r.ok) { out.bg = { blob: await canvasBlob(r.canvas, layer === 'photo' ? .85 : .9), ext: 'jpeg', x: X0, y: Y0, w: W, h: H }; out.credit = GSI[layer].credit || `出典：国土地理院（地理院タイル・${GSI[layer].name.replace(/^地理院地図（|）$/g, '')}）`; }
+    else out.notes.push('背景の地図を取れませんでした（ネットにつながっているときに出し直してください）');
   }
   return out;
 }

@@ -3365,11 +3365,13 @@ function toast(msg,ms){ let el=document.getElementById("toast"); if(!el){ el=doc
 /* =========================================================
    地理院タイルで位置図を作る（範囲は指で動かして決める）
    ========================================================= */
-const GSI={
-  photo:{ name:"航空写真", url:"https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg", credit:"全国最新写真（シームレス）" },
-  std:{ name:"標準地図", url:"https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", credit:"標準地図" },
-  pale:{ name:"淡色地図", url:"https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", credit:"淡色地図" },
+const GSI={ // 地図の種類（名前は昔のまま GSI。OpenStreetMap も同じ並べ方で使える）
+  osm:{ name:"線画（OSM）", url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png", src:"© OpenStreetMap contributors", tag:"© OpenStreetMap contributors" },
+  photo:{ name:"航空写真", url:"https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg", src:"出典：国土地理院（地理院タイル・全国最新写真（シームレス））", tag:"地理院タイル" },
+  std:{ name:"地理院 標準", url:"https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", src:"出典：国土地理院（地理院タイル・標準地図）", tag:"地理院タイル" },
+  pale:{ name:"地理院 淡色", url:"https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", src:"出典：国土地理院（地理院タイル・淡色地図）", tag:"地理院タイル" },
 };
+const gsiLastLayer=()=>{ try{ const v=localStorage.getItem("chosa_maplayer"); return GSI[v]?v:"osm"; }catch(e){ return "osm"; } }; // 最後に使った種類（最初は線画）
 const GSI_MAX=18, GSI_OUT=1800;
 const FRAMES={ wide:{name:"横長",r:900/620}, tall:{name:"縦長",r:620/900}, sq:{name:"正方形",r:1} }; // 横長は Excel の位置図の枠と同じ形
 let GV=null; // { layer, frame, cx, cy, z }
@@ -3383,7 +3385,7 @@ function tileGet(url){ let e=tileCache.get(url); if(e) return e;
   return e; }
 function gsiOpen(){
   const G=state.mapGeo, fr=G&&G.frame&&FRAMES[G.frame]?G.frame:"wide";
-  GV={ layer:G&&GSI[G.layer]?G.layer:"photo", frame:fr, cx:0, cy:0, z:17, rot:G&&+G.rot||0 };
+  GV={ layer:G&&GSI[G.layer]?G.layer:gsiLastLayer(), frame:fr, cx:0, cy:0, z:17, rot:G&&+G.rot||0 };
   document.getElementById("gsiDlg").style.display="flex";
   document.body.style.overflow="hidden";
   gsiSeg(); gsiResize(); gsiSyncRot();
@@ -3398,7 +3400,7 @@ function gsiClose(){ document.getElementById("gsiDlg").style.display="none"; doc
 function gsiSeg(){
   const mk=(id,opts,key)=>{ const box=document.getElementById(id); box.innerHTML="";
     for(const [v,l] of opts){ const b=document.createElement("button"); b.textContent=l; b.className=GV[key]===v?"on":"";
-      b.onclick=()=>{ GV[key]=v; gsiSeg(); gsiDraw(); }; box.appendChild(b); } };
+      b.onclick=()=>{ GV[key]=v; if(key==="layer"){ try{ localStorage.setItem("chosa_maplayer",v); }catch(e){} if(v==="photo") toast("地理院の航空写真は、場所によって撮影が数年前です"); } gsiSeg(); gsiDraw(); }; box.appendChild(b); } };
   mk("gsiLayer",Object.keys(GSI).map(k=>[k,GSI[k].name]),"layer");
   mk("gsiFrameSel",Object.keys(FRAMES).map(k=>[k,FRAMES[k].name]),"frame");
 }
@@ -3433,7 +3435,7 @@ function gsiPaint(){
   const f=gsiFrameRect(); x.fillStyle="rgba(0,0,0,.38)";
   x.fillRect(0,0,W,f.y); x.fillRect(0,f.y+f.h,W,H-f.y-f.h); x.fillRect(0,f.y,f.x,f.h); x.fillRect(f.x+f.w,f.y,W-f.x-f.w,f.h);
   x.lineWidth=2; x.strokeStyle="#fff"; x.strokeRect(f.x,f.y,f.w,f.h);
-  x.fillStyle="rgba(255,255,255,.8)"; x.font="10px sans-serif"; x.textAlign="left"; x.textBaseline="bottom"; x.fillText("地理院タイル",4,H-3);
+  x.fillStyle="rgba(255,255,255,.8)"; x.font="10px sans-serif"; x.textAlign="left"; x.textBaseline="bottom"; x.fillText(GSI[GV.layer].tag,4,H-3);
   // 範囲の大きさと、画像の細かさ
   const lat=unmerc(GV.cx,GV.cy)[0], wm=f.w/S*mPerUnit(lat), hm=f.h/S*mPerUnit(lat);
   const r=FRAMES[GV.frame].r, OW=r>=1?GSI_OUT:GSI_OUT*r, up=OW/(f.w/S)/2**GSI_MAX; // 地理院の一番細かい画像を何倍に引き伸ばすか
@@ -3544,7 +3546,7 @@ async function gsiMake(){
       x.font=`bold ${Math.round(13*U)}px sans-serif`; x.textAlign="center"; x.textBaseline="top"; x.fillText("N",0,5*U); x.restore();
     }
     // 出典
-    const cr="出典：国土地理院（地理院タイル・"+GSI[G.layer].credit+"）";
+    const cr=GSI[G.layer].src;
     x.font=`${Math.round(10*U)}px sans-serif`; const cw=x.measureText(cr).width;
     x.fillStyle="rgba(255,255,255,.82)"; x.fillRect(0,OH-18*U,cw+12*U,18*U); x.fillStyle="#000"; x.textAlign="left"; x.textBaseline="middle"; x.fillText(cr,6*U,OH-9*U);
     const url=out.toDataURL("image/jpeg",0.86);
