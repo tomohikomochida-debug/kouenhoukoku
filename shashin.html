@@ -472,7 +472,7 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
     <input type="range" id="caSize" min="30" max="90" step="1">
     <label class="rng">透け具合 <span id="caAlphaV"></span></label>
     <input type="range" id="caAlpha" min="25" max="100" step="5">
-    <div class="lbl">置く場所（黒板を指で動かしてもOK）</div>
+    <div class="lbl">置く場所（黒板を指で動かしてもOK。黒板を2回タップでこの画面）</div>
     <div class="seg2" id="caPos"><button data-p="tl">左上</button><button data-p="tr">右上</button><button data-p="bl">左下</button><button data-p="br">右下</button></div>
     <button class="mi" id="caReset" style="justify-content:center">最初の大きさ・左下にもどす</button>
   </div>
@@ -2327,7 +2327,7 @@ function drawOverlay(){
   drawBoard(ctx,r.x,r.y,r.w,cur.tpl,boards[cur.id],S.balpha);
   if($('#camAdj').classList.contains('on')){ ctx.strokeStyle='#ffd54a'; ctx.lineWidth=3; ctx.setLineDash([8,6]); ctx.strokeRect(r.x+1.5,r.y+1.5,r.w-3,r.h-3); }
   else if(Date.now()<hintUntil){
-    const tag='黒板をタップ → 内容・大きさ・位置', fs=12; ctx.font=`700 ${fs}px ${FONT}`;
+    const tag='タップ＝内容　2回タップ＝大きさ・位置', fs=12; ctx.font=`700 ${fs}px ${FONT}`;
     const tw=ctx.measureText(tag).width+14, tx=r.x+4, ty=r.y>30? r.y-22 : r.y+r.h+4;
     ctx.fillStyle='rgba(255,255,255,.92)'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(tx,ty,tw,18,9); else ctx.rect(tx,ty,tw,18); ctx.fill();
     ctx.fillStyle='#22502e'; ctx.textBaseline='middle'; ctx.fillText(tag,tx+7,ty+9);
@@ -2348,7 +2348,7 @@ overlay.addEventListener('pointerdown',e=>{
   const r=drawOverlay.rect; if(!boardOn||!r) return;
   const pad=14, x=e.offsetX, y=e.offsetY;
   if(x<r.x-pad||x>r.x+r.w+pad||y<r.y-pad||y>r.y+r.h+pad){ if($$('.camSheet.on').length){ closeCamSheets(); saveAll(); } return; }
-  drag={x0:e.clientX,y0:e.clientY,bx:S.bx,by:S.by,moved:false}; overlay.setPointerCapture?.(e.pointerId); e.preventDefault();
+  drag={x0:e.clientX,y0:e.clientY,ox:x,oy:y,bx:S.bx,by:S.by,moved:false}; overlay.setPointerCapture?.(e.pointerId); e.preventDefault();
 });
 overlay.addEventListener('pointermove',e=>{
   if(!drag) return; const dx=e.clientX-drag.x0, dy=e.clientY-drag.y0;
@@ -2362,9 +2362,21 @@ overlay.addEventListener('pointermove',e=>{
   ['bx','by'].forEach(k=>{ if(S[k]<0.03) S[k]=0; if(S[k]>0.97) S[k]=1; });
   drawOverlay(); syncAdj();
 });
+/* 黒板：1回タップ＝内容を書く（タップした欄がひらく）、2回タップ＝大きさ・位置・透け具合 */
+let tapTimer=null, lastTapAt=0;
+function boardRowAt(x,y){
+  const h=drawOverlay.rect, f=drawOverlay.frame; if(!h||!f) return null;
+  const ly = f.rot==='ccw' ? h.x+h.w-x : f.rot==='cw' ? x-h.x : y-h.y;
+  const r=boardRowRects(f.bw,cur.tpl).find(r=>ly>=r.y&&ly<r.y+r.h); return r?r.k:null;
+}
 const endDrag=()=>{ if(!drag) return; const d=drag; drag=null;
   if(d.moved){ saveAll(); return; }
-  if(!$('#camAdj').classList.contains('on')) openCamSheet('camAdj'); };
+  if($('#camAdj').classList.contains('on')) return;
+  const now=Date.now();
+  if(tapTimer&&now-lastTapAt<350){ clearTimeout(tapTimer); tapTimer=null; openCamSheet('camAdj'); return; }
+  lastTapAt=now; const k=boardRowAt(d.ox,d.oy);
+  tapTimer=setTimeout(()=>{ tapTimer=null; closeCamSheets(); openBoardEdit(false); if(k) setBfFocus(k); },320);
+};
 overlay.addEventListener('pointerup',endDrag); overlay.addEventListener('pointercancel',()=>{ drag=null; });
 
 function closeCamSheets(){ $$('.camSheet').forEach(x=>x.classList.remove('on')); if(typeof overlay!=='undefined') drawOverlay(); }
