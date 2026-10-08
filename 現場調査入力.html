@@ -206,6 +206,18 @@ header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 #dlgCam button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
 #dlgCam button.warn{color:var(--danger)}
 #dlgCam .hidden{display:none}
+#dlgGm{border:0;border-radius:14px;padding:18px 16px;max-width:min(94vw,500px);width:100%;background:var(--bg);color:var(--ink)}
+#dlgGm::backdrop{background:rgba(34,35,31,.5)}
+#dlgGm h2{font-size:17px;margin:0 0 8px;color:var(--accent)}
+#dlgGm ol{margin:0 0 6px;padding-left:1.4em;font-size:14.5px;line-height:1.7}
+#dlgGm ol li{margin:4px 0}
+#dlgGm .hint{font-size:12.5px;color:var(--sub);margin:6px 0;line-height:1.6}
+#dlgGm .gmbtns{display:flex;flex-direction:column;gap:10px;margin:12px 0 6px}
+#dlgGm .gmbtns a,#dlgGm .gmbtns label{display:block;text-align:center;text-decoration:none;border-radius:10px;padding:13px 12px;font-size:15.5px;font-weight:700;cursor:pointer}
+#dlgGm .gmopen{background:#fff;color:var(--accent);border:1px solid var(--accent)}
+#dlgGm .gmpick{background:var(--accent);color:#fff;border:1px solid var(--accent)}
+#dlgGm .row{display:flex;justify-content:flex-end;margin-top:6px}
+#dlgGm .row button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 14px;font-size:14px;color:var(--ink)}
 #camQr{display:grid;place-items:center;margin:8px auto}#camQr svg{width:230px;height:230px}
 .camst{font-weight:600;margin:6px 0;font-size:14px}
 /* iPhone 側：撮影画面 */
@@ -328,7 +340,8 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
           <span class="muted">空きをタップで番号カードを追加／番号をタップでその木へ移動／番号をドラッグで位置調整</span>
           <span class="muted" id="mkcount"></span>
           <button class="iconbtn" onclick="clearMarkers()">番号を全消去</button>
-          <button class="iconbtn" id="gsiBtn" onclick="gsiOpen()">🛰 航空写真で作り直す</button>
+          <button class="iconbtn" id="gsiBtn" onclick="gsiOpen()">🛰 線画・地理院で作り直す</button>
+          <button class="iconbtn" onclick="gmOpen()">🗺 Googleマップで作り直す</button>
           <button class="iconbtn" onclick="clearMap()">画像を変更</button>
         </div>
         <div class="muted maphint" id="mkhint" style="display:none"></div>
@@ -379,6 +392,21 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     <img id="edImg" draggable="false"><canvas id="edCv"></canvas><div id="edSel" class="edsel" style="display:none"></div>
   </div>
 </div>
+<dialog id="dlgGm">
+  <h2>🗺 Googleマップのスクショで位置図を作る</h2>
+  <ol>
+    <li>下の「Googleマップを開く」で現場を開き、<b>航空写真</b>にする</li>
+    <li>現場が画面に収まるように動かす（2本指で回してもOK）</li>
+    <li><b>スクショを撮る</b>（iPad：上のボタン＋音量を上げるボタンを同時に押す）</li>
+    <li>このアプリに戻り「撮ったスクショを選ぶ」→ <b>地図の部分だけを囲んで「適用」</b></li>
+  </ol>
+  <div class="gmbtns">
+    <a id="gmOpen" class="gmopen" href="https://www.google.com/maps" target="_blank" rel="noopener">① Googleマップを開く（航空写真）</a>
+    <label class="gmpick">② 撮ったスクショを選ぶ<input type="file" accept="image/*" hidden onchange="gmPick(this)"></label>
+  </div>
+  <p class="hint">位置図には「地図データ ©Google」を自動で入れます（Googleのルールで、この表示は消せません）。位置を測った木を2本、地図に手で置くと、残りの木の番号は自動で置かれます。</p>
+  <div class="row"><button type="button" onclick="document.getElementById('dlgGm').close()">閉じる</button></div>
+</dialog>
 <dialog id="dlgCam">
   <h2>📱 iPhoneをカメラにする</h2>
   <p class="hint">iPhoneの標準カメラでこのQRコードを読み、開いたページで「カメラへのアクセス」を許可してください。撮った写真は、iPadで青く光っている番号に入ります。番号ごとの「📱 iPhoneでここへ」で送り先を変えられます。</p>
@@ -3165,11 +3193,39 @@ async function lightenPhotos(){
   alert(n?("写真 "+n+"枚を軽くしました。\n写真の合計：約"+mb(before)+"MB → 約"+mb(after)+"MB"):"軽くできる写真はありませんでした（もう十分に軽いです）。"); }
 
 /* 地図 */
-async function setMap(input){ if(!input.files[0]) return; pushUndo("map"); state.mapImage=await shrink(input.files[0],1800);
+async function setMap(input){ if(!input.files[0]) return; await setMapUrl(await shrink(input.files[0],1800)); }
+async function setMapUrl(url){ pushUndo("map"); state.mapImage=url;
   state.mapGeo=null; state.mapSize=await imgSize(state.mapImage);
   state.trees.forEach(t=>{ if(t.mauto){ t.mx=null; t.my=null; t.mauto=false; } }); autoPlace(); markDirty(); renderTrees(); }
+/* ---- Googleマップのスクショから位置図（Googleの地図をアプリが取りに行くのではなく、人が撮ったスクショを使う） ---- */
+function gmMapsUrl(){
+  const gs=state.trees.map(itemGeo).filter(Boolean);
+  if(gs.length){ const lat=gs.reduce((a,g)=>a+g.lat,0)/gs.length, lon=gs.reduce((a,g)=>a+g.lon,0)/gs.length;
+    return "https://www.google.com/maps/@?api=1&map_action=map&center="+lat.toFixed(6)+","+lon.toFixed(6)+"&zoom=19&basemap=satellite"; }
+  const q=(state.place||"").trim(); if(q) return "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q);
+  return "https://www.google.com/maps/@?api=1&map_action=map&zoom=18&basemap=satellite";
+}
+function gmOpen(){ const a=document.getElementById("gmOpen"); if(a) a.href=gmMapsUrl(); const d=document.getElementById("dlgGm"); if(d&&d.showModal) d.showModal(); }
+async function gmPick(input){ const f=input.files&&input.files[0]; input.value=""; if(!f) return;
+  const d=document.getElementById("dlgGm"); if(d&&d.open) d.close();
+  const url=await shrink(f,2400,0.92);
+  editImage(url,gmDone,"地図の部分だけを指で囲んで「適用」（検索欄やボタンは外してください）");
+}
+async function gmDone(url){ // 切り取った地図に「地図データ ©Google」を入れて、位置図にする
+  const im=await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url; });
+  let w=im.naturalWidth, h=im.naturalHeight; const k=Math.min(1,1800/Math.max(w,h)); w=Math.round(w*k); h=Math.round(h*k);
+  const cv=document.createElement("canvas"); cv.width=w; cv.height=h; const x=cv.getContext("2d");
+  x.imageSmoothingQuality="high"; x.drawImage(im,0,0,w,h);
+  const U=Math.max(1,w/900), cr="地図データ ©Google（Google マップ）";
+  x.font=`${Math.round(11*U)}px sans-serif`; const cw=x.measureText(cr).width;
+  x.fillStyle="rgba(255,255,255,.85)"; x.fillRect(0,h-20*U,cw+12*U,20*U); x.fillStyle="#000"; x.textAlign="left"; x.textBaseline="middle"; x.fillText(cr,6*U,h-10*U);
+  await setMapUrl(cv.toDataURL("image/jpeg",0.86));
+  const n=state.trees.filter(t=>itemGeo(t)).length;
+  toast("位置図にしました。"+(n>=2?"位置のある木を2本、地図の正しい場所に手で置くと、残りは自動で置かれます":"番号は、カードの📍を押してから地図をタップして置いてください"),7000);
+  const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"});
+}
 function clearMap(){ pushUndo("map"); state.mapImage=""; state.mapGeo=null; state.mapSize=null; markDirty(); renderMap(); }
-const MAP_CHOOSE=`<div class="mapchoose"><button type="button" class="mapbig" onclick="gsiOpen()">🛰 航空写真（地理院）から作る</button><label class="mapbig">🖼 スクショなどの画像を選ぶ<input type="file" accept="image/*" onchange="setMap(this)" hidden></label></div>`;
+const MAP_CHOOSE=`<div class="mapchoose"><button type="button" class="mapbig" onclick="gmOpen()">🗺 Googleマップのスクショから作る<br><small style="font-weight:400">新しい航空写真</small></button><button type="button" class="mapbig" onclick="gsiOpen()">🛰 線画・地理院の地図から作る<br><small style="font-weight:400">範囲を決めるだけ・番号も自動</small></button><label class="mapbig">🖼 ほかの画像を選ぶ<input type="file" accept="image/*" onchange="setMap(this)" hidden></label></div>`;
 let activePlace=-1;
 function renderMap(){ const box=document.getElementById("mapbox"); const tools=document.getElementById("maptools");
   if(state.mapImage){
@@ -3178,7 +3234,7 @@ function renderMap(){ const box=document.getElementById("mapbox"); const tools=d
     if(tools){ tools.style.display="flex"; const c=document.getElementById("mkcount");
       const placed=state.trees.filter(t=>t.mx!=null).length;
       if(c) c.textContent = activePlace>=0 ? ("No."+(activePlace+1)+"の位置をタップ") : ("配置 "+placed+"/"+state.trees.length);
-      const gb=document.getElementById("gsiBtn"); if(gb) gb.textContent=state.mapGeo?"🛰 範囲・地図を変える":"🛰 航空写真で作り直す";
+      const gb=document.getElementById("gsiBtn"); if(gb) gb.textContent=state.mapGeo?"🛰 範囲・地図を変える":"🛰 線画・地理院で作り直す";
       const hn=document.getElementById("mkhint"); if(hn){ const h=mapHint(); hn.textContent=h; hn.style.display=h?"block":"none"; } }
   } else {
     box.innerHTML = MAP_CHOOSE;
@@ -3594,12 +3650,15 @@ const edClone=a=>JSON.parse(JSON.stringify(a));
 function edSnap(){ edState.hist.push(edClone(edState.strokes)); if(edState.hist.length>60) edState.hist.shift(); }   // 「1つ戻す」用に、変える前を控える
 function editPhoto(i,k){ const ph=state.trees[i]&&state.trees[i].photos; if(!ph||!ph[k]) return; edState={i:i,k:k,url:ph[k],sel:null,strokes:[],hist:[],pick:-1};
   document.getElementById("photoEditor").style.display="flex"; document.body.style.overflow="hidden"; edTools(); edLoad(); }
+/* 写真以外の画像（地図のスクショなど）を、切り取りの道具を持った状態で開く。適用したら onDone(画像) */
+function editImage(url,onDone,hint){ edState={url:url,onDone:onDone,hint:hint||"",prevTool:ED.tool,sel:null,strokes:[],hist:[],pick:-1}; ED.tool="crop";
+  document.getElementById("photoEditor").style.display="flex"; document.body.style.overflow="hidden"; edTools(); edLoad(); }
 function edTools(){
   const b=(cls,on,attr,txt)=>`<button type="button" class="${cls}${on?" on":""}" ${attr}>${txt}</button>`;
   const pk=edState&&edState.pick>=0?edState.strokes[edState.pick]:null;
   const col=pk?pk.c:ED.color, siz=pk?(ED_SIZES.find(s=>Math.abs(s[2]-pk.w)<1e-9)||[""])[0]:ED.size;
   let h=`<div class="eg">${ED_TOOLS.map(([k,l])=>b("et",ED.tool===k,`onclick="edSet('tool','${k}')"`,l)).join("")}</div>`;
-  if(ED.tool==="crop") h+=`<div class="eg"><span class="eh">写真の上をドラッグして、残す範囲を囲みます</span></div>`;
+  if(ED.tool==="crop") h+=`<div class="eg"><span class="eh">${edState&&edState.hint?esc(edState.hint):"写真の上をドラッグして、残す範囲を囲みます"}</span></div>`;
   else if(ED.tool==="select"&&!pk) h+=`<div class="eg"><span class="eh">書いた線や丸をタップして選び、ドラッグで動かします</span></div>`;
   else h+=`<div class="eg">${ED_COLORS.map(([c,l])=>b("ec",col===c,`onclick="edSet('color','${c}')" style="--c:${c}" aria-label="${l}"`,"")).join("")}`+
     `<span class="esep"></span>${ED_SIZES.map(([k,l])=>b("es",siz===k,`onclick="edSet('size','${k}')"`,l)).join("")}`+
@@ -3840,13 +3899,13 @@ async function edRotate(dir){ if(!edState) return;
   const url=await edBake(edState.url,edState.strokes); edState.strokes=[]; edState.hist=[]; edState.pick=-1;   // 回す前に、書いた線を写真に焼き込む（線がずれないように）
   const img=new Image(); img.onload=function(){ const w=img.width||400,h=img.height||300; const cv=document.createElement("canvas"); cv.width=h; cv.height=w; const x=cv.getContext("2d"); x.translate(h/2,w/2); x.rotate(dir*Math.PI/2); x.drawImage(img,-w/2,-h/2); edState.url=cv.toDataURL("image/jpeg",0.75); edLoad(); }; img.src=url; }
 async function edApply(){ if(!edState) return; const sel=edState.sel, url=await edBake(edState.url,edState.strokes);
-  pushUndo("photoedit");
+  if(!edState.onDone) pushUndo("photoedit");
   if(sel&&sel.fw>0.02&&sel.fh>0.02){ const img=new Image(); img.onload=function(){ const sx=sel.fx*img.width, sy=sel.fy*img.height, sw=sel.fw*img.width, sh=sel.fh*img.height;
     const cv=document.createElement("canvas"); cv.width=Math.max(1,Math.round(sw)); cv.height=Math.max(1,Math.round(sh)); cv.getContext("2d").drawImage(img,sx,sy,sw,sh,0,0,cv.width,cv.height); edCommit(cv.toDataURL("image/jpeg",0.75)); }; img.src=url; }
   else edCommit(url); }
-function edCommit(url){ state.trees[edState.i].photos[edState.k]=url; markDirty(); renderTrees(); edClose(); }
+function edCommit(url){ if(edState.onDone){ const f=edState.onDone; edClose(); f(url); return; } state.trees[edState.i].photos[edState.k]=url; markDirty(); renderTrees(); edClose(); }
 function edCancel(){ if(edState&&edState.strokes.length&&!confirm("書いた線を捨てて閉じますか？")) return; edClose(); }
-function edClose(){ document.getElementById("photoEditor").style.display="none"; document.body.style.overflow=""; edState=null; edDrag=null; }
+function edClose(){ document.getElementById("photoEditor").style.display="none"; document.body.style.overflow=""; if(edState&&edState.prevTool) ED.tool=edState.prevTool; edState=null; edDrag=null; }
 function upd(i,k,v){ pushUndo("upd:"+i+":"+k); state.trees[i][k]=v; markDirty(); if(k!=="memo") document.getElementById("saveState").textContent="保存中…"; }
 
 /* 音声（対応端末のみ） */
