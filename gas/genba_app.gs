@@ -340,6 +340,7 @@ function doPost(e) {
       case 'shashin:saveBoard':   return withLock_(function () { return shashinSaveBoard_(b.board, b.by); });
       case 'shashin:deleteBoard': return withLock_(function () { return upsert_('shashinBoards', 'boardId', 'B', { boardId: String(b.boardId || ''), state: '削除' }, b.by); });
       case 'shashin:setDefaultBoard': PropertiesService.getScriptProperties().setProperty('SHASHIN_DEFAULT_BOARD', String(b.boardId || 'std')); return out_({ ok: true });
+      case 'shashin:updatePhoto': return withLock_(function () { var had = rows_('shashinPhotos').some(function (r) { return String(r.photoId) === String(b.photoId); }); if (!had) return { ok: false, error: 'その写真の記録がありません' }; var o = { photoId: String(b.photoId) }; if (b.lat != null) o.lat = b.lat; if (b.lng != null) o.lng = b.lng; if (b.heading != null) o.heading = b.heading; return upsert_('shashinPhotos', 'photoId', 'F', o, b.by); });
       case 'shashin:readBoard':   return out_(shashinReadBoard_(b.data, b.mime));
       case 'shashin:addSite':     return withLock_(function () { return addSitesFromNippou_([b.site], b.by); });
       /* 公園報告 */
@@ -1291,7 +1292,7 @@ function shashinGet_(a, p) {
   }
   if (a === 'photos') {   // その現場で、みんなが撮った写真の記録
     return { ok: true, photos: rows_('shashinPhotos').filter(function (r) { return !p.siteId || String(r.siteId) === String(p.siteId); }).map(function (r) {
-      return { photoId: r.photoId, itemId: r.itemId, stage: r.stage, koshu: r.koshu, sokuten: r.sokuten, takenAt: r.takenAt, by: r.by,
+      return { photoId: r.photoId, itemId: r.itemId, stage: r.stage, koshu: r.koshu, kikaku: r.kikaku, sokuten: r.sokuten, takenAt: r.takenAt, by: r.by,
         lat: shashinNum_(r.lat), lng: shashinNum_(r.lng), heading: shashinNum_(r.heading), fileName: r.fileName, fileId: r.fileId, url: r.url }; }) };
   }
   if (a === 'folder') {   // ドライブのフォルダを開く（無ければ作る）

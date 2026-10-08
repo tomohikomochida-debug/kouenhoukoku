@@ -236,26 +236,25 @@ header .back{font-size:22px;padding:4px 12px}
   <header><button class="back" data-go="home">‹</button><h1 id="albumTitle"></h1><button id="btnInfo">情報</button><button id="btnDrive">ドライブ</button></header>
   <div id="albumBanner"></div>
   <div class="tabs">
-    <button data-tab="mapPane" class="on">地図</button>
-    <button data-tab="items">一覧</button>
-    <button data-tab="photos">写真</button>
+    <button data-tab="photos" class="on">写真</button>
     <button data-tab="check">チェック</button>
+    <button data-tab="mapPane">撮影位置</button>
   </div>
-  <div class="pane on" id="mapPane">
+  <div class="pane" id="mapPane">
     <div id="map"></div>
     <div class="mapTools">
-      <button id="mtHere">📍 現在地に置く</button>
-      <button id="mtTap">👆 地図に置く</button>
+      <button id="mtHere" style="display:none">📍 現在地に置く</button>
+      <button id="mtTap" style="display:none">👆 地図に置く</button>
       <span class="sp"></span>
       <button id="mtLayer">航空写真</button>
     </div>
-    <div class="legend"><i style="background:#fff"></i>未撮影　<i style="background:#e67e22"></i>途中　<i style="background:#2e8b57"></i>完了　➤ 撮影方向</div>
+    <div class="legend">➤ 撮った場所と向き（GPS）。<b>矢印を指で動かすと場所を直せます</b>。タップで向きも直せます<br><span style="color:#d35400">■</span>前　<span style="color:#2471a3">■</span>中　<span style="color:#1e8449">■</span>後</div>
   </div>
   <div class="pane" id="items"><div class="scroll" id="itemList"></div></div>
-  <div class="pane" id="photos"><div class="scroll"><div class="sortBar" id="sortBar"></div><div id="photoGrid"></div></div></div>
+  <div class="pane on" id="photos"><div class="scroll"><div class="sortBar" id="sortBar"></div><div id="photoGrid"></div></div></div>
   <div class="pane" id="check"><div class="scroll" id="checkBody"></div></div>
-  <button class="fab left" id="btnAddItem">＋ 項目</button>
-  <button class="fab" id="btnShoot">📷 自由撮影</button>
+  <button class="fab left" id="btnAddItem" style="display:none">＋ 項目</button>
+  <button class="fab" id="btnShoot">📷 撮影</button>
 </section>
 
 <!-- ===== 黒板のひな型（リスト） ===== -->
@@ -297,13 +296,14 @@ header .back{font-size:22px;padding:4px 12px}
     <div id="camMsg"></div>
   </div>
   <div class="camTop">
-    <button class="cbtn" id="camClose">閉じる</button>
+    <button class="cbtn" id="camClose">一覧</button>
     <div class="info" id="camInfo"></div>
     <button class="cbtn on" id="camBoardToggle">黒板 ON</button>
   </div>
   <div class="camBottom">
     <div class="camRow small">
       <button class="cbtn" id="camStage">状況 ▸</button>
+      <button class="cbtn" id="camNo">No. ＋1</button>
       <button class="cbtn" id="camPos">位置 ↻</button>
       <button class="cbtn" id="camSmaller">黒板 −</button>
       <button class="cbtn" id="camBigger">黒板 ＋</button>
@@ -826,7 +826,7 @@ $('#infoSave').onclick=async()=>{
   infos[key]=v; saveAll();
   const pend=LS.get('shashin_infos_pending',{}); pend[key]=v; LS.set('shashin_infos_pending',pend);
   pushInfos();
-  openAlbum(s.id,key);
+  openAlbum(s.id,key,{camera: !(INFO&&INFO.back==='album')});
 };
 async function pushInfos(){
   const pend=LS.get('shashin_infos_pending',{}), list=Object.values(pend);
@@ -837,7 +837,7 @@ async function pushInfos(){
 /* =========================================================
    台帳の中（撮影項目・写真・撮影位置）
    ========================================================= */
-function openAlbum(id,key){
+function openAlbum(id,key,opt){
   const s=siteOf(id); if(!s) return;
   key = key || infoKey(s,fyOf());
   const info=infos[key]||{};
@@ -853,13 +853,18 @@ function openAlbum(id,key){
   $('#albumBanner').innerHTML = cur.publicKoji
     ? `<div class="banner warn"><b>公共工事の現場です。</b>電子黒板の写真は納品写真として認められない可能性が高いため、黒板は<b>オフ</b>で始まります。実物の黒板を写し込むか、納品写真はミライ工事で撮影してください。</div>`
     : '';
-  mapFittedFor=null; placing=null; go('album'); switchTab('mapPane'); renderItems(); renderPhotos();
+  mapFittedFor=null; placing=null; go('album'); switchTab('photos'); renderItems();
+  if(!opt||opt.camera!==false){   // 案件をえらんだら、すぐ撮影モード（黒板は左下。タップで中身を入れる）
+    curItem=null; const st=curStages(), b=boards[cur.id];
+    if(!st.includes(b.stage)){ curStage=st[0]; setStageOnBoard(b,curStage); } else curStage=b.stage;
+    saveAll(); openCamera();
+  }
 }
 $$('.tabs button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 function switchTab(t){
   $$('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   $$('.pane').forEach(p=>p.classList.toggle('on',p.id===t));
-  $('#btnAddItem').style.display = t==='items'?'':'none';
+  $('#btnAddItem').style.display='none';
   if(t==='mapPane') setTimeout(renderMap,50);
   if(t==='photos') renderPhotos();
   if(t==='check') renderCheck();
@@ -931,7 +936,7 @@ function shootItem(itemId,stage){
   fillBoardFromItem(boards[cur.id],it,stage);
   saveAll(); openCamera();
 }
-$('#btnShoot').onclick=()=>{ curItem=null; curStage=''; const b=boards[cur.id]; setStageOnBoard(b,''); b.date=today(); saveAll(); openCamera(); };
+$('#btnShoot').onclick=()=>{ curItem=null; const b=boards[cur.id], st=curStages(); curStage=st.includes(b.stage)?b.stage:st[0]; setStageOnBoard(b,curStage); b.date=today(); saveAll(); openCamera(); };
 
 /* 写真一覧 */
 function renderPhotos(){
@@ -993,16 +998,18 @@ function renderMap(){
   const pts=[];
   photosCache.filter(p=>p.siteId===cur.id&&p.lat).forEach(p=>{
     const col = stageColor(p.stage);
-    L.marker([p.lat,p.lng],{icon:arrowIcon(p.heading,col)})
-      .bindPopup(`<img src="${p.thumb}" style="width:150px;border-radius:6px"><br>${esc([p.board.koshu,p.board.sokuten,p.board.stage].filter(Boolean).join(' '))}`)
+    L.marker([p.lat,p.lng],{icon:arrowIcon(p.heading,col),draggable:true})
+      .bindPopup(`<img src="${p.thumb}" style="width:150px;border-radius:6px"><br>${esc([p.board.koshu,p.board.sokuten,p.stage].filter(Boolean).join(' '))}${turnBtns(p.id)}`)
+      .on('dragend',e=>fixPhotoPos(p.id,e.target.getLatLng(),null))
       .addTo(mapLayer);
     pts.push([p.lat,p.lng]);
   });
   const mine=new Set(photosCache.map(p=>p.id));
   teamPhotos.filter(p=>p.lat&&!mine.has(p.photoId)).forEach(p=>{
     const col = stageColor(p.stage);
-    L.marker([p.lat,p.lng],{icon:arrowIcon(p.heading,col),opacity:.75})
-      .bindPopup(`${esc([p.koshu,p.sokuten,p.stage].filter(Boolean).join(' '))}<br>${esc(p.by||'')}　${esc(String(p.takenAt||'').slice(0,10))}<br><a href="${esc(p.url)}" target="_blank">写真を開く</a>`)
+    L.marker([p.lat,p.lng],{icon:arrowIcon(p.heading,col),opacity:.8,draggable:true})
+      .bindPopup(`${esc([p.koshu,p.sokuten,p.stage].filter(Boolean).join(' '))}<br>${esc(p.by||'')}　${esc(String(p.takenAt||'').slice(0,10))}<br><a href="${esc(p.url)}" target="_blank">写真を開く</a>${turnBtns(p.photoId)}`)
+      .on('dragend',e=>fixPhotoPos(p.photoId,e.target.getLatLng(),null))
       .addTo(mapLayer);
     pts.push([p.lat,p.lng]);
   });
@@ -1016,6 +1023,19 @@ function renderMap(){
     else if(cur.lat&&cur.lng) map.setView([cur.lat,cur.lng],18);
     else getPositionOnce().then(g=>{ if(g) map.setView([g.lat,g.lng],18); });
   }
+}
+function turnBtns(id){ return `<div style="margin-top:6px;display:flex;gap:4px;align-items:center;font-size:12px">向き <button onclick="turnPhoto('${id}',-15)">↺15°</button><button onclick="turnPhoto('${id}',15)">↻15°</button><button onclick="turnPhoto('${id}',180)">反対</button></div>`; }
+window.turnPhoto=(id,d)=>{ const lp=photosCache.find(p=>p.id===id), tp=teamPhotos.find(p=>p.photoId===id), h0=Number((lp||tp||{}).heading)||0; fixPhotoPos(id,null,(h0+d+360)%360); };
+/* 撮った場所・向きを手で直す（この端末の写真も、みんなの写真も。送信済みなら共通GASの記録も直す） */
+async function fixPhotoPos(id,ll,hd){
+  const lp=photosCache.find(p=>p.id===id), tp=teamPhotos.find(p=>p.photoId===id);
+  [lp,tp].forEach(x=>{ if(!x) return; if(ll){ x.lat=ll.lat; x.lng=ll.lng; } if(hd!=null) x.heading=hd; });
+  if(lp) await idbPut(lp);
+  if(hd!=null) renderMap();
+  if((tp||(lp&&lp.status==='done')) && canSync()){
+    const src=lp||tp; try{ await gasPost({mode:'updatePhoto',photoId:id,lat:src.lat,lng:src.lng,heading:src.heading}); }catch(e){}
+  }
+  toast(ll?'場所を直しました':'向きを直しました',1000);
 }
 function updateMapTools(){
   $('#mtTap').classList.toggle('on',!!placing);
@@ -1277,7 +1297,9 @@ function openBoardEdit(toCamera){
   $('#boardFields').innerHTML=rows.map(r=>{
     const v=esc(b[r.k]||'');
     let extra='';
-    if(r.k==='koshu') extra=`<div class="quick" data-for="koshu">${[...(cur.kind==='公共'?Object.keys(parkWorks()):[]),...GENERAL_WORKS].map(c=>`<button data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
+    if(r.k==='koshu' && caseKoshu().length) extra+=`<div style="font-size:12px;color:var(--sub);margin:8px 0 4px">この案件の工種・規格</div><div class="pkList" id="bkCase">${caseKoshu().map((x,i)=>`<button data-ci="${i}" class="${(b.koshu===koshuLabel(x)||b.koshu===x.cat)&&(b.kikaku||'')===(x.kikaku||'')?'on':''}">${esc(koshuText(x))}</button>`).join('')}</div><div style="font-size:12px;color:var(--sub);margin:8px 0 4px">ほかの工種</div>`;
+    if(r.k==='sokuten') extra=`<div class="quick" data-for="sokutenNo"><button data-v="next">次の No.（${nextBoardNo(b)}）</button><button data-v="+1">No. ＋1</button><button data-v="-1">No. −1</button></div>`;
+    if(r.k==='koshu') extra+=`<div class="quick" data-for="koshu">${[...(cur.kind==='公共'?Object.keys(parkWorks()):[]),...GENERAL_WORKS].map(c=>`<button data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
     if(r.k==='jushu') extra=`<div class="quick" data-for="jushu">${speciesList().slice(0,18).map(c=>`<button data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
     if(r.k==='kikaku') extra=`<div class="quick" data-for="kikaku">${BANDS.map(c=>`<button data-v="C=${c}">${c}</button>`).join('')}</div>`;
     if(r.k==='biko') extra=`<div class="quick" data-for="bikoStage">${curStages().map(c=>`<button data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
@@ -1287,8 +1309,13 @@ function openBoardEdit(toCamera){
     return `<div class="field"><label>${esc(r.l||FIELD_LABELS[r.k]||r.k)}</label>${input}${extra}</div>`;
   }).join('') + `<button class="btn sub" id="tplPick">黒板のひな型を変える（今：${esc(TEMPLATES[tplOK(cur.tpl)].name)}）</button>`;
   $('#boardFields').querySelectorAll('[data-k]').forEach(el=>el.oninput=()=>{ b[el.dataset.k]=el.value; saveAll(); drawPreview(); });
+  const bc=$('#bkCase'); if(bc) bc.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{
+    const x=caseKoshu()[Number(btn.dataset.ci)];
+    fillBoardFromItem(b,{cat:x.cat,kind:x.kind||'',kikaku:x.kikaku||'',no:String(nextBoardNo({koshu:tplHas(cur.tpl,'shubetsu')?x.cat:koshuLabel(x),kikaku:x.kikaku||''}))},curStage||curStages()[0]);
+    curItem=null; saveAll(); openBoardEdit(boardEditToCamera); });
   $('#boardFields').querySelectorAll('.quick').forEach(q=>q.onclick=e=>{
     const v=e.target.dataset.v; if(v===undefined) return;
+    if(q.dataset.for==='sokutenNo'){ if(v==='next'){ const n=nextBoardNo(b), s=String(b.sokuten||''); b.sokuten=/No\.?\s*\d+/i.test(s)?s.replace(/No\.?\s*\d+/i,'No.'+n):('No.'+n+' '+s).trim(); } else bumpNo(b,Number(v)); curItem=null; q.parentElement.querySelector('[data-k]').value=b.sokuten; saveAll(); drawPreview(); return; }
     if(q.dataset.for==='bikoStage'){ setStageOnBoard(b,v); curStage=v; q.parentElement.querySelector('[data-k]').value=b.biko; saveAll(); drawPreview(); return; }
     if(q.dataset.for==='stage') curStage=v;
     b[q.dataset.for]=v; q.parentElement.querySelector('[data-k]').value=v; saveAll(); drawPreview();
@@ -1671,12 +1698,13 @@ function onOrient(e){
 const DIRS=['北','北東','東','南東','南','南西','西','北西'];
 function updateCamInfo(){
   const parts=[];
-  if(curItem) parts.push(`<b>${esc(curItem.cat)} ${esc(curItem.name||'')}</b> ・ ${esc(curStage)}`);
+  if(cur){ const b=boards[cur.id]||{}; parts.push(`<b>${esc([b.koshu,b.sokuten].filter(Boolean).join(' ')||'黒板をタップして工種・測点を入れる')}</b>${curStage?' ・ '+esc(curStage):''}`); }
   parts.push(lastGeo?`📍 位置OK（誤差${lastGeo.acc}m）`:'📍 位置を取得中…');
   parts.push(heading!=null?`🧭 ${DIRS[Math.round(heading/45)%8]}向き ${heading}°`:'🧭 方位なし');
   $('#camInfo').innerHTML=parts.join('<br>');
 }
 function updateCamUI(){
+  updateCamInfo();
   if(cur&&$('#camStage')){ const s=curStage||boards[cur.id].stage||''; $('#camStage').textContent=`状況：${s||'—'} ▸`; }
   const t=$('#camBoardToggle'); t.textContent=boardOn?'黒板 ON':'黒板 OFF'; t.classList.toggle('on',boardOn);
   updateCamInfo(); drawOverlay();
@@ -1702,12 +1730,17 @@ video.addEventListener('loadedmetadata',drawOverlay);
 window.addEventListener('resize',()=>setTimeout(drawOverlay,200));
 overlay.onclick=e=>{ const r=drawOverlay.rect; if(boardOn&&r&&e.offsetX>=r.x-6&&e.offsetX<=r.x+r.w+6&&e.offsetY>=r.y-26&&e.offsetY<=r.y+r.h+26) openBoardEdit(false); };
 
-$('#camClose').onclick=()=>{ go('album'); renderItems(); renderPhotos(); if($('#mapPane').classList.contains('on')) setTimeout(renderMap,50); };
+$('#camClose').onclick=()=>{ go('album'); renderItems(); renderPhotos(); updateCheckBadge(); if($('#mapPane').classList.contains('on')) setTimeout(renderMap,50); if($('#check').classList.contains('on')) renderCheck(); };
 $('#camEdit').onclick=()=>openBoardEdit(false);
 $('#camBoardToggle').onclick=()=>{
   if(!boardOn && cur.publicKoji && !confirm('公共工事の台帳です。電子黒板の写真は納品に使えない可能性があります。黒板をONにしますか？')) return;
   boardOn=!boardOn; updateCamUI();
 };
+/* 測点の No. を1つ進める（次の木・次の場所へ）。進めたら状況は最初にもどす */
+function bumpNo(b,d){ const s=String(b.sokuten||''), m=s.match(/No\.?\s*(\d+)/i);
+  if(m){ const n=Math.max(1,Number(m[1])+d); b.sokuten=s.replace(m[0],'No.'+n); } else b.sokuten=('No.'+Math.max(1,nextBoardNo(b)+(d>0?0:-1))+' '+s).trim(); }
+function nextBoardNo(b){ let max=0; allPhotosHere().forEach(p=>{ const q=p.board||{}; if((q.koshu||'')===(b.koshu||'')&&(q.kikaku||'')===(b.kikaku||'')){ const m=String(q.sokuten||'').match(/No\.?\s*(\d+)/i); if(m) max=Math.max(max,Number(m[1])); } }); return max+1; }
+$('#camNo').onclick=()=>{ const b=boards[cur.id]; bumpNo(b,1); curItem=null; curStage=curStages()[0]; setStageOnBoard(b,curStage); saveAll(); updateCamUI(); toast(`${b.sokuten}・${curStage}`,1200); };
 $('#camStage').onclick=()=>{
   const st=curStages(), b=boards[cur.id], now=curStage||b.stage||'';
   const next=st[(st.indexOf(now)+1)%st.length]||st[0];
