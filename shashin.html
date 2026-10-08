@@ -84,7 +84,14 @@ header .back{font-size:22px;padding:4px 12px}
 .row2{display:flex;gap:8px}.row2>*{flex:1}
 /* 黒板プレビュー */
 #boardPreviewWrap{background:#3a3a3a;padding:12px;display:flex;justify-content:center;flex-shrink:0}
-#boardPreview{max-width:100%;max-height:34vh;border-radius:4px}
+#boardPreview{max-width:100%;max-height:34vh;border-radius:4px;cursor:pointer;touch-action:manipulation}
+#boardPreviewWrap{flex-direction:column;align-items:center;gap:6px}
+#bpHint{color:#cfd8cf;font-size:12px}
+.bfNav{display:flex;gap:6px;margin-bottom:12px}
+.bfNav button{flex:1;background:#e4e8e3;color:var(--main-d);border-radius:10px;padding:10px 4px;font-weight:700;font-size:13px}
+.bfNav button.all{flex:1.4}
+.field.focus label{color:var(--main);font-size:15px}
+.field .hist{font-size:12px;color:var(--sub);margin:10px 0 0}
 /* カメラ：写真に集中できるよう、出ているのは黒板・シャッター・レンズ・状況だけ。ほかは ≡ の中 */
 #camera{background:#000;color:#fff}
 #camWrap{position:absolute;left:0;right:0;top:calc(var(--safe-t) + 50px);bottom:calc(var(--safe-b) + 136px);overflow:hidden;background:#000;touch-action:none}
@@ -137,7 +144,8 @@ header .back{font-size:22px;padding:4px 12px}
   .camBottom{left:auto;right:0;top:56px;width:calc(env(safe-area-inset-right) + 150px);height:auto;background:none;padding:0 calc(env(safe-area-inset-right) + 8px) 10px 8px;justify-content:center}
   .camBottom .camRow{flex-direction:column}
   .side{width:auto;flex-direction:row}
-  #lenses{flex-wrap:wrap}
+  #lenses{flex-wrap:nowrap;gap:4px}
+  #lenses button{min-width:34px;padding:0 7px}
   .camSheet{left:auto;width:min(380px,60vw);top:8px;max-height:88vh}
 }
 /* モーダル */
@@ -416,7 +424,7 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
 <!-- ===== 黒板編集 ===== -->
 <section id="boardEdit" class="screen">
   <header><button class="back" id="boardBack">‹</button><h1>黒板の内容</h1><button id="boardDone">撮影へ</button></header>
-  <div id="boardPreviewWrap"><canvas id="boardPreview"></canvas></div>
+  <div id="boardPreviewWrap"><canvas id="boardPreview"></canvas><div id="bpHint">黒板の欄をタップすると、そこだけ書けます・選べます</div></div>
   <div class="scroll" id="boardFields"></div>
 </section>
 
@@ -1250,7 +1258,7 @@ function editPhotoBoard(id){
   if(!lp||!lp.raw){ openViewerAny(id); toast('この写真は写った黒板の字は直せません。並び・報告書に使う記録だけ直せます',3500); return; }
   photoEdit={ id, board:{...boards[cur.id]}, stage:curStage, item:curItem };
   boards[cur.id]={...lp.board}; curStage=lp.stage; curItem=null;
-  openBoardEdit(false); $('#boardDone').textContent='この写真に反映';
+  openBoardEdit(false);
 }
 function endPhotoEdit(){ const pe=photoEdit; photoEdit=null; boards[cur.id]=pe.board; curStage=pe.stage; curItem=pe.item; saveAll(); return pe; }
 async function applyPhotoEdit(){
@@ -1595,8 +1603,11 @@ function boardRect(W,H){
    黒板編集画面
    ========================================================= */
 let boardEditToCamera=false;
-function openBoardEdit(toCamera){
+let bfFocus=null;   // 黒板の上でタップした欄（その欄だけを出す）
+function openBoardEdit(toCamera,keepFocus){
   boardEditToCamera=toCamera; const b=boards[cur.id];
+  if(!keepFocus) bfFocus=null;
+  const hist=k=>[...new Set(allPhotosHere().sort((x,y)=>y.takenAt-x.takenAt).map(p=>String(p.board?.[k]||'').trim()).filter(Boolean))].filter(v=>v!==String(b[k]||'')).slice(0,10);
   const rows=TEMPLATES[cur.tpl].rows;
   $('#boardFields').innerHTML=rows.map(r=>{
     const v=esc(b[r.k]||'');
@@ -1609,29 +1620,55 @@ function openBoardEdit(toCamera){
     if(r.k==='biko') extra=`<div class="quick" data-for="bikoStage">${curStages().map(c=>`<button data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
     if(r.k==='stage') extra=`<div class="quick" data-for="stage">${curStages().map(c=>`<button data-v="${c}">${c}</button>`).join('')}<button data-v="">なし</button></div>`;
     if(r.k==='date')  extra=`<div class="quick" data-for="date"><button data-v="${today()}">今日</button></div>`;
+    if(r.k!=='date'){ const h=hist(r.k); if(h.length) extra+=`<div class="hist">この現場でこれまでに入れたもの</div><div class="quick" data-for="h:${r.k}">${h.map(c=>`<button data-v="${esc(c)}">${esc(c.length>24?c.slice(0,24)+'…':c)}</button>`).join('')}</div>`; }
     const input = (r.k==='biko'||r.k==='koji') ? `<textarea data-k="${r.k}">${v}</textarea>` : `<input data-k="${r.k}" value="${v}">`;
-    return `<div class="field"><label>${esc(r.l||FIELD_LABELS[r.k]||r.k)}</label>${input}${extra}</div>`;
+    return `<div class="field" data-field="${r.k}"><label>${esc(r.l||FIELD_LABELS[r.k]||r.k)}</label>${input}${extra}</div>`;
   }).join('') + `<button class="btn sub" id="tplPick">黒板のひな型を変える（今：${esc(TEMPLATES[tplOK(cur.tpl)].name)}）</button>`;
+  $('#boardFields').insertAdjacentHTML('afterbegin','<div class="bfNav" id="bfNav"><button data-nav="-1">▲ 上の欄</button><button class="all" data-nav="0">すべての欄</button><button data-nav="1">下の欄 ▼</button></div>');
+  $('#bfNav').onclick=e=>{ const d=e.target.dataset.nav; if(d===undefined) return; const ks=rows.map(r=>r.k);
+    if(d==='0') setBfFocus(null); else setBfFocus(ks[Math.min(ks.length-1,Math.max(0,ks.indexOf(bfFocus)+Number(d)))]); };
   $('#boardFields').querySelectorAll('[data-k]').forEach(el=>el.oninput=()=>{ b[el.dataset.k]=el.value; saveAll(); drawPreview(); });
   const bc=$('#bkCase'); if(bc) bc.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{
     const x=caseKoshu()[Number(btn.dataset.ci)];
     fillBoardFromItem(b,{cat:x.cat,kind:x.kind||'',kikaku:x.kikaku||'',no:String(nextBoardNo({koshu:tplHas(cur.tpl,'shubetsu')?x.cat:koshuLabel(x),kikaku:x.kikaku||''}))},curStage||curStages()[0]);
-    curItem=null; saveAll(); openBoardEdit(boardEditToCamera); });
+    curItem=null; saveAll(); openBoardEdit(boardEditToCamera,true); });
   $('#boardFields').querySelectorAll('.quick').forEach(q=>q.onclick=e=>{
-    const v=e.target.dataset.v; if(v===undefined) return;
+    const v=e.target.closest('button')?.dataset.v; if(v===undefined) return;
+    if(q.dataset.for.startsWith('h:')){ const k=q.dataset.for.slice(2); b[k]=v; if(k==='koshu'||k==='kikaku'||k==='sokuten') curItem=null; q.parentElement.querySelector('[data-k]').value=v; saveAll(); drawPreview(); return; }
     if(q.dataset.for==='sokutenNo'){ if(v==='next') setNextNo(b); else bumpNo(b,Number(v)); curItem=null; q.parentElement.querySelector('[data-k]').value=b.sokuten; saveAll(); drawPreview(); return; }
     if(q.dataset.for==='bikoStage'){ setStageOnBoard(b,v); curStage=v; q.parentElement.querySelector('[data-k]').value=b.biko; saveAll(); drawPreview(); return; }
     if(q.dataset.for==='stage') curStage=v;
     b[q.dataset.for]=v; q.parentElement.querySelector('[data-k]').value=v; saveAll(); drawPreview();
   });
   $('#tplPick').onclick=()=>openBoardLib('edit');
-  $('#boardDone').textContent = toCamera?'撮影へ':'完了';
-  go('boardEdit'); drawPreview();
+  $('#boardDone').textContent = photoEdit?'この写真に反映':toCamera?'撮影へ':'完了';
+  go('boardEdit'); setBfFocus(bfFocus,true);
 }
+/* 欄を1つだけ出す（null＝全部）。その欄は黒板の上で黄色の枠 */
+function setBfFocus(k,noFocusInput){
+  bfFocus=k||null;
+  $$('#boardFields .field').forEach(f=>{ const on=f.dataset.field===bfFocus; f.style.display=!bfFocus||on?'':'none'; f.classList.toggle('focus',on); });
+  $('#bfNav').style.display=bfFocus?'':'none'; $('#tplPick').style.display=bfFocus?'none':'';
+  $('#bpHint').textContent=bfFocus?'ほかの欄も、黒板をタップして切り替えられます':'黒板の欄をタップすると、そこだけ書けます・選べます';
+  drawPreview();
+  if(bfFocus){ $('#boardFields').scrollTop=0;
+    const f=$(`#boardFields .field[data-field="${bfFocus}"]`), inp=f&&f.querySelector('[data-k]');
+    if(inp&&!noFocusInput&&!f.querySelector('.quick')) inp.focus(); }
+}
+function boardRowRects(w,tpl){
+  const rows=TEMPLATES[tplOK(tpl)].rows, u=w*0.085, pad=u*0.18; let cy=pad;
+  return rows.map(r=>{ const h=u*(r.h||1), o={k:r.k,x:pad,y:cy,w:w-pad*2,h}; cy+=h; return o; });
+}
+$('#boardPreview').addEventListener('click',e=>{
+  const c=$('#boardPreview'), rc=c.getBoundingClientRect(), y=(e.clientY-rc.top)*c.height/rc.height;
+  const hit=boardRowRects(c.width,cur.tpl).find(r=>y>=r.y&&y<r.y+r.h); if(!hit) return;
+  setBfFocus(hit.k);
+});
 function drawPreview(){
   const c=$('#boardPreview'), w=900, h=boardHeight(w,cur.tpl);
   c.width=w; c.height=Math.ceil(h);
-  drawBoard(c.getContext('2d'),0,0,w,cur.tpl,boards[cur.id]);
+  const ctx=c.getContext('2d'); drawBoard(ctx,0,0,w,cur.tpl,boards[cur.id]);
+  if(bfFocus){ const r=boardRowRects(w,cur.tpl).find(x=>x.k===bfFocus); if(r){ ctx.save(); ctx.strokeStyle='#ffd54a'; ctx.lineWidth=8; ctx.strokeRect(r.x+4,r.y+4,r.w-8,r.h-8); ctx.restore(); } }
 }
 $('#boardBack').onclick=()=>{ if(photoEdit){ endPhotoEdit(); showList(); return; } boardEditToCamera?go('album'):openCamera(); };
 $('#boardDone').onclick=()=>{ if(photoEdit){ applyPhotoEdit(); return; } openCamera(); };
