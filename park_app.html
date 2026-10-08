@@ -502,8 +502,16 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
 
     <div class="sec" id="scanSec">
       <h3>📡 3Dスキャンの木</h3>
-      <button class="btn ghost" id="scanImpBtn">3Dスキャンの結果を取り込む<small>スキャンから作った「木の位置ファイル（.json）」を開きます</small></button>
-      <input type="file" id="scanFile" accept="application/json,.json" hidden>
+      <button class="btn ghost" id="scanImpBtn">3Dスキャンの結果を取り込む<small>3D Scanner Appで書き出したLAS（Zipはオフ）をそのまま選びます</small></button>
+      <input type="file" id="scanFile" hidden>
+      <div id="scanProg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1001;align-items:center;justify-content:center;padding:16px">
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:360px;width:100%;padding:18px;color:var(--ink)">
+          <div style="font-weight:700;margin-bottom:10px">📡 3Dスキャンから木を探しています</div>
+          <div id="scanProgTxt" class="legend" style="margin-bottom:8px">準備しています</div>
+          <div style="height:10px;border-radius:5px;background:#0003;overflow:hidden"><div id="scanProgBar" style="height:100%;width:0;background:#3ddc97;transition:width .2s"></div></div>
+          <div class="legend" style="margin-top:8px">ファイルは少しずつ読むので、重くても大丈夫です。画面を閉じずにお待ちください。</div>
+        </div>
+      </div>
       <div id="scanInfo"></div>
     </div>
 
@@ -2204,7 +2212,150 @@ function importScan(d){
   alert(`3Dスキャンの木を ${add.length}本 仮置きしました${nc?`（うち要確認 ${nc}本）`:''}。\n\n②で工種を選んで③を「樹木」にし、地図の点線の丸をタップすると工種が決まります。規格は幹周から自動で決まります。`);
 }
 $('scanImpBtn').onclick=()=>$('scanFile').click();
+/* ---------- 3Dスキャン（LAS）から木を見つける：少しずつ読んで、地面と幹の高さだけ拾う ---------- */
+async function scanLasProcess(blob, onProg){
+  const prog=(t,p)=>{ if(onProg) onProg(t,p); };
+  const hb=new DataView(await blob.slice(0,375).arrayBuffer());
+  const sig=String.fromCharCode(hb.getUint8(0),hb.getUint8(1),hb.getUint8(2),hb.getUint8(3));
+  if(sig!=='LASF') throw new Error('LASファイルではありません');
+  const vMin=hb.getUint8(25), off=hb.getUint32(96,true), fmtRaw=hb.getUint8(104), fmt=fmtRaw&0x3f, rl=hb.getUint16(105,true);
+  if(fmtRaw&0x80) throw new Error('圧縮されたLAS（LAZ）は読めません。LASで書き出してください');
+  let N=hb.getUint32(107,true); if(vMin>=4&&hb.byteLength>=255){ const n64=Number(hb.getBigUint64(247,true)); if(n64>0)N=n64; }
+  const sx=hb.getFloat64(131,true), sy=hb.getFloat64(139,true), sz=hb.getFloat64(147,true);
+  const ox=hb.getFloat64(155,true), oy=hb.getFloat64(163,true), oz=hb.getFloat64(171,true);
+  const maxX=hb.getFloat64(179,true), minX=hb.getFloat64(187,true), maxY=hb.getFloat64(195,true), minY=hb.getFloat64(203,true), maxZ=hb.getFloat64(211,true), minZ=hb.getFloat64(219,true);
+  if(!(N>0)||rl<12) throw new Error('点が入っていません');
+  // 座標系：経緯度（Geo-Referenced）か、メートル（ローカル）か
+  const geo=(Math.abs(minX)<=180&&Math.abs(maxX)<=180&&Math.abs(minY)<=90&&Math.abs(maxY)<=90&&(maxX-minX)<0.05&&(maxY-minY)<0.05);
+  let up='z';
+  if(!geo){ const ex=maxX-minX, ey=maxY-minY, ez=maxZ-minZ; if(ey<ez&&ey<ex) up='y'; }   // Z axis up をオフで書き出したとき
+  const lat0=(minY+maxY)/2, rad=Math.PI/180;
+  const mLat=111132.954-559.822*Math.cos(2*lat0*rad)+1.175*Math.cos(4*lat0*rad), mLon=111412.84*Math.cos(lat0*rad)-93.5*Math.cos(3*lat0*rad);
+  // 平面（東向きx・北向きy、m）と高さ
+  let X0,X1,Y0,Y1;
+  if(geo){ X0=0; X1=(maxX-minX)*mLon; Y0=0; Y1=(maxY-minY)*mLat; }
+  else if(up==='z'){ X0=minX; X1=maxX; Y0=minY; Y1=maxY; }
+  else { X0=minX; X1=maxX; Y0=-maxZ; Y1=-minZ; }      // y上向き：平面は x と -z
+  const W=X1-X0, Hm=Y1-Y0;
+  if(!(W>0&&Hm>0)||W>2000||Hm>2000) throw new Error('範囲が大きすぎるか、座標が読めません');
+  // 1点を（x,y,h）に
+  const mode=geo?0:(up==='z'?1:2);
+  const CH=Math.max(1,Math.floor((8<<20)/rl))*rl;      // 1回に読む量（約8MB、点の区切りに合わせる）
+  const total=N*rl;
+  async function stream(label,base,fn){
+    for(let pos=0;pos<total;pos+=CH){
+      const len=Math.min(CH,total-pos), buf=await blob.slice(off+pos,off+pos+len).arrayBuffer(), n=Math.floor(buf.byteLength/rl);
+      const I=new Int32Array(buf,0,(buf.byteLength>>2)), st=rl>>2, al=(rl%4===0);
+      const dv=al?null:new DataView(buf);
+      for(let i=0;i<n;i++){ let ix,iy,iz; if(al){const o=i*st; ix=I[o];iy=I[o+1];iz=I[o+2];} else {const o=i*rl; ix=dv.getInt32(o,true);iy=dv.getInt32(o+4,true);iz=dv.getInt32(o+8,true);}
+        const a=ix*sx+ox, b=iy*sy+oy, c=iz*sz+oz;
+        if(mode===0) fn((a-minX)*mLon,(b-minY)*mLat,c); else if(mode===1) fn(a,b,c); else fn(a,-c,b); }
+      prog(label, base+0.45*Math.min(1,(pos+len)/total));
+      await new Promise(r=>setTimeout(r,0));
+    }
+  }
+  // ---- 1回目：地面（0.5mマスの最低点） ----
+  const gc=0.5, gx=Math.ceil(W/gc)+1, gy=Math.ceil(Hm/gc)+1, G=new Float32Array(gx*gy).fill(Infinity);
+  await stream('地面を調べています',0,(x,y,z)=>{ const i=Math.min(gx-1,Math.max(0,((x-X0)/gc)|0)), j=Math.min(gy-1,Math.max(0,((y-Y0)/gc)|0)), k=j*gx+i; if(z<G[k])G[k]=z; });
+  prog('地面を整えています',0.46);
+  // 空きマスを近いマスで埋める（幅優先）
+  { const q=new Int32Array(gx*gy); let h=0,t=0; for(let k=0;k<G.length;k++) if(G[k]!==Infinity) q[t++]=k;
+    if(!t) throw new Error('地面が見つかりません');
+    while(h<t){ const k=q[h++], i=k%gx, j=(k/gx)|0; const nb=[[i-1,j],[i+1,j],[i,j-1],[i,j+1]];
+      for(const [a,b] of nb){ if(a<0||b<0||a>=gx||b>=gy)continue; const kk=b*gx+a; if(G[kk]===Infinity){G[kk]=G[k];q[t++]=kk;} } } }
+  const filt=(src,r,op)=>{ const tmp=new Float32Array(src.length), out=new Float32Array(src.length);
+    for(let j=0;j<gy;j++)for(let i=0;i<gx;i++){ let v=op>0?-Infinity:Infinity; for(let d=-r;d<=r;d++){const a=i+d; if(a<0||a>=gx)continue; const s=src[j*gx+a]; v=op>0?Math.max(v,s):Math.min(v,s);} tmp[j*gx+i]=v; }
+    for(let j=0;j<gy;j++)for(let i=0;i<gx;i++){ let v=op>0?-Infinity:Infinity; for(let d=-r;d<=r;d++){const b=j+d; if(b<0||b>=gy)continue; const s=tmp[b*gx+i]; v=op>0?Math.max(v,s):Math.min(v,s);} out[j*gx+i]=v; }
+    return out; };
+  let GO=filt(filt(G,2,-1),2,1);                        // 幹や植え込みで浮いたマスを削る（オープニング）
+  { const M=new Float32Array(GO.length), w=[]; for(let j=0;j<gy;j++)for(let i=0;i<gx;i++){ w.length=0;
+      for(let b=j-1;b<=j+1;b++)for(let a=i-1;a<=i+1;a++){ const aa=Math.min(gx-1,Math.max(0,a)), bb=Math.min(gy-1,Math.max(0,b)); w.push(GO[bb*gx+aa]); }
+      w.sort((p,q)=>p-q); M[j*gx+i]=w[4]; } GO=M; }
+  const gH=(x,y)=>GO[Math.min(gy-1,Math.max(0,((y-Y0)/gc)|0))*gx+Math.min(gx-1,Math.max(0,((x-X0)/gc)|0))];
+  // ---- 2回目：輪切りの点と、背景の平面図 ----
+  const ppm=Math.min(40,2400/Math.max(W,Hm)), RW=Math.ceil(W*ppm)+1, RH=Math.ceil(Hm*ppm)+1;
+  const RG=new Uint8Array(RW*RH), RV=new Uint16Array(RW*RH);
+  const BANDS_H=[0.6,0.9,1.2,1.5,1.8];
+  const bx=BANDS_H.map(()=>[]), by=BANDS_H.map(()=>[]);   // 高さごとの点（x,y）
+  await stream('幹を探しています',0.46,(x,y,z)=>{
+    const h=z-gH(x,y);
+    const px=((x-X0)*ppm)|0, py=((Y1-y)*ppm)|0, k=py*RW+px;
+    if(h<0.3){ if(k>=0&&k<RG.length)RG[k]=1; }
+    else if(h<2.5){ if(k>=0&&k<RV.length&&RV[k]<65535)RV[k]++; }
+    for(let b=0;b<5;b++){ const c=BANDS_H[b]; const hw=(b===2)?0.05:0.05; if(h>c-hw&&h<c+hw){ bx[b].push(x); by[b].push(y); break; } }
+  });
+  prog('木を判定しています',0.93);
+  await new Promise(r=>setTimeout(r,0));
+  // 円の当てはめ（代数的）
+  function fit(xs,ys,idx){ const n=idx.length; if(n<5)return null; let mx=0,my=0; for(const i of idx){mx+=xs[i];my+=ys[i];} mx/=n;my/=n;
+    let Suu=0,Svv=0,Suv=0,Suuu=0,Svvv=0,Suvv=0,Svuu=0;
+    for(const i of idx){const u=xs[i]-mx,v=ys[i]-my; Suu+=u*u;Svv+=v*v;Suv+=u*v;Suuu+=u*u*u;Svvv+=v*v*v;Suvv+=u*v*v;Svuu+=v*u*u;}
+    const det=Suu*Svv-Suv*Suv; if(Math.abs(det)<1e-12)return null;
+    const a=0.5*(Suuu+Suvv), b=0.5*(Svvv+Svuu); const uc=(a*Svv-b*Suv)/det, vc=(Suu*b-Suv*a)/det;
+    const cx=uc+mx, cy=vc+my, r=Math.sqrt(uc*uc+vc*vc+(Suu+Svv)/n);
+    const res=[], bins=new Set(); for(const i of idx){ const dx=xs[i]-cx, dy=ys[i]-cy; res.push(Math.abs(Math.hypot(dx,dy)-r)); bins.add(Math.floor((Math.atan2(dy,dx)+Math.PI)/(Math.PI/18))); }
+    res.sort((p,q)=>p-q); return {cx,cy,r,res:res[res.length>>1],cov:Math.min(1,bins.size/36),n}; }
+  // 1.2mの点をかたまりに分ける（4cmマスでつながり）
+  const X=bx[2], Y=by[2], cs=0.04, cell=new Map();
+  for(let i=0;i<X.length;i++){ const key=((X[i]-X0)/cs|0)*65536+((Y[i]-Y0)/cs|0); let a=cell.get(key); if(!a){a=[];cell.set(key,a);} a.push(i); }
+  const seen=new Set(), comps=[];
+  for(const [key,pts] of cell){ if(seen.has(key)||pts.length<2)continue; const stack=[key]; seen.add(key); const mem=[];
+    while(stack.length){ const k=stack.pop(), arr=cell.get(k); for(const i of arr)mem.push(i); const ci=Math.floor(k/65536), cj=k%65536;
+      for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){ const kk=(ci+a)*65536+(cj+b); if(seen.has(kk))continue; const q=cell.get(kk); if(q&&q.length>=2){seen.add(kk);stack.push(kk);} } }
+    comps.push(mem); }
+  // 他の高さの点：25cmマスで引けるように
+  const idxB=BANDS_H.map((_,b)=>{ const m=new Map(); for(let i=0;i<bx[b].length;i++){ const key=((bx[b][i]-X0)/0.25|0)*65536+((by[b][i]-Y0)/0.25|0); let a=m.get(key); if(!a){a=[];m.set(key,a);} a.push(i);} return m; });
+  const near=(b,cx,cy,R)=>{ const m=idxB[b], out=[], i0=((cx-R-X0)/0.25|0), i1=((cx+R-X0)/0.25|0), j0=((cy-R-Y0)/0.25|0), j1=((cy+R-Y0)/0.25|0);
+    for(let i=i0;i<=i1;i++)for(let j=j0;j<=j1;j++){ const a=m.get(i*65536+j); if(a)for(const k of a){ if(Math.hypot(bx[b][k]-cx,by[b][k]-cy)<=R)out.push(k);} } return out; };
+  let cand=[];
+  for(const mem of comps){ if(mem.length<40)continue; let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9; for(const i of mem){x0=Math.min(x0,X[i]);x1=Math.max(x1,X[i]);y0=Math.min(y0,Y[i]);y1=Math.max(y1,Y[i]);}
+    if(Math.max(x1-x0,y1-y0)>1.5)continue; const f=fit(X,Y,mem); if(!f||!(f.r>0.01&&f.r<1))continue;
+    let cont=0; for(const b of [0,1,3,4]){ const ids=near(b,f.cx,f.cy,f.r+0.08); if(ids.length>30){ const g=fit(bx[b],by[b],ids); if(g&&g.cov>0.4&&Math.abs(g.r-f.r)<Math.max(0.05,0.35*f.r)&&Math.hypot(g.cx-f.cx,g.cy-f.cy)<0.1)cont++; } }
+    cand.push(Object.assign(f,{cont})); }
+  cand.sort((a,b)=>b.n-a.n); const keep=[];
+  for(const t of cand){ if(keep.every(k=>Math.hypot(t.cx-k.cx,t.cy-k.cy)>Math.max(0.15,k.r))) keep.push(t); }
+  const trees=[];
+  for(const t of keep){
+    const sure=(t.cov>=0.85&&t.res<0.03&&t.cont>=3), maybe=(t.cont>=3&&t.cov>=0.5&&t.r>=0.04&&t.res<0.03);
+    if(!sure&&!maybe)continue;
+    const C=Math.round(2*Math.PI*t.r*100), rem=C%30, nearB=Math.min(rem,30-rem)<=3;
+    trees.push({x:(t.cx-X0)*ppm, y:(Y1-t.cy)*ppm, C, chk:(!sure||nearB), note:!sure?'幹の一部しか写っていない':(nearB?`ランク境界（${Math.round(C/30)*30}cm）の近く`:'')});
+  }
+  trees.sort((a,b)=>(a.y-b.y)||(a.x-b.x));
+  // 背景の平面図（地面＝薄い灰、植え込み・枝＝薄い緑）
+  const img=new Uint8ClampedArray(RW*RH*4);
+  const dil=(test,r)=>{ const o=new Uint8Array(RW*RH); for(let j=0;j<RH;j++)for(let i=0;i<RW;i++){ if(!test(j*RW+i))continue; for(let b=-r;b<=r;b++)for(let a=-r;a<=r;a++){const ii=i+a,jj=j+b; if(ii>=0&&jj>=0&&ii<RW&&jj<RH)o[jj*RW+ii]=1;} } return o; };
+  const DG=dil(k=>RG[k],1), DV=dil(k=>RV[k]>2,1);
+  for(let k=0;k<RW*RH;k++){ const c=DV[k]?[176,205,170]:(DG[k]?[226,229,224]:[255,255,255]); img[k*4]=c[0];img[k*4+1]=c[1];img[k*4+2]=c[2];img[k*4+3]=255; }
+  prog('できました',1);
+  return {kind:'park-scan',v:1,source:'3D Scanner App（LAS'+(geo?' Geo-Referenced':'')+'）',points:N,
+    scale:1/ppm, raster:{w:RW,h:RH,data:img},
+    geo:geo?{crs:'EPSG:4326',lon0:minX,lat0:minY,mLon,mLat,left:0,top:Y1,ppm,note:'px→経度=lon0+(px/ppm)/mLon, 緯度=lat0+(top-py/ppm)/mLat'}:null,
+    trees};
+}
+
+async function importScanLas(file){
+  const box=$('scanProg'), txt=$('scanProgTxt'), bar=$('scanProgBar');
+  box.style.display='flex'; txt.textContent='準備しています（'+Math.round(file.size/1048576)+'MB）'; bar.style.width='0';
+  try{
+    const t0=Date.now();
+    const r=await scanLasProcess(file,(t,p)=>{ txt.textContent=t+'…　'+Math.round(p*100)+'%'; bar.style.width=Math.round(p*100)+'%'; });
+    const c=document.createElement('canvas'); c.width=r.raster.w; c.height=r.raster.h;
+    c.getContext('2d').putImageData(new ImageData(r.raster.data,r.raster.w,r.raster.h),0,0);
+    const d={kind:'park-scan',v:1,source:r.source,file:file.name,scanned:new Date().toISOString().slice(0,10),scale:r.scale,geo:r.geo,imgData:c.toDataURL('image/png'),trees:r.trees};
+    box.style.display='none';
+    if(!d.trees.length){ alert('木が見つかりませんでした（'+r.points.toLocaleString()+'点を調べました）。\n幹の高さ1.2m付近まで写っているか確かめてください。'); return; }
+    state.scanLast=d;                               // 取り込み用ファイルとしても保存できるように
+    importScan(d);
+    console.log('scan',((Date.now()-t0)/1000).toFixed(1)+'s');
+  }catch(err){ box.style.display='none'; alert('3Dスキャンを読み込めませんでした。\n'+((err&&err.message)||err)); }
+}
 $('scanFile').onchange=e=>{ const file=e.target.files&&e.target.files[0]; e.target.value=''; if(!file)return;
+  const nm=(file.name||'').toLowerCase();
+  if(/\.zip$/.test(nm)){ alert('Zipのままでは読めません。\n3D Scanner Appの書き出しで「Zip Files」をオフにして、LASを書き出し直してください。'); return; }
+  if(/\.laz$/.test(nm)){ alert('LAZ（圧縮）は読めません。LASで書き出してください。'); return; }
+  if(/\.las$/.test(nm)){ importScanLas(file); return; }
+  if(!/\.json$/.test(nm)&&file.size>20*1048576){ alert('LAS（.las）か、木の位置ファイル（.json）を選んでください。'); return; }
   const r=new FileReader(); r.onload=()=>{ let d; try{ d=JSON.parse(r.result); }catch(err){ alert('3Dスキャンの木のファイルとして読み込めませんでした。\n'+((err&&err.message)||err)); return; }
     if(!d||d.kind!=='park-scan'||!Array.isArray(d.trees)){ alert('これは3Dスキャンの木のファイルではありません。\n（公園データは「公園データを開く」から開いてください）'); return; }
     try{ importScan(d); }catch(err){ alert('取り込みの途中で問題が起きました。\n'+((err&&err.message)||err)); } };
