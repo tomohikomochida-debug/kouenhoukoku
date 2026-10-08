@@ -228,6 +228,48 @@ header .back{font-size:22px;padding:4px 12px}
   .fab.left{left:max(16px,calc(50% - 530px))}
 }
 .posInfo{font-size:13px;color:var(--main-d);background:#eef3ee;border-radius:8px;padding:8px 10px;margin-bottom:14px}
+/* 写真一覧：1対象＝1枚のカード。前・中・後が横に並び、まだの所は「＋撮る」 */
+.tcards{display:grid;gap:10px}
+.tcard{background:var(--card);border-radius:14px;padding:10px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.tcard.now{box-shadow:0 0 0 2px var(--main)}
+.tch{display:flex;align-items:baseline;gap:6px;margin:0 2px 8px;font-size:14px;font-weight:700;color:var(--main-d);flex-wrap:wrap}
+.tch small{font-weight:400;color:var(--sub);font-size:12px}
+.tch .mk{font-size:10px}
+.slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.tcards,.tcard{min-width:0}
+.slots .ph{aspect-ratio:1;border-radius:10px;cursor:pointer}
+.slots .ph.sel{outline:4px solid #f5b400;outline-offset:-4px}
+.slots .ph .stg2{font-size:11px;font-weight:700}
+.slotAdd{aspect-ratio:1;border-radius:10px;border:2px dashed #b9c6b8;background:#f4f7f3;color:var(--main);font-weight:700;font-size:13px;line-height:1.35;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.slotAdd b{font-size:22px;line-height:1}
+.slotAdd.ng{border-color:#e3a39b;background:#fff3f1;color:#b03a2e}
+/* 写真を選んだときの下のボタン */
+#selBar{position:fixed;left:0;right:0;bottom:0;z-index:40;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -4px 18px rgba(0,0,0,.18);padding:10px 12px calc(var(--safe-b) + 12px);display:none}
+#selBar.on{display:block}
+.sbTop{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.sbTop img{width:46px;height:46px;border-radius:8px;object-fit:cover;background:#ddd;flex-shrink:0}
+.sbTop .t{flex:1;font-size:14px;font-weight:700;line-height:1.35;min-width:0}
+.sbTop .t small{display:block;font-weight:400;color:var(--sub);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sbTop .x{background:#eef1ed;color:var(--sub);border-radius:50%;width:34px;height:34px;font-size:18px;flex-shrink:0}
+.sbMain{display:block;width:100%;background:var(--main);color:#fff;border-radius:12px;padding:14px;font-size:17px;font-weight:700;margin-bottom:6px}
+.sbAlt{display:block;width:100%;background:#eef3ee;color:var(--main);border-radius:12px;padding:10px;font-size:14px;font-weight:700;margin-bottom:8px}
+.sbRow{display:flex;gap:6px}
+.sbRow button{flex:1;background:#f1f3f0;color:var(--text);border-radius:10px;padding:9px 2px;font-size:12px;font-weight:700;line-height:1.3}
+.sbRow button .i{display:block;font-size:17px}
+.sbRow button.del{color:#b03a2e}
+.sbUndo{display:block;width:100%;margin-top:8px;background:#fff6e0;color:#8a5200;border-radius:10px;padding:9px;font-size:13px;font-weight:700}
+body.selOn #btnShoot{display:none}
+body.selOn #toast,body.selOn #snack{bottom:auto;top:calc(var(--safe-t) + 112px)}
+body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
+#snack{position:fixed;left:50%;bottom:calc(var(--safe-b) + 92px);transform:translateX(-50%);z-index:120;background:#222;color:#fff;border-radius:12px;padding:8px 8px 8px 16px;display:none;align-items:center;gap:12px;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.3);white-space:nowrap}
+#snack.on{display:flex}
+#snack button{background:#f5b400;color:#222;border-radius:8px;padding:8px 12px;font-weight:700}
+#camMode{position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--safe-t) + 10px);background:#f5b400;color:#222;font-size:12px;font-weight:700;border-radius:99px;padding:6px 12px;display:none;white-space:nowrap}
+#camMode.on{display:block}
+@media (min-width:900px){
+  .tcards{grid-template-columns:repeat(auto-fill,minmax(440px,1fr))}
+  #selBar{left:50%;transform:translateX(-50%);width:560px;bottom:16px;border-radius:16px}
+}
 </style>
 </head>
 <body>
@@ -318,6 +360,7 @@ header .back{font-size:22px;padding:4px 12px}
   <div class="pane" id="check"><div class="scroll" id="checkBody"></div></div>
   <button class="fab left" id="btnAddItem" style="display:none">＋ 項目</button>
   <button class="fab" id="btnShoot">📷 撮影</button>
+  <div id="selBar"></div>
 </section>
 
 <!-- ===== 出力（報告書PDF・写真をまとめて渡す） ===== -->
@@ -388,6 +431,7 @@ header .back{font-size:22px;padding:4px 12px}
   </div>
   <div class="camTop">
     <button class="cbtn rot txt" id="camClose">一覧</button>
+    <div id="camMode"></div>
     <button class="cbtn ham" id="camMenuBtn" aria-label="メニュー">≡</button>
   </div>
   <div class="camBottom">
@@ -406,6 +450,8 @@ header .back{font-size:22px;padding:4px 12px}
     <button class="mi" id="cmAdjust">黒板の大きさ・位置・透け具合 <small>▸</small></button>
     <div class="lbl">撮る向き（木などは縦で）</div>
     <div class="seg2" id="cmOri"><button data-o="auto">持ち方で自動</button><button data-o="p">いつも縦</button><button data-o="l">いつも横</button></div>
+    <div class="lbl">撮ったあと</div>
+    <div class="seg2" id="cmAfter"><button data-a="list">一覧にもどる</button><button data-a="stay">続けて撮る</button></div>
     <button class="mi" id="cmInfo">位置・方位を画面に出す <small id="cmInfoV">出さない</small></button>
     <button class="mi" id="cmImport">撮った写真を取り込む <small>黒板を合成</small></button>
     <button class="mi" id="cmNative">iPhoneのカメラで撮る <small>うまく写らないとき</small></button>
@@ -506,7 +552,7 @@ header .back{font-size:22px;padding:4px 12px}
   <div class="vbtns">
     <button id="vShare">共有・保存</button>
     <button id="vRetry">再送</button>
-    <button id="vDelete">端末から削除</button>
+    <button id="vDelete">削除</button>
     <button data-close>閉じる</button>
   </div>
   </div>
@@ -516,6 +562,8 @@ header .back{font-size:22px;padding:4px 12px}
 <input type="file" id="capIn" accept="image/*" capture="environment" hidden>
 <input type="file" id="jsonIn" accept=".json,application/json" hidden>
 <div id="toast"></div>
+<div id="snack"><span id="snackMsg"></span><button id="snackBtn">元に戻す</button></div>
+<input type="file" id="repIn" accept="image/*" hidden>
 
 <script>
 'use strict';
@@ -624,7 +672,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvO
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
 /* 黒板：bsz＝写真の短い辺に対する黒板の幅、bx・by＝置き場所（0＝左/上、1＝右/下）、balpha＝黒板の濃さ */
 const BOARD_DEF = { bsz:0.6, bx:0, by:1, balpha:1 };
-let S = Object.assign({ mapPhoto:false, oriMode:'auto', showInfo:false, lens:'' }, BOARD_DEF, LS.get('shashin_settings',{}));
+let S = Object.assign({ mapPhoto:false, oriMode:'auto', showInfo:false, lens:'', afterShot:'list' }, BOARD_DEF, LS.get('shashin_settings',{}));
 if(S.bsz==null||S.bsz<0.3) S.bsz=BOARD_DEF.bsz;
 let sites = LS.get('shashin_sites',[]);          // 現場マスタ（電波が無いときのための控え）
 let counts = LS.get('shashin_counts',{});        // 現場ごとの写真の枚数（みんなの分）
@@ -744,14 +792,16 @@ async function processQueue(){
   if(uploading||!canSync()) { updateChip(); return; }
   uploading=true;
   try{
-    const list=(await refreshPhotos()).filter(p=>p.status!=='done').sort((a,b)=>a.takenAt-b.takenAt);
+    const all=await refreshPhotos();
+    for(const p of all.filter(p=>p.stateDirty)){ try{ const j=await gasPost({mode:'updatePhoto',photoId:p.id,state:p.state||''}); if(j.ok){ p.stateDirty=false; await idbPut(p); } }catch(e){} }
+    const list=all.filter(p=>p.status!=='done'&&!p.state).sort((a,b)=>a.takenAt-b.takenAt);
     for(const p of list){
       updateChip(list.length);
       const d=siteOf(p.siteId)||{};
       try{
         const data=await blobToBase64(p.blob);
         const j=await gasPost({mode:'upload',by:p.staff||me(),data,photo:{ photoId:p.id, siteId:p.siteId, site:d.name||'', contract:d.contract||'', kind:d.kind||'',
-          itemId:p.itemId||'', stage:p.stage||'', board:p.board, fileName:p.fileName, takenAt:new Date(p.takenAt).toISOString(),
+          itemId:p.itemId||'', stage:p.stage||'', board:p.board, fileName:p.fileName, replaces:p.replaces||'', takenAt:new Date(p.takenAt).toISOString(),
           lat:p.lat, lng:p.lng, acc:p.acc, heading:p.heading }});
         if(j.ok){ p.status='done'; p.fileUrl=j.url; p.fileId=j.fileId||''; if(!j.dup) counts[p.siteId]=(counts[p.siteId]||0)+1; } else { p.status='error'; p.err=j.error||''; }
       }catch(e){ p.status='error'; p.err=String(e); }
@@ -762,7 +812,7 @@ async function processQueue(){
 }
 function blobToBase64(b){ return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.readAsDataURL(b); }); }
 function updateChip(){
-  const n=photosCache.filter(p=>p.status!=='done').length;
+  const n=photosCache.filter(p=>p.status!=='done'&&!p.state).length;
   const c=$('#syncChip');
   if(!navigator.onLine && n){ c.textContent=`電波待ち ${n}枚`; c.className='chip pend'; return; }
   c.textContent = n ? (uploading?`送信中 残り${n}枚`:`送信待ち ${n}枚`) : '送信済み';
@@ -990,6 +1040,7 @@ function switchTab(t){
   if(t==='mapPane') setTimeout(renderMap,50);
   if(t==='photos') renderPhotos();
   if(t==='check') renderCheck();
+  if(t!=='photos') renderSel();
 }
 $('#btnDrive').onclick=()=>{
   if(!cur) return;
@@ -1060,27 +1111,154 @@ function shootItem(itemId,stage){
 }
 $('#btnShoot').onclick=()=>{ curItem=null; const b=boards[cur.id], st=curStages(); curStage=st.includes(b.stage)?b.stage:st[0]; setStageOnBoard(b,curStage); b.date=today(); saveAll(); openCamera(); };
 
-/* 写真一覧 */
+/* 写真一覧：1対象＝1枚のカード（前・中・後が横に並ぶ。まだの状況は「＋撮る」）
+   写真をタップ → 下に「次：作業中を撮る」「次の測点」「撮り直す・差し替え・黒板を直す・大きく・削除」 */
+let selId=null;
 function renderPhotos(){
   if(!cur) return;
   drawSortBar();
-  const box=$('#photoGrid'), st=curStages();
-  const all=allPhotosHere();
-  if(!all.length){ box.innerHTML=`<div class="empty">まだ写真はありません。</div>`; return; }
+  const box=$('#photoGrid'), st=curStages(), si=s=>{ const i=st.indexOf(s); return i<0?99:i; };
+  let ts=targets().filter(t=>t.photos.length||(photoSort==='todo'&&t.item));
+  const last=t=>t.photos.reduce((m,p)=>Math.max(m,p.takenAt||0),0);
+  if(photoSort==='recent') ts.sort((a,b)=>last(b)-last(a));
+  if(photoSort==='todo'){ ts=ts.filter(t=>{ const j=judge(t); return st.some(s=>j[s]!=='ok'); });
+    const w=t=>{ const j=judge(t); return st.filter(s=>j[s]==='ng').length*10+st.filter(s=>j[s]!=='ok').length; }; ts.sort((a,b)=>w(b)-w(a)||last(b)-last(a)); }
+  if(!ts.length){ box.innerHTML=`<div class="empty">${photoSort==='todo'?'撮り残しはありません 👍':'まだ写真はありません。<br>右下の「📷 撮影」から撮ってください。'}</div>`; renderSel(); return; }
   const cell=p=>{ const lp=p.local?photosCache.find(x=>x.id===p.id):null;
-    return `<div class="ph" data-id="${esc(p.id)}" ${p.url&&!lp?`data-url="${esc(p.url)}"`:''}>${lp?`<img src="${lp.thumb}" loading="lazy">`:`<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:11px;color:#555;padding:4px;text-align:center">${esc(p.by||'')}<br>（ドライブ）</div>`}
-      ${p.stage?`<span class="stg2">${esc(p.stage)}</span>`:''}${p.excluded?'<span class="stg2" style="top:auto;bottom:22px;background:#c0392b">報告書に入れない</span>':''}
-      ${lp?`<span class="st ${lp.status}">${lp.status==='done'?'送信済':lp.status==='error'?'失敗':'待ち'}</span>`:''}
-      <div class="cap">${esc([p.board?.koshu,p.board?.sokuten].filter(Boolean).join(' '))}</div></div>`; };
-  if(photoSort==='time'){
-    box.innerHTML=`<div class="grid">${all.sort((a,b)=>b.takenAt-a.takenAt).map(cell).join('')}</div>`;
-  } else {
-    const si=s=>{ const i=st.indexOf(s); return i<0?99:i; };
-    box.innerHTML=targets().filter(t=>t.photos.length).map(t=>{ const j=judge(t);
-      return `<div class="tgtH">${esc(t.label)} <small>${esc(t.sub)}</small> ${st.map(s=>j[s]==='ok'?`<span class="mk ok" style="font-size:10px">${esc(s)}</span>`:j[s]==='ng'?`<span class="mk ng" style="font-size:10px">${esc(s)}✕</span>`:'').join('')}</div>
-        <div class="grid">${t.photos.sort((a,b)=>si(a.stage)-si(b.stage)||a.takenAt-b.takenAt).map(cell).join('')}</div>`; }).join('');
-  }
-  box.querySelectorAll('.ph').forEach(el=>el.onclick=()=>openViewerAny(el.dataset.id));
+    return `<div class="ph ${p.id===selId?'sel':''}" data-id="${esc(p.id)}">${lp?`<img src="${lp.thumb}" loading="lazy">`:`<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:11px;color:#555;padding:4px;text-align:center">${esc(p.by||'')}<br>（ドライブ）</div>`}
+      ${p.stage?`<span class="stg2" style="background:${stageColor(p.stage)}">${esc(p.stage)}</span>`:''}${p.excluded?'<span class="stg2" style="top:auto;bottom:4px;background:#c0392b">報告書に入れない</span>':''}
+      ${lp&&lp.status!=='done'?`<span class="st ${lp.status}">${lp.status==='error'?'失敗':'待ち'}</span>`:''}</div>`; };
+  const lastSel=selId&&allPhotosHere().find(p=>p.id===selId);
+  box.innerHTML='<div class="tcards">'+ts.map(t=>{
+    const j=judge(t), ph=t.photos.slice().sort((a,b)=>si(a.stage)-si(b.stage)||a.takenAt-b.takenAt), cells=[];
+    st.forEach(s=>{ const l=ph.filter(p=>p.stage===s);
+      if(l.length) l.forEach(p=>cells.push(cell(p)));
+      else cells.push(`<button class="slotAdd ${j[s]==='ng'?'ng':''}" data-add="${esc(t.key)}" data-s="${esc(s)}"><b>＋</b>${esc(s)}<br>を撮る</button>`); });
+    ph.filter(p=>!st.includes(p.stage)).forEach(p=>cells.push(cell(p)));
+    const ng=st.filter(s=>j[s]==='ng');
+    return `<div class="tcard ${lastSel&&targetKeyOf(lastSel)===t.key?'now':''}"><div class="tch">${esc(t.label)} <small>${esc(t.sub)}</small>${ng.map(s=>`<span class="mk ng">${esc(s)}✕</span>`).join('')}</div><div class="slots">${cells.join('')}</div></div>`;
+  }).join('')+'</div>';
+  box.querySelectorAll('.ph').forEach(el=>el.onclick=()=>{
+    if(selId===el.dataset.id){ openViewerAny(el.dataset.id); return; }
+    selId=el.dataset.id; box.querySelectorAll('.ph.sel').forEach(x=>x.classList.remove('sel')); el.classList.add('sel');
+    box.querySelectorAll('.tcard.now').forEach(x=>x.classList.remove('now')); el.closest('.tcard').classList.add('now');
+    renderSel(); });
+  box.querySelectorAll('[data-add]').forEach(el=>el.onclick=()=>{
+    const t=ts.find(x=>x.key===el.dataset.add); if(!t) return;
+    if(!t.photos.length&&t.item){ shootItem(t.item.id,el.dataset.s); return; }
+    const ref=t.photos.slice().sort((a,b)=>b.takenAt-a.takenAt)[0]; shootFrom(ref,el.dataset.s);
+  });
+  renderSel();
+}
+function scrollToSel(){ const el=document.querySelector('#photoGrid .ph.sel'); if(el) el.scrollIntoView({block:'center'}); }
+/* 選んだ写真と同じ黒板（工種・規格・測点…）を作る。みんなの写真は工種・規格・測点だけ分かる */
+function boardFromPhoto(p){
+  const lp=photosCache.find(x=>x.id===p.id), cb=boards[cur.id]||{};
+  const b = lp ? {...lp.board} : {...cb, koshu:p.board?.koshu||'', kikaku:p.board?.kikaku||'', sokuten:p.board?.sokuten||''};
+  ['koji','site','hacchu','sekosha'].forEach(k=>{ if(cb[k]!=null) b[k]=cb[k]; });
+  return b;
+}
+/* 次に撮る状況：この写真のあとの状況でまだのもの → 無ければ前のほうで抜けているもの */
+function nextStageFor(p){
+  const st=curStages(), t=targets().find(x=>x.key===targetKeyOf(p)), done=t?t.done:{}, i=st.indexOf(p.stage);
+  return st.slice(i+1).find(s=>!(done[s]>0)) || st.find(s=>!(done[s]>0)) || '';
+}
+let camJob=null;   // 撮り直し中：{replaces, stage}
+function shootFrom(p,stage,opt={}){
+  const b=boardFromPhoto(p); b.date=today();
+  if(opt.nextNo) setNextNo(b);
+  boards[cur.id]=b;
+  curItem=(!opt.nextNo&&p.itemId)?(items.find(i=>i.id===p.itemId)||null):null;
+  curStage=stage; setStageOnBoard(b,stage);
+  camJob=opt.retake?{replaces:p.id,stage}:null;
+  if(opt.retake){ const lp=photosCache.find(x=>x.id===p.id); if(lp) boardOn=lp.boardOn!==false; }
+  saveAll(); selId=null; openCamera();
+}
+function renderSel(){
+  const bar=$('#selBar'), p=selId?allPhotosHere().find(x=>x.id===selId):null;
+  const show=!!p&&$('#photos').classList.contains('on');
+  bar.classList.toggle('on',show); document.body.classList.toggle('selOn',show);
+  if(!p){ selId=null; return; } if(!show) return;
+  const lp=photosCache.find(x=>x.id===p.id), first=curStages()[0], next=nextStageFor(p), b2=boardFromPhoto(p); setNextNo(b2);
+  const d=new Date(p.takenAt), lab=[p.board?.koshu,p.board?.kikaku,p.board?.sokuten].filter(Boolean).join(' ・ ');
+  const noBtn=cls=>`<button class="${cls}" id="sbNo">📷 次の測点（${esc(b2.sokuten||'No.＋1')}）の ${esc(first)} を撮る</button>`;
+  bar.innerHTML=`<div class="sbTop">${lp?`<img src="${lp.thumb}">`:''}<div class="t"><span style="color:${stageColor(p.stage)}">${esc(p.stage||'状況なし')}</span> ・ ${esc(lab||'工種・測点なし')}<small>${d.getMonth()+1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())} ・ ${esc(p.by||'')}${lp&&lp.status!=='done'?' ・ 送信待ち':''}</small></div><button class="x" id="sbX" aria-label="閉じる">✕</button></div>
+    ${next?`<button class="sbMain" id="sbNext">📷 次：${esc(next)} を撮る</button>${noBtn('sbAlt')}`:noBtn('sbMain')}
+    <div class="sbRow"><button id="sbRe"><span class="i">↺</span>撮り直す</button><button id="sbRep"><span class="i">⇄</span>差し替え</button><button id="sbEdit"><span class="i">✎</span>黒板を直す</button><button id="sbView"><span class="i">⤢</span>大きく</button><button id="sbDel" class="del"><span class="i">🗑</span>削除</button></div>
+    ${p.replaces?`<button class="sbUndo" id="sbUndo">↩ 撮り直し・差し替える前の写真に戻す</button>`:''}`;
+  $('#sbX').onclick=()=>{ selId=null; $$('#photoGrid .ph.sel').forEach(x=>x.classList.remove('sel')); $$('#photoGrid .tcard.now').forEach(x=>x.classList.remove('now')); renderSel(); };
+  if(next) $('#sbNext').onclick=()=>shootFrom(p,next);
+  $('#sbNo').onclick=()=>shootFrom(p,first,{nextNo:true});
+  $('#sbRe').onclick=()=>shootFrom(p,p.stage,{retake:true});
+  $('#sbRep').onclick=()=>{ repTarget=p; $('#repIn').click(); };
+  $('#sbEdit').onclick=()=>editPhotoBoard(p.id);
+  $('#sbView').onclick=()=>openViewerAny(p.id);
+  $('#sbDel').onclick=()=>deletePhoto(p.id);
+  if(p.replaces) $('#sbUndo').onclick=()=>undoReplace(p.id);
+}
+function showList(){
+  go('album'); switchTab('photos'); updateCheckBadge(); setTimeout(scrollToSel,30);
+}
+
+/* 撮影・差し替え・黒板直しのあとの写真は前の写真の代わりになる（前の写真は「差し替え済」で残す＝元に戻せる） */
+async function setPhotoState(id,state){
+  const lp=photosCache.find(x=>x.id===id), tp=teamPhotos.find(x=>x.photoId===id);
+  if(tp) tp.state=state;
+  const onServer = !!tp || !lp || lp.status==='done';
+  if(lp){ lp.state=state; lp.stateDirty=onServer; await idbPut(lp); }
+  if(onServer&&canSync()){ try{ const j=await gasPost({mode:'updatePhoto',photoId:id,state}); if(j.ok&&lp){ lp.stateDirty=false; await idbPut(lp); } }catch(e){} }
+  await refreshPhotos();
+  if(lp&&!state&&lp.status!=='done') processQueue();
+}
+function refreshAlbum(){ renderPhotos(); updateCheckBadge(); if($('#check').classList.contains('on')) renderCheck(); }
+async function deletePhoto(id){
+  if(!confirm('この写真を削除しますか？')) return;
+  await setPhotoState(id,'削除'); selId=null; refreshAlbum();
+  snack('写真を削除しました',async()=>{ await setPhotoState(id,''); selId=id; refreshAlbum(); setTimeout(scrollToSel,30); });
+}
+function photoAnyById(id){ const lp=photosCache.find(x=>x.id===id); if(lp) return {id, replaces:lp.replaces||''}; const tp=teamPhotos.find(x=>x.photoId===id); return tp?{id, replaces:tp.replaces||''}:null; }
+async function undoReplace(id){
+  const p=photoAnyById(id); if(!p||!p.replaces) return;
+  if(!confirm('撮り直し・差し替える前の写真に戻しますか？（いまの写真は削除します）')) return;
+  await setPhotoState(id,'削除'); await setPhotoState(p.replaces,'');
+  selId=p.replaces; refreshAlbum(); setTimeout(scrollToSel,30); toast('前の写真に戻しました',1800);
+}
+function snack(msg,fn,ms=7000){
+  $('#snackMsg').textContent=msg; $('#snack').classList.add('on');
+  $('#snackBtn').onclick=async()=>{ $('#snack').classList.remove('on'); await fn(); };
+  clearTimeout(snack._t); snack._t=setTimeout(()=>$('#snack').classList.remove('on'),ms);
+}
+/* 差し替え：写真を選ぶ → 同じ黒板・同じ状況を合成して入れ替える */
+let repTarget=null;
+$('#repIn').onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=''; const t=repTarget; repTarget=null; if(!f||!t) return;
+  const lp=photosCache.find(x=>x.id===t.id);
+  const c=await imageToCanvas(f);
+  const p=await composeAndSave(c,c.getContext('2d'),true,{ board:boardFromPhoto(t), stage:t.stage, itemId:t.itemId||'', replaces:t.id, base:t, boardOn: lp?lp.boardOn!==false:boardOn });
+  selId=p.id; showList(); snack('差し替えました',()=>undoReplaceNoAsk(p.id));
+};
+async function undoReplaceNoAsk(id){ const p=photoAnyById(id); if(!p||!p.replaces) return; await setPhotoState(id,'削除'); await setPhotoState(p.replaces,''); selId=p.replaces; refreshAlbum(); setTimeout(scrollToSel,30); }
+async function imageToCanvas(file){
+  const img=await loadImage(file), max=4032, s=Math.min(1,max/Math.max(img.width,img.height));
+  const c=document.createElement('canvas'); c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height); return c;
+}
+/* 黒板を直す：この端末で撮った写真は、黒板の無い元の写真を持っているので、直した黒板で作り直せる */
+let photoEdit=null;
+function editPhotoBoard(id){
+  const lp=photosCache.find(x=>x.id===id);
+  if(!lp||!lp.raw){ openViewerAny(id); toast('この写真は写った黒板の字は直せません。並び・報告書に使う記録だけ直せます',3500); return; }
+  photoEdit={ id, board:{...boards[cur.id]}, stage:curStage, item:curItem };
+  boards[cur.id]={...lp.board}; curStage=lp.stage; curItem=null;
+  openBoardEdit(false); $('#boardDone').textContent='この写真に反映';
+}
+function endPhotoEdit(){ const pe=photoEdit; photoEdit=null; boards[cur.id]=pe.board; curStage=pe.stage; curItem=pe.item; saveAll(); return pe; }
+async function applyPhotoEdit(){
+  const nb={...boards[cur.id]}, stage=curStage||nb.stage||'', pe=endPhotoEdit(), lp=photosCache.find(x=>x.id===pe.id); if(!lp) return showList();
+  const same=['koshu','kikaku','sokuten'].every(k=>(nb[k]||'')===(lp.board[k]||''));
+  const c=await imageToCanvas(lp.raw);
+  const p=await composeAndSave(c,c.getContext('2d'),true,{ board:nb, stage, itemId:same?lp.itemId||'':'', replaces:lp.id, base:lp, raw:lp.raw, boardOn:true });
+  selId=p.id; showList(); snack('黒板を直しました',()=>undoReplaceNoAsk(p.id));
 }
 
 /* =========================================================
@@ -1455,8 +1633,8 @@ function drawPreview(){
   c.width=w; c.height=Math.ceil(h);
   drawBoard(c.getContext('2d'),0,0,w,cur.tpl,boards[cur.id]);
 }
-$('#boardBack').onclick=()=>{ boardEditToCamera?go('album'):openCamera(); };
-$('#boardDone').onclick=()=>openCamera();
+$('#boardBack').onclick=()=>{ if(photoEdit){ endPhotoEdit(); showList(); return; } boardEditToCamera?go('album'):openCamera(); };
+$('#boardDone').onclick=()=>{ if(photoEdit){ applyPhotoEdit(); return; } openCamera(); };
 
 /* =========================================================
    黒板のひな型（リストから選ぶ・タイルで作る）
@@ -1714,12 +1892,16 @@ async function gasGetApp(app,params){
    ========================================================= */
 /* 写真がどの対象を撮ったものか：撮影項目があればその項目、無ければ黒板の 工種＋規格＋測点 */
 function targetKeyOf(p){ return p.itemId ? 'I|'+p.itemId : 'B|'+[p.board?.koshu||p.koshu||'', p.board?.kikaku||p.kikaku||'', p.board?.sokuten||p.sokuten||''].join('|'); }
-function allPhotosHere(){   // この端末の写真＋みんなの写真（送信済みは重ならないように）
+function allPhotosAll(){   // この端末の写真＋みんなの写真（送信済みは重ならないように）。削除・差し替え済みも入る
   if(!cur) return [];
-  const mine=photosCache.filter(p=>p.siteId===cur.id).map(p=>({ id:p.id, itemId:p.itemId, stage:p.stage, board:p.board, takenAt:p.takenAt, thumb:p.thumb, by:p.staff, local:true, excluded:!!p.excluded, fileId:p.fileId||'' }));
+  const mine=photosCache.filter(p=>p.siteId===cur.id).map(p=>({ id:p.id, itemId:p.itemId, stage:p.stage, board:p.board, takenAt:p.takenAt, thumb:p.thumb, by:p.staff, local:true, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, acc:p.acc, heading:p.heading }));
   const ids=new Set(mine.map(p=>p.id));
-  const team=teamPhotos.filter(p=>!ids.has(p.photoId)).map(p=>({ id:p.photoId, itemId:p.itemId, stage:p.stage, board:{koshu:p.koshu,sokuten:p.sokuten,kikaku:p.kikaku||''}, takenAt:new Date(String(p.takenAt).replace(' ','T')).getTime()||0, url:p.url, by:p.by, excluded:!!p.excluded, fileId:p.fileId||'' }));
+  const team=teamPhotos.filter(p=>!ids.has(p.photoId)).map(p=>({ id:p.photoId, itemId:p.itemId, stage:p.stage, board:{koshu:p.koshu,sokuten:p.sokuten,kikaku:p.kikaku||''}, takenAt:new Date(String(p.takenAt).replace(' ','T')).getTime()||0, url:p.url, by:p.by, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, heading:p.heading }));
   return mine.concat(team);
+}
+function allPhotosHere(){   // 見えている写真（削除したもの・撮り直しで入れ替わった前の写真は除く）
+  const live=allPhotosAll().filter(p=>!p.state), gone=new Set(live.map(p=>p.replaces).filter(Boolean));
+  return live.filter(p=>!gone.has(p.id));
 }
 function targets(){
   const map=new Map(), st=curStages();
@@ -1764,9 +1946,9 @@ function renderCheck(){
   box.querySelectorAll('[data-shoot]').forEach(b=>b.onclick=()=>shootItem(b.dataset.shoot,b.dataset.s));
   const badge=$('.tabs button[data-tab="check"]'); if(badge) badge.textContent = ng ? `チェック ✕${ng}` : 'チェック';
 }
-let photoSort=LS.get('shashin_sort','target');
+let photoSort=LS.get('shashin_sort','recent'); if(photoSort==='time') photoSort='recent';
 function drawSortBar(){
-  $('#sortBar').innerHTML=[['target','対象ごと（工種→規格→測点→状況）'],['time','撮影順']].map(([k,l])=>`<button data-s="${k}" class="${photoSort===k?'on':''}">${l}</button>`).join('');
+  $('#sortBar').innerHTML=[['recent','撮った順'],['target','工種・測点の順'],['todo','撮り残し']].map(([k,l])=>`<button data-s="${k}" class="${photoSort===k?'on':''}">${l}</button>`).join('');
   $('#sortBar').querySelectorAll('button').forEach(b=>b.onclick=()=>{ photoSort=b.dataset.s; LS.set('shashin_sort',photoSort); renderPhotos(); });
 }
 
@@ -1961,6 +2143,7 @@ async function openCamera(){
   requestCompass();                       // iPhoneはボタン操作の直後でないと許可が出せない
   startGeo(); closeCamSheets();
   $('#camMsg').style.display='none';
+  updateCamMode();
   hintUntil = (LS.get('shashin_hint',0)<5) ? Date.now()+3500 : 0;
   if(hintUntil){ LS.set('shashin_hint',LS.get('shashin_hint',0)+1); setTimeout(drawOverlay,3600); }
   updateCamUI();
@@ -2081,6 +2264,7 @@ function updateCamUI(){
   $('#cmBoardV').textContent=boardOn?'ON':'OFF';
   $('#cmInfoV').textContent=S.showInfo?'出す':'出さない';
   $$('#cmOri [data-o]').forEach(b=>b.classList.toggle('on',b.dataset.o===S.oriMode));
+  $$('#cmAfter [data-a]').forEach(b=>b.classList.toggle('on',b.dataset.a===(S.afterShot||'list')));
   const r=effRot(); $('#camera').classList.toggle('ccw',r==='ccw'); $('#camera').classList.toggle('cw',r==='cw');
   updateCamInfo(); drawOverlay();
 }
@@ -2168,11 +2352,12 @@ $('#cmBoard').onclick=()=>{
   boardOn=!boardOn; updateCamUI();
 };
 $$('#cmOri [data-o]').forEach(b=>b.onclick=()=>{ S.oriMode=b.dataset.o; saveAll(); updateCamUI(); });
+$$('#cmAfter [data-a]').forEach(b=>b.onclick=()=>{ S.afterShot=b.dataset.a; saveAll(); updateCamUI(); });
 $('#cmInfo').onclick=()=>{ S.showInfo=!S.showInfo; saveAll(); updateCamUI(); };
 $('#cmImport').onclick=()=>{ closeCamSheets(); $('#fileIn').click(); };
 $('#cmNative').onclick=()=>{ closeCamSheets(); $('#capIn').click(); };
 
-$('#camClose').onclick=()=>{ go('album'); renderItems(); renderPhotos(); updateCheckBadge(); if($('#mapPane').classList.contains('on')) setTimeout(renderMap,50); if($('#check').classList.contains('on')) renderCheck(); };
+$('#camClose').onclick=()=>{ camJob=null; updateCamMode(); go('album'); renderItems(); renderPhotos(); updateCheckBadge(); if($('#mapPane').classList.contains('on')) setTimeout(renderMap,50); if($('#check').classList.contains('on')) renderCheck(); };
 /* 測点の No. を1つ進める（次の木・次の場所へ）。進めたら状況は最初にもどす */
 function curOpts(){ const i=cur&&infos[cur.infoKey]; return Object.assign({ noStyle:'no', layout:'one3', zip:'none' }, (i&&i.opts)||{}); }
 const COLL=new Intl.Collator('ja',{numeric:true,sensitivity:'base'});
@@ -2209,42 +2394,55 @@ $('#shutter').onclick=async()=>{
   ctx.drawImage(video,sx,sy,sw,sh,0,0,sw,sh);
   ctx.setTransform(1,0,0,1,0,0);
   flash();
-  await composeAndSave(c,ctx);
+  const p=await composeAndSave(c,ctx,false,camJob?{replaces:camJob.replaces}:{});
+  afterShot(p);
 };
+/* 撮ったら：標準は一覧にもどって、撮った写真を選んだ状態にする（次：作業中を撮る…がすぐ押せる） */
+function afterShot(p){
+  const wasRetake=!!camJob; camJob=null; updateCamMode();
+  if(!p) return;
+  if(S.afterShot!=='stay'||wasRetake){ selId=p.id; showList(); }
+}
+function updateCamMode(){ const m=$('#camMode'); m.textContent=camJob?`撮り直し：${camJob.stage||''}（前の写真と入れ替え）`:''; m.classList.toggle('on',!!camJob); }
 function flash(){ const f=$('#flash'); f.style.transition='none'; f.style.opacity='.8'; requestAnimationFrame(()=>{ f.style.transition='opacity .3s'; f.style.opacity='0'; }); if(navigator.vibrate) navigator.vibrate(30); }
 
-async function fromFiles(files,imported){
-  for(const f of files){
-    const img=await loadImage(f); const max=4032, s=Math.min(1,max/Math.max(img.width,img.height));
-    const c=document.createElement('canvas'); c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
-    const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,c.width,c.height);
-    await composeAndSave(c,ctx,imported);
-  }
+async function fromFiles(files,imported,opt){
+  let last=null;
+  for(const f of files){ const c=await imageToCanvas(f); last=await composeAndSave(c,c.getContext('2d'),imported,opt||{}); }
+  return last;
 }
 $('#fileIn').onchange=e=>{ const f=[...e.target.files]; e.target.value=''; fromFiles(f,true); };
-$('#capIn').onchange=e=>{ const f=[...e.target.files]; e.target.value=''; fromFiles(f,false); };   // その場で撮った写真は位置・方位も記録
+$('#capIn').onchange=async e=>{ const f=[...e.target.files]; e.target.value=''; const p=await fromFiles(f,false,camJob?{replaces:camJob.replaces}:{}); afterShot(p); };   // その場で撮った写真は位置・方位も記録
 function loadImage(file){ return new Promise((res,rej)=>{ const u=URL.createObjectURL(file), i=new Image(); i.onload=()=>{ URL.revokeObjectURL(u); res(i); }; i.onerror=rej; i.src=u; }); }
 
-async function composeAndSave(c,ctx,imported){
-  const b={...boards[cur.id], date:boards[cur.id].date||today()};
-  if(boardOn){ const r=boardRect(c.width,c.height); drawBoard(ctx,r.x,r.y,r.w,cur.tpl,b,S.balpha); }
+/* opt：board・stage・itemId（指定なしは今の黒板）、replaces（入れ替える前の写真）、base（撮影日時・位置を引きつぐ写真）、raw（黒板なしの元写真）、boardOn */
+async function composeAndSave(c,ctx,imported,opt={}){
+  const raw = opt.raw || await new Promise(res=>c.toBlob(res,'image/jpeg',0.9));     // 黒板を入れる前の写真（あとで黒板を直せるように）
+  const b={...(opt.board||boards[cur.id])}; if(!b.date) b.date=today();
+  const bOn = opt.boardOn ?? boardOn;
+  if(bOn){ const r=boardRect(c.width,c.height); drawBoard(ctx,r.x,r.y,r.w,cur.tpl,b,S.balpha); }
   const blob=await new Promise(res=>c.toBlob(res,'image/jpeg',0.9));
   const tc=document.createElement('canvas'), ts=360/Math.max(c.width,c.height);
   tc.width=Math.round(c.width*ts); tc.height=Math.round(c.height*ts); tc.getContext('2d').drawImage(c,0,0,tc.width,tc.height);
-  const now=new Date();
+  const base=opt.base||null, now=base&&base.takenAt?new Date(base.takenAt):new Date();
   const stamp=`${now.getFullYear()}${pad2(now.getMonth()+1)}${pad2(now.getDate())}-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`;
+  const stage = opt.stage ?? (curStage||b.stage||'');
   const clean=s=>String(s||'').replace(/[\\/:*?"<>|\s]+/g,'').slice(0,20);
-  const fileName=[stamp,clean(b.koshu)||'写真',clean(b.sokuten),clean(b.stage),clean(me())].filter(Boolean).join('_')+'.jpg';
+  const fileName=[stamp,clean(b.koshu)||'写真',clean(b.sokuten),clean(stage),clean(me())].filter(Boolean).join('_')+(opt.replaces?'_'+uid().slice(0,4):'')+'.jpg';
   const geoFresh = lastGeo && (Date.now()-lastGeo.t<60000) && !imported;
-  const p={ id:uid(), siteId:cur.id, blob, thumb:tc.toDataURL('image/jpeg',0.75), board:b, tpl:cur.tpl, boardOn,
-    itemId:curItem?.id||'', stage:curStage||b.stage||'', takenAt:now.getTime(), staff:me(), fileName, status:'pending',
-    lat:geoFresh?lastGeo.lat:null, lng:geoFresh?lastGeo.lng:null, acc:geoFresh?lastGeo.acc:null, heading:imported?null:heading };
-  await idbPut(p); await refreshPhotos();
-  if(curItem) markShot(curItem.id,p.stage);
-  const miss=missingBefore(targetKeyOf(p),p.stage);
+  const geo = base ? { lat:base.lat??null, lng:base.lng??null, acc:base.acc??null, heading:base.heading??null }
+                   : { lat:geoFresh?lastGeo.lat:null, lng:geoFresh?lastGeo.lng:null, acc:geoFresh?lastGeo.acc:null, heading:imported?null:heading };
+  const p={ id:uid(), siteId:cur.id, blob, raw, thumb:tc.toDataURL('image/jpeg',0.75), board:b, tpl:cur.tpl, boardOn:bOn,
+    itemId: opt.itemId ?? (curItem?.id||''), stage, takenAt:now.getTime(), staff:me(), fileName, status:'pending', replaces:opt.replaces||'', ...geo };
+  await idbPut(p);
+  if(opt.replaces){ const old=photosCache.find(x=>x.id===opt.replaces); if(old){ old.state='差し替え済'; old.stateDirty=false; await idbPut(old); } }
+  await refreshPhotos();
+  if(p.itemId) markShot(p.itemId,p.stage);
+  const miss=opt.replaces?[]:missingBefore(targetKeyOf(p),p.stage);
   $('#lastThumb').src=p.thumb;
-  if(miss.length) toast(`⚠ ${miss.join('・')} がまだです（${p.stage}を撮影）`,3500); else toast(p.stage?`${p.stage} を撮影しました`:'撮影しました',1200);
+  if(miss.length) toast(`⚠ ${miss.join('・')} がまだです（${p.stage}を撮影）`,3500); else toast(opt.replaces?'入れ替えました':(p.stage?`${p.stage} を撮影しました`:'撮影しました'),1200);
   processQueue();
+  return p;
 }
 $('#lastThumb').onclick=()=>{ const l=photosCache.filter(p=>p.siteId===cur?.id).sort((a,b)=>b.takenAt-a.takenAt)[0]; if(l) openViewer(l.id); };
 
@@ -2270,7 +2468,7 @@ async function openViewerAny(id){
     const p=allPhotosHere().find(x=>x.id===id); if(!p) return;
     VA=p; viewing=null; $('#vImg').removeAttribute('src');
     $('#vInfo').innerHTML=`${esc(p.by||'')} ・ ${esc(new Date(p.takenAt).toLocaleString('ja-JP'))}<br>写真を読み込んでいます…`;
-    $('#vRetry').style.display='none'; $('#vDelete').style.display='none';
+    $('#vRetry').style.display='none'; $('#vDelete').style.display='';
     drawVEdit(); $('#viewer').classList.add('on');
     try{ const b=await photoBlob(p); if(viewUrl) URL.revokeObjectURL(viewUrl); viewUrl=URL.createObjectURL(b); $('#vImg').src=viewUrl; $('#vInfo').innerHTML=`${esc(p.by||'')} ・ ${esc(new Date(p.takenAt).toLocaleString('ja-JP'))}<br>✅ ドライブ（みんなの写真）`; }
     catch(e){ $('#vInfo').innerHTML+=`<br>⚠ 読み込めませんでした（${esc(e.message||e)}）`; }
@@ -2318,10 +2516,7 @@ $('#vShare').onclick=async()=>{
   else { const a=document.createElement('a'); a.href=viewUrl; a.download=viewing.fileName; a.click(); }
 };
 $('#vRetry').onclick=()=>{ viewing.status='pending'; idbPut(viewing).then(processQueue); $('#viewer').classList.remove('on'); toast('送信をやり直します'); };
-$('#vDelete').onclick=async()=>{
-  if(viewing.status!=='done' && !confirm('まだドライブに送られていません。削除すると元に戻せません。削除しますか？')) return;
-  await idbDel(viewing.id); await refreshPhotos(); $('#viewer').classList.remove('on'); renderPhotos(); toast('削除しました');
-};
+$('#vDelete').onclick=async()=>{ const id=viewing?viewing.id:VA&&VA.id; if(!id) return; $('#viewer').classList.remove('on'); await deletePhoto(id); };
 
 /* =========================================================
    設定
@@ -2354,6 +2549,8 @@ $('#setCleanup').onclick=async()=>{
    ========================================================= */
 (async function init(){
   try{ await openDB(); }catch(e){ toast('端末に保存できません（プライベートモードを解除してください）',4000); }
+  await refreshPhotos();
+  for(const p of photosCache.filter(p=>p.state==='削除'&&!p.stateDirty)) await idbDel(p.id);   // 消した写真は次に開いたときに端末から片づける
   await refreshPhotos();
   renderHome();
   loadStaff().then(()=>{ if(!me()) openSettings(); });
