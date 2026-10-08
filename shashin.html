@@ -87,16 +87,16 @@ header .back{font-size:22px;padding:4px 12px}
 #boardPreview{max-width:100%;max-height:34vh;border-radius:4px}
 /* カメラ */
 #camera{background:#000}
-#camWrap{position:absolute;inset:0;overflow:hidden}
+#camWrap{position:absolute;left:0;right:0;top:calc(var(--safe-t) + 60px);bottom:calc(var(--safe-b) + 150px);overflow:hidden;background:#000}
 #video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
 #overlay{position:absolute;inset:0;width:100%;height:100%}
 #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
 #camMsg{position:absolute;left:16px;right:16px;top:40%;color:#fff;text-align:center;line-height:1.7;display:none}
-.camTop{position:absolute;left:0;right:0;top:0;padding:calc(var(--safe-t) + 8px) 10px 8px;display:flex;gap:8px;align-items:center;background:linear-gradient(rgba(0,0,0,.6),transparent)}
+.camTop{position:absolute;left:0;right:0;top:0;padding:calc(var(--safe-t) + 8px) 10px 8px;display:flex;gap:8px;align-items:center;background:#000}
 .camTop .info{flex:1;color:#fff;font-size:12px;line-height:1.4;text-shadow:0 1px 2px #000}
 .cbtn{background:rgba(0,0,0,.55);color:#fff;border-radius:10px;padding:9px 12px;font-size:14px;font-weight:600;border:1px solid rgba(255,255,255,.25)}
 .cbtn.on{background:var(--main)}
-.camBottom{position:absolute;left:0;right:0;bottom:0;padding:10px 14px calc(var(--safe-b) + 14px);background:linear-gradient(transparent,rgba(0,0,0,.7))}
+.camBottom{position:absolute;left:0;right:0;bottom:0;padding:10px 14px calc(var(--safe-b) + 14px);background:#000}
 .camRow{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .camRow.small{justify-content:center;margin-bottom:12px;flex-wrap:wrap}
 #shutter{width:78px;height:78px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.5);background-clip:padding-box}
@@ -770,7 +770,7 @@ function shootItem(itemId,stage){
   b.biko = cur.tpl==='std' ? [it.kikaku,it.memo].filter(Boolean).join('　') : (it.memo||'');
   saveAll(); openCamera();
 }
-$('#btnShoot').onclick=()=>{ curItem=null; curStage=''; openBoardEdit(true); };
+$('#btnShoot').onclick=()=>{ curItem=null; curStage=''; const b=boards[cur.id]; b.stage=''; b.date=today(); saveAll(); openCamera(); };
 
 /* 写真一覧 */
 function renderPhotos(){
@@ -1186,10 +1186,14 @@ function drawOverlay(){
   const v=videoDisplayRect(), r=boardRect(v.w,v.h);
   drawOverlay.rect={x:v.x+r.x,y:v.y+r.y,w:r.w,h:r.h};
   drawBoard(ctx,v.x+r.x,v.y+r.y,r.w,cur.tpl,boards[cur.id]);
+  const tag='✎ タップで黒板を編集', fs=12; ctx.font=`700 ${fs}px ${FONT}`;
+  const tw=ctx.measureText(tag).width+14, tx=v.x+r.x, ty=S.boardPos.includes('b') ? v.y+r.y-22 : v.y+r.y+r.h+4;
+  ctx.fillStyle='rgba(255,255,255,.92)'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(tx,ty,tw,18,9); else ctx.rect(tx,ty,tw,18); ctx.fill();
+  ctx.fillStyle='#22502e'; ctx.textBaseline='middle'; ctx.fillText(tag,tx+7,ty+9);
 }
 video.addEventListener('loadedmetadata',drawOverlay);
 window.addEventListener('resize',()=>setTimeout(drawOverlay,200));
-overlay.onclick=e=>{ const r=drawOverlay.rect; if(boardOn&&r&&e.offsetX>=r.x&&e.offsetX<=r.x+r.w&&e.offsetY>=r.y&&e.offsetY<=r.y+r.h) openBoardEdit(false); };
+overlay.onclick=e=>{ const r=drawOverlay.rect; if(boardOn&&r&&e.offsetX>=r.x-6&&e.offsetX<=r.x+r.w+6&&e.offsetY>=r.y-26&&e.offsetY<=r.y+r.h+26) openBoardEdit(false); };
 
 $('#camClose').onclick=()=>{ go('album'); renderItems(); renderPhotos(); if($('#mapPane').classList.contains('on')) setTimeout(renderMap,50); };
 $('#camEdit').onclick=()=>openBoardEdit(false);
