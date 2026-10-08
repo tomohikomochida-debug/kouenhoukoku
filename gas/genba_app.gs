@@ -1391,7 +1391,7 @@ function shashinGet_(a, p) {
     return { ok: true, photos: rows_('shashinPhotos').filter(function (r) { return !p.siteId || String(r.siteId) === String(p.siteId); }).map(function (r) {
       return { photoId: r.photoId, itemId: r.itemId, stage: r.stage, koshu: r.koshu, kikaku: r.kikaku, sokuten: r.sokuten, takenAt: r.takenAt, by: r.by,
         lat: shashinNum_(r.lat), lng: shashinNum_(r.lng), heading: shashinNum_(r.heading), fileName: r.fileName, fileId: r.fileId, url: r.url, excluded: r.excluded === true || String(r.excluded) === 'true' || String(r.excluded) === '1',
-        state: r.state || '', replaces: r.replaces || '' }; }) };
+        state: r.state || '', replaces: r.replaces || '', biko: r.biko || '' }; }) };
   }
   if (a === 'folder') {   // ドライブのフォルダを開く（無ければ作る）
     var s = shashinSite_(p.siteId);
@@ -1433,7 +1433,7 @@ function shashinUpdatePhoto_(b) {
   var had = null; rows_('shashinPhotos').forEach(function (r) { if (String(r.photoId) === String(b.photoId)) had = r; });
   if (!had) return { ok: false, error: 'その写真の記録がありません' };
   var o = { photoId: String(b.photoId) };
-  ['lat', 'lng', 'heading', 'stage', 'koshu', 'kikaku', 'sokuten', 'excluded', 'state'].forEach(function (k) { if (b[k] !== undefined && b[k] !== null) o[k] = b[k]; });
+  ['lat', 'lng', 'heading', 'stage', 'koshu', 'kikaku', 'sokuten', 'biko', 'excluded', 'state'].forEach(function (k) { if (b[k] !== undefined && b[k] !== null) o[k] = b[k]; });
   if (o.state !== undefined && String(o.state) !== String(had.state || '') && had.fileId) {
     try { DriveApp.getFileById(had.fileId).setTrashed(o.state === '削除'); } catch (e) {}
   }

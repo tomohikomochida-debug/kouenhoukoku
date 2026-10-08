@@ -155,6 +155,7 @@ header .back{font-size:22px;padding:4px 12px}
 .sheet h2{margin:0 0 14px;font-size:18px}
 #viewer{background:#000;align-items:stretch;flex-direction:column}
 #viewer img{flex:1;min-height:0;object-fit:contain;width:100%}
+#viewer .vside{max-height:58vh;overflow-y:auto;flex-shrink:0}
 #viewer .vinfo{color:#ddd;font-size:12px;padding:8px 14px;line-height:1.6}
 #viewer .vbtns{display:flex;gap:8px;padding:8px 12px calc(var(--safe-b) + 12px);flex-wrap:wrap}
 #viewer .vbtns button{flex:1;min-width:90px;padding:12px;border-radius:10px;background:#333;color:#fff;font-weight:600}
@@ -261,6 +262,10 @@ header .back{font-size:22px;padding:4px 12px}
 .vedit .quick button{background:#333;color:#fff}.vedit .quick button.on{background:var(--main)}
 .vedit input{width:100%;padding:8px;border-radius:8px;border:none;margin-top:4px;font-size:15px}
 .vedit .row2{gap:6px}
+.vf{display:flex;gap:8px;align-items:center;margin-top:6px}
+.vf>span{flex:0 0 52px;font-size:13px;color:#bbb}
+.vf input,.vf textarea{flex:1;width:auto;padding:9px;border-radius:8px;border:none;font-size:15px;font-family:inherit;margin:0}
+.vf .quick{margin-top:0}
 @media (min-width:900px){
   .scroll{width:100%;max-width:1100px;margin:0 auto;padding-left:24px;padding-right:24px}
   .grid{grid-template-columns:repeat(6,1fr)}
@@ -1242,7 +1247,7 @@ function renderPhotos(){
     const row=p=>{ n++; const d=new Date(p.takenAt), b=p.board||{};
       return `<div class="prow ${p.id===selId?'sel':''}" data-id="${esc(p.id)}"><div class="pth">${cell(p).replace(' sel"','"').replace('data-id=','data-x=')}<button class="pre" data-re="${esc(p.id)}">📷 撮り直す</button></div>
         <div class="pinf">${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())} ・ ${esc(p.by||'')}
-        <b>${esc(b.koshu||'工種なし')}</b><b>${esc(b.sokuten||'')}</b>${b.kikaku?`<div>${esc(b.kikaku)}</div>`:''}${b.jushu&&!String(b.sokuten||'').includes(b.jushu)?`<div>${esc(b.jushu)}</div>`:''}
+        <b>${esc(b.koshu||'工種なし')}</b><b>${esc(b.sokuten||'')}</b>${b.date?`<div>撮影日：${esc(b.date)}</div>`:''}${String(b.biko||'').split('\n').filter(l=>l.trim()&&l.trim()!==p.stage).map(l=>`<div>${esc(l)}</div>`).join('')||(b.kikaku?`<div>${esc(b.kikaku)}</div>`:'')}
         ${p.stage?`<span class="stg3" style="background:${stageColor(p.stage)}">${esc(p.stage)}</span>`:''}</div><span class="no">${n}</span></div>`; };
     box.innerHTML='<div class="plist">'+ts.map(t=>{
       const j=judge(t), ph=t.photos.slice().sort((a,b)=>si(a.stage)-si(b.stage)||a.takenAt-b.takenAt), out=[];
@@ -1382,11 +1387,15 @@ function editPhotoBoard(id){
   openBoardEdit(false);
 }
 function endPhotoEdit(){ const pe=photoEdit; photoEdit=null; boards[cur.id]=pe.board; curStage=pe.stage; curItem=pe.item; saveAll(); return pe; }
-async function applyPhotoEdit(){
-  const nb={...boards[cur.id]}, stage=curStage||nb.stage||'', pe=endPhotoEdit(), lp=photosCache.find(x=>x.id===pe.id); if(!lp) return showList();
+/* この端末の写真（黒板なしの元写真あり）を、直した黒板で作り直して入れ替える（前の写真は残す＝元に戻せる） */
+async function rebuildPhoto(lp,nb,stage,boardOnOverride){
   const same=['koshu','kikaku','sokuten'].every(k=>(nb[k]||'')===(lp.board[k]||''));
   const c=await imageToCanvas(lp.raw);
-  const p=await composeAndSave(c,c.getContext('2d'),true,{ board:nb, stage, itemId:same?lp.itemId||'':'', replaces:lp.id, base:lp, raw:lp.raw, boardOn:true });
+  return composeAndSave(c,c.getContext('2d'),true,{ board:nb, stage, itemId:same?lp.itemId||'':'', replaces:lp.id, base:lp, raw:lp.raw, boardOn:boardOnOverride??(lp.boardOn!==false) });
+}
+async function applyPhotoEdit(){
+  const nb={...boards[cur.id]}, stage=curStage||nb.stage||'', pe=endPhotoEdit(), lp=photosCache.find(x=>x.id===pe.id); if(!lp) return showList();
+  const p=await rebuildPhoto(lp,nb,stage,true);
   selId=p.id; showList(); snack('黒板を直しました',()=>undoReplaceNoAsk(p.id));
 }
 
@@ -2088,7 +2097,7 @@ function allPhotosAll(){   // この端末の写真＋みんなの写真（送�
   if(!cur) return [];
   const mine=photosCache.filter(p=>p.siteId===cur.id).map(p=>({ id:p.id, itemId:p.itemId, stage:p.stage, board:p.board, takenAt:p.takenAt, thumb:p.thumb, by:p.staff, local:true, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, acc:p.acc, heading:p.heading }));
   const ids=new Set(mine.map(p=>p.id));
-  const team=teamPhotos.filter(p=>!ids.has(p.photoId)).map(p=>({ id:p.photoId, itemId:p.itemId, stage:p.stage, board:{koshu:p.koshu,sokuten:p.sokuten,kikaku:p.kikaku||''}, takenAt:new Date(String(p.takenAt).replace(' ','T')).getTime()||0, url:p.url, by:p.by, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, heading:p.heading }));
+  const team=teamPhotos.filter(p=>!ids.has(p.photoId)).map(p=>({ id:p.photoId, itemId:p.itemId, stage:p.stage, board:{koshu:p.koshu,sokuten:p.sokuten,kikaku:p.kikaku||'',biko:p.biko||''}, takenAt:new Date(String(p.takenAt).replace(' ','T')).getTime()||0, url:p.url, by:p.by, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, heading:p.heading }));
   return mine.concat(team);
 }
 function allPhotosHere(){   // 見えている写真（削除したもの・撮り直しで入れ替わった前の写真は除く）
@@ -2343,8 +2352,9 @@ async function renderPage(P,scale){
     const stg=s.p.stage||'';
     if(stg){ ctx.font=`700 26px ${FONT}`; const bw=ctx.measureText(stg).width+28; ctx.fillStyle=stageColor(stg); ctx.fillRect(x,ty-30,bw,40); txt(ctx,stg,x+14,ty-1,26,{bold:true,color:'#fff'}); ty+=46; }
     const b=s.p.board||{};
-    const lines = P.title ? [['撮影日',new Date(s.p.takenAt).toLocaleDateString('ja-JP')],['撮影者',s.p.by||'']]
-      : [['工種',b.koshu||''],['規格',b.kikaku||''],['測点',b.sokuten||''],['撮影日',new Date(s.p.takenAt).toLocaleDateString('ja-JP')]];
+    const memo=String(b.biko||'').split('\n').map(l=>l.trim()).filter(l=>l&&l!==s.p.stage&&!allStageWords().includes(l)).join('　');
+    const lines = P.title ? [['撮影日',b.date||new Date(s.p.takenAt).toLocaleDateString('ja-JP')],['メモ',memo],['撮影者',s.p.by||'']]
+      : [['工種',b.koshu||''],['測点',b.sokuten||''],['撮影日',b.date||new Date(s.p.takenAt).toLocaleDateString('ja-JP')],['メモ',memo],['規格',memo.includes(b.kikaku||'@@')?'':b.kikaku||'']];
     ctx.strokeStyle='#bbb'; ctx.lineWidth=1;
     lines.forEach(([k,v])=>{ if(!v) return; txt(ctx,k+'：'+v,x,ty,22,{max:w}); ctx.beginPath(); ctx.moveTo(x,ty+12); ctx.lineTo(x+w,ty+12); ctx.stroke(); ty+=44; });
     if(RP.lines){ ctx.strokeStyle='#d6d6d6'; for(let ly=ty+8; ly<y+ph; ly+=44){ ctx.beginPath(); ctx.moveTo(x,ly); ctx.lineTo(x+w,ly); ctx.stroke(); } }
@@ -2670,9 +2680,11 @@ function parseNo(s){ s=String(s||''); let m=s.match(/No\.?\s*(\d+)/i); if(m) ret
   m=s.match(/^(\d+)(?=$|[\s　])/); if(m) return {n:+m[1],tok:m[1]}; return null; }
 function bumpNo_old(b,d){ const s=String(b.sokuten||''), m=s.match(/No\.?\s*(\d+)/i);
   if(m){ const n=Math.max(1,Number(m[1])+d); b.sokuten=s.replace(m[0],'No.'+n); } else b.sokuten=('No.'+Math.max(1,nextBoardNo(b)+(d>0?0:-1))+' '+s).trim(); }
+/* いまの測点の書き方（A・1・No.1）のまま番号を進める */
+function fmtLike(tok,n){ return /^[A-Za-z]+$/.test(tok)?(tok===tok.toLowerCase()?alphaOf(n).toLowerCase():alphaOf(n)):/^\d+$/.test(tok)?String(n):(/^No\.?\s*/i.test(tok)?tok.match(/^No\.?\s*/i)[0]+n:fmtNo(n)); }
 function bumpNo(b,d){ const s=String(b.sokuten||''), p=parseNo(s);
-  if(p) b.sokuten=s.replace(p.tok,fmtNo(Math.max(1,p.n+d))); else b.sokuten=(fmtNo(Math.max(1,nextBoardNo(b)+(d>0?0:-1)))+' '+s).trim(); }
-function setNextNo(b){ const n=nextBoardNo(b), s=String(b.sokuten||''), p=parseNo(s); b.sokuten = p ? s.replace(p.tok,fmtNo(n)) : (fmtNo(n)+' '+s).trim(); }
+  if(p) b.sokuten=s.replace(p.tok,fmtLike(p.tok,Math.max(1,p.n+d))); else b.sokuten=(fmtNo(Math.max(1,nextBoardNo(b)+(d>0?0:-1)))+' '+s).trim(); }
+function setNextNo(b){ const n=nextBoardNo(b), s=String(b.sokuten||''), p=parseNo(s); b.sokuten = p ? s.replace(p.tok,fmtLike(p.tok,n)) : (fmtNo(n)+' '+s).trim(); }
 function nextBoardNo(b){ let max=0; allPhotosHere().forEach(p=>{ const q=p.board||{}; if((q.koshu||'')===(b.koshu||'')&&(q.kikaku||'')===(b.kikaku||'')){ const x=parseNo(q.sokuten); if(x) max=Math.max(max,x.n); } }); return max+1; }
 function nextBoardNo_old(b){ let max=0; allPhotosHere().forEach(p=>{ const q=p.board||{}; if((q.koshu||'')===(b.koshu||'')&&(q.kikaku||'')===(b.kikaku||'')){ const m=String(q.sokuten||'').match(/No\.?\s*(\d+)/i); if(m) max=Math.max(max,Number(m[1])); } }); return max+1; }
 $('#camNo').onclick=()=>{ const b=boards[cur.id]; bumpNo(b,1); curItem=null; curStage=curStages()[0]; setStageOnBoard(b,curStage); saveAll(); updateCamUI(); toast(`${b.sokuten}・${curStage}`,1200); };
@@ -2775,21 +2787,37 @@ async function openViewerAny(id){
     catch(e){ $('#vInfo').innerHTML+=`<br>⚠ 読み込めませんでした（${esc(e.message||e)}）`; }
   }
 }
+/* 写真の詳細：ミライ工事と同じ分け方（工種・測点・日付・メモ）＋状況・規格。
+   この端末で撮った写真は、直すと写っている黒板の字も作り直す（前の写真は残るので元に戻せる） */
 function drawVEdit(){
-  const p=viewing?{ id:viewing.id, stage:viewing.stage, board:viewing.board, excluded:!!viewing.excluded }:VA; if(!p) return;
-  const st=curStages(), b=p.board||{};
-  $('#vEdit').innerHTML=`<div style="margin-bottom:4px">状況</div><div class="quick" id="veStage">${st.map(s=>`<button data-s="${esc(s)}" class="${p.stage===s?'on':''}">${esc(s)}</button>`).join('')}</div>
-    <div class="row2" style="margin-top:6px"><div><div>工種</div><input id="veKoshu" value="${esc(b.koshu||'')}"></div><div><div>規格</div><input id="veKikaku" value="${esc(b.kikaku||'')}"></div></div>
-    <div style="margin-top:6px">測点</div><input id="veSokuten" value="${esc(b.sokuten||'')}">
+  const lp=viewing, p=lp?{ id:lp.id, stage:lp.stage, board:lp.board, excluded:!!lp.excluded }:VA; if(!p) return;
+  const st=curStages(), b=p.board||{}, canBoard=!!(lp&&lp.raw);
+  const fld=(id,l,v,ta)=>`<div class="vf"><span>${l}</span>${ta?`<textarea id="${id}" rows="2">${esc(v||'')}</textarea>`:`<input id="${id}" value="${esc(v||'')}">`}</div>`;
+  const memo=String(b.biko||'').split('\n').filter(l=>!allStageWords().includes(l.trim())).join('\n');
+  $('#vEdit').innerHTML=`<div class="vf"><span>状況</span><div class="quick" id="veStage">${st.map(s=>`<button data-s="${esc(s)}" class="${p.stage===s?'on':''}">${esc(s)}</button>`).join('')}</div></div>
+    ${fld('veKoshu','工種',b.koshu)}${fld('veSokuten','測点',b.sokuten)}${canBoard?fld('veDate','日付',b.date):''}${fld('veMemo','メモ',memo,true)}${fld('veKikaku','規格',b.kikaku)}
     <div class="quick" style="margin-top:8px"><button id="veSave" style="background:var(--main)">直した内容を保存</button><button id="veEx" class="${p.excluded?'on':''}">${p.excluded?'報告書に入れる':'報告書に入れない'}</button></div>
-    <div style="font-size:11px;opacity:.7;margin-top:4px">※ 並び替え・報告書・ファイル名に使う内容です。写真に写った黒板の文字は撮ったときのままです</div>`;
-  $('#veStage').querySelectorAll('button').forEach(x=>x.onclick=()=>savePhotoMeta(p.id,{stage:x.dataset.s}));
-  $('#veSave').onclick=()=>savePhotoMeta(p.id,{koshu:$('#veKoshu').value.trim(),kikaku:$('#veKikaku').value.trim(),sokuten:$('#veSokuten').value.trim()});
+    <div style="font-size:11px;opacity:.7;margin-top:4px">${canBoard?'※ 写っている黒板の字も直します（前の写真に戻すこともできます）':'※ 並び替え・報告書・ファイル名に使う記録を直します。この端末で撮った写真ではないので、写っている黒板の字はそのままです'}</div>`;
+  const vals=()=>({ koshu:$('#veKoshu').value.trim(), kikaku:$('#veKikaku').value.trim(), sokuten:$('#veSokuten').value.trim(), memo:$('#veMemo').value.trim(), date:$('#veDate')?$('#veDate').value.trim():null });
+  const save=async(stage)=>{
+    const v=vals(), stg=stage??p.stage;
+    if(canBoard){
+      const nb={...lp.board, koshu:v.koshu, kikaku:v.kikaku, sokuten:v.sokuten, biko:v.memo}; if(v.date!=null) nb.date=v.date;
+      const keep=cur.tpl; cur.tpl=lp.tpl||cur.tpl; setStageOnBoard(nb,stg); cur.tpl=keep;
+      const np=await rebuildPhoto(lp,nb,stg); openViewer(np.id); selId=np.id; refreshAlbum();
+      if(lp.excluded) await savePhotoMeta(np.id,{excluded:true});
+      snack('直しました（写真の黒板も）',async()=>{ await undoReplaceNoAsk(np.id); const o=photosCache.find(x=>x.id===lp.id); if(o) openViewer(o.id); });
+      return;
+    }
+    await savePhotoMeta(p.id,{ stage:stg, koshu:v.koshu, kikaku:v.kikaku, sokuten:v.sokuten, biko:v.memo });
+  };
+  $('#veStage').querySelectorAll('button').forEach(x=>x.onclick=()=>save(x.dataset.s));
+  $('#veSave').onclick=()=>save();
   $('#veEx').onclick=()=>savePhotoMeta(p.id,{excluded:!p.excluded});
 }
 async function savePhotoMeta(id,ch){
   const lp=photosCache.find(x=>x.id===id), tp=teamPhotos.find(x=>x.photoId===id);
-  if(lp){ if(ch.stage!=null) lp.stage=ch.stage; ['koshu','kikaku','sokuten'].forEach(k=>{ if(ch[k]!=null) lp.board[k]=ch[k]; }); if(ch.excluded!=null) lp.excluded=ch.excluded; if(ch.koshu!=null||ch.kikaku!=null||ch.sokuten!=null) lp.itemId=''; await idbPut(lp); viewing=lp; }
+  if(lp){ if(ch.stage!=null) lp.stage=ch.stage; ['koshu','kikaku','sokuten','biko'].forEach(k=>{ if(ch[k]!=null) lp.board[k]=ch[k]; }); if(ch.excluded!=null) lp.excluded=ch.excluded; if(ch.koshu!=null||ch.kikaku!=null||ch.sokuten!=null) lp.itemId=''; await idbPut(lp); viewing=lp; }
   if(tp){ Object.assign(tp,ch); if(ch.koshu!=null) tp.itemId=''; VA=allPhotosHere().find(x=>x.id===id); }
   if((tp||(lp&&lp.status==='done'))&&canSync()){ try{ await gasPost({mode:'updatePhoto',photoId:id,...ch}); }catch(e){} }
   drawVEdit(); renderPhotos(); updateCheckBadge(); toast('保存しました',900);
