@@ -70,6 +70,9 @@
   .banner.warn{background:var(--warn-soft);color:var(--warn)}
   .banner.ok{background:var(--leaf-soft)}
   .loading{padding:30px;text-align:center;color:var(--bark)}
+  /* 裏で最新を読んでいるあいだ、上に細い線を流す */
+  body.syncing header::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.8),transparent) no-repeat;background-size:35% 100%;animation:sync 1.1s ease-in-out infinite}
+  @keyframes sync{0%{background-position:-50% 0}100%{background-position:150% 0}}
 
   /* 打刻 */
   .clock{text-align:center;display:flex;flex-direction:column;gap:2px}
@@ -240,7 +243,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
 // 現場名の候補は日報のマスタから読む
 const NIPPOU_GAS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
-const LS = { token:'tc_token', me:'tc_me', names:'tc_names', queue:'tc_queue', bio:'tc_bio', site:'tc_site', bioAsked:'tc_bio_asked' };
+const LS = { token:'tc_token', me:'tc_me', names:'tc_names', queue:'tc_queue', bio:'tc_bio', site:'tc_site', bioAsked:'tc_bio_asked', cache:'tc_cache' };
 const KINDS = ['出勤','休日出勤','休み','振休','代休','雨天中止（半日）','雨天中止（全日）','公休'];
 const REASONS = ['打ち忘れ','電池切れ','電波なし','時刻の間違い','暗証番号忘れ','その他'];
 const ROLE_LABEL = { boss:'親方', office:'事務担当', staff:'スタッフ', none:'打刻なし' };
@@ -288,7 +291,7 @@ const S = {
   calRests: [], loaded: null, view: '', recMode: 'cal', period: periodOf(today()), fy: fyOf(today()), detail: null,
   yaStaff: null, yaMonth: today().slice(0,7), day: null, edit: null, confirm: null, menu: false, code: null,
   calEdit: null, reflect: null, history: null, staffEdit: null, setEdit: null, login: { step:'names', who:null, pin:'', pin1:'', code:'', err:'' },
-  queue: lsGet(LS.queue, []), sites: [], busy: false, pinAsk: null,
+  queue: lsGet(LS.queue, []).map(x => { delete x.waiting; return x; }), sites: [], busy: false, pinAsk: null,
 };
 const K = (id,s) => `${id}|${s}`;
 const byId = id => S.staff.find(x => x.id === id) || (S.me && S.me.id === id ? S.me : null);
@@ -435,21 +438,60 @@ function neededRange(){
   let to = fyEnd(S.fy) > pr.to ? fyEnd(S.fy) : pr.to;
   return { from: addDays(from, -7), to };
 }
+/* 前回読んだデータを端末に残しておき、開いたらすぐそれを出す（裏で最新に入れかえる） */
+function applyData(d){
+  S.days = {};
+  (d.days || []).forEach(x => { S.days[K(x.staffId, x.date)] = x; });
+  S.cal = {}; S.calExists = {}; Object.keys(d.cal || {}).forEach(fy => { S.cal[fy] = new Set(d.cal[fy].off); S.calExists[fy] = !!d.cal[fy].exists; });
+  S.hol = d.holidays || {}; S.closings = d.closings || {}; S.settings = d.settings || S.settings;
+  S.staff = d.staff || [];
+  if (d.calRests) S.calRests = d.calRests;
+}
+function cacheGet(){ const c = lsGet(LS.cache); return c && S.me && c.staffId === S.me.id && c.d ? c : null; }
+function cachePut(patch){
+  if (!S.me) return;
+  const c = Object.assign(cacheGet() || { staffId: S.me.id }, patch, { at: Date.now() });
+  try { localStorage.setItem(LS.cache, JSON.stringify(c)); } catch(e){ try { localStorage.removeItem(LS.cache); } catch(x){} }
+}
+function loadCache(){
+  const c = cacheGet(), r = neededRange();
+  if (!c || !c.range || c.range.from > r.from || c.range.to < r.to) return false;
+  applyData(Object.assign({}, c.d, { calRests: c.calRests || [] }));
+  S.loaded = c.range; S.stale = true;
+  return true;
+}
+let loadSeq = 0;
 async function loadData(force){
   const r = neededRange();
   if (!force && S.loaded && S.loaded.from <= r.from && S.loaded.to >= r.to) return;
+  const seq = ++loadSeq;
   S.busy = true; render();
   try {
-    const d = await api('data', { from: r.from, to: r.to, withCalRests: true }, 45000);
-    S.days = {};
-    d.days.forEach(x => { S.days[K(x.staffId, x.date)] = x; });
-    S.cal = {}; S.calExists = {}; Object.keys(d.cal).forEach(fy => { S.cal[fy] = new Set(d.cal[fy].off); S.calExists[fy] = !!d.cal[fy].exists; });
-    S.hol = d.holidays || {}; S.closings = d.closings || {}; S.settings = d.settings || S.settings;
-    S.staff = d.staff || []; S.calRests = d.calRests || [];
+    const d = await api('data', { from: r.from, to: r.to }, 45000);
+    if (seq !== loadSeq) return;
+    if (d.me && S.me && d.me.id === S.me.id){ S.me = Object.assign({}, S.me, d.me); lsSet(LS.me, S.me); }
+    const pend = Object.values(S.days).filter(x => x.pending);
+    applyData(d);
+    pend.forEach(x => { const k = K(x.staffId, x.date); if (S.queue.some(q => q.staffId === x.staffId)) S.days[k] = Object.assign({}, S.days[k] || {}, x); });
+    S.loaded = r; S.stale = false; showBanner('');
+    const keep = Object.assign({}, d); delete keep.me; delete keep.calRests;
+    cachePut({ range: r, d: keep });
+    loadCalRests(r);
+  } catch(e){
+    if (seq !== loadSeq) return;
+    if (e.code === 'auth'){ S.busy = false; render(); loadNames(); return; }
+    showBanner((S.loaded ? '最新のデータを読み込めませんでした（前に読んだ内容を出しています）：' : 'データを読み込めませんでした：') + e.message, true);
+  }
+  if (seq === loadSeq){ S.busy = false; render(); }
+}
+async function loadCalRests(r){
+  try {
+    const d = await api('calRests', { from: r.from, to: r.to }, 45000);
+    S.calRests = d.calRests || [];
+    cachePut({ calRests: S.calRests });
     if (d.calWarning) toast(d.calWarning, true);
-    S.loaded = r; showBanner('');
-  } catch(e){ showBanner('データを読み込めませんでした：' + e.message, true); }
-  S.busy = false; render();
+    render();
+  } catch(e){ /* カレンダーが読めなくても、ほかはそのまま使える */ }
 }
 function putDay(x){ if (!x || !x.staffId) return; S.days[K(x.staffId, x.date)] = x; }
 async function loadSites(){
@@ -509,20 +551,23 @@ async function doPunch(type){
   const kind = ($('#kind') && $('#kind').value) || '出勤';
   if (site) lsSet(LS.site, site);
   toast('記録しています…');
-  const pos = await getPos();
-  const item = { staffId: S.me.id, clientId: uuid(), type, pressedAt, site, kind, bio, device: device(), lat: pos ? pos.lat : '', lng: pos ? pos.lng : '', acc: pos ? pos.acc : '' };
-  // 画面にはすぐ出す
+  // 押した時刻で、まず端末に残して画面に出す（位置を待つあいだにアプリを閉じても消えない）
+  const item = { staffId: S.me.id, clientId: uuid(), type, pressedAt, site, kind, bio, device: device(), lat: '', lng: '', acc: '' };
+  S.queue.push(item); lsSet(LS.queue, S.queue);
   const t = jstParts(new Date(pressedAt));
   const k = K(S.me.id, t.date), old = S.days[k] || { staffId:S.me.id, date:t.date, kind, brk:S.settings.break };
-  S.days[k] = Object.assign({}, old, type==='in' ? { in:t.time } : { out:t.time }, { site: site || old.site, src: old.src || '打刻', pending:true, gps: !!pos });
-  S.queue.push(item); lsSet(LS.queue, S.queue);
+  S.days[k] = Object.assign({}, old, type==='in' ? { in:t.time } : { out:t.time }, { site: site || old.site, src: old.src || '打刻', pending:true });
   render();
+  item.waiting = true;
+  const pos = await getPos();
+  if (pos){ Object.assign(item, { lat: pos.lat, lng: pos.lng, acc: pos.acc }); if (S.days[k]) S.days[k].gps = true; }
+  delete item.waiting; lsSet(LS.queue, S.queue);
   await flushQueue(true);
 }
 let flushing = false;
 async function flushQueue(fromPunch){
   if (flushing || !S.token || !S.me) return;
-  const mine = () => S.queue.filter(x => !x.staffId || x.staffId === S.me.id);
+  const mine = () => S.queue.filter(x => (!x.staffId || x.staffId === S.me.id) && !x.waiting);
   if (!mine().length) return;
   flushing = true;
   let sent = 0;
@@ -558,6 +603,7 @@ function render(){
   $('#tabs').hidden = false;
   $('#tabsIn').innerHTML = tabs.map(([k,l]) => `<button data-act="tab" data-arg="${k}" aria-current="${S.view===k || (S.view==='detail' && k==='all')}">${l}</button>`).join('');
   main.className = ['punch'].includes(S.view) ? 'narrow' : '';
+  document.body.classList.toggle('syncing', !!(S.busy && S.loaded));
   main.innerHTML = (S.busy && !S.loaded) ? '<div class="loading">読み込み中…</div>' : view();
   if (S.scrollMonth){ const el = document.getElementById('am-' + S.scrollMonth); S.scrollMonth = null; if (el && el.scrollIntoView) setTimeout(() => el.scrollIntoView({ block:'start' }), 0); }
   layer.innerHTML = (S.edit ? editSheet() : '') + (S.day ? daySheet() : '') + (S.menu ? menuSheet() : '') + (S.code ? codeSheet() : '') + (S.pinAsk ? pinAskSheet() : '') + (S.bioOffer ? bioOfferSheet() : '');
@@ -641,7 +687,7 @@ async function afterLogin(d){
   await loadData(true);
   if (!bioInfo() && await bioAvailable()) { S.bioOffer = true; render(); }
 }
-function logoutLocal(){ S.token = null; S.me = null; lsSet(LS.token, null); lsSet(LS.me, null); S.loaded = null; S.days = {}; render(); }
+function logoutLocal(){ S.token = null; S.me = null; lsSet(LS.token, null); lsSet(LS.me, null); lsSet(LS.cache, null); S.loaded = null; S.days = {}; S.staff = []; S.calRests = []; render(); }
 
 /* ---------- 打刻 ---------- */
 function punchView(){
@@ -1347,12 +1393,13 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
   if (!gasReady()) return;
   loadSites();
   if (S.token && S.me){
-    try { const d = await api('me'); S.me = d.me; lsSet(LS.me, S.me); }
-    catch(e){ if (e.code === 'auth'){ render(); loadNames(); return; } if (!e.network) showBanner(e.message, true); }
+    // 前回の内容ですぐ画面を出し、最新は裏で取りに行く（サーバーへの問い合わせは1回）
     S.view = S.me.punch ? 'punch' : 'all';
+    loadCache();
     render();
     flushQueue(false);
     await loadData(true);
+    if (!S.token) return;
     if (!bioInfo() && !lsGet(LS.bioAsked) && await bioAvailable()){ S.bioOffer = true; render(); }
   } else {
     loadNames();

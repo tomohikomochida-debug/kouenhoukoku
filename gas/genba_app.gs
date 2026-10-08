@@ -197,30 +197,84 @@ function tcMod_() {
   TC_MOD_ = new Function(tcSrc_() + '\nreturn { doGet: doGet, doPost: doPost, setup: setup };')();
   return TC_MOD_;
 }
-function tcClear_() { CacheService.getScriptCache().remove('tc_src_n'); TC_MOD_ = null; }
+function tcClear_() { var c = CacheService.getScriptCache(); c.remove('tc_src_n'); c.remove('src_chk'); TC_MOD_ = null; }
 function tcSrc_() {
-  var cache = CacheService.getScriptCache(), n = Number(cache.get('tc_src_n') || 0);
-  if (n) {
-    var keys = []; for (var i = 0; i < n; i++) keys.push('tc_src_' + i);
-    var got = cache.getAll(keys), out = '', ok = true;
-    for (var j = 0; j < n; j++) { if (got['tc_src_' + j] == null) { ok = false; break; } out += got['tc_src_' + j]; }
-    if (ok && out) return out;
-  }
-  try {
-    var res = UrlFetchApp.fetch(TC_SRC_URL, { muteHttpExceptions: true, headers: { 'Cache-Control': 'no-cache' } });
-    var t = res.getContentText('UTF-8');
-    if (res.getResponseCode() === 200 && /function doPost\s*\(/.test(t)) {
-      var obj = {}, size = 20000, m = Math.ceil(t.length / size);
-      for (var k = 0; k < m; k++) obj['tc_src_' + k] = t.slice(k * size, (k + 1) * size);
-      obj.tc_src_n = String(m);
-      try { cache.putAll(obj, 300); } catch (e1) {}
-      tcBackup_(t);
-      return t;
-    }
-  } catch (e2) { /* GitHub につながらないときは控えで動く */ }
+  var cache = CacheService.getScriptCache(), got = srcChunksGet_(cache, 'tc_src_');
+  if (got) return got;
+  var t = srcFetch_(TC_SRC_URL, 'TC_SRC_ETAG', true, /function doPost\s*\(/);
+  if (t) { srcChunksPut_(cache, 'tc_src_', t); tcBackup_(t); return t; }
   var f = tcBackupFile_(false);
   if (f) return f.getBlob().getDataAsString('UTF-8');
   throw new Error('タイムカードの本体を読み込めませんでした（GitHub に接続できません）');
+}
+
+/* ================================================================
+ *  本体の読み込みを軽くする
+ *  ・本体（この genba_app.gs とタイムカードの本体）は 6時間キャッシュしておく
+ *  ・GitHub に新しい版があるかは 5分に1回だけ確かめる（変わっていなければ中身は送られてこない）
+ *    → 直したものは今まで通り数分で反映され、ふだんの読み込みは GitHub もドライブも見に行かない
+ *  ・ドライブの控えは、中身が変わったときだけ書き直す
+ * ================================================================ */
+var SRC_URL_MAIN = 'https://raw.githubusercontent.com/tomohikomochida-debug/kouenhoukoku/main/gas/genba_app.gs';
+var SRC_KEEP_SEC = 21600;   // キャッシュの長さ（GAS の上限の6時間）
+var SRC_CHECK_SEC = 300;    // 新しい版を確かめる間隔
+function srcChunksGet_(cache, pre) {
+  var n = Number(cache.get(pre + 'n') || 0); if (!n) return '';
+  var keys = []; for (var i = 0; i < n; i++) keys.push(pre + i);
+  var got = cache.getAll(keys), out = '';
+  for (var j = 0; j < n; j++) { if (got[pre + j] == null) return ''; out += got[pre + j]; }
+  return out;
+}
+function srcChunksPut_(cache, pre, t) {
+  var obj = {}, size = 20000, n = Math.ceil(t.length / size);
+  for (var i = 0; i < n; i++) obj[pre + i] = t.slice(i * size, (i + 1) * size);
+  obj[pre + 'n'] = String(n);
+  try { cache.putAll(obj, SRC_KEEP_SEC); } catch (e) {}
+}
+/** GitHub から本体を取る。etagKey があれば「変わっていなければ送らなくてよい」と頼む。変わっていなければ null、取れなければ '' */
+function srcFetch_(url, etagKey, full, must) {
+  var p = PropertiesService.getScriptProperties(), etag = full ? '' : String(p.getProperty(etagKey) || '');
+  var h = { 'Cache-Control': 'no-cache' }; if (etag) h['If-None-Match'] = etag;
+  var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, headers: h });
+  var code = res.getResponseCode();
+  if (code === 304) return null;
+  if (code !== 200) return '';
+  var t = res.getContentText('UTF-8');
+  if (!/function doGet\s*\(/.test(t) || !must.test(t)) return '';
+  try { new Function(t); } catch (e) { return ''; }   // 書きまちがいのある版は入れない（6時間止まらないように）
+  var hd = res.getHeaders() || {}, tag = hd.ETag || hd.etag || hd.Etag || '';
+  try { if (tag) p.setProperty(etagKey, String(tag)); } catch (e) {}
+  return t;
+}
+function md5_(t) { return Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, t, Utilities.Charset.UTF_8).map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join(''); }
+/** 1本の本体について：キャッシュを6時間に延ばし、新しい版があれば入れかえる */
+function srcRefresh_(cache, pre, url, etagKey, md5Key, must, backup) {
+  var cur = srcChunksGet_(cache, pre);
+  var t = null;
+  try { t = srcFetch_(url, etagKey, !cur, must); } catch (e) { t = ''; }
+  if (t === null || t === '') { if (cur) srcChunksPut_(cache, pre, cur); return; }   // 変わっていない／取れない → 今の版を延長
+  var p = PropertiesService.getScriptProperties(), h = md5_(t);
+  srcChunksPut_(cache, pre, t);
+  if (p.getProperty(md5Key) !== h) { try { backup(t); p.setProperty(md5Key, h); } catch (e) {} }
+}
+function keepFresh_() {
+  try {
+    var cache = CacheService.getScriptCache();
+    if (cache.get('src_chk')) return;
+    cache.put('src_chk', '1', SRC_CHECK_SEC);
+    srcRefresh_(cache, 'src_', SRC_URL_MAIN, 'SRC_ETAG', 'SRC_MD5', /function doPost\s*\(/, mainBackup_);
+    if (cache.get('tc_src_n')) srcRefresh_(cache, 'tc_src_', TC_SRC_URL, 'TC_SRC_ETAG', 'TC_SRC_MD5', /function doPost\s*\(/, tcBackup_);
+  } catch (e) { /* 確かめられなくても、今の版で動く */ }
+}
+/** 現場アプリ本体の控え（loader.gs と同じファイル・同じ書き方） */
+function mainBackup_(t) {
+  var p = PropertiesService.getScriptProperties(), id = String(p.getProperty('BACKUP_FILE_ID') || '').trim(), f = null;
+  if (id) { try { f = DriveApp.getFileById(id); if (f.isTrashed()) f = null; } catch (e) { f = null; } }
+  if (!f) { var it = DriveApp.getFilesByName('現場アプリ_本体の控え（自動・消さない）.txt'); f = it.hasNext() ? it.next() : null; }
+  if (!f) return;   // 控えは loader.gs が作る
+  p.setProperty('BACKUP_FILE_ID', f.getId());
+  var h = md5_(t); if (f.getDescription() === h) return;
+  f.setContent(t); f.setDescription(h);
 }
 function tcBackupFile_(create) {
   var p = PropertiesService.getScriptProperties(), id = String(p.getProperty('TC_BACKUP_FILE_ID') || '').trim();
@@ -232,7 +286,7 @@ function tcBackupFile_(create) {
 }
 function tcBackup_(t) {
   try {
-    var h = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, t, Utilities.Charset.UTF_8).map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+    var h = md5_(t);
     var f = tcBackupFile_(true);
     if (f.getDescription() === h) return;
     f.setContent(t); f.setDescription(h);
@@ -244,6 +298,7 @@ function tcBackup_(t) {
  * ================================================================ */
 function doGet(e) {
   var p = (e && e.parameter) || {}, app = p.app || '', a = p.action || '';
+  keepFresh_();
   try {
     if (app === 'timecard') { if (a === 'reload') tcClear_(); return tcMod_().doGet(e); }
     if (app === 'park') return out_(parkGet_(a, p));
@@ -272,6 +327,7 @@ function doGet(e) {
 function doPost(e) {
   var b = {};
   try { b = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad json' }); }
+  keepFresh_();
   try {
     if (b.app === 'timecard') return tcMod_().doPost(e);   // タイムカード（本体は gas/timecard_app.gs）
     var key = (b.app || '') + ':' + (b.mode || '');

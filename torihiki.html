@@ -124,6 +124,7 @@ main{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 .read-wait .loading{width:28px;height:28px;border-width:3px;border-color:var(--line);border-top-color:var(--leaf)}
 .read-wait p{margin:12px 0 0;font-size:14px;color:var(--bark)}
 </style>
+<style>/* 前回の内容を出して、裏で最新を読んでいるあいだ、上に細い線を流す */html.syncing body::before{content:'';position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);height:3px;z-index:99999;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,196,64,.95),transparent) no-repeat;background-size:35% 100%;animation:appsync 1.1s ease-in-out infinite}@keyframes appsync{0%{background-position:-50% 0}100%{background-position:150% 0}}</style>
 </head>
 <body>
 <div class="error-banner" id="errBanner"></div>
@@ -175,6 +176,11 @@ async function postJSON(body) { return (await fetch(GAS_URL, { method: 'POST', h
 /* ============ データ ============ */
 let SUP = [], KIND = '', HIST = [], ADMINS = ['親方'];
 const canDelete = () => ADMINS.includes(me());
+const syncing = on => document.documentElement.classList.toggle('syncing', !!on);   // 裏で最新を読んでいる印
+function showCached() {
+  const c = !DEMO && lsGet(LS.cache, null); if (!c) return false;
+  try { if (Array.isArray(c)) SUP = c; else { SUP = c.SUP; HIST = c.HIST || []; if (c.ADMINS && c.ADMINS.length) ADMINS = c.ADMINS; } if (!Array.isArray(SUP)) { SUP = []; return false; } render(); return true; } catch (e) { return false; }
+}
 async function load() {
   try {
     if (DEMO) {
@@ -459,7 +465,8 @@ $('meBtn').addEventListener('click', () => chooseName(true));
   $('demoBar').hidden = !DEMO;
   if (me()) $('meBtn').textContent = '👤 ' + me();
   if (p.get('q')) $('q').value = p.get('q');
-  load().then(() => { if (p.get('add')) chooseName(false, () => openEdit({ name: bare(p.get('add')), aliases: p.get('add') })); });
+  if (showCached()) syncing(true);
+  load().finally(() => syncing(false)).then(() => { if (p.get('add')) chooseName(false, () => openEdit({ name: bare(p.get('add')), aliases: p.get('add') })); });
   fetchStaff();
 })();
 </script>

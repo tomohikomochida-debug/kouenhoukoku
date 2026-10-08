@@ -145,6 +145,7 @@ nav.tabs button.on{color:var(--leaf);font-weight:700}
 .home-btn .hb-ic{font-size:15px;line-height:1}
 @media (max-width:400px){ .home-btn{padding:5px 8px} .home-btn .hb-t{display:none} }
 </style>
+<style>/* 前回の内容を出して、裏で最新を読んでいるあいだ、上に細い線を流す */html.syncing body::before{content:'';position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);height:3px;z-index:99999;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,196,64,.95),transparent) no-repeat;background-size:35% 100%;animation:appsync 1.1s ease-in-out infinite}@keyframes appsync{0%{background-position:-50% 0}100%{background-position:150% 0}}</style>
 </head>
 <body>
 <div class="error-banner" id="errBanner"></div>
@@ -418,6 +419,12 @@ function demoWordsAndTools() {
   let t = lsGet(LS.tools, null);
   if (!t) { t = SEED_TOOLS.map(r => ({ id: r[0], termId: r[1], location: r[2], qty: r[3], photoUrl: '', status: '倉庫', statusSite: '', registeredBy: 'お試し', reviewState: '確認済' })); lsSet(LS.tools, t); }
   return { w, t };
+}
+const syncing = on => document.documentElement.classList.toggle('syncing', !!on);   // 裏で最新を読んでいる印
+/** 開いたらすぐ、前回読んだ内容で画面を出す（最新は load() が裏で取ってきて入れかえる） */
+function showCached() {
+  const c = !DEMO && lsGet(LS.cache, null); if (!c || !c.CARDS) return false;
+  try { ({ CARDS, CAL, WORDS, TOOLS } = c); NICK = c.NICK || []; SUP = c.SUP || []; VEH = c.VEH || []; OUTS = c.OUTS || []; SITE_NOTES = c.SITE_NOTES || SITE_NOTES; applyTimed(); STAFF = staffList(); render(); return true; } catch (e) { return false; }
 }
 async function load() {
   try {
@@ -1455,7 +1462,8 @@ $('meBtn').addEventListener('click', () => chooseName(true));
   if (me()) $('meBtn').textContent = '👤 ' + me();
   const p = new URLSearchParams(location.search);
   if (p.get('date')) SEL = p.get('date');
-  load();
+  if (showCached()) syncing(true);
+  load().finally(() => syncing(false));
 })();
 </script>
 </body>

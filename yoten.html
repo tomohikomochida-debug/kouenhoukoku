@@ -154,6 +154,7 @@ nav.tabs button.on{color:var(--leaf);font-weight:700}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+<style>/* 前回の内容を出して、裏で最新を読んでいるあいだ、上に細い線を流す */html.syncing body::before{content:'';position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);height:3px;z-index:99999;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,196,64,.95),transparent) no-repeat;background-size:35% 100%;animation:appsync 1.1s ease-in-out infinite}@keyframes appsync{0%{background-position:-50% 0}100%{background-position:150% 0}}</style>
 </head>
 <body>
 <div class="error-banner" id="errBanner"></div>
@@ -247,7 +248,18 @@ const splitAl = s => String(s || '').split(/[、,，]/).map(x => x.trim()).filte
 /* ============ データ（用語集・道具管理・車両・取引先・名簿） ============ */
 let WORDS = { terms: [], aliases: [] }, TOOLS = [], VEH = [], SUP = [], NICK = [], STAFF = [], SITES = [];
 let MEMOS = null, REPLIES = [], ADMINS = ['親方'], REPLIERS = ['親方'], SERVER_NOW = '', SERVER_LIST = false;
+const syncing = on => document.documentElement.classList.toggle('syncing', !!on);   // 裏で最新を読んでいる印
+/** 前回読んだ用語集などがあれば、それですぐ動かし、最新は裏で取る。要点の一覧も同時に読み始める */
 async function load() {
+  const c0 = lsGet(LS.cache, {}) || {};
+  const had = !!c0.WORDS;
+  if (had) { WORDS = c0.WORDS; TOOLS = c0.TOOLS || []; VEH = c0.VEH || []; SUP = c0.SUP || []; NICK = c0.NICK || []; STAFF = staffList(); SITES = lsGet('dandori_me_sites', []) || []; }
+  syncing(true);
+  const memos = loadMemos();
+  const fresh = loadFresh().finally(() => memos.finally(() => syncing(false)));
+  if (!had) await fresh;
+}
+async function loadFresh() {
   const [w, t, d] = await Promise.allSettled([getJSON(GAS_URL + '?app=yougo&action=data'), getJSON(GAS_URL + '?app=dougu&action=data'), getJSON(GAS_URL + '?app=dandori&action=data&from=' + TODAY + '&to=' + TODAY)]);
   const ok = r => r.status === 'fulfilled' && r.value && r.value.ok;
   const c = lsGet(LS.cache, {}) || {};
@@ -258,7 +270,6 @@ async function load() {
   if (!ok(w) || !ok(t) || !ok(d)) { if (c.WORDS) toast('前回のデータで動いています（' + NET_ERR + '）'); else showError('用語集・道具・車両のデータを読み込めませんでした。' + NET_ERR); }
   STAFF = staffList(); SITES = lsGet('dandori_me_sites', []) || [];
   fetchStaff();
-  loadMemos();
 }
 const termById = id => WORDS.terms.find(t => t.termId === id);
 const toolOfTerm = termId => TOOLS.find(t => t.termId === termId);
@@ -811,13 +822,34 @@ async function save(auto, keepalive) {
 
 /* ============ まとめた記録・返事 ============ */
 let SEG = 'mine', OPEN_ID = '';
-async function loadMemos() {
+const LIST_CACHE = 'yoten_list_cache';
+let memosLoading = null;   // 同じ人の一覧を同時に2回取りに行かない
+function loadMemos() {
+  const who = me();
+  if (memosLoading && memosLoading.who === who && Date.now() - memosLoading.t < 800) return memosLoading.p;   // 開いた直後に重なった分だけまとめる
+  const p = loadMemosNow(who).finally(() => { if (memosLoading && memosLoading.p === p) memosLoading = null; });
+  memosLoading = { who, p, t: Date.now() };
+  return p;
+}
+async function loadMemosNow(who) {
+  if (!SERVER_LIST) {   // 前回の一覧があれば、まずそれを出す（名前ごとに分けて保存）
+    const c = lsGet(LIST_CACHE, null);
+    if (c && c.me === who && Array.isArray(c.memos)) {
+      MEMOS = c.memos; REPLIES = c.replies || []; SERVER_NOW = c.now || nowStr(); SERVER_LIST = true;
+      if (c.admins) ADMINS = c.admins; if (c.repliers) REPLIERS = c.repliers;
+      $('segWait').hidden = !isReplier(); renderList();
+    }
+  }
   try {
-    const r = await getJSON(GAS_URL + '?app=yoten&action=list&days=60&me=' + encodeURIComponent(me()), 15000);
+    const r = await getJSON(GAS_URL + '?app=yoten&action=list&days=60&me=' + encodeURIComponent(who), 15000);
     if (!r.ok) throw new Error(r.error);
     MEMOS = r.memos || []; REPLIES = r.replies || []; SERVER_NOW = r.now || nowStr(); SERVER_LIST = true;
     if (r.admins) ADMINS = r.admins; if (r.repliers) REPLIERS = r.repliers;
-  } catch (e) { MEMOS = null; REPLIES = []; SERVER_LIST = false; }
+    lsSet(LIST_CACHE, { me: who, memos: MEMOS, replies: REPLIES, now: SERVER_NOW, admins: r.admins, repliers: r.repliers });
+  } catch (e) {
+    const c = lsGet(LIST_CACHE, null);
+    if (!(c && c.me === who && SERVER_LIST)) { MEMOS = null; REPLIES = []; SERVER_LIST = false; }
+  }
   $('segWait').hidden = !(SERVER_LIST && isReplier());
   renderList();
 }
