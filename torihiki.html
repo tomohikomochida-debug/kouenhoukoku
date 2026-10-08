@@ -113,6 +113,16 @@ main{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 .acts a{flex:1;text-decoration:none}
 .kindchips{margin:10px 0 4px}
 .kindchips .chip{font-size:13px;padding:5px 11px}
+.inv-btn{display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;color:inherit;background:var(--leaf-soft);border:1.5px dashed var(--leaf);border-radius:12px;padding:12px 14px;margin-bottom:12px;cursor:pointer}
+.inv-btn .ic{font-size:26px;line-height:1}
+.inv-btn b{display:block;font-size:15.5px;color:var(--leaf)}
+.inv-btn small{display:block;font-size:12.5px;color:var(--bark);margin-top:2px;line-height:1.45}
+.inv-btn:active{filter:brightness(.96)}
+.ai-fill{background:#fff6d8!important;border-color:#e0b84a!important}
+.ai-note{font-size:13px;line-height:1.5;background:#fff6d8;border-left:3px solid #e0b84a;border-radius:0 8px 8px 0;padding:8px 11px;margin:0 0 10px}
+.read-wait{text-align:center;padding:18px 6px}
+.read-wait .loading{width:28px;height:28px;border-width:3px;border-color:var(--line);border-top-color:var(--leaf)}
+.read-wait p{margin:12px 0 0;font-size:14px;color:var(--bark)}
 </style>
 </head>
 <body>
@@ -120,6 +130,8 @@ main{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 <header><div class="row"><a class="home-btn" href="index.html" title="アプリ一覧にもどる" aria-label="アプリ一覧（ホーム）にもどる"><span class="hb-ic">🏠</span><span class="hb-t">ホーム</span></a><h1>🏪 取引先</h1><button class="me" id="meBtn" type="button">名前を選ぶ</button></div></header>
 <div class="demo-bar" id="demoBar" hidden>お試しモード：この端末の中だけに保存されます</div>
 <main>
+  <button type="button" class="inv-btn" id="invBtn"><span class="ic">📷</span><span><b>請求書・名刺から登録</b><small>届いた請求書や名刺の写真・スクショ・PDFを選ぶと、名前・電話・住所・扱う物などを読み取って入れます。確かめて保存するだけ。</small></span></button>
+  <input type="file" id="invFile" accept="image/*,application/pdf" multiple hidden>
   <div class="card">
     <div class="searchbox"><input type="search" id="q" placeholder="店の名前・呼び方・扱っている物" autocomplete="off"><button class="btn mic" type="button" data-mic="q" aria-label="音声で入力">🎤</button></div>
     <p class="hint">「竹屋さん」「竹材店」のような呼び方や、「竹」「砂利」など扱っている物でも探せます。</p>
@@ -260,9 +272,12 @@ function openSup(id) {
       if (b.dataset.act === 'del') { if (!confirm('「' + s.name + '」を削除しますか？')) return; try { await remove(s.id); closeModal(); render(); toast('削除しました'); } catch (err) { toast(err.message || NET_ERR); } }
     });
 }
-function openEdit(src) {
+function openEdit(src, opt) {
   const s = Object.assign({ id: '', name: '', kana: '', kind: '', aliases: '', phone: '', address: '', contact: '', items: '', memo: '' }, src || {});
+  opt = opt || {};
   openModal('<h3>' + (s.id ? '取引先を直す' : '取引先を追加') + '</h3>' +
+    (opt.note ? '<div class="ai-note" id="aiNote">' + opt.note + '</div>' : '<div class="ai-note" id="aiNote" hidden></div>') +
+    (DEMO ? '' : '<button class="btn block" style="margin-bottom:10px" data-act="read">📷 請求書・名刺から読み取る</button>') +
     '<label class="lbl">正式な名前</label><input type="text" id="fName" value="' + esc(s.name) + '" placeholder="例：〇〇竹材店">' +
     '<label class="lbl" style="margin-top:12px">読み（ひらがな・なくても可）</label><input type="text" id="fKana" value="' + esc(s.kana) + '" placeholder="例：まるまるちくざいてん">' +
     '<label class="lbl" style="margin-top:12px">種類</label><select id="fKind"><option value="">（選ぶ）</option>' + KINDS.map(k => '<option' + (k === s.kind ? ' selected' : '') + '>' + esc(k) + '</option>').join('') + '</select>' +
@@ -277,6 +292,7 @@ function openEdit(src) {
     async e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.act === 'back') return s.id ? openSup(s.id) : closeModal();
+      if (b.dataset.act === 'read') { READ_TO_FORM = true; $('invFile').click(); return; }
       if (b.dataset.act !== 'save') return;
       const item = { id: s.id, name: $('fName').value.trim(), kana: toHira($('fKana').value.trim()), kind: $('fKind').value, aliases: splitList($('fAlias').value).join('、'),
         phone: $('fPhone').value.trim(), address: $('fAddr').value.trim(), contact: $('fContact').value.trim(), items: $('fItems').value.trim(), memo: $('fMemo').value.trim() };
@@ -286,7 +302,95 @@ function openEdit(src) {
       b.disabled = true; b.innerHTML = '<span class="loading"></span> 保存中…';
       try { const id = await save(item); render(); openSup(id); toast('保存しました'); } catch (err) { toast(err.message || NET_ERR); b.disabled = false; b.textContent = '保存'; }
     });
+  markFilled(opt.filled);
 }
+
+/* ============ 請求書・名刺から読み取る ============
+   写真・スクショ・PDF（4枚まで）をAIで読み、取引先の欄に仮入力する。もう登録してある店なら、空いている欄だけ足す */
+const F_IDS = { name: 'fName', kana: 'fKana', kind: 'fKind', aliases: 'fAlias', phone: 'fPhone', address: 'fAddr', contact: 'fContact', items: 'fItems', memo: 'fMemo' };
+let READ_TO_FORM = false;
+const digits = v => String(v || '').normalize('NFKC').replace(/\D/g, '');
+const corpless = n => String(n || '').normalize('NFKC').replace(/(株式会社|有限会社|合同会社|合名会社|合資会社|一般社団法人|\(株\)|\(有\)|㈱|㈲)/g, '').trim();
+function markFilled(keys) { (keys || []).forEach(k => { const el = $(F_IDS[k]); if (el) el.classList.add('ai-fill'); }); }
+function fileB64(f) { return new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = ng; r.readAsDataURL(f); }); }
+function loadImg(f) { return new Promise((ok, ng) => { const u = URL.createObjectURL(f), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); ok(im); }; im.onerror = () => { URL.revokeObjectURL(u); ng(new Error('画像を開けませんでした')); }; im.src = u; }); }
+async function filePart(f) {
+  if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+    if (f.size > 8e6) throw new Error('PDFが大きすぎます（8MBまで）。写真かスクショで選んでください');
+    return { mime: 'application/pdf', data: await fileB64(f) };
+  }
+  const im = await loadImg(f), max = 2000, k = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
+  const c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(im, 0, 0, c.width, c.height);
+  return { mime: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.85).split(',')[1] };
+}
+function formVals() { const o = {}; Object.keys(F_IDS).forEach(k => { const el = $(F_IDS[k]); o[k] = el ? el.value.trim() : ''; }); return o; }
+/* 読んだ結果を今の値（cur）に足す：空いている欄だけ埋め、呼び方・扱う物・メモは足りない分を書き足す */
+function mergeRead(cur, d) {
+  const out = Object.assign({}, cur), filled = [];
+  const fill = (k, v) => { v = String(v || '').trim(); if (v && !String(out[k] || '').trim()) { out[k] = v; filled.push(k); } };
+  fill('name', d.name); fill('kana', toHira(d.kana)); fill('kind', d.kind); fill('phone', d.phone);
+  fill('address', [d.zip ? '〒' + d.zip.replace(/^〒/, '') : '', d.address].filter(Boolean).join(' ')); fill('contact', d.contact);
+  const al = splitList(out.aliases), base = norm(bare(out.name || d.name));
+  [d.short, corpless(d.name)].map(x => String(x || '').trim()).forEach(x => { if (x && norm(x) !== base && !al.some(a => norm(a) === norm(x))) al.push(x); });
+  if (al.join('、') !== splitList(out.aliases).join('、')) { out.aliases = al.join('、'); filled.push('aliases'); }
+  const it = String(out.items || '').split(/[・、,，]/).map(x => x.trim()).filter(Boolean);
+  String(d.items || '').split(/[・、,，]/).map(x => x.trim()).filter(Boolean).forEach(x => { if (!it.some(y => norm(y) === norm(x))) it.push(x); });
+  if (it.join('・') !== String(out.items || '')) { out.items = it.join('・'); filled.push('items'); }
+  const memo = String(out.memo || ''), add = [];
+  [['FAX', d.fax], ['メール', d.email], ['ホームページ', d.web], ['インボイス登録番号', d.invoiceNo], ['振込先', d.bank], ['支払い', d.terms]]
+    .forEach(([l, v]) => { v = String(v || '').trim(); if (v && !norm(memo).includes(norm(v))) add.push(l + '：' + v); });
+  if (add.length) { out.memo = (memo ? memo + '\n' : '') + add.join('\n'); filled.push('memo'); }
+  return { item: out, filled };
+}
+function findSame(d) {
+  const n = norm(corpless(d.name)), tel = digits(d.phone);
+  return SUP.find(x => (n && (norm(corpless(x.name)) === n || splitList(x.aliases).some(a => norm(bare(a)) === n))) || (tel.length >= 9 && digits(x.phone) === tel)) || null;
+}
+async function readInvoice(files) {
+  const toForm = READ_TO_FORM; READ_TO_FORM = false;
+  if (DEMO) return toast('お試しモードでは読み取れません');
+  files = [...files].slice(0, 4); if (!files.length) return;
+  const keep = toForm ? formVals() : null;
+  const keepHtml = toForm ? $('modal').innerHTML : null, keepHandler = modalHandler;
+  openModal('<div class="read-wait"><span class="loading"></span><p>読み取っています…（10〜30秒）</p></div>', null, true);
+  let d;
+  try {
+    const parts = []; for (const f of files) parts.push(await filePart(f));
+    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 120000);
+    const r = await (await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: ac.signal,
+      body: JSON.stringify({ app: 'torihiki', mode: 'readInvoice', by: me(), files: parts, kinds: KINDS }) })).json();
+    clearTimeout(tm);
+    if (!r.ok) throw new Error(r.error || '読み取れませんでした');
+    d = r.data || {};
+  } catch (e) {
+    if (toForm) { $('modal').innerHTML = keepHtml; modalHandler = keepHandler; modalLocked = false; Object.keys(keep).forEach(k => { const el = $(F_IDS[k]); if (el) el.value = keep[k]; }); }
+    else closeModal();
+    return toast(e.name === 'AbortError' ? '時間がかかりすぎました。' + NET_ERR : (e.message || NET_ERR));
+  }
+  if (!d.name && !d.phone && !d.address) {
+    if (toForm) { $('modal').innerHTML = keepHtml; modalHandler = keepHandler; modalLocked = false; Object.keys(keep).forEach(k => { const el = $(F_IDS[k]); if (el) el.value = keep[k]; }); }
+    else closeModal();
+    return toast('会社名・電話・住所が読めませんでした。明るく、まっすぐ撮り直してください');
+  }
+  const NOTE = '📷 読み取った内容を<b>黄色の欄</b>に入れました。間違いがないか確かめて「保存」を押してください。';
+  if (toForm) {   // 開いている入力画面に足す（入れてある内容はそのまま）
+    $('modal').innerHTML = keepHtml; modalHandler = keepHandler; modalLocked = false;
+    const m = mergeRead(keep, d);
+    Object.keys(F_IDS).forEach(k => { const el = $(F_IDS[k]); if (el) el.value = k === 'kind' ? (m.item[k] || '') : (m.item[k] || ''); });
+    markFilled(m.filled); const n = $('aiNote'); if (n) { n.innerHTML = m.filled.length ? NOTE : '📷 読み取りましたが、足す内容はありませんでした。'; n.hidden = false; }
+    $('modal').scrollTop = 0; return;
+  }
+  const same = findSame(d);
+  if (same && confirm('「' + same.name + '」はもう登録されています。\n空いている欄だけ、読み取った内容で埋めますか？\n（「キャンセル」で別の取引先として登録）')) {
+    const m = mergeRead(same, d);
+    return openEdit(m.item, { filled: m.filled, note: m.filled.length ? NOTE.replace('入れました', '足しました（もとの内容はそのまま）') : '📷 読み取りましたが、足す内容はありませんでした。' });
+  }
+  const m = mergeRead({ id: '', name: '', kana: '', kind: '', aliases: '', phone: '', address: '', contact: '', items: '', memo: '' }, d);
+  openEdit(m.item, { filled: m.filled, note: NOTE });
+}
+$('invFile').addEventListener('change', e => { const fs = [...e.target.files]; e.target.value = ''; readInvoice(fs); });
+$('invBtn').addEventListener('click', () => chooseName(false, () => { READ_TO_FORM = false; $('invFile').click(); }));
 
 const FALLBACK_STAFF = [];
 /* 名前：①このアプリで選んだ名前 ②日報アプリで選んだ名前（同じサイトなら自動で引き継ぐ） */

@@ -233,6 +233,7 @@ function doPost(e) {
       /* 取引先 */
       case 'torihiki:save':    return withLock_(function () { return upsert_('suppliers', 'id', 'S', b.item, b.by); });
       case 'torihiki:delete':  return withLock_(function () { return remove_('suppliers', b.id); });
+      case 'torihiki:readInvoice': return out_(readInvoice_(b.files, b.kinds));
       /* 車両 */
       case 'sharyo:save':      return withLock_(function () { return saveVehicle_(b.item, b.image, b.by); });
       case 'sharyo:delete':    return withLock_(function () { return remove_('vehicles', b.id); });
@@ -444,6 +445,35 @@ function readSlip_(b64, mime, hints) {
   d = m ? (m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2)) : '';
   return { ok: true, data: { date: d, place: String(j.place || '').trim(), item: String(j.item || '').trim(),
     type: types.indexOf(j.type) >= 0 ? j.type : '', netKg: num(j.netKg), amount: num(j.amount), plate: String(j.plate || '').trim() } };
+}
+/* 取引先：届いた請求書・納品書・見積書・領収書・名刺の写真／スクショ／PDF（1〜4枚）から、取引先の登録に使う項目を読む（入力欄への仮入力用）
+   宛先の自社（庭乃持田園）ではなく、発行した側の会社を読む */
+function readInvoice_(files, kinds) {
+  files = (files || []).filter(function (f) { return f && f.data; }).slice(0, 4);
+  if (!files.length) return { ok: false, error: '画像がありません' };
+  kinds = (kinds || []).filter(String);
+  var prompt = 'これは造園会社「庭乃持田園」に届いた請求書・納品書・見積書・領収書、または名刺の写真・スクリーンショット・PDFです（複数枚なら同じ会社の書類）。' +
+    '宛先（庭乃持田園・持田）ではなく、書類を発行した側（請求元・販売元・名刺の本人の会社）の情報を読み取り、JSONだけ返してください。' +
+    '{"name":"発行元の正式な会社名・店名（株式会社・有限会社なども書かれたとおりに）",' +
+    '"kana":"その読みをひらがなで（株式会社などの部分は除く。ふりがなが無ければ一般的な読み。分からなければ空）",' +
+    '"short":"社内で呼びそうな短い呼び方（株式会社・有限会社などを除いた名前など）。無ければ空",' +
+    '"kind":"次の候補から1つ：' + JSON.stringify(kinds) + '。品目や会社名から判断。決められなければ空",' +
+    '"phone":"発行元の電話番号（携帯しか無ければ携帯）","fax":"発行元のFAX番号",' +
+    '"zip":"発行元の郵便番号","address":"発行元の住所（都道府県から）",' +
+    '"contact":"発行元の担当者名（担当・名刺の本人）","email":"発行元のメールアドレス","web":"発行元のホームページ",' +
+    '"invoiceNo":"適格請求書発行事業者の登録番号（T＋13桁）",' +
+    '"bank":"振込先（銀行名・支店・種類・口座番号・名義を1行で）",' +
+    '"terms":"締め日・支払い期限などの支払い条件（書いてあれば短く）",' +
+    '"items":"明細の品名から、この店で扱っている物を一般的な名前で短く「・」区切り5つまで（例：竹・竹垣材・シュロ縄）。値段や数量は入れない"}' +
+    '。書かれていない項目は空文字。推測で埋めない（kana・short・kind・items 以外）。';
+  var parts = files.map(function (f) { return { inline_data: { mime_type: f.mime || 'image/jpeg', data: f.data } }; });
+  parts.push({ text: prompt });
+  var j = gemini_(parts) || {};
+  var t = function (v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); };
+  var inv = t(j.invoiceNo).normalize('NFKC').replace(/[^T\d]/gi, '').toUpperCase();
+  return { ok: true, data: { name: t(j.name), kana: t(j.kana), short: t(j.short), kind: kinds.indexOf(j.kind) >= 0 ? j.kind : '',
+    phone: t(j.phone), fax: t(j.fax), zip: t(j.zip), address: t(j.address), contact: t(j.contact), email: t(j.email), web: t(j.web),
+    invoiceNo: /^T\d{13}$/.test(inv) ? inv : '', bank: t(j.bank), terms: t(j.terms), items: t(j.items) } };
 }
 /* 「庭乃持田園情報管理」の「車両」シートと、そこからリンクしている車検証・検査証（記録事項）のスキャンを取り込む
    ・ナンバーで照合（無ければ名前）。無い車は追加、ある車は空いている欄だけ埋める（車検の期限は新しいほうにする）
