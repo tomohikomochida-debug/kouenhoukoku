@@ -48,6 +48,7 @@
   .mini button:hover{border-color:var(--blue)}
   canvas{display:block;background:#0b0e13;cursor:crosshair;touch-action:none}
   .stage{position:relative;overflow:hidden}
+  .shootFab{position:absolute;left:50%;bottom:76px;transform:translateX(-50%);z-index:6;background:#2f6b3f;color:#fff;border:none;border-radius:999px;padding:13px 22px;font-size:16px;font-weight:700;box-shadow:0 3px 12px rgba(0,0,0,.35);white-space:nowrap}
   .hint{position:absolute;left:10px;top:10px;background:rgba(14,18,24,.5);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
     border:1px solid rgba(130,150,170,.22);padding:6px 10px;border-radius:8px;font-size:11px;color:var(--ink);max-width:52%;line-height:1.45;cursor:pointer}
   .hint b{color:var(--acc)}
@@ -522,6 +523,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <button class="btn on" id="toolArea" data-tool="area">面積（㎡）<small>外周をタップ→「✓確定」か始点をタップ</small></button>
       <button class="btn" id="toolTree" data-tool="tree">樹木（本）<small>クリックで1本配置</small></button>
       <button class="btn" id="toolSelect" data-tool="select">選択・編集・削除<small>クリックで選択／頂点ドラッグ移動・辺の○で追加・頂点ダブルタップで削除</small></button>
+      <button class="btn" id="toolShoot" data-tool="shoot">📷 木の写真を撮る<small>撮りたい木をタップ → 工事写真のカメラ（黒板に工種・規格・No.）</small></button>
       <button class="btn" id="toolPan" data-tool="pan">✋ 地図を移動<small>地図右上の✋でも切替できます</small></button>
       <button class="btn on" id="snapToggle">寸法を0.1m刻みにそろえる<small>2.01m → 2.00m。頂点を置く・動かすときに効きます</small></button>
     </div>
@@ -570,6 +572,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
   <!-- CENTER: canvas -->
   <div class="stage">
     <canvas id="cv"></canvas>
+    <button id="shootFab" class="shootFab" style="display:none">📷 この木の写真を撮る</button>
     <div class="mapctl" id="mapctl">
       <button id="mPan" title="地図を移動（タップで切替）">✋</button>
       <button id="mIn" title="拡大">＋</button>
@@ -891,7 +894,7 @@ function fillManual(){
 function setTool(t){
   tool=t; draft=null; if(typeof refreshDraftBar==="function")refreshDraftBar();
   document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));
-  cv.style.cursor = (t==='select'||t==='pan')?'grab':'crosshair';
+  cv.style.cursor = (t==='select'||t==='pan')?'grab':t==='shoot'?'pointer':'crosshair';
   const mp=$('mPan'); if(mp)mp.classList.toggle('on',t==='pan');
   updateHint(); draw();
 }
@@ -913,6 +916,7 @@ function updateHint(){
   if(tool==='cal')h.innerHTML='既知の長さの<b>一端を押して、もう一端までドラッグ</b>（タップ2回でもOK）。置いた点は<b>離さず動かせば微調整</b>できます。先に左の「実距離(m)」を合わせて。';
   else if(tool==='strip')h.innerHTML='＜幅刈り＞道や法面に沿って<b>端から順にタップ</b>→<b>「✓ 確定」</b>。左の「長さ」欄の数字を最初の幅に使います（あとから区間ごとに変えられます）。';
   else if(tool==='rect')h.innerHTML='＜寸法で置く＞左の<b>長さ×奥行</b>の四角を、<b>タップした場所</b>に置きます。置いたあとは普通の面積として頂点を動かしたり回したりできます。';
+  else if(tool==='shoot')h.innerHTML='＜写真＞<b>撮りたい木をタップ</b>すると、工事写真のカメラが開きます（黒板に工種・規格・No.・幹周が入ります）。指でなぞると地図が動きます。';
   else if(tool==='pan')h.innerHTML='<b>地図移動モード</b>：ドラッグ（iPadは指1本）で<b>表示位置だけ</b>を動かします。記録に戻るには上で別のモードを選択。';
   else if(tool==='area'){
     if(curGeom()==='line')h.innerHTML='＜つる：管理柵＞フェンスに沿って<b>端から端へタップ</b>→<b>「✓ 確定」</b>。左の<b>高さ(m)</b>を掛けて面積にします。';
@@ -1506,7 +1510,7 @@ function computeGroups(){
   return {clusters,memberSet};
 }
 function draw(){
-  syncDelBtn(); refreshFigNos();
+  syncDelBtn(); refreshFigNos(); syncShootFab();
   ctx.clearRect(0,0,cv.width,cv.height);
   ctx.save();ctx.translate(view.ox,view.oy);ctx.scale(view.zoom,view.zoom);
   if(state.img)ctx.drawImage(state.img,0,0);
@@ -1837,6 +1841,8 @@ function downCommon(p,ip){
   if(alignScan) return null;                     // 目印合わせ中：指を離したときに alignTap
   selScan=null;
   if(tool==='tree'&&nearestScan(ip)) return null;   // 仮置きの木：指を離したとき（placeTree）に工種を決める
+  if(tool==='shoot'){ const t=nearestTree(ip); if(t&&t.cat){ setSingle(t); renderSansha(); draw(); setTimeout(()=>shootTree(t),150); return 'sel'; }
+    panning=true; panStart={x:p.x-view.ox,y:p.y-view.oy}; return 'pan'; }
   if(tool==='select'){ const st=nearestScan(ip); if(st){ hlHole=null; multiSel=[]; selected=null; selScan=st; renderSansha(); draw(); return 'sel'; } }
   let f=(tool==='tree')?nearestTree(ip):pickHit(ip); if(!f){const lf=labelHitFeature(ip); if(lf&&state.features.indexOf(lf)>=0)f=lf;}   // 図形が外れたらラベルでも選択
   if(f){
@@ -2159,6 +2165,8 @@ function renderTreeEdit(el){
 }
 /* ---------- 木をタップ →「この木の写真を撮る」→ 工事写真アプリ（黒板つきカメラ）へ ----------
    木の目印は、木に付けたid（無ければ図面上の位置）。工事写真アプリでも同じ決め方で、どの木を撮ったかをつなぐ */
+/* 木を1本選んでいるときだけ、地図の下に「📷 この木の写真を撮る」（iPad・スマホどちらでも押しやすい所） */
+function syncShootFab(){ const b=$('shootFab'); if(!b) return; const one=selected&&selected.type==='tree'&&selected.cat&&selected.cat!=='巣撤去'&&multiSel.length<=1&&tool!=='shoot'; b.style.display=one?'':'none'; }
 function treeFid(f){ return f.id || ('p'+Math.round(f.pt.x)+'_'+Math.round(f.pt.y)); }
 async function shootTree(f){
   const park=($('parkName').value||'').trim();
@@ -2172,6 +2180,7 @@ async function shootTree(f){
     cat:f.cat||'', kind:f.kind||'', rank:f.rank||'', C:f.C||'', x:Math.round(f.pt.x*10)/10, y:Math.round(f.pt.y*10)/10 });
   location.href='shashin.html?'+q.toString();
 }
+$('shootFab').onclick=e=>{ e.stopPropagation(); if(selected&&selected.type==='tree') shootTree(selected); };
 function alignTap(ip){
   const A=alignScan; if(!A)return;
   if(A.step===0||A.step===2){
@@ -4317,7 +4326,7 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     move(stage,main); main.insertBefore(stage,$('nuAll'));
     let tools=$('nuTools'); if(!tools){tools=document.createElement('div');tools.id='nuTools';}
     stage.appendChild(tools);
-    [['toolArea','面積'],['toolTree','樹木'],['placeRect','四角'],['toolStrip','幅刈り'],['toolSelect','選ぶ']].forEach(([id,s])=>{const b=$(id);if(b){b.dataset.short=s;move(b,tools);}});
+    [['toolArea','面積'],['toolTree','樹木'],['placeRect','四角'],['toolStrip','幅刈り'],['toolSelect','選ぶ'],['toolShoot','📷撮る']].forEach(([id,s])=>{const b=$(id);if(b){b.dataset.short=s;move(b,tools);}});
     // 規格・寸法（工種ボタンの上）
     const opts=$('nuOpts');
     ['rankLegend','dimLbl','dimRow'].forEach(id=>move($(id),opts));
