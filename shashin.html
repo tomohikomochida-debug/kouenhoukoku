@@ -143,6 +143,8 @@ header .back{font-size:22px;padding:4px 12px}
 .tabs2{display:flex;gap:6px;margin-bottom:8px}
 .tabs2 button{flex:1;padding:9px 4px;border-radius:10px;background:#e4e8e3;font-weight:700;font-size:13px;color:var(--sub)}
 .tabs2 button.on{background:var(--main-d);color:#fff}
+.addrow{display:flex;gap:6px;margin-top:6px}.addrow input{flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:15px}.addrow button{background:#fff;border:1px solid var(--main);color:var(--main);border-radius:10px;padding:0 14px;font-weight:700}
+.recent .when{font-size:12px;color:var(--sub)}
 .posInfo{font-size:13px;color:var(--main-d);background:#eef3ee;border-radius:8px;padding:8px 10px;margin-bottom:14px}
 </style>
 </head>
@@ -150,15 +152,57 @@ header .back{font-size:22px;padding:4px 12px}
 
 <!-- ===== 台帳一覧 ===== -->
 <section id="home" class="screen active">
-  <header><a href="index.html" class="back" style="color:#fff;text-decoration:none;font-size:22px;padding:4px 8px">‹</a><h1>工事写真</h1><button id="btnSync">更新</button><button id="btnSettings">名前</button></header>
-  <div class="bar"><input autocomplete="off" autocorrect="off" id="q" type="search" placeholder="現場を検索（委託名・現場名）"><span id="syncChip" class="chip"></span></div>
-  <div class="scroll" id="siteList"></div>
-  <button class="fab" id="btnNew">＋ 現場をえらぶ・追加</button>
+  <header><a href="index.html" class="back" style="color:#fff;text-decoration:none;font-size:22px;padding:4px 8px">‹</a><h1>工事写真</h1><span id="syncChip" class="chip" style="background:rgba(255,255,255,.9)"></span><button id="btnSettings">名前</button></header>
+  <div class="scroll" id="homeBody">
+    <button class="btn" id="btnPick" style="padding:20px;font-size:18px;margin:0 0 6px">📋 現場をえらぶ</button>
+    <div class="s" style="color:var(--sub);font-size:12px;text-align:center;margin-bottom:6px">日報と同じ 種類 → 委託 → 現場 の順にえらびます</div>
+    <div class="group-h" style="display:flex;align-items:center">最近撮った現場（新しい順）<span style="flex:1"></span><button id="btnSync" style="background:none;color:var(--main);font-weight:700;font-size:13px">↻ 更新</button></div>
+    <div id="recentList"></div>
+  </div>
 </section>
 
-<!-- ===== 台帳の中 ===== -->
+<!-- ===== 現場をえらぶ（日報と同じ：種類 → 委託 → 現場） ===== -->
+<section id="picker" class="screen">
+  <header><button class="back" data-go="home">‹</button><h1>現場をえらぶ</h1></header>
+  <div class="scroll">
+    <div class="card">
+      <div class="field"><label>① 種類</label><select id="pkKind"></select></div>
+      <div id="pkContractWrap">
+        <div class="field"><label>② 委託・工事</label><select id="pkContract"></select>
+          <div class="addrow"><input id="pkNewContract" autocomplete="off" autocorrect="off" name="x-contract-new" placeholder="一覧にない委託・工事を入力"><button id="pkAddContract">追加</button></div></div>
+        <div class="field" id="pkFyWrap"><label>年度</label><select id="pkFy"></select></div>
+      </div>
+      <div class="field"><label id="pkSiteLabel">③ 現場</label><select id="pkSite"></select>
+        <div class="addrow"><input id="pkNewSite" autocomplete="off" autocorrect="off" name="x-site-new" placeholder="一覧にない現場を入力"><button id="pkAddSite">追加</button></div>
+        <div class="s" style="font-size:11px;color:var(--sub);margin-top:4px">追加した現場は、日報と同じ現場マスタに「仮登録」で入ります</div></div>
+      <div class="posInfo" id="pkNote" style="display:none"></div>
+      <button class="btn" id="pkNext">次へ</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 案件の情報（一度入れたら次からは飛ばす） ===== -->
+<section id="info" class="screen">
+  <header><button class="back" id="infoBack">‹</button><h1>案件の情報</h1></header>
+  <div class="scroll">
+    <div class="banner info" id="infoScope" style="margin:0 0 12px"></div>
+    <div class="card">
+      <div class="field"><label>工事名（黒板の工事名に入ります）</label><textarea id="fKoji" autocomplete="off" rows="2"></textarea></div>
+      <div class="field"><label>発注者・お客さま</label><input id="fOrderer" autocomplete="off" autocorrect="off" name="x-orderer" placeholder="例）川崎市高津区役所道路公園センター"></div>
+      <div class="field"><label>施工者名</label><input id="fSekosha" autocomplete="off" autocorrect="off" name="x-sekosha"></div>
+      <div class="row2">
+        <div class="field"><label>工期（はじめ）</label><input id="fStart" type="date"></div>
+        <div class="field"><label>工期（おわり）</label><input id="fEnd" type="date"></div>
+      </div>
+      <div class="field"><label>黒板の型</label><select id="fTpl"><option value="std">標準（工種・測点・状況）</option><option value="tree">樹木（樹種・規格つき）</option></select></div>
+      <div class="field"><label>メモ</label><input id="fMemo" autocomplete="off" autocorrect="off" name="x-memo" placeholder="例）写真は着手前・完了を必ず"></div>
+      <button class="btn" id="infoSave">保存して撮影へ</button>
+    </div>
+  </div>
+</section>
+
 <section id="album" class="screen">
-  <header><button class="back" data-go="home">‹</button><h1 id="albumTitle"></h1><button id="btnDrive">ドライブ</button></header>
+  <header><button class="back" data-go="home">‹</button><h1 id="albumTitle"></h1><button id="btnInfo">情報</button><button id="btnDrive">ドライブ</button></header>
   <div id="albumBanner"></div>
   <div class="tabs">
     <button data-tab="mapPane" class="on">地図</button>
@@ -235,22 +279,6 @@ header .back{font-size:22px;padding:4px 12px}
 </section>
 
 <!-- ===== 台帳追加 ===== -->
-<div class="modal" id="siteModal"><div class="sheet">
-  <h2>現場をえらぶ</h2>
-  <div class="field"><label>① 種類</label><div class="quick" id="pkKind"></div></div>
-  <div class="field" id="pkContractWrap"><label>② 委託名・工事名</label><div class="pkList" id="pkContract"></div>
-    <div id="pkNewContractWrap" style="display:none;margin-top:8px"><input id="pkNewContract" autocomplete="off" autocorrect="off" name="x-contract-text" placeholder="新しい委託名・工事名を入力"></div></div>
-  <div class="field" id="pkSiteWrap"><label id="pkSiteLabel">② 現場</label>
-    <input id="pkFilter" type="search" autocomplete="off" autocorrect="off" name="x-site-filter" placeholder="現場名で絞り込む／新しい現場名を入力">
-    <div class="pkList" id="pkSites" style="margin-top:8px"></div></div>
-  <div class="card" id="pkNewBox" style="display:none;border:2px dashed var(--main)">
-    <div class="t" style="font-size:15px" id="pkNewTitle"></div>
-    <div class="s">一覧にない現場です。日報と同じ「現場マスタ」に<b>仮登録</b>で入ります（日報の一覧にも出ます）。</div>
-    <button class="btn" id="pkNewSave">この名前で新しく登録</button>
-  </div>
-  <button class="btn sub" data-close>閉じる</button>
-</div></div>
-
 <!-- ===== 撮影項目追加 ===== -->
 <div class="modal" id="itemModal"><div class="sheet">
   <h2 id="iTitle">撮影項目を追加</h2>
@@ -389,7 +417,9 @@ let counts = LS.get('shashin_counts',{});        // 現場ごとの写真の枚�
 let staffList = LS.get('shashin_staff',[]);
 let items = LS.get('shashin_items',[]);
 let boards = LS.get('shashin_boards',{});
-let tpls = LS.get('shashin_tpl',{});              // 現場ごとの黒板の型
+let tpls = LS.get('shashin_tpl',{});
+let infos = LS.get('shashin_infos',{});            // 案件の情報（委託は 委託名＋年度、そのほかは現場ごと）
+let lastAt = LS.get('shashin_last',{});           // 現場ごとの最後に撮った日時（みんなの分）              // 現場ごとの黒板の型
 let teamPhotos = [];
 let loadError = '';                              // 開いている現場の、みんなが撮った写真の記録
 function me(){
@@ -406,7 +436,7 @@ let boardOn = true;
 let photosCache = [];
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2));
-const saveAll = () => { LS.set('shashin_settings',S); LS.set('shashin_sites',sites); LS.set('shashin_counts',counts); LS.set('shashin_items',items); LS.set('shashin_boards',boards); LS.set('shashin_tpl',tpls); };
+const saveAll = () => { LS.set('shashin_settings',S); LS.set('shashin_sites',sites); LS.set('shashin_counts',counts); LS.set('shashin_items',items); LS.set('shashin_boards',boards); LS.set('shashin_tpl',tpls); LS.set('shashin_infos',infos); LS.set('shashin_last',lastAt); };
 const pad2 = n => String(n).padStart(2,'0');
 const today = () => { const d=new Date(); return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`; };
 const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -465,7 +495,8 @@ async function syncAll(silent){
     if(unsynced.length){ const js=await gasPost({mode:'saveItems',items:unsynced}); if(js.ok) unsynced.forEach(i=>i.synced=true); }
     const j=await gasGet({action:'data'});
     if(!j.ok) throw new Error(/unknown action/.test(j.error||'')?'共通GASの更新がまだです（数分で反映されます）':j.error);
-    sites=j.sites||[]; counts=j.counts||{};
+    sites=j.sites||[]; counts=j.counts||{}; lastAt=j.last||{};
+    infos={}; (j.infos||[]).forEach(x=>{ infos[x.key]=x; }); Object.assign(infos, LS.get('shashin_infos_pending',{}));
     const merged=new Map((j.items||[]).filter(i=>!deletedItems.includes(i.id)).map(i=>[i.id,{...i,synced:true}]));
     items.filter(i=>!i.synced).forEach(i=>merged.set(i.id,i));
     items=[...merged.values()];
@@ -520,108 +551,164 @@ function updateChip(){
   c.textContent = n ? (uploading?`送信中 残り${n}枚`:`送信待ち ${n}枚`) : '送信済み';
   c.className = 'chip'+(n?' pend':'');
 }
-window.addEventListener('online',()=>{ processQueue(); syncAll(true); });
+window.addEventListener('online',()=>{ processQueue(); pushInfos().then(()=>syncAll(true)); });
 
 /* =========================================================
    台帳一覧
    ========================================================= */
 function isPublicKoji(s){ return s.kind==='公共' && /工事/.test(s.contract||'') && !/委託|業務/.test(s.contract||''); }
+/* 年度（4月はじまり） */
+const fyOf = d => { d=d||new Date(); return d.getMonth()>=3 ? d.getFullYear() : d.getFullYear()-1; };
+const fyLabel = y => `${y}年度（令和${y-2018}年度）`;
+const infoKey = (s,fy) => s.contract ? `C|${s.contract}|${fy}` : `S|${s.id}`;
+
+/* ホーム：写真を撮ったことのある現場だけを、新しい順に */
 function renderHome(){
-  const q=$('#q').value.trim();
-  const hit=s=>!q||[s.kind,s.contract,s.name,s.aliases,s.address].join(' ').includes(q);
-  const list=sites.filter(hit);
-  const box=$('#siteList');
-  if(!list.length){ box.innerHTML=`<div class="empty">${sites.length?'見つかりません':(loadError?`現場の一覧を読み込めませんでした（${esc(loadError)}）。<br>`:'現場の一覧を読み込んでいます…<br>')+'電波のある所で「更新」を押してください。'}</div>`; updateChip(); return; }
-  const order=['公共','マンション','法人','個人','寺院','その他'];
-  const groups={};
-  list.forEach(s=>{ const g=s.contract?`${s.kind}｜${s.contract}`:(s.kind||'その他'); (groups[g]=groups[g]||[]).push(s); });
-  const keys=Object.keys(groups).sort((x,y)=>{ const kx=order.indexOf(x.split('｜')[0]), ky=order.indexOf(y.split('｜')[0]); return (kx<0?99:kx)-(ky<0?99:ky)||x.localeCompare(y,'ja'); });
-  box.innerHTML=keys.map(g=>`
-    <div class="group-h">${esc(g.replace('｜','　'))}</div>
-    ${groups[g].map(s=>{
-      const local=photosCache.filter(p=>p.siteId===s.id);
-      const pend=local.filter(p=>p.status!=='done').length;
-      const n=(counts[s.id]||0)+pend;
-      const ni=items.filter(i=>i.siteId===s.id).length;
-      return `<div class="card tap" data-id="${esc(s.id)}">
-        <div class="t">${isPublicKoji(s)?'<span class="badge k-public_koji">公共工事</span>':''}${s.state==='仮登録'?'<span class="badge k-minkan">仮登録</span>':''}${esc(s.name)}</div>
-        <div class="s">写真 ${n}枚 ・ 撮影項目 ${ni}件${pend?` ・ <b style="color:var(--pend)">送信待ち${pend}</b>`:''}</div>
-      </div>`;}).join('')}`).join('');
-  box.querySelectorAll('.card').forEach(c=>c.onclick=()=>openAlbum(c.dataset.id));
+  const localLast={};
+  photosCache.forEach(p=>{ const t=new Date(p.takenAt); const v=`${t.getFullYear()}-${pad2(t.getMonth()+1)}-${pad2(t.getDate())} ${pad2(t.getHours())}:${pad2(t.getMinutes())}`; if(!localLast[p.siteId]||localLast[p.siteId]<v) localLast[p.siteId]=v; });
+  const ids=[...new Set([...Object.keys(lastAt),...Object.keys(localLast)])];
+  const list=ids.map(id=>({ s:siteOf(id), t:[lastAt[id]||'',localLast[id]||''].sort().pop() })).filter(x=>x.s).sort((a,b)=>b.t.localeCompare(a.t));
+  const box=$('#recentList');
+  if(!list.length){
+    box.innerHTML=`<div class="empty" style="padding:30px 10px">${loadError?`現場の一覧を読み込めませんでした（${esc(loadError)}）。<br>電波のある所で「更新」を押してください。<br><br>`:''}まだ写真を撮った現場はありません。<br>上の「📋 現場をえらぶ」から始めてください。</div>`;
+    updateChip(); return;
+  }
+  box.innerHTML=list.map(({s,t})=>{
+    const pend=photosCache.filter(p=>p.siteId===s.id&&p.status!=='done').length;
+    const n=(counts[s.id]||0)+pend;
+    return `<div class="card tap recent" data-id="${esc(s.id)}">
+      <div class="s" style="margin:0 0 2px">${esc(s.kind||'')}${s.contract?'　'+esc(s.contract):''}</div>
+      <div class="t">${isPublicKoji(s)?'<span class="badge k-public_koji">公共工事</span>':''}${esc(s.name)}</div>
+      <div class="when">最後の撮影 ${esc(t.slice(0,16))} ・ 写真 ${n}枚${pend?` ・ <b style="color:var(--pend)">送信待ち${pend}</b>`:''}</div>
+    </div>`; }).join('');
+  box.querySelectorAll('.card').forEach(c=>c.onclick=()=>chooseSite(c.dataset.id,{from:'recent'}));
   updateChip();
 }
-$('#q').oninput=renderHome;
 $('#btnSync').onclick=()=>{ syncAll(false); processQueue(); };
-/* 現場をえらぶ：種類 → 委託（公共）→ 現場。マスタにある現場はそのまま開き、無いものだけ新しく仮登録する */
+
+/* ---------- 現場をえらぶ（日報と同じ：種類 → 委託 → 現場） ---------- */
 const KIND_ORDER=['公共','マンション','法人','個人','寺院','その他'];
-const PK={ kind:'公共', contract:'', newContract:false };
-$('#btnNew').onclick=()=>{ PK.contract=''; PK.newContract=false; $('#pkFilter').value=''; $('#pkNewContract').value=''; drawPicker(); $('#siteModal').classList.add('on'); };
+const PK=LS.get('shashin_pick',{ kind:'公共', contract:'', site:'', fy:fyOf() });
+const pkContracts = k => [...new Set(sites.filter(s=>s.kind===k&&s.contract).map(s=>s.contract))].sort((x,y)=>x.localeCompare(y,'ja'));
+const pkUsesContract = k => k==='公共' || pkContracts(k).length>0;
+$('#btnPick').onclick=()=>{ if(!sites.length&&!loadError){ toast('現場の一覧を読み込み中です…'); } drawPicker(); go('picker'); };
+function opt(v,label,sel){ return `<option value="${esc(v)}"${v===sel?' selected':''}>${esc(label)}</option>`; }
 function drawPicker(){
   const kinds=[...new Set([...KIND_ORDER,...sites.map(s=>s.kind).filter(Boolean)])];
-  $('#pkKind').innerHTML=kinds.map(k=>`<button data-k="${esc(k)}" class="${k===PK.kind?'on':''}">${esc(k)}<span style="opacity:.7;font-size:11px"> ${sites.filter(s=>s.kind===k).length}</span></button>`).join('');
-  $('#pkKind').querySelectorAll('button').forEach(b=>b.onclick=()=>{ PK.kind=b.dataset.k; PK.contract=''; PK.newContract=false; drawPicker(); });
-  // 委託（公共のときだけ）
-  const useContract = PK.kind==='公共' || sites.some(s=>s.kind===PK.kind && s.contract);
-  $('#pkContractWrap').style.display=useContract?'':'none';
-  $('#pkSiteLabel').textContent=useContract?'③ 現場':'② 現場';
-  if(useContract){
-    const cs=[...new Set(sites.filter(s=>s.kind===PK.kind&&s.contract).map(s=>s.contract))].sort((x,y)=>x.localeCompare(y,'ja'));
-    $('#pkContract').innerHTML=cs.map(c=>`<button data-c="${esc(c)}" class="${!PK.newContract&&c===PK.contract?'on':''}">${esc(c)}<small>現場 ${sites.filter(s=>s.kind===PK.kind&&s.contract===c).length}件</small></button>`).join('')
-      + `<button class="new ${PK.newContract?'on':''}" data-new="1">＋ 一覧にない委託・工事</button>`;
-    $('#pkContract').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(b.dataset.new){ PK.newContract=true; PK.contract=''; } else { PK.newContract=false; PK.contract=b.dataset.c; } drawPicker(); if(PK.newContract) $('#pkNewContract').focus(); });
-    $('#pkNewContractWrap').style.display=PK.newContract?'':'none';
+  $('#pkKind').innerHTML=kinds.map(k=>opt(k,`${k}（${sites.filter(s=>s.kind===k).length}）`,PK.kind)).join('');
+  const useC=pkUsesContract(PK.kind);
+  $('#pkContractWrap').style.display=useC?'':'none';
+  $('#pkSiteLabel').textContent=useC?'③ 現場':'② 現場';
+  if(useC){
+    const cs=pkContracts(PK.kind); if(PK.contract&&!cs.includes(PK.contract)) cs.push(PK.contract);
+    $('#pkContract').innerHTML=opt('','委託・工事を選ぶ…',PK.contract)+cs.map(c=>opt(c,c,PK.contract)).join('');
+    const y=fyOf(), fys=[y-1,y,y+1]; if(!fys.includes(PK.fy)) PK.fy=y;
+    $('#pkFy').innerHTML=fys.map(f=>opt(String(f),fyLabel(f),String(PK.fy))).join('');
   }
-  drawPickerSites();
+  const list=sites.filter(s=>s.kind===PK.kind && (!useC || (PK.contract && s.contract===PK.contract)));
+  $('#pkSite').innerHTML = (useC&&!PK.contract) ? opt('','先に委託・工事を選ぶ','') : opt('','現場を選ぶ…',PK.site)+list.map(s=>opt(s.id,s.name+(s.state==='仮登録'?'（仮登録）':''),PK.site)).join('');
+  // 委託の情報がもう入っているか
+  const note=$('#pkNote');
+  if(useC&&PK.contract){
+    const done=infos[`C|${PK.contract}|${PK.fy}`];
+    note.style.display=''; note.textContent = done ? `✓ この委託の${PK.fy}年度の情報は入力済みです。現場を選ぶとすぐ撮影に進みます` : `この委託の${PK.fy}年度の情報はまだです。次の画面で一度だけ入力します`;
+  } else note.style.display='none';
+  LS.set('shashin_pick',PK);
 }
-function drawPickerSites(){
-  const useContract=$('#pkContractWrap').style.display!=='none';
-  const ready = !useContract || PK.contract || PK.newContract;
-  $('#pkSiteWrap').style.display=ready?'':'none';
-  if(!ready){ $('#pkNewBox').style.display='none'; return; }
-  const q=$('#pkFilter').value.trim();
-  const list=PK.newContract?[]:sites.filter(s=>s.kind===PK.kind && (!useContract || s.contract===PK.contract) && (!q || [s.name,s.aliases].join(' ').includes(q)));
-  $('#pkSites').innerHTML=list.length
-    ? list.map(s=>`<button data-id="${esc(s.id)}">${esc(s.name)}<small>${s.state==='仮登録'?'仮登録 ・ ':''}写真 ${counts[s.id]||0}枚</small></button>`).join('')
-    : `<div class="s" style="color:var(--sub);font-size:13px;padding:4px">${q?'一致する現場はありません':(PK.newContract?'新しい委託の現場名を入力してください':'この中の現場はまだありません')}</div>`;
-  $('#pkSites').querySelectorAll('button').forEach(b=>b.onclick=()=>{ $('#siteModal').classList.remove('on'); openAlbum(b.dataset.id); });
-  const exact=sites.some(s=>s.kind===PK.kind && s.name===q);
-  const show=q && !exact;
-  $('#pkNewBox').style.display=show?'':'none';
-  if(show) $('#pkNewTitle').textContent=`新しい現場：${q}`;
-}
-$('#pkFilter').oninput=drawPickerSites;
-$('#pkNewSave').onclick=async()=>{
-  const name=$('#pkFilter').value.trim();
-  const useContract=$('#pkContractWrap').style.display!=='none';
-  const contract=useContract?(PK.newContract?$('#pkNewContract').value.trim():PK.contract):'';
+$('#pkKind').onchange=e=>{ PK.kind=e.target.value; PK.contract=''; PK.site=''; drawPicker(); };
+$('#pkContract').onchange=e=>{ PK.contract=e.target.value; PK.site=''; drawPicker(); };
+$('#pkFy').onchange=e=>{ PK.fy=Number(e.target.value); drawPicker(); };
+$('#pkSite').onchange=e=>{ PK.site=e.target.value; LS.set('shashin_pick',PK); };
+$('#pkAddContract').onclick=()=>{ const v=$('#pkNewContract').value.trim(); if(!v) return; PK.contract=v; PK.site=''; $('#pkNewContract').value=''; drawPicker(); toast('委託を追加しました。続けて現場を選ぶか、現場名を入れて追加してください',3000); };
+$('#pkAddSite').onclick=async()=>{
+  const name=$('#pkNewSite').value.trim(), useC=pkUsesContract(PK.kind);
   if(!name){ toast('現場名を入れてください'); return; }
-  if(useContract&&PK.kind==='公共'&&!contract){ toast('委託名・工事名を入れてください'); return; }
+  if(useC&&!PK.contract){ toast('先に委託・工事を選んでください'); return; }
+  const same=sites.find(s=>s.kind===PK.kind && s.name===name && (!useC||s.contract===PK.contract));
+  if(same){ PK.site=same.id; $('#pkNewSite').value=''; drawPicker(); toast('一覧にある現場を選びました'); return; }
   if(!me()){ toast('先に名前を入れてください'); openSettings(); return; }
   if(!canSync()){ toast('現場の追加は電波のある所でお願いします'); return; }
-  const btn=$('#pkNewSave'); btn.disabled=true;
+  const btn=$('#pkAddSite'); btn.disabled=true;
   try{
-    const j=await gasPost({mode:'addSite',site:{cat:PK.kind,contract,site:name}});
+    const j=await gasPost({mode:'addSite',site:{cat:PK.kind,contract:useC?PK.contract:'',site:name}});
     const r=(j.results||[])[0];
     if(!j.ok||!r||!r.ok) throw new Error((r&&r.error)||j.error||'');
-    $('#siteModal').classList.remove('on');
     toast(r.existed?`「${r.name}」がもうありました`:'仮登録しました');
-    await syncAll(true); openAlbum(r.id);
-  }catch(e){ toast('登録できませんでした：'+(e.message||e),3000); }
+    await syncAll(true);
+    PK.site=r.id; $('#pkNewSite').value=''; drawPicker();
+  }catch(e){ toast('追加できませんでした：'+(e.message||e),3000); }
   btn.disabled=false;
 };
+$('#pkNext').onclick=()=>{
+  if(!PK.site){ toast(pkUsesContract(PK.kind)&&!PK.contract?'委託・工事を選んでください':'現場を選んでください'); return; }
+  chooseSite(PK.site,{from:'picker',fy:PK.fy});
+};
+
+/* ---------- 現場を開く：情報が入っていれば撮影へ、まだなら情報の入力へ ---------- */
+function chooseSite(id,opts){
+  const s=siteOf(id); if(!s) return;
+  const fy=opts.fy||fyOf(), key=infoKey(s,fy);
+  if(s.contract){   // 年間の委託など：委託名＋年度で一度入れたら、どの現場でも飛ばす
+    if(infos[key]) return openAlbum(id,key);
+    return openInfo(s,key,{fy,from:opts.from});
+  }
+  // 小さな案件：えらび直したときは毎回確認（前に入れた内容が入っているので、そのまま進めば同じ）
+  if(opts.from==='recent' && infos[key]) return openAlbum(id,key);
+  return openInfo(s,key,{fy,from:opts.from});
+}
+let INFO=null;
+function openInfo(s,key,opts){
+  const prevYear = s.contract ? infos[`C|${s.contract}|${(opts.fy||fyOf())-1}`] : null;
+  const v=infos[key]||prevYear||{};
+  INFO={ s, key, fy:opts.fy, back:opts.from||'picker' };
+  $('#infoScope').innerHTML = s.contract
+    ? `<b>${esc(s.contract)}</b>（${fyLabel(opts.fy)}）の情報です。<br>一度入れれば、この委託の現場は<b>みんな入力なしで撮影に進みます</b>。${!infos[key]&&prevYear?'<br>前の年度の内容を入れてあります。':''}`
+    : `<b>${esc(s.name)}</b> の情報です。前に入れた内容があれば入っています。`;
+  $('#fKoji').value = v.koji || s.contract || s.name;
+  $('#fOrderer').value = v.orderer || '';
+  $('#fSekosha').value = v.sekosha || '庭乃持田園有限会社';
+  const y=opts.fy||fyOf(), sameYear=infos[key];
+  $('#fStart').value = sameYear&&v.start ? String(v.start).slice(0,10) : (s.contract ? `${y}-04-01` : String(v.start||'').slice(0,10));
+  $('#fEnd').value   = sameYear&&v.end   ? String(v.end).slice(0,10)   : (s.contract ? `${y+1}-03-31` : String(v.end||'').slice(0,10));
+  $('#fTpl').value = v.tpl || tpls[s.id] || 'std';
+  $('#fMemo').value = v.memo || '';
+  $('#infoSave').textContent = $('#album').classList.contains('active')||opts.from==='album' ? '保存' : '保存して撮影へ';
+  go('info');
+}
+$('#infoBack').onclick=()=>{ if(INFO&&INFO.back==='album'&&cur) go('album'); else if(INFO&&INFO.back==='picker') go('picker'); else go('home'); };
+$('#btnInfo').onclick=()=>{ if(!cur) return; const s=siteOf(cur.id); if(s) openInfo(s,cur.infoKey||infoKey(s,fyOf()),{fy:cur.fy||fyOf(),from:'album'}); };
+$('#infoSave').onclick=async()=>{
+  if(!INFO) return;
+  const {s,key,fy}=INFO;
+  const v={ key, type:s.contract?'contract':'site', contract:s.contract||'', fy:s.contract?fy:'', siteId:s.contract?'':s.id,
+    koji:$('#fKoji').value.trim()||s.contract||s.name, orderer:$('#fOrderer').value.trim(), sekosha:$('#fSekosha').value.trim(),
+    start:$('#fStart').value, end:$('#fEnd').value, tpl:$('#fTpl').value, memo:$('#fMemo').value.trim() };
+  infos[key]=v; saveAll();
+  const pend=LS.get('shashin_infos_pending',{}); pend[key]=v; LS.set('shashin_infos_pending',pend);
+  pushInfos();
+  openAlbum(s.id,key);
+};
+async function pushInfos(){
+  const pend=LS.get('shashin_infos_pending',{}), list=Object.values(pend);
+  if(!list.length||!canSync()) return;
+  try{ const j=await gasPost({mode:'saveInfo',infos:list}); if(j.ok){ const now=LS.get('shashin_infos_pending',{}); list.forEach(x=>{ if(now[x.key]===undefined||JSON.stringify(now[x.key])===JSON.stringify(x)) delete now[x.key]; }); LS.set('shashin_infos_pending',now); } }catch(e){}
+}
 
 /* =========================================================
    台帳の中（撮影項目・写真・撮影位置）
    ========================================================= */
-function openAlbum(id){
+function openAlbum(id,key){
   const s=siteOf(id); if(!s) return;
-  cur={ ...s, tpl: tpls[s.id] || 'std', publicKoji: isPublicKoji(s) };
+  key = key || infoKey(s,fyOf());
+  const info=infos[key]||{};
+  cur={ ...s, tpl: info.tpl || tpls[s.id] || 'std', publicKoji: isPublicKoji(s), infoKey:key, fy: info.fy || fyOf() };
   $('#albumTitle').textContent=cur.name;
   const b=boards[cur.id]||{};
-  const koji = cur.contract ? `${cur.contract}\n${cur.name}` : cur.name;
-  boards[cur.id]={ koji, sekosha:'庭乃持田園有限会社', koshu:'', sokuten:'', stage:'', biko:'', jushu:'', kikaku:'', ...b, date:today() };
+  const base = info.koji || cur.contract || cur.name;
+  const koji = cur.contract && !base.includes(cur.name) ? `${base}\n${cur.name}` : base;
+  boards[cur.id]={ koshu:'', sokuten:'', stage:'', biko:'', jushu:'', kikaku:'', ...b, koji, sekosha: info.sekosha || '庭乃持田園有限会社', date:today() };
   teamPhotos=[]; loadTeamPhotos();
-  boardOn = cur.kind!=='public_koji';
+  boardOn = !cur.publicKoji;
   saveAll();
   $('#albumBanner').innerHTML = cur.publicKoji
     ? `<div class="banner warn"><b>公共工事の現場です。</b>電子黒板の写真は納品写真として認められない可能性が高いため、黒板は<b>オフ</b>で始まります。実物の黒板を写し込むか、納品写真はミライ工事で撮影してください。</div>`
@@ -1224,7 +1311,7 @@ $('#setCleanup').onclick=async()=>{
   renderHome();
   loadStaff().then(()=>{ if(!me()) openSettings(); });
   loadParkMaster();
-  syncAll(true); processQueue();
+  pushInfos().then(()=>syncAll(true)); processQueue();
 })();
 </script>
 </body>

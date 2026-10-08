@@ -51,6 +51,7 @@ var SHEETS = {
   chosaPhotos:{ name: '現場調査の写真', head: ['hash', 'fileId', 'mime', 'size', 'at'] },
   parks:     { name: '公園報告',     head: ['id', 'park', 'contract', 'order', 'date', 'figures', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'genzai'] },   // 中身（図面・図形）は Drive の「公園報告データ」に1件1ファイルで置く。genzai＝発生材に使った残材処分の記録（JSON）
   shashinItems:  { name: '工事写真の撮影項目', head: ['itemId', 'siteId', 'cat', 'name', 'jushu', 'kikaku', 'memo', 'lat', 'lng', 'src', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'kind'] },   // 地図に置いた点（樹木・除草・補修など）。現場マスタの現場IDでつなぐ
+  shashinInfo:   { name: '工事写真の案件情報', head: ['key', 'type', 'contract', 'fy', 'siteId', 'koji', 'orderer', 'sekosha', 'start', 'end', 'tpl', 'memo', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 委託は「委託名＋年度」、そのほかは現場ごと。一度入れたら全員が入力なしで撮影へ
   shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
@@ -334,6 +335,7 @@ function doPost(e) {
       case 'shashin:saveItems':   return withLock_(function () { return shashinSaveItems_(b.items, b.by); });
       case 'shashin:deleteItems': return withLock_(function () { return shashinDeleteItems_(b.ids, b.by); });
       case 'shashin:upload':      return out_(shashinUpload_(b));
+      case 'shashin:saveInfo':    return withLock_(function () { return shashinSaveInfo_(b.infos, b.by); });
       case 'shashin:addSite':     return withLock_(function () { return addSitesFromNippou_([b.site], b.by); });
       /* 公園報告 */
       case 'park:save':        return withLock_(function () { return parkSave_(b); });
@@ -1267,16 +1269,18 @@ function shashinItemOut_(r) {
 }
 function shashinGet_(a, p) {
   if (a === 'data') {
-    var photos = rows_('shashinPhotos'), counts = {}, shot = [];
+    var photos = rows_('shashinPhotos'), counts = {}, shot = [], last = {};
     photos.forEach(function (r) {
       counts[r.siteId] = (counts[r.siteId] || 0) + 1;
+      var t = String(r.at || ''); if (t && (!last[r.siteId] || last[r.siteId] < t)) last[r.siteId] = t;
       if (r.itemId) shot.push({ itemId: r.itemId, stage: r.stage });
     });
     return { ok: true,
       sites: siteList_().filter(function (s) { return s.state !== '終了'; }).map(function (s) {
         return { id: s.id, kind: s.kind, contract: s.contract, name: s.name, state: s.state, aliases: s.aliases, address: s.address, lat: shashinNum_(s.lat), lng: shashinNum_(s.lng) }; }),
       items: rows_('shashinItems').filter(function (r) { return r.state !== '削除'; }).map(shashinItemOut_),
-      shot: shot, counts: counts, admins: admins_() };
+      infos: rows_('shashinInfo').map(function (r) { r.fy = r.fy === '' ? '' : Number(r.fy); return r; }),
+      shot: shot, counts: counts, last: last, admins: admins_() };
   }
   if (a === 'photos') {   // その現場で、みんなが撮った写真の記録
     return { ok: true, photos: rows_('shashinPhotos').filter(function (r) { return !p.siteId || String(r.siteId) === String(p.siteId); }).map(function (r) {
@@ -1302,6 +1306,17 @@ function shashinSaveItems_(items, by) {
     n++;
   });
   return { ok: true, count: n };
+}
+function shashinSaveInfo_(list, by) {
+  var have = {}; rows_('shashinInfo').forEach(function (r) { have[r.key] = true; });
+  (list || []).forEach(function (v) {
+    if (!v || !v.key) return;
+    var obj = { key: String(v.key), type: v.type || '', contract: v.contract || '', fy: v.fy || '', siteId: v.siteId || '', koji: v.koji || '', orderer: v.orderer || '',
+      sekosha: v.sekosha || '', start: v.start || '', end: v.end || '', tpl: v.tpl || 'std', memo: v.memo || '' };
+    if (!have[obj.key]) { obj.by = by || ''; obj.at = now_(); }
+    upsert_('shashinInfo', 'key', 'N', obj, by);
+  });
+  return { ok: true };
 }
 function shashinDeleteItems_(ids, by) {
   var have = {}; rows_('shashinItems').forEach(function (r) { have[r.itemId] = true; });
