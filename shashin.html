@@ -134,6 +134,12 @@ header .back{font-size:22px;padding:4px 12px}
 .bigStages button{flex:1;padding:18px 4px;border-radius:14px;background:#fff;border:2px solid var(--main);color:var(--main);font-weight:800;font-size:16px}
 .bigStages button.done{background:var(--main);color:#fff}
 .bigStages button small{display:block;font-weight:500;font-size:11px;margin-top:4px;opacity:.85}
+.pkList{display:flex;flex-direction:column;gap:6px;max-height:34vh;overflow-y:auto}
+.pkList button{text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:15px;color:var(--text)}
+.pkList button.on{background:var(--main);color:#fff;border-color:var(--main)}
+.pkList button.new{color:var(--main);border-style:dashed;font-weight:700}
+.pkList button small{display:block;color:var(--sub);font-size:11px;margin-top:2px}
+.pkList button.on small{color:#e6efe6}
 .posInfo{font-size:13px;color:var(--main-d);background:#eef3ee;border-radius:8px;padding:8px 10px;margin-bottom:14px}
 </style>
 </head>
@@ -142,9 +148,9 @@ header .back{font-size:22px;padding:4px 12px}
 <!-- ===== 台帳一覧 ===== -->
 <section id="home" class="screen active">
   <header><a href="index.html" class="back" style="color:#fff;text-decoration:none;font-size:22px;padding:4px 8px">‹</a><h1>工事写真</h1><button id="btnSync">更新</button><button id="btnSettings">名前</button></header>
-  <div class="bar"><input id="q" type="search" placeholder="現場を検索（委託名・現場名）"><span id="syncChip" class="chip"></span></div>
+  <div class="bar"><input autocomplete="off" autocorrect="off" id="q" type="search" placeholder="現場を検索（委託名・現場名）"><span id="syncChip" class="chip"></span></div>
   <div class="scroll" id="siteList"></div>
-  <button class="fab" id="btnNew">＋ 一覧にない現場</button>
+  <button class="fab" id="btnNew">＋ 現場をえらぶ・追加</button>
 </section>
 
 <!-- ===== 台帳の中 ===== -->
@@ -213,7 +219,7 @@ header .back{font-size:22px;padding:4px 12px}
   <div class="scroll">
     <div class="card">
       <div class="field"><label>あなたの名前（写真の記録とファイル名に入ります。日報・段取りと共通）</label>
-        <div class="quick" id="staffQuick"></div><input id="setStaff" placeholder="例）持田" style="margin-top:8px"></div>
+        <div class="quick" id="staffQuick"></div><input autocomplete="off" autocorrect="off" id="setStaff" placeholder="例）持田" style="margin-top:8px"></div>
       <button class="btn" id="setSave">保存</button>
     </div>
     <div class="card">
@@ -227,26 +233,32 @@ header .back{font-size:22px;padding:4px 12px}
 
 <!-- ===== 台帳追加 ===== -->
 <div class="modal" id="siteModal"><div class="sheet">
-  <h2>一覧にない現場を追加</h2>
-  <div class="banner info" style="margin:0 0 14px">日報と同じ「現場マスタ」に<b>仮登録</b>で入ります（日報の現場の一覧にも出ます）。正式な現場にするのは親方が現場ノートで行います。</div>
-  <div class="field"><label>種類</label><select id="sKind"><option>公共</option><option>マンション</option><option>法人</option><option>個人</option><option>寺院</option><option>その他</option></select></div>
-  <div class="field" id="sContractWrap"><label>委託名・工事名（公共のとき）</label><input id="sContract" placeholder="例）公園緑地等定期維持管理（高津区北部）業務委託"></div>
-  <div class="field"><label>現場名</label><input id="sName" placeholder="例）末長けやき公園"></div>
-  <button class="btn" id="sSave">追加</button>
-  <button class="btn sub" data-close>キャンセル</button>
+  <h2>現場をえらぶ</h2>
+  <div class="field"><label>① 種類</label><div class="quick" id="pkKind"></div></div>
+  <div class="field" id="pkContractWrap"><label>② 委託名・工事名</label><div class="pkList" id="pkContract"></div>
+    <div id="pkNewContractWrap" style="display:none;margin-top:8px"><input id="pkNewContract" autocomplete="off" autocorrect="off" name="x-contract-text" placeholder="新しい委託名・工事名を入力"></div></div>
+  <div class="field" id="pkSiteWrap"><label id="pkSiteLabel">② 現場</label>
+    <input id="pkFilter" type="search" autocomplete="off" autocorrect="off" name="x-site-filter" placeholder="現場名で絞り込む／新しい現場名を入力">
+    <div class="pkList" id="pkSites" style="margin-top:8px"></div></div>
+  <div class="card" id="pkNewBox" style="display:none;border:2px dashed var(--main)">
+    <div class="t" style="font-size:15px" id="pkNewTitle"></div>
+    <div class="s">一覧にない現場です。日報と同じ「現場マスタ」に<b>仮登録</b>で入ります（日報の一覧にも出ます）。</div>
+    <button class="btn" id="pkNewSave">この名前で新しく登録</button>
+  </div>
+  <button class="btn sub" data-close>閉じる</button>
 </div></div>
 
 <!-- ===== 撮影項目追加 ===== -->
 <div class="modal" id="itemModal"><div class="sheet">
   <h2 id="iTitle">撮影項目を追加</h2>
   <div class="posInfo" id="iPosInfo"></div>
-  <div class="field"><label>区分</label><div class="quick" id="iCatQuick"></div><input id="iCat" placeholder="例）補修" style="margin-top:8px"></div>
-  <div class="field"><label>名称・番号（黒板の「測点」に入ります）</label><input id="iName" placeholder="例）No.12 ／ ベンチ横の園路"></div>
+  <div class="field"><label>区分</label><div class="quick" id="iCatQuick"></div><input autocomplete="off" autocorrect="off" id="iCat" placeholder="例）補修" style="margin-top:8px"></div>
+  <div class="field"><label>名称・番号（黒板の「測点」に入ります）</label><input autocomplete="off" autocorrect="off" id="iName" placeholder="例）No.12 ／ ベンチ横の園路"></div>
   <div class="row2">
-    <div class="field"><label>樹種</label><input id="iJushu" placeholder="例）ケヤキ"></div>
-    <div class="field"><label>規格・数量</label><input id="iKikaku" placeholder="例）C=120cm ／ 2㎡"></div>
+    <div class="field"><label>樹種</label><input autocomplete="off" autocorrect="off" id="iJushu" placeholder="例）ケヤキ"></div>
+    <div class="field"><label>規格・数量</label><input autocomplete="off" autocorrect="off" id="iKikaku" placeholder="例）C=120cm ／ 2㎡"></div>
   </div>
-  <div class="field"><label>メモ（黒板の備考に入ります）</label><input id="iMemo" placeholder="例）縁石破損"></div>
+  <div class="field"><label>メモ（黒板の備考に入ります）</label><input autocomplete="off" autocorrect="off" id="iMemo" placeholder="例）縁石破損"></div>
   <div class="field" id="iHereWrap"><label><input type="checkbox" id="iHere" style="width:auto"> 今いる場所を項目の位置にする</label></div>
   <button class="btn" id="iSave">追加</button>
   <button class="btn" id="iSaveShoot" style="background:var(--main-d)">追加してすぐ撮影（着手前）</button>
@@ -320,7 +332,8 @@ let staffList = LS.get('shashin_staff',[]);
 let items = LS.get('shashin_items',[]);
 let boards = LS.get('shashin_boards',{});
 let tpls = LS.get('shashin_tpl',{});              // 現場ごとの黒板の型
-let teamPhotos = [];                              // 開いている現場の、みんなが撮った写真の記録
+let teamPhotos = [];
+let loadError = '';                              // 開いている現場の、みんなが撮った写真の記録
 function me(){
   for(const k of ['dandori_me','nippou_author']){
     try{ const v=localStorage.getItem(k); if(!v) continue; let n=v; try{ const j=JSON.parse(v); n=typeof j==='string'?j:''; }catch(e){} if(n) return n; }catch(e){}
@@ -401,7 +414,8 @@ async function syncAll(silent){
     (j.shot||[]).forEach(s=>{ (shotLog[s.itemId]=shotLog[s.itemId]||{})[s.stage]=shotLog[s.itemId]?.[s.stage]||1; });
     LS.set('shashin_shotlog',shotLog);
     saveAll(); if(!silent) toast('最新にしました');
-  }catch(e){ if(!silent) toast('更新できませんでした：'+(e.message||e),3000); }
+    loadError='';
+  }catch(e){ loadError=String(e.message||e); if(!silent) toast('更新できませんでした：'+loadError,3000); }
   renderHome();
   if(cur){ const s=siteOf(cur.id); if(s) Object.assign(cur,s); renderItems(); if($('#mapPane').classList.contains('on')) renderMap(); }
 }
@@ -459,7 +473,7 @@ function renderHome(){
   const hit=s=>!q||[s.kind,s.contract,s.name,s.aliases,s.address].join(' ').includes(q);
   const list=sites.filter(hit);
   const box=$('#siteList');
-  if(!list.length){ box.innerHTML=`<div class="empty">${sites.length?'見つかりません':'現場の一覧を読み込んでいます…<br>電波のある所で「更新」を押してください。'}</div>`; updateChip(); return; }
+  if(!list.length){ box.innerHTML=`<div class="empty">${sites.length?'見つかりません':(loadError?`現場の一覧を読み込めませんでした（${esc(loadError)}）。<br>`:'現場の一覧を読み込んでいます…<br>')+'電波のある所で「更新」を押してください。'}</div>`; updateChip(); return; }
   const order=['公共','マンション','法人','個人','寺院','その他'];
   const groups={};
   list.forEach(s=>{ const g=s.contract?`${s.kind}｜${s.contract}`:(s.kind||'その他'); (groups[g]=groups[g]||[]).push(s); });
@@ -480,23 +494,62 @@ function renderHome(){
 }
 $('#q').oninput=renderHome;
 $('#btnSync').onclick=()=>{ syncAll(false); processQueue(); };
-$('#btnNew').onclick=()=>{ $('#siteModal').classList.add('on'); $('#sKind').onchange(); };
-$('#sKind').onchange=()=>{ $('#sContractWrap').style.display=$('#sKind').value==='公共'?'':'none'; };
-$('#sSave').onclick=async()=>{
-  const kind=$('#sKind').value, name=$('#sName').value.trim(), contract=kind==='公共'?$('#sContract').value.trim():'';
+/* 現場をえらぶ：種類 → 委託（公共）→ 現場。マスタにある現場はそのまま開き、無いものだけ新しく仮登録する */
+const KIND_ORDER=['公共','マンション','法人','個人','寺院','その他'];
+const PK={ kind:'公共', contract:'', newContract:false };
+$('#btnNew').onclick=()=>{ PK.contract=''; PK.newContract=false; $('#pkFilter').value=''; $('#pkNewContract').value=''; drawPicker(); $('#siteModal').classList.add('on'); };
+function drawPicker(){
+  const kinds=[...new Set([...KIND_ORDER,...sites.map(s=>s.kind).filter(Boolean)])];
+  $('#pkKind').innerHTML=kinds.map(k=>`<button data-k="${esc(k)}" class="${k===PK.kind?'on':''}">${esc(k)}<span style="opacity:.7;font-size:11px"> ${sites.filter(s=>s.kind===k).length}</span></button>`).join('');
+  $('#pkKind').querySelectorAll('button').forEach(b=>b.onclick=()=>{ PK.kind=b.dataset.k; PK.contract=''; PK.newContract=false; drawPicker(); });
+  // 委託（公共のときだけ）
+  const useContract = PK.kind==='公共' || sites.some(s=>s.kind===PK.kind && s.contract);
+  $('#pkContractWrap').style.display=useContract?'':'none';
+  $('#pkSiteLabel').textContent=useContract?'③ 現場':'② 現場';
+  if(useContract){
+    const cs=[...new Set(sites.filter(s=>s.kind===PK.kind&&s.contract).map(s=>s.contract))].sort((x,y)=>x.localeCompare(y,'ja'));
+    $('#pkContract').innerHTML=cs.map(c=>`<button data-c="${esc(c)}" class="${!PK.newContract&&c===PK.contract?'on':''}">${esc(c)}<small>現場 ${sites.filter(s=>s.kind===PK.kind&&s.contract===c).length}件</small></button>`).join('')
+      + `<button class="new ${PK.newContract?'on':''}" data-new="1">＋ 一覧にない委託・工事</button>`;
+    $('#pkContract').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(b.dataset.new){ PK.newContract=true; PK.contract=''; } else { PK.newContract=false; PK.contract=b.dataset.c; } drawPicker(); if(PK.newContract) $('#pkNewContract').focus(); });
+    $('#pkNewContractWrap').style.display=PK.newContract?'':'none';
+  }
+  drawPickerSites();
+}
+function drawPickerSites(){
+  const useContract=$('#pkContractWrap').style.display!=='none';
+  const ready = !useContract || PK.contract || PK.newContract;
+  $('#pkSiteWrap').style.display=ready?'':'none';
+  if(!ready){ $('#pkNewBox').style.display='none'; return; }
+  const q=$('#pkFilter').value.trim();
+  const list=PK.newContract?[]:sites.filter(s=>s.kind===PK.kind && (!useContract || s.contract===PK.contract) && (!q || [s.name,s.aliases].join(' ').includes(q)));
+  $('#pkSites').innerHTML=list.length
+    ? list.map(s=>`<button data-id="${esc(s.id)}">${esc(s.name)}<small>${s.state==='仮登録'?'仮登録 ・ ':''}写真 ${counts[s.id]||0}枚</small></button>`).join('')
+    : `<div class="s" style="color:var(--sub);font-size:13px;padding:4px">${q?'一致する現場はありません':(PK.newContract?'新しい委託の現場名を入力してください':'この中の現場はまだありません')}</div>`;
+  $('#pkSites').querySelectorAll('button').forEach(b=>b.onclick=()=>{ $('#siteModal').classList.remove('on'); openAlbum(b.dataset.id); });
+  const exact=sites.some(s=>s.kind===PK.kind && s.name===q);
+  const show=q && !exact;
+  $('#pkNewBox').style.display=show?'':'none';
+  if(show) $('#pkNewTitle').textContent=`新しい現場：${q}`;
+}
+$('#pkFilter').oninput=drawPickerSites;
+$('#pkNewSave').onclick=async()=>{
+  const name=$('#pkFilter').value.trim();
+  const useContract=$('#pkContractWrap').style.display!=='none';
+  const contract=useContract?(PK.newContract?$('#pkNewContract').value.trim():PK.contract):'';
   if(!name){ toast('現場名を入れてください'); return; }
+  if(useContract&&PK.kind==='公共'&&!contract){ toast('委託名・工事名を入れてください'); return; }
   if(!me()){ toast('先に名前を入れてください'); openSettings(); return; }
   if(!canSync()){ toast('現場の追加は電波のある所でお願いします'); return; }
-  $('#sSave').disabled=true;
+  const btn=$('#pkNewSave'); btn.disabled=true;
   try{
-    const j=await gasPost({mode:'addSite',site:{cat:kind,contract,site:name}});
+    const j=await gasPost({mode:'addSite',site:{cat:PK.kind,contract,site:name}});
     const r=(j.results||[])[0];
     if(!j.ok||!r||!r.ok) throw new Error((r&&r.error)||j.error||'');
-    $('#siteModal').classList.remove('on'); $('#sName').value=''; $('#sContract').value='';
-    toast(r.existed?'同じ名前の現場がもうありました':'仮登録しました');
+    $('#siteModal').classList.remove('on');
+    toast(r.existed?`「${r.name}」がもうありました`:'仮登録しました');
     await syncAll(true); openAlbum(r.id);
-  }catch(e){ toast('追加できませんでした：'+(e.message||e),3000); }
-  $('#sSave').disabled=false;
+  }catch(e){ toast('登録できませんでした：'+(e.message||e),3000); }
+  btn.disabled=false;
 };
 
 /* =========================================================
