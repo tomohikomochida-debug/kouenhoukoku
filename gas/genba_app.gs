@@ -306,6 +306,7 @@ function doGet(e) {
     if (app === 'chosa') return out_(chosaGet_(a, p));
     if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL) });
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
+    if (app === 'dougu' && a === 'data' && p.only === 'tools') return out_({ ok: true, tools: rows_('tools'), admins: admins_() });   // 段取り・要点まとめは道具の一覧だけ使う
     if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair'), suppliers: rows_('suppliers'), admins: admins_(), outs: openOuts_(), sites: rows_('sites') });
     if (app === 'torihiki' && a === 'data') return out_({ ok: true, suppliers: rows_('suppliers'), history: supplierHistory_(), admins: admins_() });
     if (app === 'sharyo' && a === 'list') return out_({ ok: true, vehicles: vehicleList_() });
@@ -317,6 +318,7 @@ function doGet(e) {
     if (app === 'yoten' && a === 'result') return out_(summaryResult_(p.id));
     if (app === 'dandori') {
       var today = ymd_(new Date());
+      if (a === 'data' && p.lite) return out_({ ok: true, nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles') });   // 要点まとめは呼び名・取引先・車両だけ使う
       if (a === 'data') return out_({ ok: true, cards: cards_(p.from || addDays_(today, -7), p.to || addDays_(today, 30)), nicknames: rows_('nicknames'), suppliers: rows_('suppliers'), vehicles: rows_('vehicles'), outs: openOuts_(), siteNotes: siteNotesForDandori_() });
       if (a === 'calendar') { var c = calendar_(p.from || today, p.to || addDays_(today, 14)); return out_({ ok: true, sites: c.sites, holidays: c.holidays, timed: c.timed }); }
       if (a === 'colors') return out_(Object.assign({ ok: true }, colors_(today, addDays_(today, 30))));
@@ -994,11 +996,28 @@ function loadItem_(b) {
  *  段取り（カード・カレンダー・AI整理）
  * ================================================================ */
 function cards_(from, to) {
-  return rows_('cards').map(function (o) {
+  return cardRows_(from, to).map(function (o) {
     JSON_COLS.forEach(function (h) { try { o[h] = o[h] ? JSON.parse(o[h]) : []; } catch (e) { o[h] = []; } });
     o.staff = o.staff ? String(o.staff).split('・') : [];
     return o;
   }).filter(function (o) { return !o.date || ((!from || o.date >= from) && (!to || o.date <= to)); });   // 日付未定のカードは常に返す
+}
+/** 段取りカードの行のうち、期間に入るもの（日付未定も）だけを組み立てる。古いカードが増えても遅くならないように */
+function cardRows_(from, to) {
+  var head = SHEETS.cards.head, dc = head.indexOf('date'), vals = sh_('cards').getDataRange().getValues(), list = [];
+  for (var i = 1; i < vals.length; i++) {
+    var dv = vals[i][dc], ds = dv instanceof Date ? ymd_(dv) : String(dv == null ? '' : dv).trim();
+    if (ds && ((from && ds < from) || (to && ds > to))) continue;
+    if (vals[i].join('') === '') continue;
+    var o = {};
+    head.forEach(function (h, c) {
+      var v = vals[i][c];
+      if (v instanceof Date) v = /^date$|Date$|From$|To$/.test(h) ? ymd_(v) : Utilities.formatDate(v, TZ, 'yyyy-MM-dd HH:mm');
+      o[h] = v == null ? '' : v;
+    });
+    list.push(o);
+  }
+  return list;
 }
 /* 名簿の呼び名（あだ名）：山ちゃん→山口 など */
 function addNickname_(name, nick, by) {
@@ -1048,11 +1067,15 @@ function calName_(k) { return prop_(k, k === 'SITE_CALENDAR' ? '現場カレン�
 function calByName_(name) {
   var n = String(name || '').replace(/\s/g, '');
   if (!n) return null;
-  var hit = CalendarApp.getCalendarsByName(name);
-  if (hit.length) return hit[0];
-  var all = CalendarApp.getAllCalendars();   // 空白のちがいは気にしない
-  for (var i = 0; i < all.length; i++) if (all[i].getName().replace(/\s/g, '') === n) return all[i];
-  return null;
+  var cache = CacheService.getScriptCache(), key = 'calid_' + md5_(n), id = cache.get(key);   // 見つけたカレンダーのIDを6時間覚えておく（名前で探すのは遅い）
+  if (id) { try { var c = CalendarApp.getCalendarById(id); if (c && c.getName().replace(/\s/g, '') === n) return c; } catch (e) {} }
+  var hit = CalendarApp.getCalendarsByName(name), found = hit.length ? hit[0] : null;
+  if (!found) {
+    var all = CalendarApp.getAllCalendars();   // 空白のちがいは気にしない
+    for (var i = 0; i < all.length; i++) if (all[i].getName().replace(/\s/g, '') === n) { found = all[i]; break; }
+  }
+  if (found) { try { cache.put(key, found.getId(), 21600); } catch (e) {} }
+  return found;
 }
 // 予定の一覧。高度なサービス（Google Calendar API）を追加してあれば色番号と添付資料も読む
 function events_(from, to, cal) {
@@ -1195,6 +1218,7 @@ function siteList_() {
   return out;
 }
 function saveSite_(site, by) {
+  siteBriefClear_();
   site = site || {};
   var t = siteSheet_(), vals = t.sh.getDataRange().getValues(), col = siteCols_(t.head), row = 0;
   if (site.id) for (var i = 1; i < vals.length; i++) if (String(vals[i][col.id]) === String(site.id)) { row = i + 1; break; }
@@ -1219,6 +1243,7 @@ function saveSite_(site, by) {
 /* 日報で「一覧に無い現場を追加」した現場を、現場マスタに「仮登録」で入れる（全員の日報の一覧に出る）。
    同じ名前（別名も）の現場がもうあれば足さずに、その正式な名前を返す。仮登録は親方が現場ノートで「正式な現場にする」 */
 function addSitesFromNippou_(list, by) {
+  siteBriefClear_();
   var t = siteSheet_(), vals = t.sh.getDataRange().getValues(), col = siteCols_(t.head), out = [];
   var byKey = {};
   for (var i = 1; i < vals.length; i++) {
@@ -1243,6 +1268,7 @@ function addSitesFromNippou_(list, by) {
   return { ok: true, results: out };
 }
 function importBukken_(by) {   // 物件マスタの住所・管理会社・連絡先・別名・段取りメモ・備考を、名前（別名も）で照合して、空いている欄にだけ写す
+  siteBriefClear_();
   if (!isAdmin_(by)) return { ok: false, error: '物件マスタから写すのは' + admins_().join('・') + 'だけができます' };
   var src; try { src = SpreadsheetApp.openById(prop_('BUKKEN_SHEET_ID', BUKKEN_SHEET_ID)).getSheetByName('sites'); } catch (e) { return { ok: false, error: '物件マスタを開けません：' + e }; }
   if (!src) return { ok: false, error: '物件マスタに sites シートがありません' };
@@ -1289,13 +1315,25 @@ function saveCaution_(c, image, by) {
   } else if (c.removePhoto) { obj.photoId = ''; obj.photoUrl = ''; }
   return upsert_('cautions', 'cautionId', 'K', obj, by);
 }
+/** 現場マスタの名前・別名・段取りメモだけ（段取り用）。別のスプレッドシートを開くので10分覚えておく */
+var SITE_BRIEF_KEY = 'site_brief';
+function siteBrief_() {
+  var cache = CacheService.getScriptCache(), got = srcChunksGet_(cache, SITE_BRIEF_KEY + '_');
+  if (got) { try { return JSON.parse(got); } catch (e) {} }
+  var list = siteList_().map(function (s) { return { id: s.id, name: s.name, aliases: s.aliases, memo: s.memo }; });
+  var t = JSON.stringify(list), obj = {}, size = 20000, n = Math.ceil(t.length / size) || 1;
+  for (var i = 0; i < n; i++) obj[SITE_BRIEF_KEY + '_' + i] = t.slice(i * size, (i + 1) * size);
+  obj[SITE_BRIEF_KEY + '_n'] = String(n);
+  try { cache.putAll(obj, 600); } catch (e) {}
+  return list;
+}
+function siteBriefClear_() { try { CacheService.getScriptCache().remove(SITE_BRIEF_KEY + '_n'); } catch (e) {} }
 function siteNotesForDandori_() {   // 段取りカードに出す：有効な注意点と段取りメモ（カードの現場名と照合できるよう別名も渡す）
   try {
     var today = ymd_(new Date());
     var cs = rows_('cautions').filter(function (c) { return (c.state || '有効') === '有効' && (!c.until || String(c.until) >= today); })
       .map(function (c) { return { cautionId: c.cautionId, site: c.site, siteId: c.siteId, kind: c.kind, text: c.text, photoUrl: c.photoUrl }; });
-    var sites = siteList_().filter(function (s) { return s.memo || cs.some(function (c) { return c.siteId === s.id; }); })
-      .map(function (s) { return { id: s.id, name: s.name, aliases: s.aliases, memo: s.memo }; });
+    var sites = siteBrief_().filter(function (s) { return s.memo || cs.some(function (c) { return c.siteId === s.id; }); });
     return { cautions: cs, sites: sites };
   } catch (e) { return { cautions: [], sites: [], error: String(e) }; }
 }

@@ -438,7 +438,7 @@ async function load() {
     } else {
       const [c, cal, w, t] = await Promise.all([
         getJSON(GAS_URL + '?app=dandori&action=data'), getJSON(GAS_URL + '?app=dandori&action=calendar&from=' + addDays(TODAY, -1) + '&to=' + addDays(TODAY, 21)),
-        getJSON(YOUGO_URL + '?app=yougo&action=data'), getJSON(DOUGU_URL + '?app=dougu&action=data')]);
+        getJSON(YOUGO_URL + '?app=yougo&action=data'), getJSON(DOUGU_URL + '?app=dougu&action=data&only=tools')]);
       [c, cal, w, t].forEach(r => { if (!r.ok) throw new Error(r.error || '読み込み失敗'); });
       CARDS = c.cards; NICK = c.nicknames || []; SUP = c.suppliers || []; VEH = c.vehicles || []; CAL = { sites: cal.sites, holidays: cal.holidays, timed: cal.timed || [] }; applyTimed(); WORDS = { terms: w.terms, aliases: w.aliases }; TOOLS = t.tools; OUTS = c.outs || []; SITE_NOTES = c.siteNotes || SITE_NOTES;
       lsSet(LS.cache, { CARDS, NICK, CAL, WORDS, TOOLS, SUP, VEH, OUTS, SITE_NOTES });

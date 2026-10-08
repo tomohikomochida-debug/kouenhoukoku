@@ -260,7 +260,7 @@ async function load() {
   if (!had) await fresh;
 }
 async function loadFresh() {
-  const [w, t, d] = await Promise.allSettled([getJSON(GAS_URL + '?app=yougo&action=data'), getJSON(GAS_URL + '?app=dougu&action=data'), getJSON(GAS_URL + '?app=dandori&action=data&from=' + TODAY + '&to=' + TODAY)]);
+  const [w, t, d] = await Promise.allSettled([getJSON(GAS_URL + '?app=yougo&action=data'), getJSON(GAS_URL + '?app=dougu&action=data&only=tools'), getJSON(GAS_URL + '?app=dandori&action=data&lite=1&from=' + TODAY + '&to=' + TODAY)]);
   const ok = r => r.status === 'fulfilled' && r.value && r.value.ok;
   const c = lsGet(LS.cache, {}) || {};
   if (ok(w)) { WORDS = { terms: w.value.terms || [], aliases: w.value.aliases || [] }; c.WORDS = WORDS; } else if (c.WORDS) WORDS = c.WORDS;
