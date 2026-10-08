@@ -711,7 +711,7 @@ function importCustomWorks(obj){ if(!obj||typeof obj!=='object') return;
 
 /* ---------- 状態 ---------- */
 let state={img:null, scale:null /*m per imgpx*/, features:[], manual:[], scan:[] /*3Dスキャンの仮置きの木（工種まだ）*/};
-let selScan=null;
+let selScan=null, alignScan=null;   // alignScan={step,b,t1,p1,t2,p2}：目印2点で図面に合わせる
 let view={zoom:1,ox:0,oy:0};
 let tool="area";
 let draft=null;            // 作成中ポリゴン or 校正点
@@ -722,7 +722,7 @@ const $=id=>document.getElementById(id);
 /* ---------- Undo/Redo（全体の戻る/進む） ---------- */
 let undoStack=[], redoStack=[];
 function snapshot(){return JSON.stringify({features:state.features,manual:state.manual,scale:state.scale,scan:state.scan||[]});}
-function restore(s){const o=JSON.parse(s);state.features=o.features;state.manual=o.manual;state.scale=o.scale;state.scan=o.scan||[];selScan=null;renderScanInfo();
+function restore(s){const o=JSON.parse(s);state.features=o.features;state.manual=o.manual;state.scale=o.scale;state.scan=o.scan||[];selScan=null;alignScan=null;renderScanInfo();
   recalcAll();multiSel=[];selected=null;draft=null;updateScaleBadge();renderAgg();renderSansha();refreshDraftBar();draw();updateUndoButtons();}
 function pushHistory(){undoStack.push(snapshot());if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();}
 function undo(){if(!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop());}
@@ -899,6 +899,7 @@ document.querySelectorAll('.sec.collapsible > h3').forEach(h=>h.addEventListener
 function updateHint(){
   const h=$('hint');h.style.display='';
   if(!state.img){h.innerHTML='まず <b>「公園図面を読み込む」</b> から地図画像を読み込んでください。';return;}
+  if(alignScan){const st=alignScan.step;h.innerHTML='＜目印2点で図面に合わせる＞ '+(st===0?'① 目印にする<b>仮置きの木（点線の丸）を1本タップ</b>':st===1?'② その木が<b>図面のどこにあるかタップ</b>':st===2?'③ 離れたところの<b>仮置きの木をもう1本タップ</b>':'④ その木が<b>図面のどこにあるかタップ</b>')+'　（やめるは左の「合わせるのをやめる」）';return;}
   if(holeMode){h.innerHTML='＜除外エリア＞刈らない部分（木・ベンチ等）の外周を<b>タップ</b>→<b>「✓ 確定」</b>。全体面積から差し引きます（やめるは✕）。';return;}
   if(!state.scale&&tool!=='cal'){h.innerHTML='面積を出すには先に <b>① 縮尺合わせ</b> を。本数だけなら縮尺なしでもOK。';return;}
   if(tool==='cal')h.innerHTML='既知の長さの<b>一端を押して、もう一端までドラッグ</b>（タップ2回でもOK）。置いた点は<b>離さず動かせば微調整</b>できます。先に左の「実距離(m)」を合わせて。';
@@ -1587,6 +1588,13 @@ function draw(){
     const tx=(t.C?t.C:'?')+(t.chk?' 要確認':''); ctx.font=`bold ${11/view.zoom}px sans-serif`; ctx.textAlign='left'; ctx.textBaseline='middle';
     ctx.lineWidth=3/view.zoom; ctx.strokeStyle='#fff'; ctx.strokeText(tx,t.x+r+3/view.zoom,t.y); ctx.fillStyle=t.chk?'#c0560c':'#334155'; ctx.fillText(tx,t.x+r+3/view.zoom,t.y);
     ctx.restore(); }); }
+  if(alignScan){ const A=alignScan, z=view.zoom; ctx.save();
+    [[A.t1,A.p1],[A.t2,A.p2]].forEach(([t,q],i)=>{ if(!t)return;
+      ctx.beginPath(); ctx.arc(t.x,t.y,(scanRad(t)+6)/z,0,7); ctx.lineWidth=3/z; ctx.strokeStyle='#2563eb'; ctx.stroke();
+      ctx.font=`bold ${13/z}px sans-serif`; ctx.fillStyle='#2563eb'; ctx.fillText(String(i+1),t.x-(scanRad(t)+16)/z,t.y-(scanRad(t)+6)/z);
+      if(q){ ctx.beginPath(); ctx.moveTo(t.x,t.y); ctx.lineTo(q.x,q.y); ctx.setLineDash([5/z,4/z]); ctx.lineWidth=2/z; ctx.stroke(); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(q.x-9/z,q.y); ctx.lineTo(q.x+9/z,q.y); ctx.moveTo(q.x,q.y-9/z); ctx.lineTo(q.x,q.y+9/z); ctx.lineWidth=3/z; ctx.stroke(); } });
+    ctx.restore(); }
   if(_gmap){ _gmap.clusters.forEach(cl=>{
     // 番号だけモードでは、まとめ表示（×N本）も選んでいる時だけ出す（面積と同じ：選択解除で消える）
     const _clOn=exporting||(labelVisible(cl.members[0])&&(disp.mode!=='num'||cl.members.some(m=>isSel(m))));
@@ -1818,6 +1826,7 @@ function downCommon(p,ip){
   }
   if(tool==='cal')return null;
   if(tool==='area')return null;                 // 面積モードは常に描画（樹木と同様、既存図形の上でも開始可）。編集は選択中図形のハンドル or 選択モードで。
+  if(alignScan) return null;                     // 目印合わせ中：指を離したときに alignTap
   selScan=null;
   if(tool==='tree'&&nearestScan(ip)) return null;   // 仮置きの木：指を離したとき（placeTree）に工種を決める
   if(tool==='select'){ const st=nearestScan(ip); if(st){ hlHole=null; multiSel=[]; selected=null; selScan=st; renderSansha(); draw(); return 'sel'; } }
@@ -1939,6 +1948,7 @@ cv.addEventListener('mousedown',e=>{
   selMod=(e.ctrlKey||e.metaKey||multiMode);
   const r=downCommon(p,ip);
   if(r){cv.style.cursor='grabbing';draw();return;}
+  if(alignScan){alignTap(ip);return;}
   if(tool==='cal'){calDown(ip);return;}
   if(tool==='area'||tool==='strip'){addAreaPoint(ip);return;}
   if(tool==='rect'){placeRect(ip);return;}
@@ -1975,7 +1985,7 @@ cv.addEventListener('touchstart',e=>{
   selMod=multiMode;
   const r=downCommon(p,ip);
   if(r){lastTouch=null;draw();return;}          // 操作開始（配置しない）
-  if(tool==='cal'){calDown(ip);lastTouch=null;return;}
+  if(tool==='cal'&&!alignScan){calDown(ip);lastTouch=null;return;}
   lastTouch=p;                                   // 空タップ → touchendで配置（面積/樹木）
 },{passive:false});
 cv.addEventListener('touchmove',e=>{
@@ -1992,11 +2002,12 @@ cv.addEventListener('touchend',e=>{
   if(pinchD&&e.touches.length<2){pinchD=null;return;}
   if(lblDrag){const d=lblDrag;lblDrag=null;if(!d.moved){selectFeature(d.f);}renderAgg();draw();lastTouch=null;return;}
   if(draggingLegend){draggingLegend=false;lastTouch=null;return;}
-  if(tool==='cal'){if(calDragIdx!==null)calUp();lastTouch=null;return;}
+  if(tool==='cal'&&!alignScan){if(calDragIdx!==null)calUp();lastTouch=null;return;}
   if(editV){recalcAll();editV=null;dragSnap=null;renderAgg();renderSansha();lastTouch=null;return;}
   if(dragging){recalcAll();dragging=null;dragGroup=false;dragSnap=null;dragRing=null;renderAgg();renderSansha();lastTouch=null;return;}
   if(panning){panning=false;return;}
   if(!lastTouch)return;const ip=toImg(lastTouch.x,lastTouch.y);
+  if(alignScan){alignTap(ip);lastTouch=null;return;}
   if(tool==='area'||tool==='strip'){addAreaPoint(ip);}
   else if(tool==='rect'){placeRect(ip);}
   else if(tool==='tree'){placeTree(ip);}
@@ -2094,9 +2105,12 @@ function renderScanInfo(){ const el=$('scanInfo'); if(!el)return; const S=state.
   el.innerHTML=`<div class="legend" style="margin:8px 0 6px;line-height:1.6"><b>仮置き ${S.length}本</b>${nc?`（うち要確認 <b style="color:#c0560c">${nc}本</b>）`:''}<br>`
    +`②で工種を選び、③を「樹木」にして地図の<b>点線の丸</b>をタップすると工種が決まります。規格は幹周から自動で決まります。<br>仮置きの木は、工種が決まるまで集計・報告書に入りません。</div>`
    +`<button class="btn ghost" id="scanAllBtn"${w?'':' disabled style="opacity:.5"'}>残り${S.length}本を全部「${w?w.kind:'—'}」にする<small>${w?w.cat:'②で樹木の工種を選ぶと使えます'}</small></button>`
+   +(S.some(t=>t.mx!=null)?(alignScan?`<button class="btn" id="scanAlignBtn" style="background:#2563eb">合わせるのをやめる<small>目印の木→図面の場所、を2回タップします</small></button>`
+       :`<button class="btn ghost" id="scanAlignBtn">📍 目印2点で図面に合わせる<small>仮置きの木を2本、図面の正しい場所に合わせます（縮尺も合います）</small></button>`):'')
    +`<button class="btn ghost danger" id="scanClearBtn">仮置きを全部消す</button>`;
+  const al=$('scanAlignBtn'); if(al)al.onclick=()=>{ if(alignScan){alignScan=null;}else{ selScan=null; alignScan={step:0}; } renderScanInfo(); updateHint(); draw(); };
   const a=$('scanAllBtn'); if(a)a.onclick=()=>{ if(!curTreeWork())return; if(!confirm(`仮置き${S.length}本を全部「${w.cat}　${w.kind}」にします。よろしいですか。\n（あとから1本ずつ変えられます）`))return; const m=assignScan(S.slice()); if(m){multiSel=[];selected=null;renderSansha();draw();} };
-  const c=$('scanClearBtn'); if(c)c.onclick=()=>{ if(!confirm(`仮置きの木 ${S.length}本 を消します。よろしいですか。`))return; pushHistory(); state.scan=[]; selScan=null; renderScanInfo(); renderSansha(); draw(); };
+  const c=$('scanClearBtn'); if(c)c.onclick=()=>{ if(!confirm(`仮置きの木 ${S.length}本 を消します。よろしいですか。`))return; pushHistory(); state.scan=[]; selScan=null; alignScan=null; renderScanInfo(); renderSansha(); updateHint(); draw(); };
 }
 function scanWarn(){ const n=(state.scan||[]).length; if(!n)return true;
   return confirm(`工種が決まっていない仮置きの木が ${n}本 あります。\nこの木は報告書・集計に入りません。\n\nこのまま続けますか。`); }
@@ -2133,20 +2147,60 @@ function renderTreeEdit(el){
   $('teWork').onclick=()=>{ const w2=curTreeWork(); if(!w2)return; pushHistory(); T.forEach(f=>setTreeWork(f,w2.cat,w2.kind)); recalcAll(); renderAgg(); renderSansha(); draw(); };
   return true;
 }
+function alignTap(ip){
+  const A=alignScan; if(!A)return;
+  if(A.step===0||A.step===2){
+    const t=nearestScan(ip);
+    if(!t||t.mx==null){ updateHint(); return; }
+    if(A.step===2&&(t===A.t1||t.b!==A.t1.b)){ alert(t===A.t1?'1本目と別の木をタップしてください。':'1本目と同じスキャンの木を選んでください。'); return; }
+    if(A.step===0)A.t1=t; else A.t2=t; A.step++;
+  }else if(A.step===1){ A.p1={x:ip.x,y:ip.y}; A.step=2; }
+  else { A.p2={x:ip.x,y:ip.y}; finishAlign(); return; }
+  updateHint(); draw();
+}
+function finishAlign(){
+  const A=alignScan, t1=A.t1, t2=A.t2;
+  const dmx=t2.mx-t1.mx, dmy=t2.my-t1.my, dm=Math.hypot(dmx,dmy), dpx=A.p2.x-A.p1.x, dpy=A.p2.y-A.p1.y, dp=Math.hypot(dpx,dpy);
+  if(dm<1||dp<3){ alert('目印の2本が近すぎます。なるべく離れた2本を選んでください。'); alignScan={step:0}; updateHint(); draw(); return; }
+  // 相似変換（ずらす・回す・大きさ）：(B-A)/(b-a)
+  const den=dmx*dmx+dmy*dmy, ca=(dpx*dmx+dpy*dmy)/den, sa=(dpy*dmx-dpx*dmy)/den;
+  pushHistory();
+  (state.scan||[]).forEach(t=>{ if(t.b!==t1.b||t.mx==null)return; const ux=t.mx-t1.mx, uy=t.my-t1.my;
+    t.x=A.p1.x+ca*ux-sa*uy; t.y=A.p1.y+sa*ux+ca*uy; });
+  const sNew=dm/dp;                                // 図面の 1px = 何m（スキャンの実寸から）
+  let msg='位置を合わせました（目印の間 '+dm.toFixed(1)+'m）。';
+  if(!state.scale){ state.scale=sNew; updateScaleBadge(); recalcAll(); renderAgg(); msg+='\n図面の縮尺も、スキャンの実寸から合わせました。'; }
+  else{ const diff=(sNew/state.scale-1)*100; msg+='\n図面の縮尺とのちがい：'+(diff>=0?'+':'')+diff.toFixed(1)+'%'+(Math.abs(diff)>5?'\n※5%以上ちがいます。目印の木が合っているか確かめてください（戻るでやり直せます）。':''); }
+  alignScan=null; renderScanInfo(); updateHint(); draw();
+  alert(msg+'\n\nずれていたら「戻る」でやり直せます。');
+}
 function importScan(d){
   const trees=d.trees.filter(t=>isFinite(+t.x)&&isFinite(+t.y));
   if(!trees.length){ alert('このファイルには木が入っていませんでした。'); return; }
-  const useImg=!!d.imgData;
-  if(useImg&&state.img&&state.features.length){
-    if(!confirm('背景の図を、スキャンから作った平面図に置きかえます。\nいま描いてある図形は位置がずれます（新しい公園で取り込むのがおすすめです）。\n\n続けますか。'))return; }
+  const sS=(+d.scale>0)?+d.scale:null;           // スキャン図の 1px = 何m
+  let overlay=false;
+  if(state.img){
+    overlay=confirm('いまの図面の上に、スキャンの木を重ねますか？\n\nOK：いまの図面に重ねる（このあと目印2点で位置を合わせます）\nキャンセル：背景をスキャンから作った平面図に置きかえる');
+    if(!overlay&&state.features.length&&!confirm('背景をスキャンの平面図に置きかえると、いま描いてある図形は位置がずれます。\n（新しい公園で取り込むのがおすすめです）\n\n置きかえますか。'))return; }
+  const useImg=!!d.imgData&&!overlay;
   pushHistory();
-  const add=trees.map(t=>({x:+t.x,y:+t.y,C:(+t.C>0?Math.round(+t.C):null),chk:!!t.chk,note:t.note||''}));
+  const b=Date.now();                              // 取り込みごとの番号（区画ごとに合わせられるように）
+  const add=trees.map(t=>({x:+t.x,y:+t.y,C:(+t.C>0?Math.round(+t.C):null),chk:!!t.chk,note:t.note||'',b,
+    mx:sS?(+t.x)*sS:null, my:sS?(+t.y)*sS:null}));
+  if(overlay){                                     // 仮の位置：図面の縮尺に合わせて画面の真ん中へ
+    const k=(sS&&state.scale)?sS/state.scale:1;
+    const xs=add.map(t=>t.x),ys=add.map(t=>t.y), cx=(Math.min(...xs)+Math.max(...xs))/2, cy=(Math.min(...ys)+Math.max(...ys))/2;
+    const r=cv.getBoundingClientRect(), vc=toImg(r.width/2,r.height/2);
+    add.forEach(t=>{t.x=vc.x+(t.x-cx)*k; t.y=vc.y+(t.y-cy)*k;});
+  }
   state.scan=(useImg?[]:(state.scan||[])).concat(add); selScan=null;
-  if(d.scale>0){ state.scale=+d.scale; updateScaleBadge(); }
+  if(useImg&&sS){ state.scale=sS; updateScaleBadge(); }
   if(d.geo) state.scanGeo=d.geo;
   if(useImg){ const im=new Image(); im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();updateHint();requestAnimationFrame(fit);}; im.src=d.imgData; }
   recalcAll(); renderAgg(); renderScanInfo(); renderSansha(); draw();
   const nc=add.filter(t=>t.chk).length;
+  if(overlay&&sS){ alignScan={step:0}; renderScanInfo(); updateHint(); draw();
+    alert(`3Dスキャンの木を ${add.length}本 仮置きしました${nc?`（うち要確認 ${nc}本）`:''}。\n\nつづけて位置を合わせます：\n① 目印にする仮置きの木をタップ → ② 図面上のその木の場所をタップ\n③ 離れた木をもう1本タップ → ④ 図面上の場所をタップ`); return; }
   alert(`3Dスキャンの木を ${add.length}本 仮置きしました${nc?`（うち要確認 ${nc}本）`:''}。\n\n②で工種を選んで③を「樹木」にし、地図の点線の丸をタップすると工種が決まります。規格は幹周から自動で決まります。`);
 }
 $('scanImpBtn').onclick=()=>$('scanFile').click();
