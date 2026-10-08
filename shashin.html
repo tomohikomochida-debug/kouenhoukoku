@@ -191,6 +191,12 @@ header .back{font-size:22px;padding:4px 12px}
 .tabs2 button.on{background:var(--main-d);color:#fff}
 .addrow{display:flex;gap:6px;margin-top:6px}.addrow input{flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:15px}.addrow button{background:#fff;border:1px solid var(--main);color:var(--main);border-radius:10px;padding:0 14px;font-weight:700}
 .recent .when{font-size:12px;color:var(--sub)}
+.mapBox{display:flex;gap:10px;align-items:flex-start}
+#fMap{flex:1;min-width:0}
+.mapPrev{flex:0 0 38%;position:sticky;top:8px}
+.mapPrev canvas{width:100%;border-radius:4px;background:#1f3d2b}
+.mapRow{margin-bottom:10px}.mapRow>div:first-child{font-size:12px;color:var(--sub);margin-bottom:4px;font-weight:700}
+.mapRow .quick{margin-top:0}.mapRow .quick button{font-size:13px;padding:7px 10px}
 .kpBox{background:#f4f7f3;border:1px solid var(--line);border-radius:12px;padding:8px 10px 10px;margin-top:8px}
 .kpH{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--main-d);margin:6px 0 0}
 .kpH span{background:var(--main);color:#fff;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:11px}
@@ -410,6 +416,8 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
       <div class="field"><label>④ 測点の付け方</label><div class="quick" id="fNoStyle"></div></div>
       <div class="field"><label>⑤ 報告書（PDF）の形</label><div class="quick" id="fLayout"></div><div class="s" style="font-size:11px;color:var(--sub);margin-top:4px" id="fLayoutNote"></div></div>
       <div class="field"><label>⑥ 写真をまとめて渡すとき</label><div class="quick" id="fZip"></div></div>
+      <div class="field"><label>⑦ 黒板への入れ方（細目・規格・状況をどの欄に入れるか）</label>
+        <div class="mapBox"><div id="fMap"></div><div class="mapPrev"><canvas id="fMapPrev"></canvas><div class="s" style="font-size:11px;color:var(--sub);text-align:center">見本</div></div></div></div>
       <div class="field"><label>メモ</label><input id="fMemo" autocomplete="off" autocorrect="off" name="x-memo" placeholder="例）写真は着手前・完了を必ず"></div>
       <button class="btn" id="infoSave">保存して撮影へ</button>
     </div>
@@ -1054,10 +1062,37 @@ function drawInfoExtras(){
 const NO_STYLES=[['no','No.1・No.2・No.3'],['alpha','A・B・C'],['num','1・2・3']];
 const LAYOUTS=[['one3','3段・1ページ1対象（おすすめ）','前・中・後が1ページにそろう。前後だけの対象は3段目が空く'],['one2','2段・写真大きめ','写真を大きく見せたい民間向け。1ページ1対象'],['pack','詰めて並べる','枚数を減らしたいとき。ページをまたぐことがある']];
 const ZIPS=[['none','フォルダ分けなし'],['koshu','工種ごとのフォルダ'],['koshu_no','工種＞測点ごとのフォルダ']];
+/* 黒板への入れ方。おまかせ＝ミライ工事と同じ（細目は工種の欄に続けて、規格は備考、状況は備考の最後の行。黒板に種別・規格・状況の欄があればそこへ） */
+const MAP_DEF={kind:'auto',kikaku:'auto',stage:'auto'};
+let MAP_OVERRIDE=null;
+function mapOpts(){ return Object.assign({},MAP_DEF,MAP_OVERRIDE||curOpts().map||{}); }
+function mapChoices(tpl){
+  const has=k=>TEMPLATES[tplOK(tpl)].rows.some(r=>r.k===k);
+  return [
+    ['kind','細目（種別）を入れる所',[['auto','おまかせ'],['koshu','工種の欄に続けて'],...(has('shubetsu')?[['shubetsu','種別の欄']]:[]),['biko','備考'],['none','入れない']]],
+    ['kikaku','規格を入れる所',[['auto','おまかせ'],...(has('kikaku')?[['kikaku','規格の欄']]:[]),...(has('saibetsu')?[['saibetsu','細別の欄']]:[]),['biko','備考'],['koshu','工種の欄に続けて'],['sokuten','測点の欄に続けて'],['none','入れない']]],
+    ['stage','状況（作業前など）を入れる所',[['auto','おまかせ'],['last','備考の最後の行'],['first','備考の最初の行'],...(has('stage')?[['stageRow','状況の欄']]:[]),['none','入れない']]]
+  ];
+}
+function drawMapUI(){
+  F.opts.map=Object.assign({},MAP_DEF,F.opts.map||{});
+  $('#fMap').innerHTML=mapChoices(F.tpl).map(([k,l,list])=>`<div class="mapRow"><div>${l}</div><div class="quick">${list.map(([v,t])=>`<button data-mk="${k}" data-v="${v}" class="${F.opts.map[k]===v?'on':''}">${t}</button>`).join('')}</div></div>`).join('')
+    +`<div class="s" style="font-size:11px;color:var(--sub)">おまかせ＝ミライ工事と同じ（細目は工種の欄に続けて、規格は備考、状況は備考の最後の行。黒板に種別・規格・状況の欄があればそこへ）</div>`;
+  $('#fMap').querySelectorAll('[data-mk]').forEach(b=>b.onclick=()=>{ F.opts.map[b.dataset.mk]=b.dataset.v; drawMapUI(); });
+  // 見本：この案件の工種（細目・規格があるもの）で黒板を作ってみる
+  const ex=F.koshu.find(x=>x.kind&&x.kikaku&&!String(x.cat).includes(x.kind))||F.koshu.find(x=>x.kikaku)||{cat:'樹木撤去',kind:'支障木',kikaku:'C=60〜90cm'};
+  const keepCur=cur; cur=Object.assign({},cur||{},{tpl:F.tpl}); MAP_OVERRIDE=F.opts.map;
+  try{
+    const b={ koji:$('#fKoji').value.trim()||'工事名', site:'', sekosha:$('#fSekosha').value.trim(), hacchu:$('#fOrderer')?$('#fOrderer').value.trim():'' };
+    fillBoardFromItem(b,{cat:ex.cat,kind:ex.kind||'',kikaku:ex.kikaku||'',no:'1'},F.stages[0]||'作業前');
+    const c=$('#fMapPrev'), w=600; c.width=w; c.height=Math.ceil(boardHeight(w,F.tpl)); drawBoard(c.getContext('2d'),0,0,w,F.tpl,b);
+  } finally { cur=keepCur; MAP_OVERRIDE=null; }
+}
 function drawOptChips(){
   const chip=(id,list,key)=>{ $(id).innerHTML=list.map(([v,l])=>`<button data-v="${v}" class="${F.opts[key]===v?'on':''}">${l}</button>`).join(''); $(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{ F.opts[key]=b.dataset.v; drawOptChips(); }); };
   chip('#fNoStyle',NO_STYLES,'noStyle'); chip('#fLayout',LAYOUTS,'layout'); chip('#fZip',ZIPS,'zip');
   const l=LAYOUTS.find(x=>x[0]===F.opts.layout); $('#fLayoutNote').textContent=l?l[2]:'';
+  drawMapUI();
 }
 $('#fStageAdd').onclick=()=>{ const v=$('#fStageNew').value.trim(); if(!v) return; F.stages.push(v); $('#fStageNew').value=''; drawInfoExtras(); };
 $('#fTplCard').onclick=()=>openBoardLib('info');
@@ -1142,13 +1177,14 @@ function itemProgress(i){ const st=curStages(), n=st.filter(s=>shotLog[i.id]?.[s
 function allStageWords(){ return [...new Set([...ALL_STAGE_WORDS,...curStages()])].sort((a,b)=>b.length-a.length); }
 function setStageOnBoard(b,stage){
   b.stage=stage||'';
-  if(tplHas(cur.tpl,'stage')) return;
+  const m=mapOpts().stage, row=tplHas(cur.tpl,'stage');
+  if(row&&(m==='auto'||m==='stageRow')) return;
   // ミライ工事と同じく、備考は「規格・樹種など」の下の行に状況（作業前など）
   const words=allStageWords();
   let lines=String(b.biko||'').split('\n').map(l=>l.replace(/[\s　]+$/,'')).filter(l=>!words.includes(l.trim()));
   if(lines.length){ words.forEach(w=>{ if(lines[0].startsWith(w)) lines[0]=lines[0].slice(w.length).replace(/^[\s　]+/,''); }); }
   lines=lines.filter(l=>l.trim());
-  b.biko=[...lines,stage].filter(Boolean).join('\n');
+  b.biko=(m==='none'?lines:m==='first'?[stage,...lines]:[...lines,stage]).filter(Boolean).join('\n');
 }
 
 function renderItems(){
@@ -1191,21 +1227,28 @@ function koshuPickerHTML(b){
    ・種別の欄がある型 → 工種＝工種、種別＝細目（無い型は「工種　細目」を工種の欄に）
    ・規格の欄がある型 → 規格へ。細別の欄がある型 → 細別へ。幹周・面積の欄 → そちらへ。どれも無い型 → 備考へ */
 function applyKoshu(b,K){
-  fillBoardFromItem(b,{cat:K.cat,kind:K.kind||'',kikaku:K.kikaku||'',no:String(nextBoardNo({koshu:tplHas(cur.tpl,'shubetsu')?K.cat:koshuLabel({cat:K.cat,kind:K.kind}),kikaku:K.kikaku||''}))},curStage||curStages()[0]);
+  fillBoardFromItem(b,{cat:K.cat,kind:K.kind||'',kikaku:K.kikaku||'',no:''},curStage||curStages()[0]);
+  setNextNo(b);   // その工種・規格の次の番号（いまの黒板の入れ方のまま）
   b.kCat=K.cat; b.kKind=K.kind||''; b.kKikaku=K.kikaku||'';
 }
 
 /* 項目を選んで撮影 → 黒板を自動入力してカメラへ */
 function fillBoardFromItem(b,it,stage){
-  const has=k=>tplHas(cur.tpl,k), kk=String(it.kikaku||'');
-  if(has('shubetsu')){ b.koshu=it.cat||''; b.shubetsu=it.kind||''; } else { b.koshu=koshuLabel(it); b.shubetsu=''; }
-  b.sokuten=[it.no?(/^\d+$/.test(String(it.no))?fmtNo(Number(it.no)):it.no):'', it.name, has('jushu')?'':it.jushu].filter(Boolean).join(' ');
-  b.jushu=it.jushu||''; b.kikaku=kk;
-  b.kanshu = /^C=|幹周|cm/.test(kk) ? kk.replace(/^C=/,'') : (b.kanshu||'');
-  b.area = /㎡|m2/.test(kk) ? kk : (has('area')?'':b.area||'');
-  if(has('saibetsu')&&!has('kikaku')) b.saibetsu=kk;
+  const has=k=>tplHas(cur.tpl,k), kk=String(it.kikaku||''), M=mapOpts();
+  const kind = it.kind && !String(it.cat||'').includes(it.kind) ? it.kind : '';
+  let kindTo=M.kind; if(kindTo==='auto'||(kindTo==='shubetsu'&&!has('shubetsu'))) kindTo=has('shubetsu')?'shubetsu':'koshu';
+  let kkTo=M.kikaku;
+  if(kkTo==='auto') kkTo = has('kikaku')?'kikaku' : has('saibetsu')?'saibetsu' : (has('kanshu')&&/^C=|幹周|cm/.test(kk))?'kanshu' : (has('area')&&/㎡|m2/.test(kk))?'area' : 'biko';
+  if((kkTo==='kikaku'&&!has('kikaku'))||(kkTo==='saibetsu'&&!has('saibetsu'))) kkTo='biko';
+  b.koshu=[it.cat||'', kindTo==='koshu'?kind:'', kkTo==='koshu'?kk:''].filter(Boolean).join('　');
+  b.shubetsu = kindTo==='shubetsu' ? (it.kind||'') : '';
+  b.sokuten=[it.no?(/^\d+$/.test(String(it.no))?fmtNo(Number(it.no)):it.no):'', it.name, has('jushu')?'':it.jushu, kkTo==='sokuten'?kk:''].filter(Boolean).join(' ');
+  b.jushu=it.jushu||''; b.kikaku=kk;     // 規格は並び替え・報告書のためにいつも持っておく
+  b.kanshu = kkTo==='kanshu'||(kkTo!=='none'&&/^C=|幹周/.test(kk)&&has('kanshu')) ? kk.replace(/^C=/,'') : '';
+  b.area = kkTo==='area'||(/㎡|m2/.test(kk)&&has('area')) ? kk : '';
+  b.saibetsu = kkTo==='saibetsu' ? kk : '';
   b.date=today();
-  const extra=[]; if(!has('kikaku')&&!has('kanshu')&&!has('area')&&!has('saibetsu')&&kk) extra.push(kk); if(it.memo) extra.push(it.memo);
+  const extra=[]; if(kindTo==='biko'&&kind) extra.push(kind); if(kkTo==='biko'&&kk) extra.push(kk); if(it.memo) extra.push(it.memo);
   b.biko=extra.join('　'); b.stage='';
   setStageOnBoard(b,stage);
 }
