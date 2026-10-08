@@ -86,6 +86,15 @@
   .gsifoot span{ flex:1 1 200px; }
   .gsifoot .primary{ background:var(--accent); color:#fff; border:none; border-radius:10px; padding:13px 18px; font-weight:700; font-size:15px; }
   .gsifoot .primary:disabled{ opacity:.6; }
+  .refhint{ font-size:13px; color:var(--sub); padding:8px 12px 0; line-height:1.55; }
+  .refbar{ display:flex; flex-wrap:wrap; gap:8px; padding:8px 12px 0; align-items:center; }
+  .refbar > button{ border:1px solid var(--line); background:#fff; border-radius:8px; padding:8px 11px; font-size:14px; color:var(--ink); }
+  .refbar .seg button i{ display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; vertical-align:-1px; }
+  .refpanes{ flex:1; display:flex; gap:8px; margin:8px 12px; min-height:0; }
+  @media (orientation:portrait),(max-width:760px){ .refpanes{ flex-direction:column; } }
+  .refpane{ position:relative; flex:1; border-radius:10px; overflow:hidden; background:#dfe3e6; min-height:150px; }
+  .refpane canvas{ position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
+  .reflab{ position:absolute; left:8px; top:8px; z-index:2; background:rgba(255,255,255,.92); padding:3px 9px; border-radius:6px; font-size:13px; font-weight:700; pointer-events:none; }
   .maptools .iconbtn{ border:1px solid var(--line); background:#fff; border-radius:8px; padding:6px 10px; font-size:13px; color:var(--sub); }
   .tree{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; }
   .tree.flash{ box-shadow:0 0 0 3px var(--accent); border-color:var(--accent); animation:flashfade 1.4s ease-out; }
@@ -341,6 +350,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
           <span class="muted" id="mkcount"></span>
           <button class="iconbtn" onclick="clearMarkers()">番号を全消去</button>
           <button class="iconbtn" id="gsiBtn" onclick="gsiOpen()">🛰 線画・地理院で作り直す</button>
+          <button class="iconbtn" id="refBtn" onclick="refOpen()" style="display:none">📍 目印で地図と合わせる</button>
           <button class="iconbtn" onclick="gmOpen()">🗺 Googleマップで作り直す</button>
           <button class="iconbtn" onclick="clearMap()">画像を変更</button>
         </div>
@@ -378,6 +388,16 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   <div class="gsibar gsirot"><b style="font-size:14px">向き</b><input type="range" id="gsiRot" min="-180" max="180" step="1" value="0" oninput="gsiSetRot(this.value*Math.PI/180)"><span id="gsiRotTxt">北が上</span><button type="button" onclick="gsiSetRot(0)">北を上に</button><span class="muted">2本指でひねっても回せます</span></div>
   <div class="gsifoot"><span id="gsiInfo" class="muted"></span><button type="button" id="gsiMakeBtn" class="primary" onclick="gsiMake()">この範囲で位置図にする</button></div>
 </div>
+<div id="refDlg" class="gsidlg" style="display:none">
+  <div class="gsihead"><b>📍 目印で地図と合わせる</b><span class="sp"></span><button type="button" onclick="refClose()">やめる</button></div>
+  <div class="refhint">建物の角・道の交差点・横断歩道の端など、<b>両方ではっきり分かる所</b>を、<b>スクショ → 地図</b>の順に同じ場所をタップ。<b>離れた所を2〜4か所</b>付けると合わせられます（印はドラッグで直せます）。</div>
+  <div class="refbar"><div class="seg" id="refPairs"></div><button type="button" onclick="refDel()">この目印を消す</button><span style="flex:1"></span><div class="seg" id="refLayer"></div><button type="button" onclick="refFind()">木・住所へ</button></div>
+  <div class="refpanes">
+    <div class="refpane"><div class="reflab">① スクショ</div><canvas id="refA"></canvas><div class="gsizoom"><button type="button" onclick="refZoom('A',1)">＋</button><button type="button" onclick="refZoom('A',-1)">－</button></div></div>
+    <div class="refpane"><div class="reflab">② 地図（同じ場所）</div><canvas id="refB"></canvas><div class="gsizoom"><button type="button" onclick="refZoom('B',1)">＋</button><button type="button" onclick="refZoom('B',-1)">－</button></div></div>
+  </div>
+  <div class="gsifoot"><span id="refInfo" class="muted"></span><button type="button" id="refOk" class="primary" onclick="refApply()">この目印で合わせる</button></div>
+</div>
 <div id="photoEditor" class="peditor" style="display:none">
   <div class="pehead">
     <button onclick="edRotate(-1)" title="左に回す">↺</button>
@@ -404,7 +424,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     <a id="gmOpen" class="gmopen" href="https://www.google.com/maps" target="_blank" rel="noopener">① Googleマップを開く（航空写真）</a>
     <label class="gmpick">② 撮ったスクショを選ぶ<input type="file" accept="image/*" hidden onchange="gmPick(this)"></label>
   </div>
-  <p class="hint">位置図には「地図データ ©Google」を自動で入れます（Googleのルールで、この表示は消せません）。位置を測った木を2本、地図に手で置くと、残りの木の番号は自動で置かれます。</p>
+  <p class="hint">位置図には「地図データ ©Google」を自動で入れます（Googleのルールで、この表示は消せません）。位置図にしたあと「📍 目印で地図と合わせる」で建物の角などを2か所合わせると、位置を測った木の番号が自動で置かれます。</p>
   <div class="row"><button type="button" onclick="document.getElementById('dlgGm').close()">閉じる</button></div>
 </dialog>
 <dialog id="dlgCam">
@@ -3194,7 +3214,7 @@ async function lightenPhotos(){
 
 /* 地図 */
 async function setMap(input){ if(!input.files[0]) return; await setMapUrl(await shrink(input.files[0],1800)); }
-async function setMapUrl(url){ pushUndo("map"); state.mapImage=url;
+async function setMapUrl(url){ pushUndo("map"); state.mapImage=url; state.mapRef=null;
   state.mapGeo=null; state.mapSize=await imgSize(state.mapImage);
   state.trees.forEach(t=>{ if(t.mauto){ t.mx=null; t.my=null; t.mauto=false; } }); autoPlace(); markDirty(); renderTrees(); }
 /* ---- Googleマップのスクショから位置図（Googleの地図をアプリが取りに行くのではなく、人が撮ったスクショを使う） ---- */
@@ -3221,10 +3241,127 @@ async function gmDone(url){ // 切り取った地図に「地図データ ©Goog
   x.fillStyle="rgba(255,255,255,.85)"; x.fillRect(0,h-20*U,cw+12*U,20*U); x.fillStyle="#000"; x.textAlign="left"; x.textBaseline="middle"; x.fillText(cr,6*U,h-10*U);
   await setMapUrl(cv.toDataURL("image/jpeg",0.86));
   const n=state.trees.filter(t=>itemGeo(t)).length;
-  toast("位置図にしました。"+(n>=2?"位置のある木を2本、地図の正しい場所に手で置くと、残りは自動で置かれます":"番号は、カードの📍を押してから地図をタップして置いてください"),7000);
-  const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"});
+  toast("位置図にしました。続けて、目印で地図と合わせます",4000);
+  refOpen();
 }
-function clearMap(){ pushUndo("map"); state.mapImage=""; state.mapGeo=null; state.mapSize=null; markDirty(); renderMap(); }
+
+/* =========================================================
+   目印で地図と合わせる：スクショの上の場所 ⇔ 地図（線画・地理院）の上の同じ場所 を2〜4組
+   state.mapRef = { pairs:[ { m:[メルカトルx,y], uv:[画像の左から何割, 上から何割] } … ] }
+   ========================================================= */
+const REF_COL=["#E53935","#1E88E5","#F57C00","#8E24AA"], REF_N=4;
+let RF=null;
+function refOpen(){ if(!state.mapImage) return;
+  const img=new Image(); img.onload=()=>{
+    const old=state.mapRef&&state.mapRef.pairs||[], iw=img.naturalWidth, ih=img.naturalHeight;
+    RF={ img, iw, ih, i:0, layer:gsiLastLayer(), pairs:Array.from({length:REF_N},(_,k)=>old[k]?{uv:[old[k].uv[0]*iw,old[k].uv[1]*ih],m:old[k].m.slice()}:{uv:null,m:null}),
+         A:{id:"refA",kind:"A",cx:0,cy:0,s:1}, B:{id:"refB",kind:"B",cx:0,cy:0,s:2**18} };
+    RF.i=Math.max(0,RF.pairs.findIndex(p=>!p.uv||!p.m)); if(RF.i<0) RF.i=0;
+    document.getElementById("refDlg").style.display="flex"; document.body.style.overflow="hidden";
+    refResize(); refFitA(); refCenterB(); refUI(); refDraw();
+  }; img.src=state.mapImage; }
+function refClose(){ document.getElementById("refDlg").style.display="none"; document.body.style.overflow=""; RF=null; }
+function refResize(){ if(!RF) return; const d=window.devicePixelRatio||1;
+  for(const V of [RF.A,RF.B]){ const cv=document.getElementById(V.id); V.W=cv.clientWidth||300; V.H=cv.clientHeight||200; cv.width=Math.round(V.W*d); cv.height=Math.round(V.H*d); } refDraw(); }
+window.addEventListener("resize",()=>{ if(RF) refResize(); });
+function refFitA(){ const A=RF.A; A.s=Math.min(A.W/RF.iw,A.H/RF.ih)*0.96; A.cx=RF.iw/2; A.cy=RF.ih/2; }
+function refCenterB(){ const B=RF.B, ms=RF.pairs.filter(p=>p.m).map(p=>p.m);
+  if(ms.length){ refFitB(ms); return; }
+  const gs=state.trees.map(itemGeo).filter(Boolean).map(g=>merc(g.lat,g.lon));
+  if(gs.length){ refFitB(gs); return; }
+  const p0=merc(35.5866,139.6131); B.cx=p0[0]; B.cy=p0[1]; B.s=2**12; // 川崎市あたり
+  const q=(state.place||"").trim();
+  if(q) fetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q="+encodeURIComponent(q)).then(r=>r.json()).then(a=>{ if(!RF||!Array.isArray(a)||!a.length) throw 0; const c=a[0].geometry.coordinates, p=merc(c[1],c[0]); RF.B.cx=p[0]; RF.B.cy=p[1]; RF.B.s=2**17.5; refDraw(); }).catch(()=>refHere());
+  else refHere(); }
+function refFitB(ps){ const B=RF.B, xs=ps.map(p=>p[0]), ys=ps.map(p=>p[1]);
+  B.cx=(Math.min(...xs)+Math.max(...xs))/2; B.cy=(Math.min(...ys)+Math.max(...ys))/2;
+  const lat=unmerc(B.cx,B.cy)[0], minW=50/mPerUnit(lat), dx=Math.max(Math.max(...xs)-Math.min(...xs),minW)*1.5, dy=Math.max(Math.max(...ys)-Math.min(...ys),minW)*1.5;
+  B.s=Math.min(2**19.5,Math.min(B.W/dx,B.H/dy)); }
+async function refHere(){ const g=await geoNow(12000,60000); if(!RF||!g) return; const p=merc(g.lat,g.lon); RF.B.cx=p[0]; RF.B.cy=p[1]; RF.B.s=2**18; refDraw(); }
+function refFind(){ if(!RF) return; const gs=state.trees.map(itemGeo).filter(Boolean).map(g=>merc(g.lat,g.lon)); if(gs.length){ refFitB(gs); refDraw(); } else refCenterB(); }
+function refUI(){ if(!RF) return;
+  const box=document.getElementById("refPairs"); box.innerHTML="";
+  RF.pairs.forEach((p,k)=>{ const b=document.createElement("button"); b.type="button"; b.className=k===RF.i?"on":"";
+    b.innerHTML=`<i style="background:${REF_COL[k]}"></i>目印${k+1}${p.uv&&p.m?" ✓":p.uv||p.m?" …":""}`; b.onclick=()=>{ RF.i=k; refUI(); refDraw(); }; box.appendChild(b); });
+  const lb=document.getElementById("refLayer"); lb.innerHTML="";
+  for(const k of ["osm","std","photo"]){ const b=document.createElement("button"); b.type="button"; b.className=RF.layer===k?"on":""; b.textContent=GSI[k].name; b.onclick=()=>{ RF.layer=k; refUI(); refDraw(); }; lb.appendChild(b); }
+  const r=refFit(), info=document.getElementById("refInfo"), ok=document.getElementById("refOk"), cur=RF.pairs[RF.i];
+  const next=!cur.uv?"目印"+(RF.i+1)+"：① スクショの上をタップ":!cur.m?"目印"+(RF.i+1)+"：② 地図の上の同じ場所をタップ":"";
+  info.textContent=[next, r.n<2?"あと"+(2-r.n)+"か所":r.spread<10?"目印どうしが近すぎます（10m以上離してください）":"目印 "+r.n+"か所"+(r.err!=null?"・ずれの目安 約"+(r.err<1?r.err.toFixed(1):Math.round(r.err))+"m":"（3か所にすると、ずれの目安が出ます）")].filter(Boolean).join("　");
+  ok.disabled=!(r.n>=2&&r.spread>=10); }
+/* 組になった目印から、地図（メルカトル）⇔ スクショ（画像の点）を計算 */
+function refFit(){ const P=RF.pairs.filter(p=>p.uv&&p.m), n=P.length, out={n,spread:0,err:null,f:null};
+  if(n<2) return out;
+  for(let a=0;a<n;a++) for(let b=a+1;b<n;b++){ const ga=unmerc(...P[a].m), gb=unmerc(...P[b].m); out.spread=Math.max(out.spread,geoDist({lat:ga[0],lon:ga[1]},{lat:gb[0],lon:gb[1]})); }
+  out.f=fitSimilarity(P.map(p=>[p.m,p.uv])); const bk=fitSimilarity(P.map(p=>[p.uv,p.m]));
+  if(n>=3&&bk){ const lat=unmerc(...P[0].m)[0]; out.err=Math.sqrt(P.reduce((a,p)=>{ const q=bk(p.uv); return a+((q[0]-p.m[0])**2+(q[1]-p.m[1])**2); },0)/n)*mPerUnit(lat); }
+  return out; }
+function refDraw(){ if(!RF) return; const r=refFit(); refPaint(RF.A,r); refPaint(RF.B,r); }
+function refPaint(V,r){
+  const cv=document.getElementById(V.id), x=cv.getContext("2d"), d=window.devicePixelRatio||1, W=V.W, H=V.H, S=V.s;
+  x.setTransform(d,0,0,d,0,0); x.fillStyle="#dfe3e6"; x.fillRect(0,0,W,H);
+  const sc=(wx,wy)=>[W/2+(wx-V.cx)*S, H/2+(wy-V.cy)*S];
+  if(V.kind==="A"){ const p=sc(0,0); x.imageSmoothingEnabled=true; x.drawImage(RF.img,p[0],p[1],RF.iw*S,RF.ih*S); }
+  else {
+    const tz=Math.max(2,Math.min(GSI_MAX,Math.round(Math.log2(S)))), n=2**tz, tw=256/n;
+    const x0=Math.floor((V.cx-W/2/S)/tw), x1=Math.floor((V.cx+W/2/S)/tw), y0=Math.max(0,Math.floor((V.cy-H/2/S)/tw)), y1=Math.min(n-1,Math.floor((V.cy+H/2/S)/tw));
+    if((x1-x0+1)*(y1-y0+1)<400) for(let ty=y0;ty<=y1;ty++) for(let tx=x0;tx<=x1;tx++){ const e=tileGet(tileURL(RF.layer,tz,tx,ty)); if(e.ok){ const p=sc(tx*tw,ty*tw); x.drawImage(e.img,p[0],p[1],tw*S+0.5,tw*S+0.5); } }
+    x.fillStyle="rgba(255,255,255,.8)"; x.font="10px sans-serif"; x.textAlign="left"; x.textBaseline="bottom"; x.fillText(GSI[RF.layer].tag,4,H-3);
+  }
+  // 位置のある木（地図には実際の位置、スクショには合わせた結果の位置）
+  state.trees.forEach((t,i)=>{ const g=itemGeo(t); if(!g) return; let w=merc(g.lat,g.lon);
+    if(V.kind==="A"){ if(!r.f) return; w=r.f(w); }
+    const p=sc(w[0],w[1]); if(p[0]<-20||p[1]<-20||p[0]>W+20||p[1]>H+20) return;
+    x.beginPath(); x.arc(p[0],p[1],9,0,Math.PI*2); x.fillStyle="rgba(46,125,50,.85)"; x.fill(); x.lineWidth=2; x.strokeStyle="#fff"; x.stroke();
+    x.fillStyle="#fff"; x.font="bold 10px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(i+1),p[0],p[1]+0.5); });
+  // 目印
+  RF.pairs.forEach((pr,k)=>{ const w=V.kind==="A"?pr.uv:pr.m; if(!w) return; const p=sc(w[0],w[1]);
+    if(k===RF.i){ x.beginPath(); x.arc(p[0],p[1],19,0,Math.PI*2); x.lineWidth=3; x.strokeStyle=REF_COL[k]; x.stroke(); }
+    x.beginPath(); x.moveTo(p[0]-24,p[1]); x.lineTo(p[0]+24,p[1]); x.moveTo(p[0],p[1]-24); x.lineTo(p[0],p[1]+24); x.lineWidth=1.5; x.strokeStyle="#fff"; x.stroke();
+    x.beginPath(); x.arc(p[0],p[1],11,0,Math.PI*2); x.fillStyle=REF_COL[k]; x.globalAlpha=.85; x.fill(); x.globalAlpha=1; x.lineWidth=2; x.strokeStyle="#fff"; x.stroke();
+    x.fillStyle="#fff"; x.font="bold 12px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(k+1),p[0],p[1]+0.5); });
+}
+function refZoom(which,dz,sx,sy){ if(!RF) return; const V=RF[which]; if(sx==null){ sx=V.W/2; sy=V.H/2; }
+  const wx=V.cx+(sx-V.W/2)/V.s, wy=V.cy+(sy-V.H/2)/V.s;
+  const lim=V.kind==="A"?[Math.min(V.W/RF.iw,V.H/RF.ih)*0.5,8]:[2**4,2**20.5];
+  V.s=Math.max(lim[0],Math.min(lim[1],V.s*2**dz)); V.cx=wx-(sx-V.W/2)/V.s; V.cy=wy-(sy-V.H/2)/V.s; refDraw(); }
+/* 指の操作：1本で動かす／タップで目印を置く／目印をドラッグで直す／2本で拡大縮小 */
+const refPtr=new Map(); let refG=null;
+function refBind(which){ const cv=document.getElementById(which==="A"?"refA":"refB");
+  const pos=e=>{ const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; };
+  cv.addEventListener("pointerdown",e=>{ if(!RF) return; e.preventDefault(); try{ cv.setPointerCapture(e.pointerId); }catch(er){}
+    const p=pos(e); refPtr.set(e.pointerId,p); const V=RF[which];
+    if(refPtr.size===1){ let hit=-1; RF.pairs.forEach((pr,k)=>{ const w=which==="A"?pr.uv:pr.m; if(!w) return; const sx=V.W/2+(w[0]-V.cx)*V.s, sy=V.H/2+(w[1]-V.cy)*V.s; if(Math.hypot(sx-p.x,sy-p.y)<24&&(hit<0||k===RF.i)) hit=k; });
+      refG={which,start:p,last:p,moved:false,mk:hit,pinch:null}; if(hit>=0){ RF.i=hit; refUI(); refDraw(); } }
+    else if(refG){ const ps=[...refPtr.values()]; refG.pinch={d:Math.hypot(ps[0].x-ps[1].x,ps[0].y-ps[1].y),c:{x:(ps[0].x+ps[1].x)/2,y:(ps[0].y+ps[1].y)/2}}; refG.moved=true; refG.mk=-1; } });
+  cv.addEventListener("pointermove",e=>{ if(!RF||!refG||!refPtr.has(e.pointerId)) return; e.preventDefault(); const p=pos(e); refPtr.set(e.pointerId,p); const V=RF[which];
+    if(refPtr.size>=2&&refG.pinch){ const ps=[...refPtr.values()], d=Math.hypot(ps[0].x-ps[1].x,ps[0].y-ps[1].y), c={x:(ps[0].x+ps[1].x)/2,y:(ps[0].y+ps[1].y)/2};
+      V.cx-=(c.x-refG.pinch.c.x)/V.s; V.cy-=(c.y-refG.pinch.c.y)/V.s; if(refG.pinch.d>0&&d>0) refZoom(which,Math.log2(d/refG.pinch.d),c.x,c.y); else refDraw(); refG.pinch={d,c}; return; }
+    if(!refG.moved&&Math.hypot(p.x-refG.start.x,p.y-refG.start.y)<6) return; refG.moved=true;
+    if(refG.mk>=0){ const pr=RF.pairs[refG.mk], w=[V.cx+(p.x-V.W/2)/V.s, V.cy+(p.y-V.H/2)/V.s]; if(which==="A") pr.uv=w; else pr.m=w; refUI(); refDraw(); }
+    else { V.cx-=(p.x-refG.last.x)/V.s; V.cy-=(p.y-refG.last.y)/V.s; refDraw(); }
+    refG.last=p; });
+  const up=e=>{ if(!refPtr.has(e.pointerId)) return; refPtr.delete(e.pointerId); if(!RF||!refG) return;
+    if(refPtr.size===0){ const g=refG; refG=null;
+      if(!g.moved){ const V=RF[which], w=[V.cx+(g.start.x-V.W/2)/V.s, V.cy+(g.start.y-V.H/2)/V.s];
+        if(which==="A"&&(w[0]<0||w[1]<0||w[0]>RF.iw||w[1]>RF.ih)) return;
+        const pr=RF.pairs[RF.i]; if(which==="A") pr.uv=w; else pr.m=w;
+        if(pr.uv&&pr.m){ const nx=RF.pairs.findIndex(q=>!q.uv||!q.m); if(nx>=0) RF.i=nx; }
+        refUI(); refDraw(); } }
+    else { const ps=[...refPtr.values()]; refG.last=ps[0]; refG.pinch=null; } };
+  cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
+  cv.addEventListener("wheel",e=>{ e.preventDefault(); const p=pos(e); refZoom(which,-e.deltaY/300,p.x,p.y); },{passive:false});
+}
+function refDel(){ if(!RF) return; RF.pairs[RF.i]={uv:null,m:null}; refUI(); refDraw(); }
+function refApply(){ if(!RF) return; const r=refFit(); if(r.n<2||r.spread<10) return;
+  pushUndo("mapref");
+  state.mapRef={ pairs:RF.pairs.filter(p=>p.uv&&p.m).map(p=>({ m:[+p.m[0].toFixed(9),+p.m[1].toFixed(9)], uv:[+(p.uv[0]/RF.iw).toFixed(5),+(p.uv[1]/RF.ih).toFixed(5)] })) };
+  if(!state.mapSize) state.mapSize=[RF.iw,RF.ih];
+  const res=autoPlace(); markDirty(); refClose(); renderTrees();
+  toast("地図と合わせました。"+(res.n?"位置のある木"+res.n+"本の番号を置きました":"木の位置を測ると、番号が自動で置かれます")+(res.out?"（範囲の外："+res.out+"本）":""),6000);
+  const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
+refBind("A"); refBind("B");
+function clearMap(){ pushUndo("map"); state.mapImage=""; state.mapGeo=null; state.mapSize=null; state.mapRef=null; markDirty(); renderMap(); }
 const MAP_CHOOSE=`<div class="mapchoose"><button type="button" class="mapbig" onclick="gmOpen()">🗺 Googleマップのスクショから作る<br><small style="font-weight:400">新しい航空写真</small></button><button type="button" class="mapbig" onclick="gsiOpen()">🛰 線画・地理院の地図から作る<br><small style="font-weight:400">範囲を決めるだけ・番号も自動</small></button><label class="mapbig">🖼 ほかの画像を選ぶ<input type="file" accept="image/*" onchange="setMap(this)" hidden></label></div>`;
 let activePlace=-1;
 function renderMap(){ const box=document.getElementById("mapbox"); const tools=document.getElementById("maptools");
@@ -3235,6 +3372,7 @@ function renderMap(){ const box=document.getElementById("mapbox"); const tools=d
       const placed=state.trees.filter(t=>t.mx!=null).length;
       if(c) c.textContent = activePlace>=0 ? ("No."+(activePlace+1)+"の位置をタップ") : ("配置 "+placed+"/"+state.trees.length);
       const gb=document.getElementById("gsiBtn"); if(gb) gb.textContent=state.mapGeo?"🛰 範囲・地図を変える":"🛰 線画・地理院で作り直す";
+      const rb=document.getElementById("refBtn"); if(rb){ rb.style.display=state.mapGeo?"none":""; rb.textContent=state.mapRef?"📍 目印を直す":"📍 目印で地図と合わせる"; }
       const hn=document.getElementById("mkhint"); if(hn){ const h=mapHint(); hn.textContent=h; hn.style.display=h?"block":"none"; } }
   } else {
     box.innerHTML = MAP_CHOOSE;
@@ -3382,8 +3520,10 @@ function mapTransform(){
   const G=state.mapGeo;
   if(G) return geoTransform(G);
   const sz=state.mapSize; if(!state.mapImage||!sz) return null;
-  const an=mapAnchors(); if(an.length<2||anchorsSpread(an)<4) return null; // 近すぎる2本では向き・縮尺が決まらない
-  const pairs=an.map(t=>{ const g=itemGeo(t); return [merc(g.lat,g.lon),[t.mx*sz[0],t.my*sz[1]]]; });
+  const R=state.mapRef&&state.mapRef.pairs; let pairs;
+  if(R&&R.length>=2) pairs=R.map(p=>[p.m,[p.uv[0]*sz[0],p.uv[1]*sz[1]]]); // 目印で合わせた地図
+  else { const an=mapAnchors(); if(an.length<2||anchorsSpread(an)<4) return null; // 近すぎる2本では向き・縮尺が決まらない
+    pairs=an.map(t=>{ const g=itemGeo(t); return [merc(g.lat,g.lon),[t.mx*sz[0],t.my*sz[1]]]; }); }
   const f=fitSimilarity(pairs), b=fitSimilarity(pairs.map(p=>[p[1],p[0]])); if(!f||!b) return null;
   return { fwd:p=>{ const q=f(p); return [q[0]/sz[0],q[1]/sz[1]]; }, inv:uv=>b([uv[0]*sz[0],uv[1]*sz[1]]) };
 }
@@ -3406,11 +3546,12 @@ function mapHint(){
   const auto=state.trees.filter(t=>t.mauto&&t.mx!=null).length;
   if(state.mapGeo){ const miss=state.trees.filter(t=>t.mx==null).length;
     return (auto?"位置から自動で置いた番号："+auto+"本（ずれていたらドラッグで直せます）":"位置のある木はまだありません")+(miss?"／位置のない"+miss+"本は、カードの📍を押してから地図をタップ":""); }
+  if(state.mapRef) return withGeo?"目印で地図と合わせ済み。位置から自動で置いた番号："+auto+"本（ずれていたらドラッグで直せます）":"目印で地図と合わせ済み。木の位置を測ると、番号が自動で置かれます";
   if(!withGeo) return "";
   if(mapTransform()) return "位置から自動で置いた番号："+auto+"本（手で置いた番号を目印に合わせています）";
   const an=mapAnchors();
-  if(an.length>=2) return "目印の木が近すぎます。離れた木をもう1本、手で置いてください";
-  return "位置のある木（"+withGeo+"本）のうち"+(2-an.length)+"本を手で置くと、残りは自動で置かれます";
+  if(an.length>=2) return "目印の木が近すぎます。離れた木をもう1本、手で置いてください（「📍 目印で地図と合わせる」でも合わせられます）";
+  return "「📍 目印で地図と合わせる」で建物の角などを2か所合わせるか、位置のある木を"+(2-an.length)+"本手で置くと、残りは自動で置かれます";
 }
 function imgSize(src){ return new Promise(res=>{ const im=new Image(); im.onload=()=>res([im.naturalWidth,im.naturalHeight]); im.onerror=()=>res(null); im.src=src; }); }
 function mapLoaded(img){ if(!state.mapSize&&img&&img.naturalWidth){ state.mapSize=[img.naturalWidth,img.naturalHeight]; if(autoPlace().n){ markDirty(); renderTrees(); } } }
@@ -3435,7 +3576,7 @@ const tileCache=new Map();
 function tileURL(layer,z,x,y){ const n=2**z; return GSI[layer].url.replace("{z}",z).replace("{x}",((x%n)+n)%n).replace("{y}",y); }
 function tileGet(url){ let e=tileCache.get(url); if(e) return e;
   e={img:new Image(),ok:false,ng:false}; e.img.crossOrigin="anonymous";
-  e.img.onload=()=>{ e.ok=true; gsiDraw(); }; e.img.onerror=()=>{ e.ng=true; };
+  e.img.onload=()=>{ e.ok=true; gsiDraw(); refDraw(); }; e.img.onerror=()=>{ e.ng=true; };
   e.img.src=url; tileCache.set(url,e);
   if(tileCache.size>600){ const k=tileCache.keys().next().value; tileCache.delete(k); }
   return e; }
@@ -3616,7 +3757,7 @@ async function gsiMake(){
       const [u,v]=geoTransform(G).fwd(T.inv([t.mx,t.my]));
       if(u>=0&&u<=1&&v>=0&&v<=1){ t.mx=u; t.my=v; } else { t.mx=null; t.my=null; lost++; }
     }
-    state.mapImage=url; state.mapGeo=G; state.mapSize=[OW,OH];
+    state.mapImage=url; state.mapGeo=G; state.mapSize=[OW,OH]; state.mapRef=null;
     const res=autoPlace(); markDirty(); gsiClose(); renderTrees();
     const noGeo=state.trees.filter(t=>t.mx==null&&!itemGeo(t)).length;
     toast(["位置図を作りました",res.n?"番号を"+res.n+"本置きました":"",res.out?"範囲の外："+res.out+"本":"",lost?"前の地図の番号"+lost+"本は置き直してください":"",noGeo?"位置のない"+noGeo+"本は手で置いてください":"",ng?"（取れなかった地図"+ng+"枚は白）":""].filter(Boolean).join("。"),6000);
