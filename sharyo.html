@@ -159,6 +159,7 @@ details.past summary{color:var(--bark);cursor:pointer;padding:6px 0}
 .tip{background:#EEF4EF;border-radius:8px;padding:8px 10px;font-size:12.5px;color:var(--leaf);margin:8px 0}
 input[type=date],input[type=number]{width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink)}
 </style>
+<style>/* 前回の内容を出して、裏で最新を読んでいるあいだ、上に細い線を流す */html.syncing body::before{content:'';position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);height:3px;z-index:99999;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,196,64,.95),transparent) no-repeat;background-size:35% 100%;animation:appsync 1.1s ease-in-out infinite}@keyframes appsync{0%{background-position:-50% 0}100%{background-position:150% 0}}</style>
 </head>
 <body>
 <div class="error-banner" id="errBanner"></div>
@@ -234,6 +235,11 @@ async function postJSON(body) { return (await fetch(GAS_URL, { method: 'POST', h
 /* ============ データ ============ */
 let VEH = [], LOGS = [], SUP = [], DOCS = [], ADMINS = ['親方'], USAGE = null;   // USAGE：日報から数えた使った日
 const canDelete = () => ADMINS.includes(me());
+const syncing = on => document.documentElement.classList.toggle('syncing', !!on);   // 裏で最新を読んでいる印
+function showCached() {
+  const c = !DEMO && lsGet(LS.cache, null); if (!c || !c.VEH) return false;
+  try { ({ VEH, LOGS, SUP } = c); DOCS = c.DOCS || []; ADMINS = c.ADMINS || ADMINS; render(); return true; } catch (e) { return false; }
+}
 async function load() {
   try {
     if (DEMO) { const d = lsGet(LS.demo, { vehicles: [], logs: [] }); VEH = d.vehicles; LOGS = d.logs; DOCS = d.docs || []; SUP = lsGet('torihiki_demo_v1', []); }
@@ -722,7 +728,8 @@ $('meBtn').addEventListener('click', () => chooseName(true));
   const p = new URLSearchParams(location.search);
   $('demoBar').hidden = !DEMO;
   if (me()) $('meBtn').textContent = '👤 ' + me();
-  load().then(() => { if (p.get('id')) openVeh(p.get('id')); });
+  if (showCached()) syncing(true);
+  load().finally(() => syncing(false)).then(() => { if (p.get('id')) openVeh(p.get('id')); });
   fetchStaff();
 })();
 </script>

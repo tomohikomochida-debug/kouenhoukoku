@@ -153,6 +153,7 @@ const API = {
     const cal = {};
     fys.forEach(fy => { cal[fy] = { off: calendarOff_(fy), exists: calendarExists_(fy) }; });
     const res = {
+      me: mePayload_(me),
       days,
       cal,
       holidays: holidays_(fyStart_(fys[0]), fyEnd_(fys[fys.length - 1])),
@@ -165,6 +166,16 @@ const API = {
       catch (x) { res.calRests = []; res.calWarning = 'カレンダーを読めませんでした：' + x.message; }
     }
     return res;
+  },
+
+  /** 出勤調整カレンダーに入っている休み（画面を出したあとに、裏で読む） */
+  calRests: b => {
+    const me = auth_(b);
+    const ids = isAdminRole_(me.role) ? null : [me.id];
+    const from = normDate_(b.from), to = normDate_(b.to);
+    if (!from || !to) throw err_('期間がありません');
+    try { return { calRests: readCalRests_(from, to).filter(r => !ids || ids.includes(r.staffId)) }; }
+    catch (x) { return { calRests: [], calWarning: 'カレンダーを読めませんでした：' + x.message }; }
   },
 
   /** 出勤・退勤の打刻 */
@@ -620,9 +631,12 @@ function adjustCal_() {
   if (id) { const c = CalendarApp.getCalendarById(id); if (c) return c; }
   const name = prop_('HOLIDAY_CALENDAR') || '出勤調整カレンダー';
   const n = name.replace(/\s/g, '');
+  const cid = prop_('TC_ADJUST_CAL_FOUND');
+  if (cid) { try { const c = CalendarApp.getCalendarById(cid); if (c && c.getName().replace(/\s/g, '') === n) return c; } catch (x) {} }
   let cal = (CalendarApp.getCalendarsByName(name) || [])[0];
   if (!cal) cal = CalendarApp.getAllCalendars().find(c => c.getName().replace(/\s/g, '') === n);
   if (!cal) throw err_('「' + name + '」というカレンダーが見つかりません');
+  try { PropertiesService.getScriptProperties().setProperty('TC_ADJUST_CAL_FOUND', cal.getId()); } catch (x) {}
   return cal;
 }
 const TAG_PREFIX = '[TC:';
