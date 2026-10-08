@@ -340,6 +340,7 @@ function doPost(e) {
       case 'shashin:saveBoard':   return withLock_(function () { return shashinSaveBoard_(b.board, b.by); });
       case 'shashin:deleteBoard': return withLock_(function () { return upsert_('shashinBoards', 'boardId', 'B', { boardId: String(b.boardId || ''), state: '削除' }, b.by); });
       case 'shashin:setDefaultBoard': PropertiesService.getScriptProperties().setProperty('SHASHIN_DEFAULT_BOARD', String(b.boardId || 'std')); return out_({ ok: true });
+      case 'shashin:readBoard':   return out_(shashinReadBoard_(b.data, b.mime));
       case 'shashin:addSite':     return withLock_(function () { return addSitesFromNippou_([b.site], b.by); });
       /* 公園報告 */
       case 'park:save':        return withLock_(function () { return parkSave_(b); });
@@ -1312,6 +1313,21 @@ function shashinSaveItems_(items, by) {
     n++;
   });
   return { ok: true, count: n };
+}
+/* 黒板の写真・画面写真・手書きの枠から、項目名と並び・欄の大きさを読む（黒板のひな型を作る下書き） */
+function shashinReadBoard_(b64, mime) {
+  if (!b64) return { ok: false, error: '写真がありません' };
+  var prompt = 'これは日本の工事写真で使う「黒板（小黒板・電子小黒板）」の写真、アプリの画面写真、または紙に手書きした黒板の枠です。' +
+    '黒板の枠の中の「項目名」（工事名・工種・測点・撮影日・備考・施工者名など、左の見出しの文字）を、上から順に読み取ってください。' +
+    '書き込まれている中身（工事の名前・日付の数字など）は項目名ではないので入れないでください。1行に左右2つの項目が並ぶときは、左から右の順に別の項目として並べてください。' +
+    '各項目について、行の高さを普通=1・やや大きい=1.4・大きい（2行分以上）=2 で、また「項目名が上にあって中身が下に広い欄」（備考欄によくある形）なら top=true としてください。' +
+    'JSONだけ返す：{"name":"この黒板の名前の案（例：公園維持管理）","rows":[{"label":"工事名","size":1,"top":false}]}。読めない文字は推測で埋めず、その行を入れない。';
+  var j = gemini_([{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
+  var rows = (Array.isArray(j.rows) ? j.rows : []).map(function (r) {
+    var size = Number(r && r.size) || 1; size = size >= 1.8 ? 2 : (size >= 1.2 ? 1.4 : 1);
+    return { label: String((r && r.label) || '').replace(/[\s　:：]/g, '').slice(0, 20), size: size, top: !!(r && r.top) };
+  }).filter(function (r) { return r.label; });
+  return { ok: true, name: String(j.name || '').slice(0, 30), rows: rows };
 }
 function shashinJson_(v, d) { if (v === '' || v == null) return d; try { return JSON.parse(String(v)); } catch (e) { return d; } }
 function shashinSaveBoard_(t, by) {

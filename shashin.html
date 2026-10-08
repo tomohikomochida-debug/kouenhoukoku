@@ -219,7 +219,8 @@ header .back{font-size:22px;padding:4px 12px}
       <div class="field"><label>① 黒板のひな型</label>
         <div class="card libCard" id="fTplCard" style="margin:0;cursor:pointer"><canvas id="fTplPrev" width="240" height="180"></canvas><div><div class="t" style="font-size:15px" id="fTplName"></div><div class="s">タップしてリストから選ぶ・作る</div></div></div></div>
       <div class="field"><label>② 撮り方（状況の順番）</label>
-        <div class="quick" id="fStagePreset"></div>
+        <div style="font-size:12px;color:var(--sub);margin-bottom:4px">言い方</div><div class="quick" id="fStageWords"></div>
+        <div style="font-size:12px;color:var(--sub);margin:8px 0 4px">並び</div><div class="quick" id="fStagePreset"></div>
         <div id="fStages" style="margin-top:8px"></div>
         <div class="addrow"><input id="fStageNew" autocomplete="off" autocorrect="off" name="x-stage" placeholder="例）伐採作業中・抜根作業中・敷均し作業中"><button id="fStageAdd">追加</button></div></div>
       <div class="field"><label>③ この案件の工種・規格</label>
@@ -261,6 +262,7 @@ header .back{font-size:22px;padding:4px 12px}
 <section id="boardLib" class="screen">
   <header><button class="back" id="libBack">‹</button><h1>黒板のひな型</h1><button id="libNew">＋ 作る</button></header>
   <div class="scroll">
+    <div class="row2" style="margin-bottom:10px"><button class="btn" id="libFromPhoto" style="margin:0">📷 写真・手書きから作る</button><button class="btn sub" id="libNew2" style="margin:0">＋ 項目を並べて作る</button></div>
     <div class="s" style="color:var(--sub);font-size:12px;margin:0 2px 10px">タップでこの案件の黒板にします。★は会社全体の標準（新しい案件の最初の黒板）です。</div>
     <div id="libList"></div>
   </div>
@@ -354,7 +356,7 @@ header .back{font-size:22px;padding:4px 12px}
   <div class="field"><label>メモ（黒板の備考に入ります）</label><input autocomplete="off" autocorrect="off" id="iMemo" placeholder="例）縁石破損"></div>
   <div class="field" id="iHereWrap"><label><input type="checkbox" id="iHere" style="width:auto"> 今いる場所を項目の位置にする</label></div>
   <button class="btn" id="iSave">追加</button>
-  <button class="btn" id="iSaveShoot" style="background:var(--main-d)">追加してすぐ撮影（着手前）</button>
+  <button class="btn" id="iSaveShoot" style="background:var(--main-d)">追加してすぐ撮影（最初の状況）</button>
   <button class="btn sub" id="iImport">報告アプリの書き出し（JSON）を読み込む</button>
   <button class="btn danger" id="iDelete">この項目を削除</button>
   <button class="btn sub" data-close>キャンセル</button>
@@ -385,6 +387,7 @@ header .back{font-size:22px;padding:4px 12px}
   <button class="btn sub" data-close>閉じる</button>
 </div></div>
 <input type="file" id="kmExcelIn" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden>
+<input type="file" id="boardPhotoIn" accept="image/*,application/pdf" hidden>
 <input type="file" id="kmPdfIn" accept="application/pdf,.pdf" hidden>
 
 <!-- ===== 写真ビューア ===== -->
@@ -412,7 +415,7 @@ header .back{font-size:22px;padding:4px 12px}
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const KINDS = { minkan:'民間', public_itaku:'公共業務委託', public_koji:'公共工事' };
-const STAGES = ['着手前','施工中','完了'];
+const STAGES = ['作業前','作業中','作業後'];   // いちばん多い言い方（案件ごとに変えられる）
 /* ===== マスタ（あるものは全部ここから選ぶ。無いものだけ手で入れる） =====
    ・公園の工種：公園報告アプリ（park_app.html）の工種マスタをそのまま読む（＋公園報告で追加した工種）
    ・一般の作業：民間でよく使う作業名＋現場調査アプリの作業
@@ -496,7 +499,11 @@ function tplOK(id){ return TEMPLATES[id] ? id : (TEMPLATES[defaultBoard] ? defau
 const tplHas = (id,k) => TEMPLATES[tplOK(id)].rows.some(r=>r.k===k);
 
 /* ===== 撮り方（状況の順番） ===== */
-const STAGE_PRESETS = [['前・中・後',['着手前','施工中','完了']],['前・後',['着手前','完了']],['前・後・中',['着手前','完了','施工中']],['前だけ',['着手前']],['後だけ',['完了']]];
+/* 言い方（作業／施工／着手・完了）と並び（前中後・前後・前後中…）の組み合わせで選ぶ */
+const STAGE_WORDS = [['作業前・中・後',['作業前','作業中','作業後']],['施工前・中・後',['施工前','施工中','施工後']],['着手前・施工中・完了',['着手前','施工中','完了']]];
+const STAGE_ORDERS = [['前・中・後',[0,1,2]],['前・後',[0,2]],['前・後・中',[0,2,1]],['前だけ',[0]],['後だけ',[2]]];
+const STAGE_PRESETS = STAGE_ORDERS.map(([l,o])=>[l,o.map(i=>STAGE_WORDS[0][1][i])]);
+const ALL_STAGE_WORDS = [...new Set(STAGE_WORDS.flatMap(w=>w[1]))];
 
 const LS = {
   get(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } },
@@ -776,14 +783,21 @@ function openInfo(s,key,opts){
 }
 function drawMiniBoard(canvas,tplId){
   const w=900, hh=boardHeight(w,tplId); canvas.width=w; canvas.height=Math.ceil(hh);
-  const sample={koji:'公園緑地等定期維持管理業務委託',site:'〇〇公園',koshu:'基本剪定',shubetsu:'落葉木',saibetsu:'',sokuten:'No.1',jushu:'ケヤキ',kikaku:'C=60〜90cm',kanshu:'60〜90cm',jukou:'H=8.0m',area:'120㎡',qty:'10本',design:'',actual:'',material:'',hassei:'',stage:'着手前',date:today(),biko:'着手前',sekosha:'庭乃持田園有限会社',hacchu:'川崎市'};
+  const sample={koji:'公園緑地等定期維持管理業務委託',site:'〇〇公園',koshu:'基本剪定',shubetsu:'落葉木',saibetsu:'',sokuten:'No.1',jushu:'ケヤキ',kikaku:'C=60〜90cm',kanshu:'60〜90cm',jukou:'H=8.0m',area:'120㎡',qty:'10本',design:'',actual:'',material:'',hassei:'',stage:'作業前',date:today(),biko:'作業前',sekosha:'庭乃持田園有限会社',hacchu:'川崎市'};
   drawBoard(canvas.getContext('2d'),0,0,w,tplId,sample);
 }
 function drawInfoExtras(){
   $('#fTplName').textContent=(TEMPLATES[F.tpl]||{}).name||''; drawMiniBoard($('#fTplPrev'),F.tpl);
   const cur2=JSON.stringify(F.stages);
-  $('#fStagePreset').innerHTML=STAGE_PRESETS.map(([l,a])=>`<button data-p="${esc(JSON.stringify(a))}" class="${JSON.stringify(a)===cur2?'on':''}">${l}</button>`).join('');
-  $('#fStagePreset').querySelectorAll('button').forEach(b=>b.onclick=()=>{ F.stages=JSON.parse(b.dataset.p); drawInfoExtras(); });
+  // 今の並びから、言い方と並びを読み取る（自分で足した言葉が入っていればどちらも未選択）
+  let wi=-1, oi=-1;
+  STAGE_WORDS.forEach(([,w],i)=>STAGE_ORDERS.forEach(([,o],j)=>{ if(JSON.stringify(o.map(k=>w[k]))===cur2){ wi=i; oi=j; } }));
+  if(wi<0){ STAGE_WORDS.forEach(([,w],i)=>{ if(F.stages.length&&F.stages.every(s=>w.includes(s))) wi=i; }); }
+  F._w = wi>=0 ? wi : (F._w ?? 0);
+  $('#fStageWords').innerHTML=STAGE_WORDS.map(([l],i)=>`<button data-w="${i}" class="${i===wi?'on':''}">${l}</button>`).join('');
+  $('#fStageWords').querySelectorAll('button').forEach(b=>b.onclick=()=>{ const w=STAGE_WORDS[Number(b.dataset.w)][1], o=STAGE_ORDERS[oi>=0?oi:0][1]; F._w=Number(b.dataset.w); F.stages=o.map(k=>w[k]); drawInfoExtras(); });
+  $('#fStagePreset').innerHTML=STAGE_ORDERS.map(([l],j)=>`<button data-o="${j}" class="${j===oi?'on':''}">${l}</button>`).join('');
+  $('#fStagePreset').querySelectorAll('button').forEach(b=>b.onclick=()=>{ const w=STAGE_WORDS[F._w][1]; F.stages=STAGE_ORDERS[Number(b.dataset.o)][1].map(k=>w[k]); drawInfoExtras(); });
   $('#fStages').innerHTML=F.stages.map((s,i)=>`<div class="tileRow"><span class="key">${i+1}番目</span><input value="${esc(s)}" data-i="${i}"><button data-up="${i}">↑</button><button data-dn="${i}">↓</button><button data-x="${i}">✕</button></div>`).join('');
   $('#fStages').querySelectorAll('input').forEach(el=>el.oninput=()=>{ F.stages[Number(el.dataset.i)]=el.value.trim(); });
   $('#fStages').querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>{ const i=Number(b.dataset.up); if(i>0){ [F.stages[i-1],F.stages[i]]=[F.stages[i],F.stages[i-1]]; drawInfoExtras(); } });
@@ -861,10 +875,11 @@ $('#btnDrive').onclick=()=>{
 };
 
 const PROG_COLOR={none:'#ffffff',part:'#e67e22',all:'#2e8b57'};
+function stageColor(s){ s=String(s||''); return /前$/.test(s)?'#d35400':(/後$|完了/.test(s)?'#1e8449':'#2471a3'); }
 function curStages(){ const i=cur&&infos[cur.infoKey]; return (i&&Array.isArray(i.stages)&&i.stages.length)?i.stages:STAGES; }
 function itemProgress(i){ const st=curStages(), n=st.filter(s=>shotLog[i.id]?.[s]).length; return n===0?'none':n===st.length?'all':'part'; }
 /* 黒板に状況を入れる：状況の欄がある黒板はそこへ、無い黒板は備考の頭に入れる */
-function allStageWords(){ return [...new Set([...STAGES,...curStages()])]; }
+function allStageWords(){ return [...new Set([...ALL_STAGE_WORDS,...curStages()])].sort((a,b)=>b.length-a.length); }
 function setStageOnBoard(b,stage){
   b.stage=stage||'';
   if(tplHas(cur.tpl,'stage')) return;
@@ -977,7 +992,7 @@ function renderMap(){
   map.invalidateSize(); mapLayer.clearLayers();
   const pts=[];
   photosCache.filter(p=>p.siteId===cur.id&&p.lat).forEach(p=>{
-    const col = p.stage==='着手前'?'#d35400':p.stage==='完了'?'#1e8449':'#2471a3';
+    const col = stageColor(p.stage);
     L.marker([p.lat,p.lng],{icon:arrowIcon(p.heading,col)})
       .bindPopup(`<img src="${p.thumb}" style="width:150px;border-radius:6px"><br>${esc([p.board.koshu,p.board.sokuten,p.board.stage].filter(Boolean).join(' '))}`)
       .addTo(mapLayer);
@@ -985,7 +1000,7 @@ function renderMap(){
   });
   const mine=new Set(photosCache.map(p=>p.id));
   teamPhotos.filter(p=>p.lat&&!mine.has(p.photoId)).forEach(p=>{
-    const col = p.stage==='着手前'?'#d35400':p.stage==='完了'?'#1e8449':'#2471a3';
+    const col = stageColor(p.stage);
     L.marker([p.lat,p.lng],{icon:arrowIcon(p.heading,col),opacity:.75})
       .bindPopup(`${esc([p.koshu,p.sokuten,p.stage].filter(Boolean).join(' '))}<br>${esc(p.by||'')}　${esc(String(p.takenAt||'').slice(0,10))}<br><a href="${esc(p.url)}" target="_blank">写真を開く</a>`)
       .addTo(mapLayer);
@@ -1031,7 +1046,7 @@ $('#mtLayer').onclick=()=>{
   updateMapTools();
 };
 
-/* 点をタップしたとき：着手前・施工中・完了を選んで撮影 */
+/* 点をタップしたとき：前・中・後（案件の撮り方）を選んで撮影 */
 let sheetItemId=null;
 function openPointSheet(id){
   const it=items.find(i=>i.id===id); if(!it) return; sheetItemId=id;
@@ -1155,7 +1170,7 @@ function pushItem(it){
   gasPost({mode:'saveItems',items:[it]}).then(j=>{ if(j.ok){ it.synced=true; saveAll(); } }).catch(()=>{});
 }
 $('#iSave').onclick=async()=>{ const wasEdit=!!editingId; await saveItemFromModal(); toast(wasEdit?'保存しました':'追加しました'); };
-$('#iSaveShoot').onclick=async()=>{ const it=await saveItemFromModal(); shootItem(it.id,'着手前'); };
+$('#iSaveShoot').onclick=async()=>{ const it=await saveItemFromModal(); shootItem(it.id,curStages()[0]); };
 $('#iDelete').onclick=()=>{
   const it=items.find(i=>i.id===editingId); if(!it) return;
   if(!confirm(`「${it.cat} ${it.name||''}」を削除しますか？（撮った写真は残ります）`)) return;
@@ -1320,6 +1335,51 @@ function pickBoard(id){
 }
 $('#libBack').onclick=()=>{ if(libFrom==='info') go('info'); else openBoardEdit(boardEditToCamera); };
 $('#libNew').onclick=()=>openMaker(tplOK(defaultBoard),true);
+$('#libNew2').onclick=()=>openMaker(tplOK(defaultBoard),true);
+
+/* 写真・画面写真・手書きの枠から黒板のひな型を作る（共通GASのAIで項目名・並び・大きさを読む） */
+const LABEL_ALIAS = {
+  koji:['工事名','工事件名','件名','業務名','委託名','工事'], site:['現場名','公園名','施設名','路線名','場所名'], hacchu:['発注者','発注者名','施主'],
+  koshu:['工種','作業内容','作業','内容'], shubetsu:['種別','種類'], saibetsu:['細別'], sokuten:['測点','測点No','位置','場所','箇所','No','番号'],
+  jushu:['樹種','樹木名','樹名'], kikaku:['規格','形状寸法','寸法','規格値'], kanshu:['幹周','幹周り','目通り','C'], jukou:['樹高','H','高さ'],
+  area:['面積'], qty:['数量','本数'], design:['設計値','設計','規格値（設計）'], actual:['実測値','実測','出来形'], material:['材料名','材料','品名'],
+  hassei:['発生材','発生量'], stage:['状況','区分','施工状況','作業状況'], date:['撮影日','日付','撮影年月日','年月日','月日'],
+  biko:['備考','メモ','摘要','記事'], sekosha:['施工者名','施工者','請負者','受注者','施工業者','会社名']
+};
+function labelToKey(label, used){
+  const n=String(label).replace(/[\s　・:：()（）]/g,'');
+  for(const [k,al] of Object.entries(LABEL_ALIAS)) if(!used.has(k) && al.some(a=>n===a.replace(/[\s　・:：()（）]/g,''))) return k;
+  for(const [k,al] of Object.entries(LABEL_ALIAS)) if(!used.has(k) && al.some(a=>a.length>=2 && n.includes(a))) return k;
+  return null;
+}
+$('#libFromPhoto').onclick=()=>$('#boardPhotoIn').click();
+$('#boardPhotoIn').onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f) return;
+  if(!canSync()){ toast('読み取りは電波のある所でお願いします'); return; }
+  try{
+    toast('AIが黒板を読み取っています…（10〜20秒）',20000);
+    let data, mime=f.type||'image/jpeg';
+    if(/pdf/.test(mime)){ data=await blobToBase64(f); }
+    else {   // 大きな写真は小さくしてから送る
+      const img=await loadImage(f), s=Math.min(1,1600/Math.max(img.width,img.height)), c=document.createElement('canvas');
+      c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      data=c.toDataURL('image/jpeg',0.85).split(',')[1]; mime='image/jpeg';
+    }
+    const j=await gasPost({mode:'readBoard',data,mime});
+    if(!j.ok) throw new Error(j.error||'');
+    if(!j.rows||!j.rows.length) throw new Error('項目名が読み取れませんでした。黒板の枠がはっきり写るように撮り直してください');
+    const used=new Set();
+    const rows=j.rows.map((r,i)=>{ const k=labelToKey(r.label,used); if(k) used.add(k);
+      const row={k:k||('x_'+Date.now().toString(36)+i), l:r.label};
+      if(r.size>1) row.h=r.size; if(r.top||k==='biko'){ row.full=true; if(!row.h) row.h=1.4; }
+      return row; });
+    MK={ id:'B'+Date.now().toString(36), name:(j.name||'写真から作った黒板').replace(/黒板$/,'')+'（写真から）', rows, isNew:true };
+    $('#mkName').value=MK.name; $('#mkDelete').style.display='none';
+    drawMaker(); go('boardMaker');
+    const free=rows.filter(r=>r.k.startsWith('x_')).length;
+    toast(`${rows.length}項目を読み取りました${free?`（うち${free}項目は自由な項目）`:''}。違うところは直して保存してください`,4000);
+  }catch(err){ toast('読み取れませんでした：'+(err.message||err),4000); }
+};
 async function setDefaultBoard(id){
   if(!confirm(`「${TEMPLATES[id].name}」を会社全体の標準の黒板にしますか？（新しい案件の最初の黒板になります）`)) return;
   defaultBoard=id; LS.set('shashin_default_board',id); openBoardLib(libFrom);
