@@ -167,6 +167,29 @@ header .back{font-size:22px;padding:4px 12px}
 .tgtH small{font-weight:400;color:var(--sub)}
 .ph .stg2{position:absolute;left:4px;top:4px;font-size:10px;padding:2px 6px;border-radius:99px;color:#fff;background:rgba(0,0,0,.6)}
 .alertBox{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:13px;line-height:1.6}
+.pages{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.pages canvas{width:100%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);border-radius:2px}
+.tordRow{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:13px}
+.tordRow .nm{flex:1;min-width:0}.tordRow .nm small{display:block;color:var(--sub);font-size:11px}
+.tordRow button{background:#eef1ed;border-radius:8px;padding:8px 10px}
+.progress{font-size:13px;color:var(--main-d);background:#eef3ee;border-radius:10px;padding:10px;margin:8px 0;display:none}
+.vedit{background:#1d1d1d;padding:8px 12px;color:#ddd;font-size:12px}
+.vedit .quick button{background:#333;color:#fff}.vedit .quick button.on{background:var(--main)}
+.vedit input{width:100%;padding:8px;border-radius:8px;border:none;margin-top:4px;font-size:15px}
+.vedit .row2{gap:6px}
+@media (min-width:900px){
+  .scroll{width:100%;max-width:1100px;margin:0 auto;padding-left:24px;padding-right:24px}
+  .grid{grid-template-columns:repeat(6,1fr)}
+  .pages{grid-template-columns:repeat(4,1fr)}
+  .modal{align-items:center;justify-content:center}
+  .sheet{max-width:680px;border-radius:18px;max-height:88vh}
+  header h1{font-size:20px}
+  #viewer{flex-direction:row;flex-wrap:wrap}
+  #viewer img{flex:1 1 60%;max-height:100vh}
+  #viewer .vside{flex:0 0 380px;overflow-y:auto;max-height:100vh}
+  .fab{right:max(16px,calc(50% - 530px))}
+  .fab.left{left:max(16px,calc(50% - 530px))}
+}
 .posInfo{font-size:13px;color:var(--main-d);background:#eef3ee;border-radius:8px;padding:8px 10px;margin-bottom:14px}
 </style>
 </head>
@@ -226,6 +249,9 @@ header .back{font-size:22px;padding:4px 12px}
       <div class="field"><label>③ この案件の工種・規格</label>
         <div class="posInfo" id="fKoshuInfo" style="margin-bottom:6px"></div>
         <div class="row2"><button class="btn sub" id="fKoshuImport" style="margin:0">読み込む・追加</button><button class="btn sub" id="fKoshuView" style="margin:0">一覧を見る</button></div></div>
+      <div class="field"><label>④ 測点の付け方</label><div class="quick" id="fNoStyle"></div></div>
+      <div class="field"><label>⑤ 報告書（PDF）の形</label><div class="quick" id="fLayout"></div><div class="s" style="font-size:11px;color:var(--sub);margin-top:4px" id="fLayoutNote"></div></div>
+      <div class="field"><label>⑥ 写真をまとめて渡すとき</label><div class="quick" id="fZip"></div></div>
       <div class="field"><label>メモ</label><input id="fMemo" autocomplete="off" autocorrect="off" name="x-memo" placeholder="例）写真は着手前・完了を必ず"></div>
       <button class="btn" id="infoSave">保存して撮影へ</button>
     </div>
@@ -233,7 +259,7 @@ header .back{font-size:22px;padding:4px 12px}
 </section>
 
 <section id="album" class="screen">
-  <header><button class="back" data-go="home">‹</button><h1 id="albumTitle"></h1><button id="btnInfo">情報</button><button id="btnDrive">ドライブ</button></header>
+  <header><button class="back" data-go="home">‹</button><h1 id="albumTitle"></h1><button id="btnOut">出力</button><button id="btnInfo">情報</button><button id="btnDrive">ドライブ</button></header>
   <div id="albumBanner"></div>
   <div class="tabs">
     <button data-tab="photos" class="on">写真</button>
@@ -255,6 +281,33 @@ header .back{font-size:22px;padding:4px 12px}
   <div class="pane" id="check"><div class="scroll" id="checkBody"></div></div>
   <button class="fab left" id="btnAddItem" style="display:none">＋ 項目</button>
   <button class="fab" id="btnShoot">📷 撮影</button>
+</section>
+
+<!-- ===== 出力（報告書PDF・写真をまとめて渡す） ===== -->
+<section id="report" class="screen">
+  <header><button class="back" id="rpBack">‹</button><h1>出力</h1></header>
+  <div class="scroll">
+    <div class="card">
+      <div class="t" style="font-size:16px">報告書（PDF）</div>
+      <div class="field" style="margin-top:10px"><label>形</label><div class="quick" id="rpLayout"></div></div>
+      <div class="field"><label>入れるもの</label><div class="quick" id="rpParts"></div></div>
+      <div class="row2"><button class="btn sub" id="rpPreview" style="margin:0">見本を見る</button><button class="btn" id="rpPdf" style="margin:0">PDFを作る</button></div>
+    </div>
+    <div class="card">
+      <div class="t" style="font-size:16px">写真をまとめて渡す（ZIP）</div>
+      <div class="s">ファイル名は「番号_工種_規格_測点_状況.jpg」になります</div>
+      <div class="field" style="margin-top:10px"><label>フォルダ</label><div class="quick" id="rpZip"></div></div>
+      <button class="btn" id="rpZipGo">写真をまとめる</button>
+    </div>
+    <div class="progress" id="rpProg"></div>
+    <div class="card">
+      <div class="t" style="font-size:16px">対象の順番</div>
+      <div class="s">ふだんは自動（工種 → 規格 → 測点。数字・英字は 1,2,…10 / A,B,C の順）。動かしたいときだけ ↑↓ で。</div>
+      <button class="btn sub" id="rpAuto" style="margin:8px 0">自動の順に戻す</button>
+      <div id="rpOrder"></div>
+    </div>
+    <div id="rpPages" class="pages"></div>
+  </div>
 </section>
 
 <!-- ===== 黒板のひな型（リスト） ===== -->
@@ -303,7 +356,7 @@ header .back{font-size:22px;padding:4px 12px}
   <div class="camBottom">
     <div class="camRow small">
       <button class="cbtn" id="camStage">状況 ▸</button>
-      <button class="cbtn" id="camNo">No. ＋1</button>
+      <button class="cbtn" id="camNo">測点 ＋1</button>
       <button class="cbtn" id="camPos">位置 ↻</button>
       <button class="cbtn" id="camSmaller">黒板 −</button>
       <button class="cbtn" id="camBigger">黒板 ＋</button>
@@ -393,12 +446,15 @@ header .back{font-size:22px;padding:4px 12px}
 <!-- ===== 写真ビューア ===== -->
 <div class="modal" id="viewer">
   <img id="vImg" alt="">
+  <div class="vside">
   <div class="vinfo" id="vInfo"></div>
+  <div class="vedit" id="vEdit"></div>
   <div class="vbtns">
     <button id="vShare">共有・保存</button>
     <button id="vRetry">再送</button>
     <button id="vDelete">端末から削除</button>
     <button data-close>閉じる</button>
+  </div>
   </div>
 </div>
 
@@ -640,7 +696,7 @@ async function processQueue(){
         const j=await gasPost({mode:'upload',by:p.staff||me(),data,photo:{ photoId:p.id, siteId:p.siteId, site:d.name||'', contract:d.contract||'', kind:d.kind||'',
           itemId:p.itemId||'', stage:p.stage||'', board:p.board, fileName:p.fileName, takenAt:new Date(p.takenAt).toISOString(),
           lat:p.lat, lng:p.lng, acc:p.acc, heading:p.heading }});
-        if(j.ok){ p.status='done'; p.fileUrl=j.url; if(!j.dup) counts[p.siteId]=(counts[p.siteId]||0)+1; } else { p.status='error'; p.err=j.error||''; }
+        if(j.ok){ p.status='done'; p.fileUrl=j.url; p.fileId=j.fileId||''; if(!j.dup) counts[p.siteId]=(counts[p.siteId]||0)+1; } else { p.status='error'; p.err=j.error||''; }
       }catch(e){ p.status='error'; p.err=String(e); }
       await idbPut(p);
       if(!navigator.onLine) break;
@@ -761,7 +817,7 @@ function chooseSite(id,opts){
   return openInfo(s,key,{fy,from:opts.from});
 }
 let INFO=null;
-const F={ tpl:'std', stages:[], koshu:[] };   // 案件情報の画面で編集中のもの
+const F={ tpl:'std', stages:[], koshu:[], opts:{} };   // 案件情報の画面で編集中のもの
 function openInfo(s,key,opts){
   const prevYear = s.contract ? infos[`C|${s.contract}|${(opts.fy||fyOf())-1}`] : null;
   const v=infos[key]||prevYear||{};
@@ -775,7 +831,7 @@ function openInfo(s,key,opts){
   const y=opts.fy||fyOf(), sameYear=infos[key];
   $('#fStart').value = sameYear&&v.start ? String(v.start).slice(0,10) : (s.contract ? `${y}-04-01` : String(v.start||'').slice(0,10));
   $('#fEnd').value   = sameYear&&v.end   ? String(v.end).slice(0,10)   : (s.contract ? `${y+1}-03-31` : String(v.end||'').slice(0,10));
-  F.tpl = tplOK(v.tpl || defaultBoard); F.stages = Array.isArray(v.stages)&&v.stages.length ? v.stages.slice() : STAGES.slice(); F.koshu = Array.isArray(v.koshuList) ? v.koshuList.slice() : [];
+  F.tpl = tplOK(v.tpl || defaultBoard); F.stages = Array.isArray(v.stages)&&v.stages.length ? v.stages.slice() : STAGES.slice(); F.koshu = Array.isArray(v.koshuList) ? v.koshuList.slice() : []; F.opts = Object.assign({ noStyle:'no', layout:'one3', zip:'none' }, v.opts||{});
   drawInfoExtras();
   $('#fMemo').value = v.memo || '';
   $('#infoSave').textContent = $('#album').classList.contains('active')||opts.from==='album' ? '保存' : '保存して撮影へ';
@@ -803,7 +859,16 @@ function drawInfoExtras(){
   $('#fStages').querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>{ const i=Number(b.dataset.up); if(i>0){ [F.stages[i-1],F.stages[i]]=[F.stages[i],F.stages[i-1]]; drawInfoExtras(); } });
   $('#fStages').querySelectorAll('[data-dn]').forEach(b=>b.onclick=()=>{ const i=Number(b.dataset.dn); if(i<F.stages.length-1){ [F.stages[i+1],F.stages[i]]=[F.stages[i],F.stages[i+1]]; drawInfoExtras(); } });
   $('#fStages').querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{ F.stages.splice(Number(b.dataset.x),1); drawInfoExtras(); });
+  drawOptChips();
   $('#fKoshuInfo').textContent = F.koshu.length ? `${F.koshu.length}件の工種・規格が入っています（撮影項目を作るときにここから選べます）` : 'まだありません。内訳書のExcel・PDF、公園報告の図面、工種マスタから読み込めます';
+}
+const NO_STYLES=[['no','No.1・No.2・No.3'],['alpha','A・B・C'],['num','1・2・3']];
+const LAYOUTS=[['one3','3段・1ページ1対象（おすすめ）','前・中・後が1ページにそろう。前後だけの対象は3段目が空く'],['one2','2段・写真大きめ','写真を大きく見せたい民間向け。1ページ1対象'],['pack','詰めて並べる','枚数を減らしたいとき。ページをまたぐことがある']];
+const ZIPS=[['none','フォルダ分けなし'],['koshu','工種ごとのフォルダ'],['koshu_no','工種＞測点ごとのフォルダ']];
+function drawOptChips(){
+  const chip=(id,list,key)=>{ $(id).innerHTML=list.map(([v,l])=>`<button data-v="${v}" class="${F.opts[key]===v?'on':''}">${l}</button>`).join(''); $(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{ F.opts[key]=b.dataset.v; drawOptChips(); }); };
+  chip('#fNoStyle',NO_STYLES,'noStyle'); chip('#fLayout',LAYOUTS,'layout'); chip('#fZip',ZIPS,'zip');
+  const l=LAYOUTS.find(x=>x[0]===F.opts.layout); $('#fLayoutNote').textContent=l?l[2]:'';
 }
 $('#fStageAdd').onclick=()=>{ const v=$('#fStageNew').value.trim(); if(!v) return; F.stages.push(v); $('#fStageNew').value=''; drawInfoExtras(); };
 $('#fTplCard').onclick=()=>openBoardLib('info');
@@ -822,7 +887,7 @@ $('#infoSave').onclick=async()=>{
   const {s,key,fy}=INFO;
   const v={ key, type:s.contract?'contract':'site', contract:s.contract||'', fy:s.contract?fy:'', siteId:s.contract?'':s.id,
     koji:$('#fKoji').value.trim()||s.contract||s.name, orderer:$('#fOrderer').value.trim(), sekosha:$('#fSekosha').value.trim(),
-    start:$('#fStart').value, end:$('#fEnd').value, tpl:F.tpl, stages:F.stages.slice(), koshuList:F.koshu.slice(), memo:$('#fMemo').value.trim() };
+    start:$('#fStart').value, end:$('#fEnd').value, tpl:F.tpl, stages:F.stages.slice(), koshuList:F.koshu.slice(), opts:Object.assign({},F.opts), memo:$('#fMemo').value.trim() };
   infos[key]=v; saveAll();
   const pend=LS.get('shashin_infos_pending',{}); pend[key]=v; LS.set('shashin_infos_pending',pend);
   pushInfos();
@@ -921,7 +986,7 @@ function renderItems(){
 function fillBoardFromItem(b,it,stage){
   const has=k=>tplHas(cur.tpl,k), kk=String(it.kikaku||'');
   if(has('shubetsu')){ b.koshu=it.cat||''; b.shubetsu=it.kind||''; } else { b.koshu=koshuLabel(it); b.shubetsu=''; }
-  b.sokuten=[it.no?`No.${it.no}`:'', it.name, has('jushu')?'':it.jushu].filter(Boolean).join(' ');
+  b.sokuten=[it.no?(/^\d+$/.test(String(it.no))?fmtNo(Number(it.no)):it.no):'', it.name, has('jushu')?'':it.jushu].filter(Boolean).join(' ');
   b.jushu=it.jushu||''; b.kikaku=kk;
   b.kanshu = /^C=|幹周|cm/.test(kk) ? kk.replace(/^C=/,'') : (b.kanshu||'');
   b.area = /㎡|m2/.test(kk) ? kk : (has('area')?'':b.area||'');
@@ -947,7 +1012,7 @@ function renderPhotos(){
   if(!all.length){ box.innerHTML=`<div class="empty">まだ写真はありません。</div>`; return; }
   const cell=p=>{ const lp=p.local?photosCache.find(x=>x.id===p.id):null;
     return `<div class="ph" data-id="${esc(p.id)}" ${p.url&&!lp?`data-url="${esc(p.url)}"`:''}>${lp?`<img src="${lp.thumb}" loading="lazy">`:`<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:11px;color:#555;padding:4px;text-align:center">${esc(p.by||'')}<br>（ドライブ）</div>`}
-      ${p.stage?`<span class="stg2">${esc(p.stage)}</span>`:''}
+      ${p.stage?`<span class="stg2">${esc(p.stage)}</span>`:''}${p.excluded?'<span class="stg2" style="top:auto;bottom:22px;background:#c0392b">報告書に入れない</span>':''}
       ${lp?`<span class="st ${lp.status}">${lp.status==='done'?'送信済':lp.status==='error'?'失敗':'待ち'}</span>`:''}
       <div class="cap">${esc([p.board?.koshu,p.board?.sokuten].filter(Boolean).join(' '))}</div></div>`; };
   if(photoSort==='time'){
@@ -958,7 +1023,7 @@ function renderPhotos(){
       return `<div class="tgtH">${esc(t.label)} <small>${esc(t.sub)}</small> ${st.map(s=>j[s]==='ok'?`<span class="mk ok" style="font-size:10px">${esc(s)}</span>`:j[s]==='ng'?`<span class="mk ng" style="font-size:10px">${esc(s)}✕</span>`:'').join('')}</div>
         <div class="grid">${t.photos.sort((a,b)=>si(a.stage)-si(b.stage)||a.takenAt-b.takenAt).map(cell).join('')}</div>`; }).join('');
   }
-  box.querySelectorAll('.ph').forEach(el=>el.onclick=()=>{ if(el.dataset.url) window.open(el.dataset.url,'_blank'); else openViewer(el.dataset.id); });
+  box.querySelectorAll('.ph').forEach(el=>el.onclick=()=>openViewerAny(el.dataset.id));
 }
 
 /* =========================================================
@@ -1298,7 +1363,7 @@ function openBoardEdit(toCamera){
     const v=esc(b[r.k]||'');
     let extra='';
     if(r.k==='koshu' && caseKoshu().length) extra+=`<div style="font-size:12px;color:var(--sub);margin:8px 0 4px">この案件の工種・規格</div><div class="pkList" id="bkCase">${caseKoshu().map((x,i)=>`<button data-ci="${i}" class="${(b.koshu===koshuLabel(x)||b.koshu===x.cat)&&(b.kikaku||'')===(x.kikaku||'')?'on':''}">${esc(koshuText(x))}</button>`).join('')}</div><div style="font-size:12px;color:var(--sub);margin:8px 0 4px">ほかの工種</div>`;
-    if(r.k==='sokuten') extra=`<div class="quick" data-for="sokutenNo"><button data-v="next">次の No.（${nextBoardNo(b)}）</button><button data-v="+1">No. ＋1</button><button data-v="-1">No. −1</button></div>`;
+    if(r.k==='sokuten') extra=`<div class="quick" data-for="sokutenNo"><button data-v="next">次（${fmtNo(nextBoardNo(b))}）</button><button data-v="+1">＋1</button><button data-v="-1">−1</button></div>`;
     if(r.k==='koshu') extra+=`<div class="quick" data-for="koshu">${[...(cur.kind==='公共'?Object.keys(parkWorks()):[]),...GENERAL_WORKS].map(c=>`<button data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
     if(r.k==='jushu') extra=`<div class="quick" data-for="jushu">${speciesList().slice(0,18).map(c=>`<button data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
     if(r.k==='kikaku') extra=`<div class="quick" data-for="kikaku">${BANDS.map(c=>`<button data-v="C=${c}">${c}</button>`).join('')}</div>`;
@@ -1315,7 +1380,7 @@ function openBoardEdit(toCamera){
     curItem=null; saveAll(); openBoardEdit(boardEditToCamera); });
   $('#boardFields').querySelectorAll('.quick').forEach(q=>q.onclick=e=>{
     const v=e.target.dataset.v; if(v===undefined) return;
-    if(q.dataset.for==='sokutenNo'){ if(v==='next'){ const n=nextBoardNo(b), s=String(b.sokuten||''); b.sokuten=/No\.?\s*\d+/i.test(s)?s.replace(/No\.?\s*\d+/i,'No.'+n):('No.'+n+' '+s).trim(); } else bumpNo(b,Number(v)); curItem=null; q.parentElement.querySelector('[data-k]').value=b.sokuten; saveAll(); drawPreview(); return; }
+    if(q.dataset.for==='sokutenNo'){ if(v==='next') setNextNo(b); else bumpNo(b,Number(v)); curItem=null; q.parentElement.querySelector('[data-k]').value=b.sokuten; saveAll(); drawPreview(); return; }
     if(q.dataset.for==='bikoStage'){ setStageOnBoard(b,v); curStage=v; q.parentElement.querySelector('[data-k]').value=b.biko; saveAll(); drawPreview(); return; }
     if(q.dataset.for==='stage') curStage=v;
     b[q.dataset.for]=v; q.parentElement.querySelector('[data-k]').value=v; saveAll(); drawPreview();
@@ -1590,9 +1655,9 @@ async function gasGetApp(app,params){
 function targetKeyOf(p){ return p.itemId ? 'I|'+p.itemId : 'B|'+[p.board?.koshu||p.koshu||'', p.board?.kikaku||p.kikaku||'', p.board?.sokuten||p.sokuten||''].join('|'); }
 function allPhotosHere(){   // この端末の写真＋みんなの写真（送信済みは重ならないように）
   if(!cur) return [];
-  const mine=photosCache.filter(p=>p.siteId===cur.id).map(p=>({ id:p.id, itemId:p.itemId, stage:p.stage, board:p.board, takenAt:p.takenAt, thumb:p.thumb, by:p.staff, local:true }));
+  const mine=photosCache.filter(p=>p.siteId===cur.id).map(p=>({ id:p.id, itemId:p.itemId, stage:p.stage, board:p.board, takenAt:p.takenAt, thumb:p.thumb, by:p.staff, local:true, excluded:!!p.excluded, fileId:p.fileId||'' }));
   const ids=new Set(mine.map(p=>p.id));
-  const team=teamPhotos.filter(p=>!ids.has(p.photoId)).map(p=>({ id:p.photoId, itemId:p.itemId, stage:p.stage, board:{koshu:p.koshu,sokuten:p.sokuten,kikaku:p.kikaku||''}, takenAt:new Date(String(p.takenAt).replace(' ','T')).getTime()||0, url:p.url, by:p.by }));
+  const team=teamPhotos.filter(p=>!ids.has(p.photoId)).map(p=>({ id:p.photoId, itemId:p.itemId, stage:p.stage, board:{koshu:p.koshu,sokuten:p.sokuten,kikaku:p.kikaku||''}, takenAt:new Date(String(p.takenAt).replace(' ','T')).getTime()||0, url:p.url, by:p.by, excluded:!!p.excluded, fileId:p.fileId||'' }));
   return mine.concat(team);
 }
 function targets(){
@@ -1601,9 +1666,11 @@ function targets(){
   allPhotosHere().forEach(p=>{ const k=targetKeyOf(p);
     if(!map.has(k)){ const b=p.board||{}; map.set(k,{ key:k, item:null, label:b.koshu||'（工種なし）', sub:[b.kikaku,b.sokuten].filter(Boolean).join(' ・ '), photos:[] }); }
     map.get(k).photos.push(p); });
-  const order=caseKoshu().map(x=>x.cat);
-  const no=t=>Number(t.item?.no)||0, ci=t=>{ const i=order.indexOf(t.item?.cat||t.label); return i<0?999:i; };
-  return [...map.values()].sort((a,b)=>ci(a)-ci(b)||a.label.localeCompare(b.label,'ja')||String(a.item?.kikaku||'').localeCompare(String(b.item?.kikaku||''),'ja')||no(a)-no(b)||a.sub.localeCompare(b.sub,'ja')).map(t=>{
+  const order=caseKoshu().map(x=>x.cat), manual=LS.get('shashin_torder_'+cur.id,[]);
+  const ci=t=>{ const i=order.findIndex(c=>c===(t.item?.cat||t.label)||String(t.label).startsWith(c)); return i<0?999:i; };
+  const mi=t=>{ const i=manual.indexOf(t.key); return i<0?1e6:i; };
+  const kik=t=>String(t.item?.kikaku ?? (t.photos[0]?.board?.kikaku||'')), sok=t=>String(t.item ? (t.item.no||'')+' '+(t.item.name||'') : (t.photos[0]?.board?.sokuten||''));
+  return [...map.values()].sort((a,b)=>mi(a)-mi(b)||ci(a)-ci(b)||COLL.compare(a.label,b.label)||COLL.compare(kik(a),kik(b))||COLL.compare(sok(a),sok(b))).map(t=>{
     t.done={}; st.forEach(s=>t.done[s]=t.photos.filter(p=>p.stage===s).length);
     if(t.item) st.forEach(s=>{ if(!t.done[s]&&shotLog[t.item.id]?.[s]) t.done[s]=1; });
     return t; });
@@ -1641,6 +1708,165 @@ function drawSortBar(){
   $('#sortBar').innerHTML=[['target','対象ごと（工種→規格→測点→状況）'],['time','撮影順']].map(([k,l])=>`<button data-s="${k}" class="${photoSort===k?'on':''}">${l}</button>`).join('');
   $('#sortBar').querySelectorAll('button').forEach(b=>b.onclick=()=>{ photoSort=b.dataset.s; LS.set('shashin_sort',photoSort); renderPhotos(); });
 }
+
+/* =========================================================
+   出力：報告書（PDF）と、写真をまとめて渡す（ZIP）
+   ・ページは端末の中で絵として描いてPDFにする（日本語の字が崩れない・スマホだけで完結）
+   ・並びは 対象（工種→規格→測点）→ 案件の撮り方の順（前後中なら前・後・中）→ 撮った時刻
+   ========================================================= */
+const RP={ layout:'one3', cover:true, check:true, lines:true, zip:'none' };
+$('#btnOut').onclick=openReport;
+$('#rpBack').onclick=()=>{ go('album'); renderPhotos(); };
+function openReport(){
+  const o=curOpts(); RP.layout=o.layout; RP.zip=o.zip;
+  drawReportUI(); $('#rpPages').innerHTML=''; $('#rpProg').style.display='none'; go('report');
+}
+function drawReportUI(){
+  const chip=(id,list,get,set)=>{ $(id).innerHTML=list.map(([v,l])=>`<button data-v="${v}" class="${get(v)?'on':''}">${l}</button>`).join(''); $(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{ set(b.dataset.v); drawReportUI(); }); };
+  chip('#rpLayout',LAYOUTS.map(x=>[x[0],x[1]]),v=>RP.layout===v,v=>RP.layout=v);
+  chip('#rpParts',[['cover','表紙'],['check','撮影チェック表'],['lines','所見を書く罫線']],v=>RP[v],v=>RP[v]=!RP[v]);
+  chip('#rpZip',ZIPS,v=>RP.zip===v,v=>RP.zip=v);
+  const ts=reportTargets();
+  $('#rpOrder').innerHTML=ts.map((t,i)=>`<div class="tordRow"><span style="width:22px;color:var(--sub)">${i+1}</span><div class="nm">${esc(t.label)}<small>${esc(t.sub)} ・ ${t.ph.length}枚</small></div><button data-up="${i}">↑</button><button data-dn="${i}">↓</button></div>`).join('')||'<div class="s">写真がまだありません</div>';
+  const move=(i,d)=>{ const keys=ts.map(t=>t.key), j=i+d; if(j<0||j>=keys.length) return; [keys[i],keys[j]]=[keys[j],keys[i]]; LS.set('shashin_torder_'+cur.id,keys); drawReportUI(); };
+  $('#rpOrder').querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>move(Number(b.dataset.up),-1));
+  $('#rpOrder').querySelectorAll('[data-dn]').forEach(b=>b.onclick=()=>move(Number(b.dataset.dn),1));
+}
+$('#rpAuto').onclick=()=>{ LS.set('shashin_torder_'+cur.id,[]); drawReportUI(); toast('自動の順に戻しました'); };
+function reportTargets(){
+  const st=curStages(), si=s=>{ const i=st.indexOf(s); return i<0?99:i; };
+  return targets().map(t=>({ ...t, ph:t.photos.filter(p=>!p.excluded).sort((a,b)=>si(a.stage)-si(b.stage)||a.takenAt-b.takenAt) })).filter(t=>t.ph.length);
+}
+/* ページの組み立て */
+function buildPages(){
+  const ts=reportTargets(), pages=[];
+  if(RP.cover) pages.push({type:'cover'});
+  if(RP.check) pages.push({type:'check',ts});
+  if(RP.layout==='pack'){
+    const all=[]; ts.forEach(t=>t.ph.forEach(p=>all.push({p,t})));
+    for(let i=0;i<all.length;i+=3) pages.push({type:'photos',slots:all.slice(i,i+3),n:3,title:null});
+  } else {
+    const n=RP.layout==='one2'?2:3;
+    ts.forEach(t=>{ for(let i=0;i<t.ph.length;i+=n) pages.push({type:'photos',slots:t.ph.slice(i,i+n).map(p=>({p,t})),n,title:t,cont:i>0}); });
+  }
+  // チェック表に、対象が何ページ目か
+  let pg=0; const first={}; pages.forEach((P,i)=>{ if(P.type==='photos'){ pg++; P.no=pg; if(P.title&&first[P.title.key]==null) first[P.title.key]=pg; if(!P.title) P.slots.forEach(s=>{ if(first[s.t.key]==null) first[s.t.key]=pg; }); } });
+  pages.forEach(P=>{ if(P.type==='check') P.first=first; P.total=pg; });
+  return pages;
+}
+const PW=1240, PH=1754, MG=72;   // A4 縦（150dpi）
+function txt(ctx,s,x,y,size,opt){ opt=opt||{}; ctx.font=`${opt.bold?'700':'400'} ${size}px ${FONT}`; ctx.fillStyle=opt.color||'#111'; ctx.textAlign=opt.align||'left'; ctx.textBaseline='alphabetic';
+  let t=String(s??''); if(opt.max){ while(t.length>1&&ctx.measureText(t).width>opt.max) t=t.slice(0,-1); if(t!==String(s??'')) t=t.slice(0,-1)+'…'; } ctx.fillText(t,x,y); ctx.textAlign='left'; }
+function fitImage(ctx,img,x,y,w,h){
+  const r=Math.min(w/img.width,h/img.height), dw=img.width*r, dh=img.height*r;
+  ctx.fillStyle='#f3f3f3'; ctx.fillRect(x,y,w,h); ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+}
+function loadImgFromBlob(b){ return new Promise((res,rej)=>{ const u=URL.createObjectURL(b), i=new Image(); i.onload=()=>{ URL.revokeObjectURL(u); res(i); }; i.onerror=rej; i.src=u; }); }
+async function renderPage(P,scale){
+  const c=document.createElement('canvas'); c.width=Math.round(PW*scale); c.height=Math.round(PH*scale);
+  const ctx=c.getContext('2d'); ctx.scale(scale,scale); ctx.fillStyle='#fff'; ctx.fillRect(0,0,PW,PH);
+  const info=infos[cur.infoKey]||{}, koji=String(info.koji||cur.contract||cur.name).replace(/\n/g,' ');
+  if(P.type==='cover'){
+    txt(ctx,koji,PW/2,330,46,{bold:true,align:'center',max:PW-160});
+    txt(ctx,cur.name,PW/2,420,34,{align:'center',max:PW-160});
+    txt(ctx,'工 事 写 真',PW/2,560,40,{bold:true,align:'center'});
+    const rows=[['工期',[info.start,info.end].filter(Boolean).map(s=>String(s).slice(0,10)).join(' 〜 ')],['発注者',info.orderer||''],['施工者',info.sekosha||'庭乃持田園有限会社'],['写真',`${reportTargets().reduce((a,t)=>a+t.ph.length,0)}枚（${reportTargets().length}か所）`],['撮り方',curStages().join('・')],['作成日',today()]];
+    let y=820; ctx.strokeStyle='#999'; ctx.lineWidth=1.5;
+    rows.forEach(([k,v])=>{ txt(ctx,k,300,y,28,{color:'#555'}); txt(ctx,v,460,y,28,{max:PW-560}); ctx.beginPath(); ctx.moveTo(280,y+18); ctx.lineTo(PW-280,y+18); ctx.stroke(); y+=78; });
+    txt(ctx,info.sekosha||'庭乃持田園有限会社',PW/2,PH-200,32,{align:'center'});
+    return c;
+  }
+  // 見出し（全ページ）
+  txt(ctx,koji,MG,70,22,{color:'#444',max:PW*0.62}); txt(ctx,cur.name+(P.no?`　${P.no} / ${P.total}`:''),PW-MG,70,22,{color:'#444',align:'right'});
+  ctx.strokeStyle='#2f6b3f'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(MG,86); ctx.lineTo(PW-MG,86); ctx.stroke();
+  if(P.type==='check'){
+    const st=curStages(); txt(ctx,'撮影チェック表',MG,150,34,{bold:true});
+    const x0=MG, colW=110, labelW=PW-2*MG-colW*(st.length+1); let y=200;
+    ctx.fillStyle='#eef3ee'; ctx.fillRect(x0,y,PW-2*MG,52);
+    txt(ctx,'対象（工種・規格・測点）',x0+12,y+35,22,{bold:true}); st.forEach((s,i)=>txt(ctx,s,x0+labelW+colW*i+colW/2,y+35,22,{bold:true,align:'center'})); txt(ctx,'ページ',x0+labelW+colW*st.length+colW/2,y+35,22,{bold:true,align:'center'});
+    y+=52; ctx.strokeStyle='#ccc'; ctx.lineWidth=1;
+    P.ts.slice(0,26).forEach(t=>{ const j=judge(t);
+      txt(ctx,t.label,x0+12,y+30,22,{max:labelW-20}); txt(ctx,t.sub,x0+12,y+54,17,{color:'#666',max:labelW-20});
+      st.forEach((s,i)=>{ const r=j[s], cx=x0+labelW+colW*i+colW/2; txt(ctx, r==='ok'?'○':r==='ng'?'✕':r==='wait'?'まだ':'－', cx, y+42, r==='ok'||r==='ng'?30:20, {align:'center',bold:r!=='no',color:r==='ok'?'#1e7a3c':r==='ng'?'#c0392b':r==='wait'?'#b26a00':'#bbb'}); });
+      txt(ctx,P.first[t.key]?String(P.first[t.key]):'',x0+labelW+colW*st.length+colW/2,y+42,22,{align:'center'});
+      y+=62; ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(PW-MG,y); ctx.stroke(); });
+    if(P.ts.length>26) txt(ctx,`ほか ${P.ts.length-26} か所`,x0,y+40,20,{color:'#666'});
+    return c;
+  }
+  // 写真ページ
+  let top=110;
+  if(P.title){
+    ctx.fillStyle='#f4f7f3'; ctx.fillRect(MG,top,PW-2*MG,92);
+    txt(ctx,P.title.label+(P.cont?'（つづき）':''),MG+20,top+42,32,{bold:true,max:PW-2*MG-40});
+    txt(ctx,P.title.sub,MG+20,top+78,22,{color:'#444',max:PW-2*MG-40}); top+=110;
+  }
+  const n=P.n, slotH=(PH-top-90)/n, cw=PW-2*MG;
+  const photoW = n===2 ? cw*0.70 : cw*0.58, gap=24, ix=MG+photoW+gap, iw=cw-photoW-gap;
+  for(let i=0;i<n;i++){
+    const y=top+slotH*i, s=P.slots[i], ph=slotH-24, pw=Math.min(photoW, ph*4/3);
+    if(!s){ ctx.strokeStyle='#e3e3e3'; ctx.lineWidth=1.5; ctx.setLineDash([10,8]); ctx.strokeRect(MG,y,pw,ph); ctx.setLineDash([]); continue; }
+    try{ const img=await loadImgFromBlob(await photoBlob(s.p)); fitImage(ctx,img,MG,y,pw,ph); }
+    catch(e){ ctx.fillStyle='#f3f3f3'; ctx.fillRect(MG,y,pw,ph); txt(ctx,'写真を読み込めませんでした',MG+pw/2,y+ph/2,22,{align:'center',color:'#999'}); }
+    const x=MG+pw+gap, w=PW-MG-x; let ty=y+40;
+    const stg=s.p.stage||'';
+    if(stg){ ctx.font=`700 26px ${FONT}`; const bw=ctx.measureText(stg).width+28; ctx.fillStyle=stageColor(stg); ctx.fillRect(x,ty-30,bw,40); txt(ctx,stg,x+14,ty-1,26,{bold:true,color:'#fff'}); ty+=46; }
+    const b=s.p.board||{};
+    const lines = P.title ? [['撮影日',new Date(s.p.takenAt).toLocaleDateString('ja-JP')],['撮影者',s.p.by||'']]
+      : [['工種',b.koshu||''],['規格',b.kikaku||''],['測点',b.sokuten||''],['撮影日',new Date(s.p.takenAt).toLocaleDateString('ja-JP')]];
+    ctx.strokeStyle='#bbb'; ctx.lineWidth=1;
+    lines.forEach(([k,v])=>{ if(!v) return; txt(ctx,k+'：'+v,x,ty,22,{max:w}); ctx.beginPath(); ctx.moveTo(x,ty+12); ctx.lineTo(x+w,ty+12); ctx.stroke(); ty+=44; });
+    if(RP.lines){ ctx.strokeStyle='#d6d6d6'; for(let ly=ty+8; ly<y+ph; ly+=44){ ctx.beginPath(); ctx.moveTo(x,ly); ctx.lineTo(x+w,ly); ctx.stroke(); } }
+  }
+  txt(ctx,String(P.no||''),PW/2,PH-40,20,{align:'center',color:'#666'});
+  return c;
+}
+function prog(t){ const e=$('#rpProg'); e.style.display=t?'':'none'; e.textContent=t||''; }
+$('#rpPreview').onclick=async()=>{
+  const pages=buildPages(); if(!pages.some(P=>P.type==='photos')){ toast('報告書に入れる写真がありません'); return; }
+  $('#rpPages').innerHTML='';
+  for(let i=0;i<pages.length;i++){ prog(`見本を作っています… ${i+1} / ${pages.length}`); $('#rpPages').appendChild(await renderPage(pages[i],0.3)); }
+  prog(''); $('#rpPages').scrollIntoView({behavior:'smooth'});
+};
+async function shareFile(f){
+  if(navigator.canShare&&navigator.canShare({files:[f]})){ try{ await navigator.share({files:[f]}); return; }catch(e){ if(e&&e.name==='AbortError') return; } }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove();
+}
+const cleanName=s=>String(s||'').replace(/[\\/:*?"<>|\n\r]+/g,'').replace(/\s+/g,'').slice(0,30);
+$('#rpPdf').onclick=async()=>{
+  const pages=buildPages(); if(!pages.some(P=>P.type==='photos')){ toast('報告書に入れる写真がありません'); return; }
+  try{
+    prog('準備しています…');
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    const pdf=new window.jspdf.jsPDF({orientation:'p',unit:'mm',format:'a4',compress:true});
+    for(let i=0;i<pages.length;i++){
+      prog(`PDFを作っています… ${i+1} / ${pages.length} ページ`);
+      const c=await renderPage(pages[i],1);
+      if(i>0) pdf.addPage();
+      pdf.addImage(c.toDataURL('image/jpeg',0.85),'JPEG',0,0,210,297,undefined,'FAST');
+    }
+    const d=new Date(), name=`工事写真_${cleanName(cur.name)}_${d.getFullYear()}${pad2(d.getMonth()+1)}${pad2(d.getDate())}.pdf`;
+    prog('できました。保存先・送り先を選んでください');
+    await shareFile(new File([pdf.output('blob')],name,{type:'application/pdf'}));
+  }catch(e){ prog(''); toast('PDFを作れませんでした：'+(e.message||e),4000); }
+};
+function photoFileName(p,i){ const b=p.board||{}; return [String(i+1).padStart(3,'0'),cleanName(b.koshu)||'写真',cleanName(b.kikaku),cleanName(b.sokuten),cleanName(p.stage)].filter(Boolean).join('_')+'.jpg'; }
+$('#rpZipGo').onclick=async()=>{
+  const ts=reportTargets(); if(!ts.length){ toast('写真がありません'); return; }
+  try{
+    prog('準備しています…');
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+    const zip=new JSZip(); let i=0; const total=ts.reduce((a,t)=>a+t.ph.length,0);
+    for(const t of ts){ for(const p of t.ph){
+      prog(`写真をまとめています… ${i+1} / ${total}`);
+      const b=p.board||{}, dir = RP.zip==='koshu' ? cleanName(b.koshu||'工種なし')+'/' : RP.zip==='koshu_no' ? cleanName(b.koshu||'工種なし')+'/'+(cleanName(b.sokuten)||'測点なし')+'/' : '';
+      try{ zip.file(dir+photoFileName(p,i), await photoBlob(p)); }catch(e){}
+      i++; } }
+    prog('ファイルにしています…');
+    const blob=await zip.generateAsync({type:'blob'});
+    prog('できました。保存先・送り先を選んでください');
+    await shareFile(new File([blob],`写真_${cleanName(cur.name)}.zip`,{type:'application/zip'}));
+  }catch(e){ prog(''); toast('まとめられませんでした：'+(e.message||e),4000); }
+};
 
 /* =========================================================
    カメラ・位置・方位
@@ -1737,9 +1963,21 @@ $('#camBoardToggle').onclick=()=>{
   boardOn=!boardOn; updateCamUI();
 };
 /* 測点の No. を1つ進める（次の木・次の場所へ）。進めたら状況は最初にもどす */
-function bumpNo(b,d){ const s=String(b.sokuten||''), m=s.match(/No\.?\s*(\d+)/i);
+function curOpts(){ const i=cur&&infos[cur.infoKey]; return Object.assign({ noStyle:'no', layout:'one3', zip:'none' }, (i&&i.opts)||{}); }
+const COLL=new Intl.Collator('ja',{numeric:true,sensitivity:'base'});
+const alphaOf=n=>{ let s=''; while(n>0){ n--; s=String.fromCharCode(65+n%26)+s; n=Math.floor(n/26); } return s; };
+const alphaToN=s=>[...String(s).toUpperCase()].reduce((a,c)=>a*26+(c.charCodeAt(0)-64),0);
+function fmtNo(n){ const st=curOpts().noStyle; return st==='alpha'?alphaOf(n):st==='num'?String(n):'No.'+n; }
+function parseNo(s){ s=String(s||''); let m=s.match(/No\.?\s*(\d+)/i); if(m) return {n:+m[1],tok:m[0]};
+  m=s.match(/^([A-Za-z]{1,2})(?=$|[\s　])/); if(m) return {n:alphaToN(m[1]),tok:m[1]};
+  m=s.match(/^(\d+)(?=$|[\s　])/); if(m) return {n:+m[1],tok:m[1]}; return null; }
+function bumpNo_old(b,d){ const s=String(b.sokuten||''), m=s.match(/No\.?\s*(\d+)/i);
   if(m){ const n=Math.max(1,Number(m[1])+d); b.sokuten=s.replace(m[0],'No.'+n); } else b.sokuten=('No.'+Math.max(1,nextBoardNo(b)+(d>0?0:-1))+' '+s).trim(); }
-function nextBoardNo(b){ let max=0; allPhotosHere().forEach(p=>{ const q=p.board||{}; if((q.koshu||'')===(b.koshu||'')&&(q.kikaku||'')===(b.kikaku||'')){ const m=String(q.sokuten||'').match(/No\.?\s*(\d+)/i); if(m) max=Math.max(max,Number(m[1])); } }); return max+1; }
+function bumpNo(b,d){ const s=String(b.sokuten||''), p=parseNo(s);
+  if(p) b.sokuten=s.replace(p.tok,fmtNo(Math.max(1,p.n+d))); else b.sokuten=(fmtNo(Math.max(1,nextBoardNo(b)+(d>0?0:-1)))+' '+s).trim(); }
+function setNextNo(b){ const n=nextBoardNo(b), s=String(b.sokuten||''), p=parseNo(s); b.sokuten = p ? s.replace(p.tok,fmtNo(n)) : (fmtNo(n)+' '+s).trim(); }
+function nextBoardNo(b){ let max=0; allPhotosHere().forEach(p=>{ const q=p.board||{}; if((q.koshu||'')===(b.koshu||'')&&(q.kikaku||'')===(b.kikaku||'')){ const x=parseNo(q.sokuten); if(x) max=Math.max(max,x.n); } }); return max+1; }
+function nextBoardNo_old(b){ let max=0; allPhotosHere().forEach(p=>{ const q=p.board||{}; if((q.koshu||'')===(b.koshu||'')&&(q.kikaku||'')===(b.kikaku||'')){ const m=String(q.sokuten||'').match(/No\.?\s*(\d+)/i); if(m) max=Math.max(max,Number(m[1])); } }); return max+1; }
 $('#camNo').onclick=()=>{ const b=boards[cur.id]; bumpNo(b,1); curItem=null; curStage=curStages()[0]; setStageOnBoard(b,curStage); saveAll(); updateCamUI(); toast(`${b.sokuten}・${curStage}`,1200); };
 $('#camStage').onclick=()=>{
   const st=curStages(), b=boards[cur.id], now=curStage||b.stage||'';
@@ -1800,6 +2038,49 @@ $('#lastThumb').onclick=()=>{ const l=photosCache.filter(p=>p.siteId===cur?.id).
    写真ビューア
    ========================================================= */
 let viewing=null, viewUrl=null;
+/* どの写真も（この端末のもの・みんなのもの）開いて、状況・工種・規格・測点・報告書に入れるかを直せる */
+const imgCache=new Map();
+async function photoBlob(p){
+  const lp=photosCache.find(x=>x.id===p.id); if(lp&&lp.blob) return lp.blob;
+  if(imgCache.has(p.id)) return imgCache.get(p.id);
+  if(!p.fileId) throw new Error('写真の中身がありません');
+  const j=await gasGet({action:'photoData',fileId:p.fileId},60000);
+  if(!j.ok) throw new Error(j.error||'');
+  const bin=atob(j.data), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+  const blob=new Blob([u],{type:j.mime||'image/jpeg'}); imgCache.set(p.id,blob); return blob;
+}
+let VA=null;
+async function openViewerAny(id){
+  const lp=photosCache.find(x=>x.id===id);
+  if(lp){ openViewer(id); } else {
+    const p=allPhotosHere().find(x=>x.id===id); if(!p) return;
+    VA=p; viewing=null; $('#vImg').removeAttribute('src');
+    $('#vInfo').innerHTML=`${esc(p.by||'')} ・ ${esc(new Date(p.takenAt).toLocaleString('ja-JP'))}<br>写真を読み込んでいます…`;
+    $('#vRetry').style.display='none'; $('#vDelete').style.display='none';
+    drawVEdit(); $('#viewer').classList.add('on');
+    try{ const b=await photoBlob(p); if(viewUrl) URL.revokeObjectURL(viewUrl); viewUrl=URL.createObjectURL(b); $('#vImg').src=viewUrl; $('#vInfo').innerHTML=`${esc(p.by||'')} ・ ${esc(new Date(p.takenAt).toLocaleString('ja-JP'))}<br>✅ ドライブ（みんなの写真）`; }
+    catch(e){ $('#vInfo').innerHTML+=`<br>⚠ 読み込めませんでした（${esc(e.message||e)}）`; }
+  }
+}
+function drawVEdit(){
+  const p=viewing?{ id:viewing.id, stage:viewing.stage, board:viewing.board, excluded:!!viewing.excluded }:VA; if(!p) return;
+  const st=curStages(), b=p.board||{};
+  $('#vEdit').innerHTML=`<div style="margin-bottom:4px">状況</div><div class="quick" id="veStage">${st.map(s=>`<button data-s="${esc(s)}" class="${p.stage===s?'on':''}">${esc(s)}</button>`).join('')}</div>
+    <div class="row2" style="margin-top:6px"><div><div>工種</div><input id="veKoshu" value="${esc(b.koshu||'')}"></div><div><div>規格</div><input id="veKikaku" value="${esc(b.kikaku||'')}"></div></div>
+    <div style="margin-top:6px">測点</div><input id="veSokuten" value="${esc(b.sokuten||'')}">
+    <div class="quick" style="margin-top:8px"><button id="veSave" style="background:var(--main)">直した内容を保存</button><button id="veEx" class="${p.excluded?'on':''}">${p.excluded?'報告書に入れる':'報告書に入れない'}</button></div>
+    <div style="font-size:11px;opacity:.7;margin-top:4px">※ 並び替え・報告書・ファイル名に使う内容です。写真に写った黒板の文字は撮ったときのままです</div>`;
+  $('#veStage').querySelectorAll('button').forEach(x=>x.onclick=()=>savePhotoMeta(p.id,{stage:x.dataset.s}));
+  $('#veSave').onclick=()=>savePhotoMeta(p.id,{koshu:$('#veKoshu').value.trim(),kikaku:$('#veKikaku').value.trim(),sokuten:$('#veSokuten').value.trim()});
+  $('#veEx').onclick=()=>savePhotoMeta(p.id,{excluded:!p.excluded});
+}
+async function savePhotoMeta(id,ch){
+  const lp=photosCache.find(x=>x.id===id), tp=teamPhotos.find(x=>x.photoId===id);
+  if(lp){ if(ch.stage!=null) lp.stage=ch.stage; ['koshu','kikaku','sokuten'].forEach(k=>{ if(ch[k]!=null) lp.board[k]=ch[k]; }); if(ch.excluded!=null) lp.excluded=ch.excluded; if(ch.koshu!=null||ch.kikaku!=null||ch.sokuten!=null) lp.itemId=''; await idbPut(lp); viewing=lp; }
+  if(tp){ Object.assign(tp,ch); if(ch.koshu!=null) tp.itemId=''; VA=allPhotosHere().find(x=>x.id===id); }
+  if((tp||(lp&&lp.status==='done'))&&canSync()){ try{ await gasPost({mode:'updatePhoto',photoId:id,...ch}); }catch(e){} }
+  drawVEdit(); renderPhotos(); updateCheckBadge(); toast('保存しました',900);
+}
 function openViewer(id){
   viewing=photosCache.find(p=>p.id===id); if(!viewing) return;
   if(viewUrl) URL.revokeObjectURL(viewUrl);
@@ -1812,10 +2093,12 @@ function openViewer(id){
     p.status==='done'?'✅ ドライブに送信済み':p.status==='error'?`⚠️ 送信失敗 ${esc(p.err||'')}`:'⏳ 送信待ち',
     esc(p.fileName)
   ].join('<br>');
-  $('#vRetry').style.display=p.status==='done'?'none':'';
+  $('#vRetry').style.display=p.status==='done'?'none':''; $('#vDelete').style.display='';
+  VA=null; drawVEdit();
   $('#viewer').classList.add('on');
 }
 $('#vShare').onclick=async()=>{
+  if(!viewing&&VA){ try{ const b=await photoBlob(VA); await shareFile(new File([b],photoFileName(VA,0),{type:'image/jpeg'})); }catch(e){ toast('共有できませんでした'); } return; }
   const f=new File([viewing.blob],viewing.fileName,{type:'image/jpeg'});
   if(navigator.canShare&&navigator.canShare({files:[f]})){ try{ await navigator.share({files:[f]}); }catch(e){} }
   else { const a=document.createElement('a'); a.href=viewUrl; a.download=viewing.fileName; a.click(); }
