@@ -500,6 +500,13 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       </div>
     </div>
 
+    <div class="sec" id="scanSec">
+      <h3>📡 3Dスキャンの木</h3>
+      <button class="btn ghost" id="scanImpBtn">3Dスキャンの結果を取り込む<small>スキャンから作った「木の位置ファイル（.json）」を開きます</small></button>
+      <input type="file" id="scanFile" accept="application/json,.json" hidden>
+      <div id="scanInfo"></div>
+    </div>
+
     <div class="sec">
       <h3>③ 記録モード <span class="st" style="color:var(--mut);font-weight:400">工種で自動選択</span></h3>
       <button class="btn ghost" id="placeRect" data-tool="rect" style="display:none">📐 この寸法で四角を置く<small>上の「長さ×奥行」の四角を、タップした場所に置きます</small></button>
@@ -703,7 +710,8 @@ function importCustomWorks(obj){ if(!obj||typeof obj!=='object') return;
   Object.keys(obj).forEach(cat=>{ if(!MASTER[cat]) mergeCustomWork(cat,obj[cat]); }); saveCustomWorksLS(); }
 
 /* ---------- 状態 ---------- */
-let state={img:null, scale:null /*m per imgpx*/, features:[], manual:[]};
+let state={img:null, scale:null /*m per imgpx*/, features:[], manual:[], scan:[] /*3Dスキャンの仮置きの木（工種まだ）*/};
+let selScan=null;
 let view={zoom:1,ox:0,oy:0};
 let tool="area";
 let draft=null;            // 作成中ポリゴン or 校正点
@@ -713,8 +721,8 @@ const $=id=>document.getElementById(id);
 
 /* ---------- Undo/Redo（全体の戻る/進む） ---------- */
 let undoStack=[], redoStack=[];
-function snapshot(){return JSON.stringify({features:state.features,manual:state.manual,scale:state.scale});}
-function restore(s){const o=JSON.parse(s);state.features=o.features;state.manual=o.manual;state.scale=o.scale;
+function snapshot(){return JSON.stringify({features:state.features,manual:state.manual,scale:state.scale,scan:state.scan||[]});}
+function restore(s){const o=JSON.parse(s);state.features=o.features;state.manual=o.manual;state.scale=o.scale;state.scan=o.scan||[];selScan=null;renderScanInfo();
   recalcAll();multiSel=[];selected=null;draft=null;updateScaleBadge();renderAgg();renderSansha();refreshDraftBar();draw();updateUndoButtons();}
 function pushHistory(){undoStack.push(snapshot());if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();}
 function undo(){if(!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop());}
@@ -794,7 +802,7 @@ function syncToolForCat(){
   // 工種を選んだら記録モードを自動選択。校正・地図移動中は邪魔しない。作図中で同モードなら維持。
   if(tool!=='cal'&&tool!=='pan'&&tool!==mode&&!holeMode) setTool(mode);
 }
-$('catSel').onchange=fillKinds; $('kindSel').onchange=()=>{fillRanks();updateHint();refreshDraftBar();};
+$('catSel').onchange=()=>{fillKinds();renderScanInfo();if(treeTargets().length||selScan)renderSansha();}; $('kindSel').onchange=()=>{fillRanks();updateHint();refreshDraftBar();renderScanInfo();if(treeTargets().length||selScan)renderSansha();};
 
 /* ---------- 工種を追加（モーダル） ---------- */
 function pickNewColor(){ return COLORS[Object.keys(customWorksDefs).length % COLORS.length]; }
@@ -1566,11 +1574,19 @@ function draw(){
       const isNest=(f.cat==='巣撤去'), rad=treeRadius(f)/view.zoom;
       ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad,0,7);ctx.fillStyle=col;ctx.fill();
       ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=isSel(f)?SEL:(isNest?'#fff':'#0008');ctx.stroke();
+      if(f.chk&&!exporting){ctx.save();ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad+4/view.zoom,0,7);ctx.setLineDash([4/view.zoom,3/view.zoom]);ctx.lineWidth=2/view.zoom;ctx.strokeStyle='#e67e22';ctx.stroke();ctx.restore();}
       if(isNest){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad+3/view.zoom,0,7);ctx.lineWidth=1.8/view.zoom;ctx.strokeStyle=col;ctx.stroke();}
       if(isNest) label(f.pt.x,f.pt.y+rad+2/view.zoom,f.kind,col,f);   // 巣は位置が重要：出力でも常に表示
-      else if(!exporting && (isSel(f) || (disp.mode==='full'&&view.zoom>1.4)) && !(_grouped&&_grouped.has(f)) && labelVisible(f)) label(f.pt.x,f.pt.y+rad+2/view.zoom,(f.rank?f.rank:f.kind),col,f);
+      else if(!exporting && (isSel(f) || (disp.mode==='full'&&view.zoom>1.4)) && !(_grouped&&_grouped.has(f)) && labelVisible(f)) label(f.pt.x,f.pt.y+rad+2/view.zoom,(f.rank?f.rank:f.kind)+(f.C?'\nC='+f.C+'cm':''),col,f);
     }
   });
+  if(!exporting&&state.scan&&state.scan.length){ state.scan.forEach(t=>{
+    const r=scanRad(t)/view.zoom, on=(t===selScan);
+    ctx.save(); ctx.beginPath(); ctx.arc(t.x,t.y,r,0,7); ctx.fillStyle='rgba(255,255,255,.8)'; ctx.fill();
+    ctx.setLineDash([3/view.zoom,2/view.zoom]); ctx.lineWidth=(on?3:2)/view.zoom; ctx.strokeStyle=on?SEL:(t.chk?'#e67e22':'#475569'); ctx.stroke(); ctx.setLineDash([]);
+    const tx=(t.C?t.C:'?')+(t.chk?' 要確認':''); ctx.font=`bold ${11/view.zoom}px sans-serif`; ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.lineWidth=3/view.zoom; ctx.strokeStyle='#fff'; ctx.strokeText(tx,t.x+r+3/view.zoom,t.y); ctx.fillStyle=t.chk?'#c0560c':'#334155'; ctx.fillText(tx,t.x+r+3/view.zoom,t.y);
+    ctx.restore(); }); }
   if(_gmap){ _gmap.clusters.forEach(cl=>{
     // 番号だけモードでは、まとめ表示（×N本）も選んでいる時だけ出す（面積と同じ：選択解除で消える）
     const _clOn=exporting||(labelVisible(cl.members[0])&&(disp.mode!=='num'||cl.members.some(m=>isSel(m))));
@@ -1802,6 +1818,9 @@ function downCommon(p,ip){
   }
   if(tool==='cal')return null;
   if(tool==='area')return null;                 // 面積モードは常に描画（樹木と同様、既存図形の上でも開始可）。編集は選択中図形のハンドル or 選択モードで。
+  selScan=null;
+  if(tool==='tree'&&nearestScan(ip)) return null;   // 仮置きの木：指を離したとき（placeTree）に工種を決める
+  if(tool==='select'){ const st=nearestScan(ip); if(st){ hlHole=null; multiSel=[]; selected=null; selScan=st; renderSansha(); draw(); return 'sel'; } }
   let f=(tool==='tree')?nearestTree(ip):pickHit(ip); if(!f){const lf=labelHitFeature(ip); if(lf&&state.features.indexOf(lf)>=0)f=lf;}   // 図形が外れたらラベルでも選択
   if(f){
     hlHole=null;
@@ -2048,7 +2067,97 @@ function finishArea(){
   }
   draft=null;multiSel=[];selected=state.features[state.features.length-1]||null;recalcAll();refreshDraftBar();renderAgg();renderSansha();draw();
 }
+/* ---------- 3Dスキャンの木（仮置き → 工種を決める） ---------- */
+function bandsParse(cat){ return worksBands(cat).map(b=>{ let m=String(b).match(/(\d+(?:\.\d+)?)\s*cm\s*未満/); if(m)return {b,lo:0,hi:+m[1]};
+  m=String(b).match(/(\d+(?:\.\d+)?)\s*(?:cm)?\s*[〜~～\-－]\s*(\d+(?:\.\d+)?)/); if(m)return {b,lo:+m[1],hi:+m[2]};
+  m=String(b).match(/(\d+(?:\.\d+)?)\s*cm\s*以上/); if(m)return {b,lo:+m[1],hi:Infinity}; return {b,lo:NaN,hi:NaN}; }); }
+function bandFromC(cat,C){ if(!(C>0))return null; const P=bandsParse(cat).filter(p=>isFinite(p.lo));
+  for(const p of P){ if(C>=p.lo&&C<p.hi) return p.b; } if(P.length&&C>=P[P.length-1].hi) return P[P.length-1].b; return null; }
+function kindRanks(cat,kind){ const m=MASTER[cat]; if(!m||m.mode!=='tree')return false; const kd=(m.kinds||{})[kind]||{}; if(kd.ranks===false)return false; return m.ranks!==false; }
+function scanRad(t){ const i=Math.max(0,BANDS.indexOf(bandFromC(null,t.C))); return 5+i*1.0; }
+function nearestScan(ip){ let best=null,bd=Infinity; (state.scan||[]).forEach(t=>{const d=dist(t,ip); if(d<(scanRad(t)+10)/view.zoom&&d<bd){bd=d;best=t;}}); return best; }
+function curTreeWork(){ const cat=$('catSel').value, kind=$('kindSel').value; if(!MASTER[cat]||MASTER[cat].mode!=='tree'||cat==='巣撤去')return null; return {cat,kind}; }
+// 木の工種・規格を（cat,kind）に合わせる。幹周Cがあれば規格は幹周から自動
+function setTreeWork(f,cat,kind){ f.cat=cat; f.kind=kind;
+  if(kindRanks(cat,kind)){ const r=f.C?bandFromC(cat,f.C):null; const B=worksBands(cat); f.rank=r||(B.indexOf(f.rank)>=0?f.rank:($('rankSel').value&&B.indexOf($('rankSel').value)>=0?$('rankSel').value:B[0])); }
+  else delete f.rank; }
+function assignScan(list){ const w=curTreeWork();
+  if(!w){ alert('先に②で、樹木の工種（剪定・撤去など）を選んでください。'); return null; }
+  pushHistory(); const made=[];
+  list.forEach(t=>{ const f={type:'tree',pt:{x:t.x,y:t.y},src:'scan'}; if(t.C)f.C=t.C; if(t.chk)f.chk=true; setTreeWork(f,w.cat,w.kind); state.features.push(f); made.push(f); });
+  state.scan=(state.scan||[]).filter(t=>list.indexOf(t)<0); if(list.indexOf(selScan)>=0)selScan=null;
+  recalcAll(); renderAgg(); renderScanInfo(); return made; }
+function renderScanInfo(){ const el=$('scanInfo'); if(!el)return; const S=state.scan||[];
+  const doneChk=state.features.filter(f=>f.type==='tree'&&f.chk).length;
+  if(!S.length){ el.innerHTML=doneChk?`<div class="legend" style="margin-top:8px;color:#c0560c">⚠ 要確認の木が ${doneChk}本 あります（オレンジの点線）。木をタップして実測の幹周を入れると確定します。</div>`:''; return; }
+  const nc=S.filter(t=>t.chk).length, w=curTreeWork();
+  el.innerHTML=`<div class="legend" style="margin:8px 0 6px;line-height:1.6"><b>仮置き ${S.length}本</b>${nc?`（うち要確認 <b style="color:#c0560c">${nc}本</b>）`:''}<br>`
+   +`②で工種を選び、③を「樹木」にして地図の<b>点線の丸</b>をタップすると工種が決まります。規格は幹周から自動で決まります。<br>仮置きの木は、工種が決まるまで集計・報告書に入りません。</div>`
+   +`<button class="btn ghost" id="scanAllBtn"${w?'':' disabled style="opacity:.5"'}>残り${S.length}本を全部「${w?w.kind:'—'}」にする<small>${w?w.cat:'②で樹木の工種を選ぶと使えます'}</small></button>`
+   +`<button class="btn ghost danger" id="scanClearBtn">仮置きを全部消す</button>`;
+  const a=$('scanAllBtn'); if(a)a.onclick=()=>{ if(!curTreeWork())return; if(!confirm(`仮置き${S.length}本を全部「${w.cat}　${w.kind}」にします。よろしいですか。\n（あとから1本ずつ変えられます）`))return; const m=assignScan(S.slice()); if(m){multiSel=[];selected=null;renderSansha();draw();} };
+  const c=$('scanClearBtn'); if(c)c.onclick=()=>{ if(!confirm(`仮置きの木 ${S.length}本 を消します。よろしいですか。`))return; pushHistory(); state.scan=[]; selScan=null; renderScanInfo(); renderSansha(); draw(); };
+}
+function scanWarn(){ const n=(state.scan||[]).length; if(!n)return true;
+  return confirm(`工種が決まっていない仮置きの木が ${n}本 あります。\nこの木は報告書・集計に入りません。\n\nこのまま続けますか。`); }
+function treeTargets(){ const L=(multiSel.length>1?multiSel:(selected?[selected]:[])); return L.length&&L.every(f=>f&&f.type==='tree'&&f.cat!=='巣撤去')?L:[]; }
+function renderTreeEdit(el){
+  const w=curTreeWork(), wtxt=w?`${w.cat}　${w.kind}`:'（②で樹木の工種を選んでください）';
+  if(selScan&&(state.scan||[]).indexOf(selScan)>=0){ const t=selScan;
+    el.innerHTML=`<div class="legend" style="margin-bottom:6px"><b>仮置きの木</b>（工種まだ・3Dスキャン）</div>`
+     +(t.chk?`<div class="legend" style="color:#c0560c;margin-bottom:6px">⚠ 要確認：${t.note||'テープで測って幹周を入れてください'}</div>`:'')
+     +`<label class="fld">幹周 C（cm）　スキャン値／実測で上書き</label><input id="teC" type="number" min="1" step="1" value="${t.C||''}">`
+     +`<div class="legend" style="margin:4px 0 8px">規格の目安：${bandFromC(w?w.cat:null,t.C)||'—'}</div>`
+     +`<button class="btn" id="teAssign"${w?'':' disabled style="opacity:.5"'}>この工種で決める<small>${wtxt}</small></button>`
+     +`<button class="btn ghost danger" id="teDelScan">これは木ではない（消す）</button>`;
+    $('teC').onchange=()=>{const v=Math.round(parseFloat($('teC').value)); if(!(v>0))return; pushHistory(); t.C=v; t.chk=false; renderScanInfo(); renderSansha(); draw();};
+    $('teAssign').onclick=()=>{ const m=assignScan([t]); if(m&&m.length){setSingle(m[0]);} renderSansha(); draw(); };
+    $('teDelScan').onclick=()=>{ pushHistory(); state.scan=state.scan.filter(x=>x!==t); selScan=null; renderScanInfo(); renderSansha(); draw(); };
+    return true; }
+  const T=treeTargets(); if(!T.length) return false;
+  if(T.length===1){ const f=T[0];
+    el.innerHTML=`<div class="legend" style="margin-bottom:6px"><b>選択中の木</b>：${f.cat}　${f.kind}${f.rank?'　'+f.rank:''}</div>`
+     +(f.chk?`<div class="legend" style="color:#c0560c;margin-bottom:6px">⚠ 要確認（3Dスキャンの値）。テープで測って入れると確定します。</div>`:'')
+     +`<label class="fld">実測 幹周 C（cm）${f.src==='scan'?'　※3Dスキャン値を入れてあります':'　※任意'}</label><input id="teC" type="number" min="1" step="1" value="${f.C||''}" placeholder="例：95">`
+     +`<div class="legend" style="margin:4px 0 8px">入れると規格（幹周）を自動で直します</div>`
+     +(f.chk?`<button class="btn ghost" id="teOk">この値のまま確認済みにする</button>`:'')
+     +`<button class="btn ghost" id="teWork"${w?'':' disabled style="opacity:.5"'}>工種を②の工種に変える<small>${wtxt}</small></button>`;
+    $('teC').onchange=()=>{const raw=$('teC').value.trim(); pushHistory(); if(raw===''){delete f.C;} else {const v=Math.round(parseFloat(raw)); if(!(v>0))return; f.C=v; delete f.chk; if(kindRanks(f.cat,f.kind)){const r=bandFromC(f.cat,v); if(r)f.rank=r;}}
+      recalcAll(); renderAgg(); renderScanInfo(); renderSansha(); draw();};
+    const ok=$('teOk'); if(ok)ok.onclick=()=>{pushHistory(); delete f.chk; renderScanInfo(); renderSansha(); draw();};
+  }else{
+    const cats={}; T.forEach(f=>{const k=f.cat+'　'+f.kind; cats[k]=(cats[k]||0)+1;});
+    el.innerHTML=`<div class="legend" style="margin-bottom:6px"><b>選択中の木 ${T.length}本</b><br>${Object.keys(cats).map(k=>k+'：'+cats[k]+'本').join('<br>')}</div>`
+     +`<button class="btn ghost" id="teWork"${w?'':' disabled style="opacity:.5"'}>${T.length}本の工種を②の工種に変える<small>${wtxt}</small></button>`;
+  }
+  $('teWork').onclick=()=>{ const w2=curTreeWork(); if(!w2)return; pushHistory(); T.forEach(f=>setTreeWork(f,w2.cat,w2.kind)); recalcAll(); renderAgg(); renderSansha(); draw(); };
+  return true;
+}
+function importScan(d){
+  const trees=d.trees.filter(t=>isFinite(+t.x)&&isFinite(+t.y));
+  if(!trees.length){ alert('このファイルには木が入っていませんでした。'); return; }
+  const useImg=!!d.imgData;
+  if(useImg&&state.img&&state.features.length){
+    if(!confirm('背景の図を、スキャンから作った平面図に置きかえます。\nいま描いてある図形は位置がずれます（新しい公園で取り込むのがおすすめです）。\n\n続けますか。'))return; }
+  pushHistory();
+  const add=trees.map(t=>({x:+t.x,y:+t.y,C:(+t.C>0?Math.round(+t.C):null),chk:!!t.chk,note:t.note||''}));
+  state.scan=(useImg?[]:(state.scan||[])).concat(add); selScan=null;
+  if(d.scale>0){ state.scale=+d.scale; updateScaleBadge(); }
+  if(d.geo) state.scanGeo=d.geo;
+  if(useImg){ const im=new Image(); im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();updateHint();requestAnimationFrame(fit);}; im.src=d.imgData; }
+  recalcAll(); renderAgg(); renderScanInfo(); renderSansha(); draw();
+  const nc=add.filter(t=>t.chk).length;
+  alert(`3Dスキャンの木を ${add.length}本 仮置きしました${nc?`（うち要確認 ${nc}本）`:''}。\n\n②で工種を選んで③を「樹木」にし、地図の点線の丸をタップすると工種が決まります。規格は幹周から自動で決まります。`);
+}
+$('scanImpBtn').onclick=()=>$('scanFile').click();
+$('scanFile').onchange=e=>{ const file=e.target.files&&e.target.files[0]; e.target.value=''; if(!file)return;
+  const r=new FileReader(); r.onload=()=>{ let d; try{ d=JSON.parse(r.result); }catch(err){ alert('3Dスキャンの木のファイルとして読み込めませんでした。\n'+((err&&err.message)||err)); return; }
+    if(!d||d.kind!=='park-scan'||!Array.isArray(d.trees)){ alert('これは3Dスキャンの木のファイルではありません。\n（公園データは「公園データを開く」から開いてください）'); return; }
+    try{ importScan(d); }catch(err){ alert('取り込みの途中で問題が起きました。\n'+((err&&err.message)||err)); } };
+  r.readAsText(file); };
+
 function placeTree(ip){
+  { const st=nearestScan(ip); if(st){ const made=assignScan([st]); if(made&&made.length){setSingle(made[0]);} renderSansha(); draw(); return; } }
   ip=snapGrid(ip);
   pushHistory();
   const cat=$('catSel').value,kind=$('kindSel').value;
@@ -2075,6 +2184,7 @@ function pointInPoly(p,pts){let c=false;for(let i=0,j=pts.length-1;i<pts.length;
 function selectFeature(f){selected=f;hlHole=null;renderSansha();draw();}
 function renderSansha(){
   const el=$('sansha');
+  if(renderTreeEdit(el)) return;
   // 幅刈り：区間ごとに幅を変えられる表
   if(selected&&selected.strip){
     const f=selected, c=f.strip.c, w=f.strip.w;
@@ -2361,7 +2471,7 @@ function fit(){
 $('fit').onclick=fit;
 $('zoomIn').onclick=()=>zoomAt(cv.width/2,cv.height/2,1.2);
 $('zoomOut').onclick=()=>zoomAt(cv.width/2,cv.height/2,1/1.2);
-$('clearAll').onclick=()=>{if(confirm('注記をすべて消去しますか？')){pushHistory();state.features=[];state.manual=[];selected=null;renderAgg();renderSansha();draw();}};
+$('clearAll').onclick=()=>{if(confirm('注記をすべて消去しますか？')){pushHistory();state.features=[];state.manual=[];state.scan=[];selScan=null;renderScanInfo();selected=null;renderAgg();renderSansha();draw();}};
 $('undoBtn').onclick=undo; $('redoBtn').onclick=redo;
 $('legendToggle').onclick=()=>{legend.show=!legend.show;$('legendToggle').classList.toggle('on',legend.show);$('legendToggle').firstChild.textContent=legend.show?'凡例を表示':'凡例は非表示';draw();};
 $('legendReset').onclick=()=>{legend.x=null;legend.y=null;draw();};
@@ -2369,7 +2479,7 @@ $('legendReset').onclick=()=>{legend.x=null;legend.y=null;draw();};
 $('saveJson').onclick=()=>{
   const order=$('orderNo').value||'';
   const data={park:$('parkName').value||'未設定',contract:$('contractName').value||'',order,date:$('workDate').value||'',start:$('startDate').value||'',finish:$('finishDate').value||'',agent:$('agentName')?($('agentName').value||''):'',supervisor:$('supervisorName')?($('supervisorName').value||''):'',
-    scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,
+    scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,scan:state.scan||[],
     rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value,
         genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:'',genzaiSrc:genzaiSrc},
     customWorks:customWorksDefs,
@@ -2435,10 +2545,10 @@ function applyParkData(d,kb){
   if(d.customWorks){ importCustomWorks(d.customWorks); buildTreeColors(); fillCats(); }
   state.cloudId=d.cloudId||state.cloudId||null; state.cloudVer=d.cloudId?(d.cloudVer||null):(state.cloudVer||null);
   if(d.mapImg){state.mapImg=d.mapImg;const b=$('rpMapBtn');if(b)b.firstChild.textContent='🖼 履行場所の図：読み込みました（変えるならもう一度）';}
-  state.features=d.features||[];state.manual=d.manual||[];recalcAll();
+  state.features=d.features||[];state.manual=d.manual||[];state.scan=Array.isArray(d.scan)?d.scan:[];selScan=null;renderScanInfo();recalcAll();
   undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
-  if(!state.features.length) alert('読み込みは成功しましたが、記録が0件でした（大きさ '+kb+' KB）。\n保存したときに図形が入っていたか確認してください。');
+  if(!state.features.length&&!(state.scan&&state.scan.length)) alert('読み込みは成功しましたが、記録が0件でした（大きさ '+kb+' KB）。\n保存したときに図形が入っていたか確認してください。');
 }
 /* ---------- クラウド（みんなの共有：共通GAS → Googleドライブ「社内アプリ ＞ 公園報告データ」） ---------- */
 const PARK_GAS='https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
@@ -2512,7 +2622,7 @@ function parkPayload(){
   return {park:$('parkName').value||'',contract:$('contractName').value||'',order,
     date:$('workDate').value||'',start:$('startDate').value||'',finish:$('finishDate').value||'',
     agent:$('agentName').value||'',supervisor:$('supervisorName').value||'',
-    scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,
+    scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,scan:state.scan||[],
     rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,
         addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value,
         genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:'',genzaiSrc:genzaiSrc},
@@ -2744,6 +2854,7 @@ function buildTriSection(){
 }
 function printPDF(){
   if(!state.img){alert('先に図面を読み込んでください。');return;}
+  if(!scanWarn())return;
   if(state.features.some(f=>f.type!=='tree')&&!state.scale){alert('先に「縮尺合わせ」を行ってください。面積が0のまま書き出されます。');return;}
   const img=fullImageDataURL();
   const park=$('parkName').value||'公園',contract=$('contractName').value||'',order=$('orderNo').value||'';
@@ -2883,6 +2994,7 @@ function exportExcel(){
   const {areas,trees}=aggregate();
   const hasAny=blocks.length||Object.keys(trees).length||state.manual.length;
   if(!hasAny){alert('記録がありません。面積・樹木・手入力のいずれかを入力してください。');return;}
+  if(!scanWarn())return;
   if(state.features.some(f=>f.type!=='tree')&&!state.scale){alert('先に「縮尺合わせ」を行ってください。面積が0のまま書き出されます。');return;}
   if(typeof XLSX==='undefined'){alert('Excel出力ライブラリが読み込めませんでした。オンライン接続のうえ再度お試しください（CSVは利用できます）。');return;}
   const park=$('parkName').value||'公園';
@@ -3785,6 +3897,7 @@ $('rpMapFile').onchange=e=>{
 async function exportReportXlsx(){
   const rows=rpRows();
   if(!rows.length){ alert('記録がありません。面積・樹木・手入力のいずれかを入力してください。'); return; }
+  if(!scanWarn())return;
   if(state.features.some(f=>f.type!=='tree')&&!state.scale){ alert('先に「縮尺合わせ」を行ってください。面積が0のまま書き出されます。'); return; }
   if(typeof ExcelJS==='undefined'){ alert('報告書の出力にはネット接続が必要です。電波のあるところで、もう一度お試しください（.jsonで保存しておけば、あとから出せます）。'); return; }
   const max=RP_S1_LAST-RP_S1_FIRST+1+RP_S2_ROWS;
