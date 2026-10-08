@@ -85,24 +85,61 @@ header .back{font-size:22px;padding:4px 12px}
 /* 黒板プレビュー */
 #boardPreviewWrap{background:#3a3a3a;padding:12px;display:flex;justify-content:center;flex-shrink:0}
 #boardPreview{max-width:100%;max-height:34vh;border-radius:4px}
-/* カメラ */
-#camera{background:#000}
-#camWrap{position:absolute;left:0;right:0;top:calc(var(--safe-t) + 60px);bottom:calc(var(--safe-b) + 150px);overflow:hidden;background:#000}
-#video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+/* カメラ：写真に集中できるよう、出ているのは黒板・シャッター・レンズ・状況だけ。ほかは ≡ の中 */
+#camera{background:#000;color:#fff}
+#camWrap{position:absolute;left:0;right:0;top:calc(var(--safe-t) + 50px);bottom:calc(var(--safe-b) + 136px);overflow:hidden;background:#000;touch-action:none}
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;transform-origin:50% 50%}
 #overlay{position:absolute;inset:0;width:100%;height:100%}
 #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
-#camMsg{position:absolute;left:16px;right:16px;top:40%;color:#fff;text-align:center;line-height:1.7;display:none}
-.camTop{position:absolute;left:0;right:0;top:0;padding:calc(var(--safe-t) + 8px) 10px 8px;display:flex;gap:8px;align-items:center;background:#000}
-.camTop .info{flex:1;color:#fff;font-size:12px;line-height:1.4;text-shadow:0 1px 2px #000}
-.cbtn{background:rgba(0,0,0,.55);color:#fff;border-radius:10px;padding:9px 12px;font-size:14px;font-weight:600;border:1px solid rgba(255,255,255,.25)}
+#camMsg{position:absolute;left:16px;right:16px;top:30%;color:#fff;text-align:center;line-height:1.7;display:none}
+#camInfo{position:absolute;left:8px;top:8px;max-width:70%;color:#fff;font-size:11px;line-height:1.45;background:rgba(0,0,0,.45);border-radius:8px;padding:4px 8px;pointer-events:none;display:none}
+#camInfo.on{display:block}
+.camTop{position:absolute;left:0;right:0;top:0;height:calc(var(--safe-t) + 50px);padding:calc(var(--safe-t) + 6px) 10px 6px;display:flex;gap:8px;align-items:center;justify-content:space-between;background:#000}
+.cbtn{background:rgba(255,255,255,.14);color:#fff;border-radius:10px;padding:8px 12px;font-size:14px;font-weight:600;border:1px solid rgba(255,255,255,.18)}
 .cbtn.on{background:var(--main)}
-.camBottom{position:absolute;left:0;right:0;bottom:0;padding:10px 14px calc(var(--safe-b) + 14px);background:#000}
+.cbtn.ham{font-size:20px;line-height:1;padding:7px 12px}
+.camBottom{position:absolute;left:0;right:0;bottom:0;height:calc(var(--safe-b) + 136px);padding:6px 14px calc(var(--safe-b) + 10px);background:#000;display:flex;flex-direction:column;justify-content:flex-end;gap:8px}
 .camRow{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.camRow.small{justify-content:center;margin-bottom:12px;flex-wrap:wrap}
-#shutter{width:78px;height:78px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.5);background-clip:padding-box}
+#lenses{display:flex;gap:6px;justify-content:center;min-height:30px}
+#lenses button{min-width:40px;height:30px;border-radius:15px;background:rgba(255,255,255,.14);color:#fff;font-size:12px;font-weight:700;padding:0 9px}
+#lenses button.on{background:#fff;color:#000}
+#shutter{width:72px;height:72px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.45);background-clip:padding-box;flex-shrink:0}
 #shutter:active{transform:scale(.93)}
-.side{width:96px;display:flex;justify-content:center}
-#lastThumb{width:56px;height:56px;border-radius:10px;object-fit:cover;border:2px solid #fff;background:#333}
+.side{width:104px;display:flex;justify-content:center;gap:6px;flex-direction:column;align-items:center}
+.side.l{align-items:flex-start}.side.r{align-items:flex-end}
+.side .cbtn{font-size:13px;padding:7px 10px;max-width:104px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lastThumb{width:52px;height:52px;border-radius:10px;object-fit:cover;border:2px solid #fff;background:#333}
+#lastThumb:not([src]),#lastThumb[src=""]{visibility:hidden}
+/* 横に持ったとき：ボタンの字だけ回して読めるように */
+#camera .rot{transition:transform .25s}
+#camera.ccw .rot{transform:rotate(90deg)} #camera.cw .rot{transform:rotate(-90deg)}
+#camera.ccw .rot.txt,#camera.cw .rot.txt{writing-mode:vertical-rl;text-orientation:sideways;transform:none;max-width:none;max-height:86px;padding:6px 5px;font-size:12px}
+#camera.cw .rot.txt{transform:rotate(180deg)}
+#camera.cw .side.r{flex-direction:row;justify-content:flex-end}
+#camera.ccw .side.r{flex-direction:row-reverse;justify-content:flex-start}
+/* ≡ メニューと黒板の調整：上から出して、左下の黒板は見えたままにする */
+.camSheet{position:absolute;left:8px;right:8px;top:calc(var(--safe-t) + 54px);z-index:20;background:rgba(20,24,20,.94);color:#fff;border-radius:14px;padding:12px 14px;display:none;max-height:58vh;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+.camSheet.on{display:block}
+.camSheet h3{margin:0 0 8px;font-size:15px;display:flex;justify-content:space-between;align-items:center}
+.camSheet .mi{display:flex;width:100%;align-items:center;justify-content:space-between;background:rgba(255,255,255,.08);color:#fff;border-radius:10px;padding:11px 12px;margin-bottom:6px;font-size:15px;text-align:left}
+.camSheet .mi small{color:#bfc9bf;font-size:12px}
+.camSheet .seg2{display:flex;gap:4px;background:rgba(255,255,255,.08);border-radius:10px;padding:3px;margin-bottom:6px}
+.camSheet .seg2 button{flex:1;background:none;color:#fff;border-radius:8px;padding:8px 4px;font-size:13px;font-weight:600}
+.camSheet .seg2 button.on{background:#fff;color:#1f3d2b}
+.camSheet label.rng{display:block;font-size:13px;margin:8px 0 2px;color:#dfe7df}
+.camSheet input[type=range]{width:100%;accent-color:#7fc28f;height:28px}
+.camSheet .lbl{font-size:12px;color:#bfc9bf;margin:8px 0 4px}
+.camSheet .done{background:var(--main);color:#fff;border-radius:10px;padding:8px 14px;font-weight:700;font-size:14px}
+/* 画面ごと横向き（画面の回転ロックなし）のとき：ボタンを右へ */
+@media (orientation:landscape) and (max-height:560px){
+  #camWrap{top:0;bottom:0;left:env(safe-area-inset-left);right:calc(env(safe-area-inset-right) + 150px)}
+  .camTop{left:auto;right:0;width:calc(env(safe-area-inset-right) + 150px);height:auto;padding:10px calc(env(safe-area-inset-right) + 8px) 0 8px;background:none}
+  .camBottom{left:auto;right:0;top:56px;width:calc(env(safe-area-inset-right) + 150px);height:auto;background:none;padding:0 calc(env(safe-area-inset-right) + 8px) 10px 8px;justify-content:center}
+  .camBottom .camRow{flex-direction:column}
+  .side{width:auto;flex-direction:row}
+  #lenses{flex-wrap:wrap}
+  .camSheet{left:auto;width:min(380px,60vw);top:8px;max-height:88vh}
+}
 /* モーダル */
 .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;align-items:flex-end}
 .modal.on{display:flex}
@@ -345,28 +382,45 @@ header .back{font-size:22px;padding:4px 12px}
   <div id="camWrap">
     <video id="video" playsinline muted autoplay></video>
     <canvas id="overlay"></canvas>
+    <div id="camInfo"></div>
     <div id="flash"></div>
     <div id="camMsg"></div>
   </div>
   <div class="camTop">
-    <button class="cbtn" id="camClose">一覧</button>
-    <div class="info" id="camInfo"></div>
-    <button class="cbtn on" id="camBoardToggle">黒板 ON</button>
+    <button class="cbtn rot txt" id="camClose">一覧</button>
+    <button class="cbtn ham" id="camMenuBtn" aria-label="メニュー">≡</button>
   </div>
   <div class="camBottom">
-    <div class="camRow small">
-      <button class="cbtn" id="camStage">状況 ▸</button>
-      <button class="cbtn" id="camNo">測点 ＋1</button>
-      <button class="cbtn" id="camPos">位置 ↻</button>
-      <button class="cbtn" id="camSmaller">黒板 −</button>
-      <button class="cbtn" id="camBigger">黒板 ＋</button>
-      <button class="cbtn" id="camImport">取込</button>
-    </div>
+    <div id="lenses"></div>
     <div class="camRow">
-      <div class="side"><img id="lastThumb" alt=""></div>
+      <div class="side l"><img id="lastThumb" class="rot" alt=""></div>
       <button id="shutter" aria-label="撮影"></button>
-      <div class="side"><button class="cbtn" id="camEdit">黒板編集</button></div>
+      <div class="side r"><button class="cbtn rot txt" id="camStage">作業前 ▸</button><button class="cbtn rot txt" id="camNo">測点＋1</button></div>
     </div>
+  </div>
+  <!-- ≡ メニュー -->
+  <div class="camSheet" id="camMenu">
+    <h3>カメラの設定 <button class="done" data-cs-close>閉じる</button></h3>
+    <button class="mi" id="cmBoard">黒板 <small id="cmBoardV">ON</small></button>
+    <button class="mi" id="cmEdit">黒板の内容を入れる <small>工種・測点・備考…</small></button>
+    <button class="mi" id="cmAdjust">黒板の大きさ・位置・透け具合 <small>▸</small></button>
+    <div class="lbl">撮る向き（木などは縦で）</div>
+    <div class="seg2" id="cmOri"><button data-o="auto">持ち方で自動</button><button data-o="p">いつも縦</button><button data-o="l">いつも横</button></div>
+    <button class="mi" id="cmInfo">位置・方位を画面に出す <small id="cmInfoV">出さない</small></button>
+    <button class="mi" id="cmImport">撮った写真を取り込む <small>黒板を合成</small></button>
+    <button class="mi" id="cmNative">iPhoneのカメラで撮る <small>うまく写らないとき</small></button>
+  </div>
+  <!-- 黒板をタップしたとき -->
+  <div class="camSheet" id="camAdj">
+    <h3>黒板 <button class="done" data-cs-close>完了</button></h3>
+    <button class="mi" id="caEdit" style="background:rgba(127,194,143,.25)">✎ 黒板の内容を入れる <small>工種・測点・備考…</small></button>
+    <label class="rng">大きさ <span id="caSizeV"></span></label>
+    <input type="range" id="caSize" min="30" max="90" step="1">
+    <label class="rng">透け具合 <span id="caAlphaV"></span></label>
+    <input type="range" id="caAlpha" min="25" max="100" step="5">
+    <div class="lbl">置く場所（黒板を指で動かしてもOK）</div>
+    <div class="seg2" id="caPos"><button data-p="tl">左上</button><button data-p="tr">右上</button><button data-p="bl">左下</button><button data-p="br">右下</button></div>
+    <button class="mi" id="caReset" style="justify-content:center">最初の大きさ・左下にもどす</button>
   </div>
 </section>
 
@@ -568,7 +622,10 @@ const LS = {
 /* 社内アプリ共通：現場アプリのGAS（現場マスタ・工事写真）と、日報システム（名簿） */
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
-let S = LS.get('shashin_settings',{ boardScale:0.55, boardPos:'bl', mapPhoto:false });
+/* 黒板：bsz＝写真の短い辺に対する黒板の幅、bx・by＝置き場所（0＝左/上、1＝右/下）、balpha＝黒板の濃さ */
+const BOARD_DEF = { bsz:0.6, bx:0, by:1, balpha:1 };
+let S = Object.assign({ mapPhoto:false, oriMode:'auto', showInfo:false, lens:'' }, BOARD_DEF, LS.get('shashin_settings',{}));
+if(S.bsz==null||S.bsz<0.3) S.bsz=BOARD_DEF.bsz;
 let sites = LS.get('shashin_sites',[]);          // 現場マスタ（電波が無いときのための控え）
 let counts = LS.get('shashin_counts',{});        // 現場ごとの写真の枚数（みんなの分）
 let staffList = LS.get('shashin_staff',[]);
@@ -1322,10 +1379,11 @@ function wrapText(ctx,t,x,y,maxW,maxH,size){
   const max=Math.max(1,Math.floor(maxH/lh));
   lines.slice(0,max).forEach((ln,i)=>ctx.fillText(ln,x,y+lh*i+lh/2));
 }
-function drawBoard(ctx,x,y,w,tpl,vals){
+function drawBoard(ctx,x,y,w,tpl,vals,alpha){
   const rows=TEMPLATES[tplOK(tpl)].rows, u=w*0.085, pad=u*0.18, lw=w*0.27, H=boardHeight(w,tpl);
   ctx.save();
-  ctx.fillStyle='#1f3d2b'; ctx.fillRect(x,y,w,H);
+  ctx.globalAlpha=alpha==null?1:alpha; ctx.fillStyle='#1f3d2b'; ctx.fillRect(x,y,w,H); ctx.globalAlpha=1;
+  if(alpha!=null&&alpha<1){ ctx.shadowColor='rgba(0,0,0,.65)'; ctx.shadowBlur=Math.max(1,w*0.004); }
   ctx.strokeStyle='#fff'; ctx.fillStyle='#fff'; ctx.lineWidth=Math.max(1,w*0.005); ctx.textBaseline='middle';
   const ix=x+pad, iw=w-pad*2; let cy=y+pad;
   ctx.strokeRect(ix,cy,iw,H-pad*2);
@@ -1346,10 +1404,13 @@ function drawBoard(ctx,x,y,w,tpl,vals){
   ctx.restore();
   return H;
 }
+/* 写真（縦でも横でも）の中の黒板の場所。標準は左下にぴったり */
 function boardRect(W,H){
-  const base=Math.min(W,H), bw=S.boardScale*base, bh=boardHeight(bw,cur.tpl), m=base*0.015;
-  const p=S.boardPos;
-  return { x: p.includes('r')? W-bw-m : m, y: p.includes('b')? H-bh-m : m, w:bw, h:bh };
+  const base=Math.min(W,H); let bw=S.bsz*base, bh=boardHeight(bw,cur.tpl);
+  if(bh>H*0.95){ bw*=H*0.95/bh; bh=boardHeight(bw,cur.tpl); }
+  if(bw>W){ bw=W; bh=boardHeight(bw,cur.tpl); }
+  const cl=v=>Math.min(1,Math.max(0,v));
+  return { x:cl(S.bx)*(W-bw), y:cl(S.by)*(H-bh), w:bw, h:bh };
 }
 
 /* =========================================================
@@ -1873,15 +1934,40 @@ $('#rpZipGo').onclick=async()=>{
    ========================================================= */
 const video=$('#video'), overlay=$('#overlay');
 let stream=null, geoWatch=null, lastGeo=null, heading=null;
+let devOri='p';            // スマホの持ち方：p＝縦、ccw＝上を左に倒した横、cw＝上を右に倒した横
+let lenses=[], lensOn=null, dzoom=1;
 
+/* いま撮ると写真がどちら向きになるか（画面そのものが横に回っているときは、映像がもう横なので回さない） */
+function pageRotated(){ const a=(screen.orientation&&screen.orientation.angle)??window.orientation??0; return Math.abs(a)%180===90; }
+function effRot(){
+  if(pageRotated()) return 'p';
+  if(S.oriMode==='p') return 'p';
+  if(S.oriMode==='l') return devOri==='cw'?'cw':'ccw';
+  return devOri;
+}
+function camStreamOpts(deviceId){
+  const v={ width:{ideal:4032}, height:{ideal:3024}, aspectRatio:{ideal:4/3} };
+  if(deviceId) v.deviceId={exact:deviceId}; else v.facingMode={ideal:'environment'};
+  return {audio:false, video:v};
+}
+async function startStream(deviceId){
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  try{ stream=await navigator.mediaDevices.getUserMedia(camStreamOpts(deviceId)); }
+  catch(e){ if(!deviceId) throw e; stream=await navigator.mediaDevices.getUserMedia(camStreamOpts()); }
+  video.srcObject=stream; await video.play().catch(()=>{});
+}
 async function openCamera(){
-  go('camera'); boardOn = boardOn ?? true; updateCamUI();
+  go('camera'); boardOn = boardOn ?? true;
   requestCompass();                       // iPhoneはボタン操作の直後でないと許可が出せない
-  startGeo();
+  startGeo(); closeCamSheets();
   $('#camMsg').style.display='none';
+  hintUntil = (LS.get('shashin_hint',0)<5) ? Date.now()+3500 : 0;
+  if(hintUntil){ LS.set('shashin_hint',LS.get('shashin_hint',0)+1); setTimeout(drawOverlay,3600); }
+  updateCamUI();
   try{
-    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:3840},height:{ideal:2160}}});
-    video.srcObject=stream; await video.play().catch(()=>{});
+    const saved=LS.get('shashin_lens',null);
+    await startStream(saved&&saved.deviceId);
+    await detectLenses();
   }catch(e){
     const why = !window.isSecureContext
       ? 'このページは「https://」のURLで開いていないため、画面内のカメラが使えません。'
@@ -1896,6 +1982,50 @@ function stopCamera(){
   if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; video.srcObject=null; }
   if(geoWatch!=null){ navigator.geolocation.clearWatch(geoWatch); geoWatch=null; }
 }
+
+/* ---- レンズ（iPhoneの超広角0.5×・広角1×・望遠。使えなければ画面の拡大2×） ---- */
+async function detectLenses(){
+  lenses=[];
+  const track=stream&&stream.getVideoTracks()[0]; if(!track) return renderLenses();
+  let devs=[]; try{ devs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput'); }catch(e){}
+  const L=d=>d.label||'';
+  const back=devs.filter(d=>!/前面|front|user|facetime/i.test(L(d)));
+  const ultra=back.find(d=>/超広角|ultra ?wide/i.test(L(d)));
+  const tele=back.find(d=>/望遠|telephoto/i.test(L(d)));
+  const wide=back.find(d=>/^(背面カメラ|back camera)$/i.test(L(d).trim())) || back.find(d=>/背面|back/i.test(L(d))&&!/超広角|ultra|望遠|tele|デュアル|dual|トリプル|triple/i.test(L(d)));
+  if((ultra||tele)&&wide){
+    if(ultra) lenses.push({key:'0.5',label:'0.5×',deviceId:ultra.deviceId});
+    lenses.push({key:'1',label:'1×',deviceId:wide.deviceId});
+    if(tele) lenses.push({key:'t',label:'望遠',deviceId:tele.deviceId});
+    const curLabel=L(devs.find(d=>d.deviceId===(track.getSettings().deviceId))||{label:track.label});
+    lensOn=(lenses.find(l=>devs.find(d=>d.deviceId===l.deviceId&&L(d)===curLabel))||lenses.find(l=>l.key==='1')).key;
+  }else{
+    const cap=track.getCapabilities?track.getCapabilities():{};
+    if(cap.zoom&&cap.zoom.max>1){
+      const zs=[cap.zoom.min<1?cap.zoom.min:null,1,2,cap.zoom.max>=5?5:(cap.zoom.max>2?Math.floor(cap.zoom.max):null)].filter(z=>z!=null&&z>=cap.zoom.min&&z<=cap.zoom.max);
+      [...new Set(zs)].forEach(z=>lenses.push({key:'z'+z,label:(Math.round(z*10)/10)+'×',zoom:z}));
+      const z=(track.getSettings().zoom)||1; lensOn=(lenses.find(l=>l.zoom===z)||lenses.find(l=>l.zoom===1)||lenses[0]).key;
+    }else{
+      lenses=[{key:'d1',label:'1×',dz:1},{key:'d2',label:'2×',dz:2},{key:'d3',label:'3×',dz:3}];
+      lensOn=lenses.find(l=>l.dz===dzoom)?.key||'d1';
+    }
+  }
+  renderLenses();
+}
+function renderLenses(){
+  $('#lenses').innerHTML=lenses.length>1?lenses.map(l=>`<button class="rot ${l.key===lensOn?'on':''}" data-lens="${l.key}">${l.label}</button>`).join(''):'';
+  $$('#lenses [data-lens]').forEach(b=>b.onclick=()=>useLens(b.dataset.lens));
+}
+async function useLens(key){
+  const l=lenses.find(x=>x.key===key); if(!l||key===lensOn) return;
+  try{
+    if(l.deviceId){ await startStream(l.deviceId); LS.set('shashin_lens',{deviceId:l.deviceId}); dzoom=1; }
+    else if(l.zoom!=null){ await stream.getVideoTracks()[0].applyConstraints({advanced:[{zoom:l.zoom}]}); }
+    else { dzoom=l.dz; }
+    lensOn=key; video.style.transform=dzoom>1?`scale(${dzoom})`:''; renderLenses(); drawOverlay();
+  }catch(e){ toast('このレンズに切り替えられませんでした',2500); }
+}
+
 function startGeo(){
   if(!navigator.geolocation||geoWatch!=null) return;
   geoWatch=navigator.geolocation.watchPosition(p=>{ lastGeo={lat:p.coords.latitude,lng:p.coords.longitude,acc:Math.round(p.coords.accuracy),t:Date.now()}; updateCamInfo(); },
@@ -1913,7 +2043,24 @@ function requestCompass(){
     DeviceOrientationEvent.requestPermission().then(s=>{ if(s==='granted') on(); }).catch(()=>{ compassAsked=false; });
   } else on();
 }
+/* 持ち方：画面の面の中で「上」がどちらを向いているか（下や上に向けて撮るときは前の向きのまま） */
+function oriFrom(beta,gamma){
+  if(beta==null||gamma==null) return devOri;
+  const r=Math.PI/180, ux=-Math.sin(gamma*r)*Math.cos(beta*r), uy=Math.sin(beta*r);
+  if(Math.hypot(ux,uy)<0.4) return devOri;
+  const a=Math.atan2(ux,uy)/r;               // 0＝縦、+90＝上が左、-90＝上が右
+  if(Math.abs(a)<=35) return 'p';
+  if(a>=55&&a<=125) return 'ccw';
+  if(a<=-55&&a>=-125) return 'cw';
+  return devOri;
+}
+function setDevOri(o){
+  if(o===devOri) return; devOri=o;
+  const r=effRot(); $('#camera').classList.toggle('ccw',r==='ccw'); $('#camera').classList.toggle('cw',r==='cw');
+  drawOverlay();
+}
 function onOrient(e){
+  setDevOri(oriFrom(e.beta,e.gamma));
   let h=null;
   if(typeof e.webkitCompassHeading==='number') h=e.webkitCompassHeading;          // iPhone
   else if(e.absolute && e.alpha!=null) h=(360-e.alpha)%360;                      // Android
@@ -1923,45 +2070,109 @@ function onOrient(e){
 }
 const DIRS=['北','北東','東','南東','南','南西','西','北西'];
 function updateCamInfo(){
+  const el=$('#camInfo'); el.classList.toggle('on',!!S.showInfo); if(!S.showInfo) return;
   const parts=[];
-  if(cur){ const b=boards[cur.id]||{}; parts.push(`<b>${esc([b.koshu,b.sokuten].filter(Boolean).join(' ')||'黒板をタップして工種・測点を入れる')}</b>${curStage?' ・ '+esc(curStage):''}`); }
   parts.push(lastGeo?`📍 位置OK（誤差${lastGeo.acc}m）`:'📍 位置を取得中…');
   parts.push(heading!=null?`🧭 ${DIRS[Math.round(heading/45)%8]}向き ${heading}°`:'🧭 方位なし');
-  $('#camInfo').innerHTML=parts.join('<br>');
+  el.innerHTML=parts.join('<br>');
 }
 function updateCamUI(){
-  updateCamInfo();
-  if(cur&&$('#camStage')){ const s=curStage||boards[cur.id].stage||''; $('#camStage').textContent=`状況：${s||'—'} ▸`; }
-  const t=$('#camBoardToggle'); t.textContent=boardOn?'黒板 ON':'黒板 OFF'; t.classList.toggle('on',boardOn);
+  if(cur&&$('#camStage')){ const s=curStage||boards[cur.id].stage||''; $('#camStage').textContent=`${s||'状況'} ▸`; }
+  $('#cmBoardV').textContent=boardOn?'ON':'OFF';
+  $('#cmInfoV').textContent=S.showInfo?'出す':'出さない';
+  $$('#cmOri [data-o]').forEach(b=>b.classList.toggle('on',b.dataset.o===S.oriMode));
+  const r=effRot(); $('#camera').classList.toggle('ccw',r==='ccw'); $('#camera').classList.toggle('cw',r==='cw');
   updateCamInfo(); drawOverlay();
 }
 function videoDisplayRect(){
-  const cw=overlay.clientWidth, ch=overlay.clientHeight, vw=video.videoWidth||cw, vh=video.videoHeight||ch;
-  const s=Math.min(cw/vw,ch/vh); return { x:(cw-vw*s)/2, y:(ch-vh*s)/2, w:vw*s, h:vh*s };
+  const cw=overlay.clientWidth, ch=overlay.clientHeight, vw=video.videoWidth||(cw*3/4>ch?ch*4/3:cw), vh=video.videoHeight||(cw*3/4>ch?ch:cw*4/3);
+  const s=Math.min(cw/vw,ch/vh)*dzoom; return { x:(cw-vw*s)/2, y:(ch-vh*s)/2, w:vw*s, h:vh*s };
 }
+/* 画面の映像の上に、撮れる写真と同じ向き・同じ割合で黒板を描く */
+let hintUntil=0;
 function drawOverlay(){
   const dpr=window.devicePixelRatio||1;
   overlay.width=overlay.clientWidth*dpr; overlay.height=overlay.clientHeight*dpr;
   const ctx=overlay.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,overlay.width,overlay.height);
-  if(!boardOn||!cur) return;
-  const v=videoDisplayRect(), r=boardRect(v.w,v.h);
-  drawOverlay.rect={x:v.x+r.x,y:v.y+r.y,w:r.w,h:r.h};
-  drawBoard(ctx,v.x+r.x,v.y+r.y,r.w,cur.tpl,boards[cur.id]);
-  const tag='✎ タップで黒板を編集', fs=12; ctx.font=`700 ${fs}px ${FONT}`;
-  const tw=ctx.measureText(tag).width+14, tx=v.x+r.x, ty=S.boardPos.includes('b') ? v.y+r.y-22 : v.y+r.y+r.h+4;
-  ctx.fillStyle='rgba(255,255,255,.92)'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(tx,ty,tw,18,9); else ctx.rect(tx,ty,tw,18); ctx.fill();
-  ctx.fillStyle='#22502e'; ctx.textBaseline='middle'; ctx.fillText(tag,tx+7,ty+9);
+  drawOverlay.rect=null;
+  if(!boardOn||!cur||!overlay.clientWidth) return;
+  const cw=overlay.clientWidth, ch=overlay.clientHeight, vr=videoDisplayRect();
+  const v={ x:Math.max(0,vr.x), y:Math.max(0,vr.y), w:Math.min(cw,vr.w), h:Math.min(ch,vr.h) };   // 拡大しているときは見えている範囲
+  const rot=effRot(), FW=rot==='p'?v.w:v.h, FH=rot==='p'?v.h:v.w, r=boardRect(FW,FH);
+  ctx.save();
+  if(rot==='ccw'){ ctx.translate(v.x+v.w,v.y); ctx.rotate(Math.PI/2); }
+  else if(rot==='cw'){ ctx.translate(v.x,v.y+v.h); ctx.rotate(-Math.PI/2); }
+  else ctx.translate(v.x,v.y);
+  drawBoard(ctx,r.x,r.y,r.w,cur.tpl,boards[cur.id],S.balpha);
+  if($('#camAdj').classList.contains('on')){ ctx.strokeStyle='#ffd54a'; ctx.lineWidth=3; ctx.setLineDash([8,6]); ctx.strokeRect(r.x+1.5,r.y+1.5,r.w-3,r.h-3); }
+  else if(Date.now()<hintUntil){
+    const tag='黒板をタップ → 内容・大きさ・位置', fs=12; ctx.font=`700 ${fs}px ${FONT}`;
+    const tw=ctx.measureText(tag).width+14, tx=r.x+4, ty=r.y>30? r.y-22 : r.y+r.h+4;
+    ctx.fillStyle='rgba(255,255,255,.92)'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(tx,ty,tw,18,9); else ctx.rect(tx,ty,tw,18); ctx.fill();
+    ctx.fillStyle='#22502e'; ctx.textBaseline='middle'; ctx.fillText(tag,tx+7,ty+9);
+  }
+  ctx.restore();
+  const hit = rot==='ccw' ? {x:v.x+v.w-(r.y+r.h), y:v.y+r.x, w:r.h, h:r.w}
+            : rot==='cw'  ? {x:v.x+r.y, y:v.y+v.h-(r.x+r.w), w:r.h, h:r.w}
+            : {x:v.x+r.x, y:v.y+r.y, w:r.w, h:r.h};
+  drawOverlay.rect=hit; drawOverlay.frame={FW,FH,rot,bw:r.w,bh:r.h};
 }
 video.addEventListener('loadedmetadata',drawOverlay);
-window.addEventListener('resize',()=>setTimeout(drawOverlay,200));
-overlay.onclick=e=>{ const r=drawOverlay.rect; if(boardOn&&r&&e.offsetX>=r.x-6&&e.offsetX<=r.x+r.w+6&&e.offsetY>=r.y-26&&e.offsetY<=r.y+r.h+26) openBoardEdit(false); };
+window.addEventListener('resize',()=>setTimeout(()=>{ if($('#camera').classList.contains('active')) updateCamUI(); },200));
+if(screen.orientation) screen.orientation.addEventListener?.('change',()=>setTimeout(()=>{ if($('#camera').classList.contains('active')) updateCamUI(); },250));
 
-$('#camClose').onclick=()=>{ go('album'); renderItems(); renderPhotos(); updateCheckBadge(); if($('#mapPane').classList.contains('on')) setTimeout(renderMap,50); if($('#check').classList.contains('on')) renderCheck(); };
-$('#camEdit').onclick=()=>openBoardEdit(false);
-$('#camBoardToggle').onclick=()=>{
+/* 黒板：タップ＝調整パネル、指で動かす＝場所を変える */
+let drag=null;
+overlay.addEventListener('pointerdown',e=>{
+  const r=drawOverlay.rect; if(!boardOn||!r) return;
+  const pad=14, x=e.offsetX, y=e.offsetY;
+  if(x<r.x-pad||x>r.x+r.w+pad||y<r.y-pad||y>r.y+r.h+pad){ if($$('.camSheet.on').length){ closeCamSheets(); saveAll(); } return; }
+  drag={x0:e.clientX,y0:e.clientY,bx:S.bx,by:S.by,moved:false}; overlay.setPointerCapture?.(e.pointerId); e.preventDefault();
+});
+overlay.addEventListener('pointermove',e=>{
+  if(!drag) return; const dx=e.clientX-drag.x0, dy=e.clientY-drag.y0;
+  if(!drag.moved&&Math.hypot(dx,dy)<8) return; drag.moved=true;
+  const f=drawOverlay.frame; if(!f) return;
+  const du = f.rot==='ccw'? dy : f.rot==='cw'? -dy : dx;
+  const dv = f.rot==='ccw'? -dx : f.rot==='cw'? dx : dy;
+  const cl=v=>Math.min(1,Math.max(0,v));
+  S.bx=cl(drag.bx+du/Math.max(1,f.FW-f.bw)); S.by=cl(drag.by+dv/Math.max(1,f.FH-f.bh));
+  // 端の近くはぴたっと寄せる
+  ['bx','by'].forEach(k=>{ if(S[k]<0.03) S[k]=0; if(S[k]>0.97) S[k]=1; });
+  drawOverlay(); syncAdj();
+});
+const endDrag=()=>{ if(!drag) return; const d=drag; drag=null;
+  if(d.moved){ saveAll(); return; }
+  if(!$('#camAdj').classList.contains('on')) openCamSheet('camAdj'); };
+overlay.addEventListener('pointerup',endDrag); overlay.addEventListener('pointercancel',()=>{ drag=null; });
+
+function closeCamSheets(){ $$('.camSheet').forEach(x=>x.classList.remove('on')); if(typeof overlay!=='undefined') drawOverlay(); }
+function openCamSheet(id){ closeCamSheets(); $('#'+id).classList.add('on'); if(id==='camAdj') syncAdj(); updateCamUI(); }
+$$('[data-cs-close]').forEach(b=>b.onclick=()=>{ closeCamSheets(); saveAll(); });
+function syncAdj(){
+  $('#caSize').value=Math.round(S.bsz*100); $('#caSizeV').textContent=Math.round(S.bsz*100)+'%';
+  $('#caAlpha').value=Math.round(S.balpha*100); $('#caAlphaV').textContent=S.balpha>=1?'透けない':Math.round((1-S.balpha)*100)+'% 透ける';
+  const p=(S.by<0.5?'t':'b')+(S.bx<0.5?'l':'r'), exact=(S.bx===0||S.bx===1)&&(S.by===0||S.by===1);
+  $$('#caPos [data-p]').forEach(b=>b.classList.toggle('on',exact&&b.dataset.p===p));
+}
+$('#caSize').oninput=e=>{ S.bsz=e.target.value/100; syncAdj(); drawOverlay(); };
+$('#caAlpha').oninput=e=>{ S.balpha=e.target.value/100; syncAdj(); drawOverlay(); };
+$('#caSize').onchange=$('#caAlpha').onchange=()=>saveAll();
+$$('#caPos [data-p]').forEach(b=>b.onclick=()=>{ const p=b.dataset.p; S.bx=p.includes('r')?1:0; S.by=p.includes('b')?1:0; saveAll(); syncAdj(); drawOverlay(); });
+$('#caReset').onclick=()=>{ Object.assign(S,BOARD_DEF); saveAll(); syncAdj(); drawOverlay(); };
+$('#caEdit').onclick=$('#cmEdit').onclick=()=>{ closeCamSheets(); openBoardEdit(false); };
+$('#camMenuBtn').onclick=()=>{ $('#camMenu').classList.contains('on')?closeCamSheets():openCamSheet('camMenu'); };
+$('#cmAdjust').onclick=()=>openCamSheet('camAdj');
+$('#cmBoard').onclick=()=>{
   if(!boardOn && cur.publicKoji && !confirm('公共工事の台帳です。電子黒板の写真は納品に使えない可能性があります。黒板をONにしますか？')) return;
   boardOn=!boardOn; updateCamUI();
 };
+$$('#cmOri [data-o]').forEach(b=>b.onclick=()=>{ S.oriMode=b.dataset.o; saveAll(); updateCamUI(); });
+$('#cmInfo').onclick=()=>{ S.showInfo=!S.showInfo; saveAll(); updateCamUI(); };
+$('#cmImport').onclick=()=>{ closeCamSheets(); $('#fileIn').click(); };
+$('#cmNative').onclick=()=>{ closeCamSheets(); $('#capIn').click(); };
+
+$('#camClose').onclick=()=>{ go('album'); renderItems(); renderPhotos(); updateCheckBadge(); if($('#mapPane').classList.contains('on')) setTimeout(renderMap,50); if($('#check').classList.contains('on')) renderCheck(); };
 /* 測点の No. を1つ進める（次の木・次の場所へ）。進めたら状況は最初にもどす */
 function curOpts(){ const i=cur&&infos[cur.infoKey]; return Object.assign({ noStyle:'no', layout:'one3', zip:'none' }, (i&&i.opts)||{}); }
 const COLL=new Intl.Collator('ja',{numeric:true,sensitivity:'base'});
@@ -1984,16 +2195,19 @@ $('#camStage').onclick=()=>{
   const next=st[(st.indexOf(now)+1)%st.length]||st[0];
   curStage=next; setStageOnBoard(b,next); saveAll(); updateCamUI(); toast(`状況：${next}`,900);
 };
-$('#camPos').onclick=()=>{ const order=['bl','br','tr','tl']; S.boardPos=order[(order.indexOf(S.boardPos)+1)%4]; saveAll(); drawOverlay(); };
-$('#camSmaller').onclick=()=>{ S.boardScale=Math.max(0.3,+(S.boardScale-0.05).toFixed(2)); saveAll(); drawOverlay(); };
-$('#camBigger').onclick=()=>{ S.boardScale=Math.min(0.9,+(S.boardScale+0.05).toFixed(2)); saveAll(); drawOverlay(); };
-$('#camImport').onclick=()=>$('#fileIn').click();
-
 $('#shutter').onclick=async()=>{
   if(!video.videoWidth){ $('#capIn').click(); return; }
-  const W=video.videoWidth, H=video.videoHeight, c=document.createElement('canvas');
-  c.width=W; c.height=H; const ctx=c.getContext('2d');
-  ctx.drawImage(video,0,0,W,H);
+  closeCamSheets();
+  const VW=video.videoWidth, VH=video.videoHeight;
+  // 画面の拡大（2×など）は真ん中を切り出す
+  const sw=Math.round(VW/dzoom), sh=Math.round(VH/dzoom), sx=Math.round((VW-sw)/2), sy=Math.round((VH-sh)/2);
+  const rot=effRot(), c=document.createElement('canvas');
+  c.width = rot==='p'? sw : sh; c.height = rot==='p'? sh : sw;
+  const ctx=c.getContext('2d');
+  if(rot==='ccw'){ ctx.translate(0,sw); ctx.rotate(-Math.PI/2); }      // 横持ち：読める向きに回す
+  else if(rot==='cw'){ ctx.translate(sh,0); ctx.rotate(Math.PI/2); }
+  ctx.drawImage(video,sx,sy,sw,sh,0,0,sw,sh);
+  ctx.setTransform(1,0,0,1,0,0);
   flash();
   await composeAndSave(c,ctx);
 };
@@ -2013,7 +2227,7 @@ function loadImage(file){ return new Promise((res,rej)=>{ const u=URL.createObje
 
 async function composeAndSave(c,ctx,imported){
   const b={...boards[cur.id], date:boards[cur.id].date||today()};
-  if(boardOn){ const r=boardRect(c.width,c.height); drawBoard(ctx,r.x,r.y,r.w,cur.tpl,b); }
+  if(boardOn){ const r=boardRect(c.width,c.height); drawBoard(ctx,r.x,r.y,r.w,cur.tpl,b,S.balpha); }
   const blob=await new Promise(res=>c.toBlob(res,'image/jpeg',0.9));
   const tc=document.createElement('canvas'), ts=360/Math.max(c.width,c.height);
   tc.width=Math.round(c.width*ts); tc.height=Math.round(c.height*ts); tc.getContext('2d').drawImage(c,0,0,tc.width,tc.height);
