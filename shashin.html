@@ -267,6 +267,33 @@ header .back{font-size:22px;padding:4px 12px}
 .sbRow button.del{color:#b03a2e}
 .sbUndo{display:block;width:100%;margin-top:8px;background:#fff6e0;color:#8a5200;border-radius:10px;padding:9px;font-size:13px;font-weight:700}
 body.selOn #btnShoot{display:none}
+/* リスト表示（ミライ工事の一覧に近い形：写真＋黒板の中身） */
+.sortBar button{white-space:nowrap}
+.sortBar button.vw{flex:0 0 48px;font-size:17px;padding:6px}
+.prow.add{padding-top:8px;padding-bottom:8px}
+.prow.add .pth{height:36px}
+.plist{background:var(--card);border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.prow{display:flex;gap:12px;padding:12px;border-bottom:1px solid var(--line);align-items:flex-start;cursor:pointer;position:relative}
+.prow.sel{background:#fff8dc;box-shadow:inset 4px 0 0 #f5b400}
+.prow .pth{width:42%;max-width:220px;flex-shrink:0}
+.prow .pth .ph{aspect-ratio:4/3;border-radius:8px}
+.prow .pinf{flex:1;min-width:0;font-size:13px;line-height:1.5;color:var(--sub)}
+.prow .pinf b{display:block;color:var(--text);font-size:16px;line-height:1.35;word-break:break-all}
+.prow .pinf .stg3{display:inline-block;color:#fff;border-radius:99px;padding:1px 9px;font-size:12px;font-weight:700;margin-top:4px}
+.prow .no{position:absolute;right:12px;top:10px;color:#aaa;font-size:15px}
+.prow .pre{display:block;width:100%;margin-top:6px;background:#fff;border:2px solid #5fa86b;color:#2e7d3a;border-radius:8px;padding:7px 4px;font-size:13px;font-weight:700}
+.prow.add{color:var(--main);font-weight:700;font-size:14px;align-items:center;background:#f7faf6}
+.prow.add.ng{color:#b03a2e;background:#fff5f3}
+.prow.add .pth{aspect-ratio:auto;height:44px;border:2px dashed #b9c6b8;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px}
+.tgh2{font-size:13px;font-weight:700;color:var(--main-d);background:#eef3ee;padding:8px 12px}
+.tgh2 small{font-weight:400;color:var(--sub)}
+/* 黒板をえらんで撮影にすすむ（一覧の「📷 撮影」から） */
+#beBar{display:none;gap:10px;padding:10px 12px calc(var(--safe-b) + 12px);background:#fff;border-top:1px solid var(--line);flex-shrink:0}
+#beBar.on{display:flex}
+#beBar button{flex:1;border-radius:12px;padding:15px 6px;font-size:16px;font-weight:700}
+#beTpl{background:#f0b43c;color:#fff}
+#beGo{background:var(--main);color:#fff;flex:1.4!important}
+@media (min-width:900px){ #beBar{justify-content:center} #beBar button{flex:0 0 260px} #beGo{flex:0 0 320px!important} }
 body.selOn #toast,body.selOn #snack{bottom:auto;top:calc(var(--safe-t) + 112px)}
 body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
 #snack{position:fixed;left:50%;bottom:calc(var(--safe-b) + 92px);transform:translateX(-50%);z-index:120;background:#222;color:#fff;border-radius:12px;padding:8px 8px 8px 16px;display:none;align-items:center;gap:12px;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.3);white-space:nowrap}
@@ -426,6 +453,7 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
   <header><button class="back" id="boardBack">‹</button><h1>黒板の内容</h1><button id="boardDone">撮影へ</button></header>
   <div id="boardPreviewWrap"><canvas id="boardPreview"></canvas><div id="bpHint">黒板の欄をタップすると、そこだけ書けます・選べます</div></div>
   <div class="scroll" id="boardFields"></div>
+  <div id="beBar"><button id="beTpl">黒板の型をえらぶ</button><button id="beGo">📷 撮影にすすむ</button></div>
 </section>
 
 <!-- ===== カメラ ===== -->
@@ -1117,7 +1145,14 @@ function shootItem(itemId,stage){
   fillBoardFromItem(boards[cur.id],it,stage);
   saveAll(); openCamera();
 }
-$('#btnShoot').onclick=()=>{ curItem=null; const b=boards[cur.id], st=curStages(); curStage=st.includes(b.stage)?b.stage:st[0]; setStageOnBoard(b,curStage); b.date=today(); saveAll(); openCamera(); };
+/* 一覧の「📷 撮影」：最後に撮った写真の黒板で、測点を次の番号・状況を最初にした黒板を出す → 欄をタップで直して「撮影にすすむ」 */
+$('#btnShoot').onclick=()=>{
+  const last=allPhotosHere().sort((a,b)=>b.takenAt-a.takenAt)[0];
+  const b= last ? boardFromPhoto(last) : boards[cur.id];
+  if(last&&parseNo(b.sokuten)) setNextNo(b);
+  curItem=null; curStage=curStages()[0]; setStageOnBoard(b,curStage); b.date=today(); boards[cur.id]=b; camJob=null; saveAll();
+  openBoardEdit(true);
+};
 
 /* 写真一覧：1対象＝1枚のカード（前・中・後が横に並ぶ。まだの状況は「＋撮る」）
    写真をタップ → 下に「次：作業中を撮る」「次の測点」「撮り直す・差し替え・黒板を直す・大きく・削除」 */
@@ -1137,6 +1172,27 @@ function renderPhotos(){
       ${p.stage?`<span class="stg2" style="background:${stageColor(p.stage)}">${esc(p.stage)}</span>`:''}${p.excluded?'<span class="stg2" style="top:auto;bottom:4px;background:#c0392b">報告書に入れない</span>':''}
       ${lp&&lp.status!=='done'?`<span class="st ${lp.status}">${lp.status==='error'?'失敗':'待ち'}</span>`:''}</div>`; };
   const lastSel=selId&&allPhotosHere().find(p=>p.id===selId);
+  if(photoView==='list'){
+    let n=0;
+    const row=p=>{ n++; const d=new Date(p.takenAt), b=p.board||{};
+      return `<div class="prow ${p.id===selId?'sel':''}" data-id="${esc(p.id)}"><div class="pth">${cell(p).replace(' sel"','"').replace('data-id=','data-x=')}<button class="pre" data-re="${esc(p.id)}">📷 撮り直す</button></div>
+        <div class="pinf">${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())} ・ ${esc(p.by||'')}
+        <b>${esc(b.koshu||'工種なし')}</b><b>${esc(b.sokuten||'')}</b>${b.kikaku?`<div>${esc(b.kikaku)}</div>`:''}${b.jushu&&!String(b.sokuten||'').includes(b.jushu)?`<div>${esc(b.jushu)}</div>`:''}
+        ${p.stage?`<span class="stg3" style="background:${stageColor(p.stage)}">${esc(p.stage)}</span>`:''}</div><span class="no">${n}</span></div>`; };
+    box.innerHTML='<div class="plist">'+ts.map(t=>{
+      const j=judge(t), ph=t.photos.slice().sort((a,b)=>si(a.stage)-si(b.stage)||a.takenAt-b.takenAt), out=[];
+      st.forEach(s=>{ const l=ph.filter(p=>p.stage===s);
+        if(l.length) l.forEach(p=>out.push(row(p)));
+        else out.push(`<div class="prow add ${j[s]==='ng'?'ng':''}" data-add="${esc(t.key)}" data-s="${esc(s)}"><div class="pth">＋</div><div>${esc(s)} を撮る${j[s]==='ng'?'（抜け）':''}</div></div>`); });
+      ph.filter(p=>!st.includes(p.stage)).forEach(p=>out.push(row(p)));
+      return `<div class="tgh2">${esc(t.label)} <small>${esc(t.sub)}</small></div>`+out.join('');
+    }).join('')+'</div>';
+    box.querySelectorAll('.prow[data-id]').forEach(el=>el.onclick=e=>{
+      if(e.target.closest('[data-re]')) return;
+      if(selId===el.dataset.id){ openViewerAny(el.dataset.id); return; }
+      selId=el.dataset.id; box.querySelectorAll('.prow.sel').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); renderSel(); });
+    box.querySelectorAll('[data-re]').forEach(el=>el.onclick=e=>{ e.stopPropagation(); const p=allPhotosHere().find(x=>x.id===el.dataset.re); if(p) shootFrom(p,p.stage,{retake:true}); });
+  } else
   box.innerHTML='<div class="tcards">'+ts.map(t=>{
     const j=judge(t), ph=t.photos.slice().sort((a,b)=>si(a.stage)-si(b.stage)||a.takenAt-b.takenAt), cells=[];
     st.forEach(s=>{ const l=ph.filter(p=>p.stage===s);
@@ -1146,7 +1202,7 @@ function renderPhotos(){
     const ng=st.filter(s=>j[s]==='ng');
     return `<div class="tcard ${lastSel&&targetKeyOf(lastSel)===t.key?'now':''}"><div class="tch">${esc(t.label)} <small>${esc(t.sub)}</small>${ng.map(s=>`<span class="mk ng">${esc(s)}✕</span>`).join('')}</div><div class="slots">${cells.join('')}</div></div>`;
   }).join('')+'</div>';
-  box.querySelectorAll('.ph').forEach(el=>el.onclick=()=>{
+  if(photoView!=='list') box.querySelectorAll('.ph').forEach(el=>el.onclick=()=>{
     if(selId===el.dataset.id){ openViewerAny(el.dataset.id); return; }
     selId=el.dataset.id; box.querySelectorAll('.ph.sel').forEach(x=>x.classList.remove('sel')); el.classList.add('sel');
     box.querySelectorAll('.tcard.now').forEach(x=>x.classList.remove('now')); el.closest('.tcard').classList.add('now');
@@ -1158,7 +1214,7 @@ function renderPhotos(){
   });
   renderSel();
 }
-function scrollToSel(){ const el=document.querySelector('#photoGrid .ph.sel'); if(el) el.scrollIntoView({block:'center'}); }
+function scrollToSel(){ const el=document.querySelector('#photoGrid .ph.sel, #photoGrid .prow.sel'); if(el) el.scrollIntoView({block:'center'}); }
 /* 選んだ写真と同じ黒板（工種・規格・測点…）を作る。みんなの写真は工種・規格・測点だけ分かる */
 function boardFromPhoto(p){
   const lp=photosCache.find(x=>x.id===p.id), cb=boards[cur.id]||{};
@@ -1642,6 +1698,7 @@ function openBoardEdit(toCamera,keepFocus){
   });
   $('#tplPick').onclick=()=>openBoardLib('edit');
   $('#boardDone').textContent = photoEdit?'この写真に反映':toCamera?'撮影へ':'完了';
+  $('#beBar').classList.toggle('on',!!toCamera&&!photoEdit); $('#boardDone').style.display=toCamera&&!photoEdit?'none':'';
   go('boardEdit'); setBfFocus(bfFocus,true);
 }
 /* 欄を1つだけ出す（null＝全部）。その欄は黒板の上で黄色の枠 */
@@ -1672,6 +1729,8 @@ function drawPreview(){
 }
 $('#boardBack').onclick=()=>{ if(photoEdit){ endPhotoEdit(); showList(); return; } boardEditToCamera?go('album'):openCamera(); };
 $('#boardDone').onclick=()=>{ if(photoEdit){ applyPhotoEdit(); return; } openCamera(); };
+$('#beGo').onclick=()=>openCamera();
+$('#beTpl').onclick=()=>openBoardLib('edit');
 
 /* =========================================================
    黒板のひな型（リストから選ぶ・タイルで作る）
@@ -1983,10 +2042,13 @@ function renderCheck(){
   box.querySelectorAll('[data-shoot]').forEach(b=>b.onclick=()=>shootItem(b.dataset.shoot,b.dataset.s));
   const badge=$('.tabs button[data-tab="check"]'); if(badge) badge.textContent = ng ? `チェック ✕${ng}` : 'チェック';
 }
+let photoView=LS.get('shashin_view','card');   // card＝1対象1枚のカード、list＝1枚ずつ写真と黒板の中身
 let photoSort=LS.get('shashin_sort','recent'); if(photoSort==='time') photoSort='recent';
 function drawSortBar(){
-  $('#sortBar').innerHTML=[['recent','撮った順'],['target','工種・測点の順'],['todo','撮り残し']].map(([k,l])=>`<button data-s="${k}" class="${photoSort===k?'on':''}">${l}</button>`).join('');
-  $('#sortBar').querySelectorAll('button').forEach(b=>b.onclick=()=>{ photoSort=b.dataset.s; LS.set('shashin_sort',photoSort); renderPhotos(); });
+  $('#sortBar').innerHTML=[['recent','撮った順'],['target','工種・測点'],['todo','撮り残し']].map(([k,l])=>`<button data-s="${k}" class="${photoSort===k?'on':''}">${l}</button>`).join('')
+    +`<button class="vw" id="viewTgl" title="${photoView==='list'?'カードで見る':'リストで見る'}">${photoView==='list'?'▦':'☰'}</button>`;
+  $('#sortBar').querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{ photoSort=b.dataset.s; LS.set('shashin_sort',photoSort); renderPhotos(); });
+  $('#viewTgl').onclick=()=>{ photoView=photoView==='list'?'card':'list'; LS.set('shashin_view',photoView); renderPhotos(); setTimeout(scrollToSel,30); };
 }
 
 /* =========================================================
