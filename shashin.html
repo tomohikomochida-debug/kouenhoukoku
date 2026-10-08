@@ -140,6 +140,9 @@ header .back{font-size:22px;padding:4px 12px}
 .pkList button.new{color:var(--main);border-style:dashed;font-weight:700}
 .pkList button small{display:block;color:var(--sub);font-size:11px;margin-top:2px}
 .pkList button.on small{color:#e6efe6}
+.tabs2{display:flex;gap:6px;margin-bottom:8px}
+.tabs2 button{flex:1;padding:9px 4px;border-radius:10px;background:#e4e8e3;font-weight:700;font-size:13px;color:var(--sub)}
+.tabs2 button.on{background:var(--main-d);color:#fff}
 .posInfo{font-size:13px;color:var(--main-d);background:#eef3ee;border-radius:8px;padding:8px 10px;margin-bottom:14px}
 </style>
 </head>
@@ -252,12 +255,18 @@ header .back{font-size:22px;padding:4px 12px}
 <div class="modal" id="itemModal"><div class="sheet">
   <h2 id="iTitle">撮影項目を追加</h2>
   <div class="posInfo" id="iPosInfo"></div>
-  <div class="field"><label>区分</label><div class="quick" id="iCatQuick"></div><input autocomplete="off" autocorrect="off" id="iCat" placeholder="例）補修" style="margin-top:8px"></div>
+  <div class="field"><label>工種</label>
+    <div class="tabs2" id="iGroup"></div>
+    <div class="quick" id="iCatQuick"></div>
+    <div id="iKindWrap" style="display:none;margin-top:10px"><div style="font-size:12px;color:var(--sub);margin-bottom:4px">細別</div><div class="quick" id="iKindQuick"></div></div>
+    <input autocomplete="off" autocorrect="off" id="iCat" placeholder="一覧にないときはここに入力" style="margin-top:8px"></div>
   <div class="field"><label>名称・番号（黒板の「測点」に入ります）</label><input autocomplete="off" autocorrect="off" id="iName" placeholder="例）No.12 ／ ベンチ横の園路"></div>
-  <div class="row2">
-    <div class="field"><label>樹種</label><input autocomplete="off" autocorrect="off" id="iJushu" placeholder="例）ケヤキ"></div>
-    <div class="field"><label>規格・数量</label><input autocomplete="off" autocorrect="off" id="iKikaku" placeholder="例）C=120cm ／ 2㎡"></div>
-  </div>
+  <div class="field"><label>樹種</label>
+    <input autocomplete="off" autocorrect="off" id="iJushu" placeholder="えらぶか、入力して絞り込む">
+    <div class="quick" id="iJushuQuick"></div></div>
+  <div class="field"><label id="iKikakuLabel">規格・数量</label>
+    <div class="quick" id="iBandQuick" style="margin:0 0 8px"></div>
+    <input autocomplete="off" autocorrect="off" id="iKikaku" placeholder="例）C=120cm ／ 2㎡"></div>
   <div class="field"><label>メモ（黒板の備考に入ります）</label><input autocomplete="off" autocorrect="off" id="iMemo" placeholder="例）縁石破損"></div>
   <div class="field" id="iHereWrap"><label><input type="checkbox" id="iHere" style="width:auto"> 今いる場所を項目の位置にする</label></div>
   <button class="btn" id="iSave">追加</button>
@@ -306,7 +315,56 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const KINDS = { minkan:'民間', public_itaku:'公共業務委託', public_koji:'公共工事' };
 const STAGES = ['着手前','施工中','完了'];
-const CATS = ['剪定','刈込','除草','芝刈','清掃','補修','植栽','支柱','病害虫防除','伐採','その他'];
+/* ===== マスタ（あるものは全部ここから選ぶ。無いものだけ手で入れる） =====
+   ・公園の工種：公園報告アプリ（park_app.html）の工種マスタをそのまま読む（＋公園報告で追加した工種）
+   ・一般の作業：民間でよく使う作業名＋現場調査アプリの作業
+   ・樹種：現場調査アプリの樹種＋みんながこれまでに入れた樹種
+   ・規格：幹周ランク（公園報告と同じ区分） */
+const GENERAL_WORKS = ['剪定','強剪定','透かし剪定','枯れ枝剪定','高さ低減剪定','萌芽更新','刈込','除草','芝刈','清掃','補修','植栽','移植','支柱','施肥','病害虫防除','伐採','抜根','その他'];
+const BASE_SPECIES = ['シラカシ','ケヤキ','コナラ','サクラ','エゴノキ','マテバシイ','クスノキ','ヒノキ','スギ','イチョウ','クヌギ','モミジ','ツバキ','キンモクセイ'];
+const BANDS = ['30cm未満','30〜60cm','60〜90cm','90〜120cm','120〜150cm','150〜180cm','180〜210cm','210〜240cm','240〜270cm','270〜300cm'];
+const PARK_SNAPSHOT = {   // 公園報告の工種マスタが読めないときの控え（名前だけ）
+  '中低木刈込工':{mode:'area',kinds:['低木刈込','中木刈込','中木刈込（円柱）','中木刈込（生垣）']},
+  '除草工':{mode:'area',kinds:['機械除草Ⅰ（肩掛式）','集草','積込・運搬','刈草小運搬（15m以上50m未満）']},
+  'つる性植物除去':{mode:'area',kinds:['地表・寄植','管理柵']},
+  '低木内除草清掃':{mode:'area',kinds:['植込み地']},
+  '軽剪定（着葉木）':{mode:'tree',ranks:true,kinds:['着葉木']}, '軽剪定（落葉木）':{mode:'tree',ranks:true,kinds:['落葉木']},
+  '基本剪定（着葉木）':{mode:'tree',ranks:true,kinds:['着葉木']}, '基本剪定（落葉木）':{mode:'tree',ranks:true,kinds:['落葉木']},
+  '胴ぶき剪除':{mode:'tree',kinds:['高さ2.0mまで','高さ4.5mまで']},
+  '樹木撤去':{mode:'tree',ranks:true,kinds:['実生木（C=10cm程度）','支障木','枯損木'],noRank:['実生木（C=10cm程度）']},
+  '竹伐採（斜面地）':{mode:'tree',kinds:['斜面地']}, '巣撤去':{mode:'tree',kinds:['カラスの巣','スズメバチの巣']}
+};
+let PARK_MASTER = (()=>{ try{ const c=JSON.parse(localStorage.getItem('shashin_parkmaster')||'null'); return c&&c.m?c.m:PARK_SNAPSHOT; }catch(e){ return PARK_SNAPSHOT; } })();
+function simplifyMaster(M){
+  const out={};
+  Object.keys(M||{}).forEach(cat=>{ const d=M[cat]||{}, ks=Object.keys(d.kinds||{});
+    out[cat]={ mode:d.mode||'', ranks:!!d.ranks, kinds:ks, noRank:ks.filter(k=>d.kinds[k]&&d.kinds[k].ranks===false) }; });
+  return out;
+}
+async function loadParkMaster(){
+  try{
+    const c=JSON.parse(localStorage.getItem('shashin_parkmaster')||'null');
+    if(c&&c.m&&Date.now()-c.t<3*864e5) return;
+    const t=await (await fetch('park_app.html',{cache:'no-cache'})).text();
+    const m=t.match(/const MASTER = (\{[\s\S]*?\n\});/);
+    if(!m) return;
+    const M=simplifyMaster(Function('return '+m[1])());
+    if(Object.keys(M).length){ PARK_MASTER=M; localStorage.setItem('shashin_parkmaster',JSON.stringify({t:Date.now(),m:M})); }
+  }catch(e){}
+}
+function parkWorks(){   // 公園報告で追加した工種も足す（同じ社内アプリなので端末に入っている）
+  const out={...PARK_MASTER};
+  try{ const o=JSON.parse(localStorage.getItem('park_custom_works')||'{}'); Object.keys(o).forEach(cat=>{ if(!out[cat]) out[cat]=simplifyMaster({[cat]:o[cat]})[cat]; }); }catch(e){}
+  return out;
+}
+function speciesList(){
+  const used=items.map(i=>i.jushu).filter(Boolean);
+  let learned=[]; try{ learned=JSON.parse(localStorage.getItem('shashin_species')||'[]'); }catch(e){}
+  return [...new Set([...BASE_SPECIES,...used,...learned])];
+}
+function learnSpecies(s){ s=String(s||'').trim(); if(!s||speciesList().includes(s)) return; try{ const l=JSON.parse(localStorage.getItem('shashin_species')||'[]'); l.push(s); localStorage.setItem('shashin_species',JSON.stringify(l)); }catch(e){} }
+function koshuLabel(it){ return it.kind && !String(it.cat||'').includes(it.kind) ? `${it.cat}　${it.kind}` : (it.cat||''); }
+const CATS = GENERAL_WORKS;
 const FONT = '"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif';
 const TEMPLATES = {
   std:  { name:'標準', rows:[
@@ -605,7 +663,7 @@ function renderItems(){
     const doneAll=is.filter(i=>itemProgress(i)==='all').length;
     return `<div class="group-h">${esc(cat)}（${doneAll}/${is.length} 完了）</div>`+
     is.map(i=>`<div class="card item">
-      <div class="info" data-open="${esc(i.id)}"><div class="nm">${esc(i.name||i.jushu||cat)}</div>
+      <div class="info" data-open="${esc(i.id)}"><div class="nm">${esc(i.name||i.jushu||cat)}${i.kind&&i.kind!==cat?` <span style="font-weight:400;font-size:12px;color:var(--sub)">${esc(i.kind)}</span>`:''}</div>
         <div class="meta">${[i.jushu,i.kikaku,i.memo].filter(Boolean).map(esc).join(' ／ ')}${i.lat?' ・📍':' ・位置なし'}</div></div>
       <div class="stages">${STAGES.map(s=>`<button class="stg ${shotLog[i.id]?.[s]?'done':''}" data-i="${esc(i.id)}" data-s="${s}">${s}</button>`).join('')}</div>
     </div>`).join('');
@@ -620,7 +678,7 @@ function shootItem(itemId,stage){
   const it=items.find(i=>i.id===itemId); if(!it) return;
   curItem=it; curStage=stage;
   const b=boards[cur.id];
-  b.koshu=it.cat||''; b.sokuten=[it.name, cur.tpl==='std'?it.jushu:''].filter(Boolean).join(' ');
+  b.koshu=koshuLabel(it); b.sokuten=[it.name, cur.tpl==='std'?it.jushu:''].filter(Boolean).join(' ');
   b.jushu=it.jushu||''; b.kikaku=it.kikaku||''; b.stage=stage; b.date=today();
   b.biko = cur.tpl==='std' ? [it.kikaku,it.memo].filter(Boolean).join('　') : (it.memo||'');
   saveAll(); openCamera();
@@ -749,10 +807,44 @@ $('#psMove').onclick=()=>{ $('#pointSheet').classList.remove('on'); switchTab('m
 /* 項目の追加・修正・削除 */
 let editingId=null, pendingPos=null;
 let deletedItems=LS.get('shashin_deleted',[]);
-$('#iCatQuick').innerHTML=CATS.map(c=>`<button data-c="${c}">${c}</button>`).join('');
-$('#iCatQuick').onclick=e=>{ const c=e.target.dataset.c; if(!c) return; $('#iCat').value=c; highlightCat(); };
-$('#iCat').oninput=highlightCat;
-function highlightCat(){ const c=$('#iCat').value.trim(); $$('#iCatQuick button').forEach(b=>b.classList.toggle('on',b.dataset.c===c)); }
+const SEL={ group:'park', cat:'', kind:'' };
+function workDef(){ return SEL.group==='park' ? parkWorks()[SEL.cat] : null; }
+function drawWorkPicker(){
+  $('#iGroup').innerHTML=[['park','公園の工種（地区標準）'],['general','一般の作業']].map(([g,l])=>`<button data-g="${g}" class="${SEL.group===g?'on':''}">${l}</button>`).join('');
+  $('#iGroup').querySelectorAll('button').forEach(b=>b.onclick=()=>{ SEL.group=b.dataset.g; drawWorkPicker(); });
+  const cats = SEL.group==='park' ? Object.keys(parkWorks()) : GENERAL_WORKS;
+  $('#iCatQuick').innerHTML=cats.map(c=>`<button data-c="${esc(c)}" class="${c===SEL.cat?'on':''}">${esc(c)}</button>`).join('');
+  $('#iCatQuick').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    SEL.cat=b.dataset.c; const d=workDef(); SEL.kind=d&&d.kinds.length===1?d.kinds[0]:'';
+    $('#iCat').value=SEL.cat; drawWorkPicker(); });
+  const d=workDef();
+  $('#iKindWrap').style.display = d&&d.kinds.length>1 ? '' : 'none';
+  if(d&&d.kinds.length>1){
+    $('#iKindQuick').innerHTML=d.kinds.map(k=>`<button data-k="${esc(k)}" class="${k===SEL.kind?'on':''}">${esc(k)}</button>`).join('');
+    $('#iKindQuick').querySelectorAll('button').forEach(b=>b.onclick=()=>{ SEL.kind=b.dataset.k; drawWorkPicker(); });
+  }
+  drawBandPicker();
+}
+function drawBandPicker(){
+  const d=workDef(), useBand = d && d.ranks && !(d.noRank||[]).includes(SEL.kind);
+  $('#iBandQuick').style.display=useBand?'':'none';
+  $('#iKikakuLabel').textContent=useBand?'規格（幹周ランク）':'規格・数量';
+  if(!useBand) return;
+  const v=$('#iKikaku').value;
+  $('#iBandQuick').innerHTML=BANDS.map(x=>`<button data-b="${x}" class="${v===('C='+x)?'on':''}">${x}</button>`).join('');
+  $('#iBandQuick').querySelectorAll('button').forEach(b=>b.onclick=()=>{ $('#iKikaku').value='C='+b.dataset.b; drawBandPicker(); });
+}
+function drawSpeciesPicker(){
+  const q=$('#iJushu').value.trim(), all=speciesList();
+  const list=(q?all.filter(s=>s.includes(q)):all).slice(0,18);
+  $('#iJushuQuick').innerHTML=list.map(s=>`<button data-s="${esc(s)}" class="${s===q?'on':''}">${esc(s)}</button>`).join('')
+    + (q&&!all.includes(q)?`<span style="font-size:12px;color:var(--sub);align-self:center">「${esc(q)}」は新しい樹種として覚えます</span>`:'');
+  $('#iJushuQuick').querySelectorAll('button').forEach(b=>b.onclick=()=>{ $('#iJushu').value=b.dataset.s; drawSpeciesPicker(); });
+}
+$('#iJushu').oninput=drawSpeciesPicker;
+$('#iKikaku').oninput=drawBandPicker;
+$('#iCat').oninput=()=>{ const v=$('#iCat').value.trim(); SEL.cat=v; SEL.kind=''; drawWorkPicker(); };
+function highlightCat(){ drawWorkPicker(); }
 $('#btnAddItem').onclick=()=>openItemModal({});
 function openItemModal(opts){
   editingId=opts.id||null;
@@ -760,7 +852,10 @@ function openItemModal(opts){
   pendingPos=opts.lat!=null?{lat:opts.lat,lng:opts.lng}:null;
   $('#iTitle').textContent=it?'項目を直す':'撮影項目を追加';
   $('#iCat').value=it?.cat||''; $('#iName').value=it?.name||''; $('#iJushu').value=it?.jushu||'';
-  $('#iKikaku').value=it?.kikaku||''; $('#iMemo').value=it?.memo||''; highlightCat();
+  $('#iKikaku').value=it?.kikaku||''; $('#iMemo').value=it?.memo||'';
+  SEL.cat=it?.cat||''; SEL.kind=it?.kind||'';
+  SEL.group = it ? (parkWorks()[it.cat]?'park':'general') : (cur.kind==='公共'?'park':'general');
+  drawWorkPicker(); drawSpeciesPicker();
   const pi=$('#iPosInfo');
   if(pendingPos){ pi.style.display=''; pi.textContent=`📍 ${opts.here?'現在地':'地図で選んだ場所'}に置きます`; }
   else if(it&&it.lat){ pi.style.display=''; pi.textContent='📍 位置は登録済みです（地図の「位置を直す」で変更）'; }
@@ -773,8 +868,10 @@ function openItemModal(opts){
   $('#itemModal').classList.add('on');
 }
 async function saveItemFromModal(){
-  const vals={ cat:$('#iCat').value.trim()||'その他', name:$('#iName').value.trim(), jushu:$('#iJushu').value.trim(),
+  const cat=$('#iCat').value.trim()||'その他';
+  const vals={ cat, kind: cat===SEL.cat ? SEL.kind : '', name:$('#iName').value.trim(), jushu:$('#iJushu').value.trim(),
     kikaku:$('#iKikaku').value.trim(), memo:$('#iMemo').value.trim() };
+  learnSpecies(vals.jushu);
   let it;
   if(editingId){ it=items.find(i=>i.id===editingId); Object.assign(it,vals,{synced:false}); }
   else{
@@ -900,7 +997,9 @@ function openBoardEdit(toCamera){
   $('#boardFields').innerHTML=rows.map(r=>{
     const v=esc(b[r.k]||'');
     let extra='';
-    if(r.k==='koshu') extra=`<div class="quick" data-for="koshu">${CATS.map(c=>`<button data-v="${c}">${c}</button>`).join('')}</div>`;
+    if(r.k==='koshu') extra=`<div class="quick" data-for="koshu">${[...(cur.kind==='公共'?Object.keys(parkWorks()):[]),...GENERAL_WORKS].map(c=>`<button data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
+    if(r.k==='jushu') extra=`<div class="quick" data-for="jushu">${speciesList().slice(0,18).map(c=>`<button data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
+    if(r.k==='kikaku') extra=`<div class="quick" data-for="kikaku">${BANDS.map(c=>`<button data-v="C=${c}">${c}</button>`).join('')}</div>`;
     if(r.k==='stage') extra=`<div class="quick" data-for="stage">${STAGES.map(c=>`<button data-v="${c}">${c}</button>`).join('')}<button data-v="">なし</button></div>`;
     if(r.k==='date')  extra=`<div class="quick" data-for="date"><button data-v="${today()}">今日</button></div>`;
     const input = (r.k==='biko'||r.k==='koji') ? `<textarea data-k="${r.k}">${v}</textarea>` : `<input data-k="${r.k}" value="${v}">`;
@@ -1124,6 +1223,7 @@ $('#setCleanup').onclick=async()=>{
   await refreshPhotos();
   renderHome();
   loadStaff().then(()=>{ if(!me()) openSettings(); });
+  loadParkMaster();
   syncAll(true); processQueue();
 })();
 </script>

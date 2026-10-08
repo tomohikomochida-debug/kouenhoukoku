@@ -50,7 +50,7 @@ var SHEETS = {
   chosa:     { name: '現場調査の案件', head: ['id', 'name', 'date', 'mode', 'n', 'photos', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 中身は Drive の「現場調査データ」、写真は1枚1ファイルで「現場調査データ ＞ 写真」
   chosaPhotos:{ name: '現場調査の写真', head: ['hash', 'fileId', 'mime', 'size', 'at'] },
   parks:     { name: '公園報告',     head: ['id', 'park', 'contract', 'order', 'date', 'figures', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'genzai'] },   // 中身（図面・図形）は Drive の「公園報告データ」に1件1ファイルで置く。genzai＝発生材に使った残材処分の記録（JSON）
-  shashinItems:  { name: '工事写真の撮影項目', head: ['itemId', 'siteId', 'cat', 'name', 'jushu', 'kikaku', 'memo', 'lat', 'lng', 'src', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 地図に置いた点（樹木・除草・補修など）。現場マスタの現場IDでつなぐ
+  shashinItems:  { name: '工事写真の撮影項目', head: ['itemId', 'siteId', 'cat', 'name', 'jushu', 'kikaku', 'memo', 'lat', 'lng', 'src', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'kind'] },   // 地図に置いた点（樹木・除草・補修など）。現場マスタの現場IDでつなぐ
   shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
@@ -1262,7 +1262,7 @@ function shashinSite_(siteId) {
 }
 function shashinNum_(v) { return v === '' || v == null || isNaN(Number(v)) ? null : Number(v); }
 function shashinItemOut_(r) {
-  return { id: r.itemId, siteId: r.siteId, cat: r.cat, name: r.name, jushu: r.jushu, kikaku: r.kikaku, memo: r.memo,
+  return { id: r.itemId, siteId: r.siteId, cat: r.cat, kind: r.kind || '', name: r.name, jushu: r.jushu, kikaku: r.kikaku, memo: r.memo,
     lat: shashinNum_(r.lat), lng: shashinNum_(r.lng), src: r.src, by: r.by };
 }
 function shashinGet_(a, p) {
@@ -1295,7 +1295,7 @@ function shashinSaveItems_(items, by) {
   var n = 0;
   (items || []).forEach(function (it) {
     if (!it || !it.id || !it.siteId) return;
-    var obj = { itemId: String(it.id), siteId: String(it.siteId), cat: it.cat || 'その他', name: it.name || '', jushu: it.jushu || '',
+    var obj = { itemId: String(it.id), siteId: String(it.siteId), cat: it.cat || 'その他', kind: it.kind || '', name: it.name || '', jushu: it.jushu || '',
       kikaku: it.kikaku || '', memo: it.memo || '', lat: it.lat == null ? '' : it.lat, lng: it.lng == null ? '' : it.lng, src: it.src || 'manual', state: '有効' };
     if (!rows_('shashinItems').some(function (r) { return String(r.itemId) === obj.itemId; })) { obj.by = by || ''; obj.at = now_(); }
     upsert_('shashinItems', 'itemId', 'I', obj, by);
