@@ -2242,7 +2242,7 @@ async function scanLasProcess(blob, onProg){
   const mode=geo?0:(up==='z'?1:2);
   const CH=Math.max(1,Math.floor((8<<20)/rl))*rl;      // 1回に読む量（約8MB、点の区切りに合わせる）
   const total=N*rl;
-  async function stream(label,base,fn){
+  async function stream(label,base,fn,span){ span=span||0.45;
     for(let pos=0;pos<total;pos+=CH){
       const len=Math.min(CH,total-pos), buf=await blob.slice(off+pos,off+pos+len).arrayBuffer(), n=Math.floor(buf.byteLength/rl);
       const I=new Int32Array(buf,0,(buf.byteLength>>2)), st=rl>>2, al=(rl%4===0);
@@ -2250,7 +2250,7 @@ async function scanLasProcess(blob, onProg){
       for(let i=0;i<n;i++){ let ix,iy,iz; if(al){const o=i*st; ix=I[o];iy=I[o+1];iz=I[o+2];} else {const o=i*rl; ix=dv.getInt32(o,true);iy=dv.getInt32(o+4,true);iz=dv.getInt32(o+8,true);}
         const a=ix*sx+ox, b=iy*sy+oy, c=iz*sz+oz;
         if(mode===0) fn((a-minX)*mLon,(b-minY)*mLat,c); else if(mode===1) fn(a,b,c); else fn(a,-c,b); }
-      prog(label, base+0.45*Math.min(1,(pos+len)/total));
+      prog(label, base+span*Math.min(1,(pos+len)/total));
       await new Promise(r=>setTimeout(r,0));
     }
   }
@@ -2314,12 +2314,34 @@ async function scanLasProcess(blob, onProg){
     cand.push(Object.assign(f,{cont})); }
   cand.sort((a,b)=>b.n-a.n); const keep=[];
   for(const t of cand){ if(keep.every(k=>Math.hypot(t.cx-k.cx,t.cy-k.cy)>Math.max(0.15,k.r))) keep.push(t); }
+  const acc=keep.filter(t=>{ t.sure=(t.cov>=0.85&&t.res<0.03&&t.cont>=3); return t.sure||(t.cont>=3&&t.cov>=0.5&&t.r>=0.04&&t.res<0.03); });
+  // ---- 3回目：木ごとに「幹のまわりの低い側の地面」から1.2mで測り直す ----
+  if(acc.length){
+    const tc=new Map(), RR=1.0;
+    acc.forEach((t,ti)=>{ t.px=[];t.py=[];t.pz=[];t.gz=[]; t.g0=gH(t.cx,t.cy);
+      for(let i=Math.floor((t.cx-RR-X0));i<=Math.floor((t.cx+RR-X0));i++)for(let j=Math.floor((t.cy-RR-Y0));j<=Math.floor((t.cy+RR-Y0));j++){ const k=i*65536+j; let a=tc.get(k); if(!a){a=[];tc.set(k,a);} a.push(ti);} });
+    await stream('幹周を測り直しています',0.9,(x,y,z)=>{ const a=tc.get(Math.floor(x-X0)*65536+Math.floor(y-Y0)); if(!a)return;
+      for(const ti of a){ const t=acc[ti]; const dz=z-t.g0; if(dz<-1.0||dz>2.3)continue; const ddx=x-t.cx, ddy=y-t.cy, d2=ddx*ddx+ddy*ddy, ro=t.r+0.6;
+        if(d2>ro*ro)continue; const ri=t.r+0.12;
+        if(d2>=ri*ri){ if(dz<0.8){t.gz.push(z);} }                 // まわりの地面
+        else if(dz>0.1){ t.px.push(x);t.py.push(y);t.pz.push(z); } } },0.05);   // 幹
+    for(const t of acc){
+      const ring=t.gz;
+      if(ring.length<20){ t.zg=t.g0; t.gnote='地面が少ない'; }
+      else { ring.sort((p,q)=>p-q); t.zg=ring[Math.floor(ring.length*0.05)]; }
+      let cx=t.cx, cy=t.cy, r=t.r, ok=false;
+      for(let it=0;it<2;it++){ const idx=[]; for(let i=0;i<t.pz.length;i++){ if(Math.abs(t.pz[i]-(t.zg+1.2))<0.05&&Math.hypot(t.px[i]-cx,t.py[i]-cy)<r+0.25)idx.push(i); }
+        const g=fit(t.px,t.py,idx); if(g&&g.n>=30&&g.cov>=0.5&&g.res<0.04&&Math.abs(g.r-t.r)<Math.max(0.05,0.4*t.r)){ cx=g.cx;cy=g.cy;r=g.r;ok=true; } else break; }
+      t.C0=Math.round(2*Math.PI*t.r*100);
+      if(ok){ t.cx=cx;t.cy=cy;t.r=r; }
+      t.dz=t.zg-t.g0; t.px=t.py=t.pz=t.gz=null;
+    }
+  }
   const trees=[];
-  for(const t of keep){
-    const sure=(t.cov>=0.85&&t.res<0.03&&t.cont>=3), maybe=(t.cont>=3&&t.cov>=0.5&&t.r>=0.04&&t.res<0.03);
-    if(!sure&&!maybe)continue;
+  for(const t of acc){
+    const sure=t.sure;
     const C=Math.round(2*Math.PI*t.r*100), rem=C%30, nearB=Math.min(rem,30-rem)<=3;
-    trees.push({x:(t.cx-X0)*ppm, y:(Y1-t.cy)*ppm, C, chk:(!sure||nearB), note:!sure?'幹の一部しか写っていない':(nearB?`ランク境界（${Math.round(C/30)*30}cm）の近く`:'')});
+    trees.push({x:(t.cx-X0)*ppm, y:(Y1-t.cy)*ppm, C, C0:t.C0, dz:Math.round((t.dz||0)*100), chk:(!sure||nearB), note:!sure?'幹の一部しか写っていない':(nearB?`ランク境界（${Math.round(C/30)*30}cm）の近く`:'')});
   }
   trees.sort((a,b)=>(a.y-b.y)||(a.x-b.x));
   // 背景の平面図（地面＝薄い灰、植え込み・枝＝薄い緑）
