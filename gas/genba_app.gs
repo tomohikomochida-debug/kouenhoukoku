@@ -7,6 +7,7 @@
  *  ・段取り  （app=dandori）：段取りカード。Googleカレンダー（現場カレンダー・出勤調整カレンダー）の読み取り。AIで話を整理
  *  ・現場ノート（app=note）：日報システムの「現場マスタ」（現場の一覧の本物）に住所・連絡先などを足して読み書き。現場の注意点（地図の位置・写真・メモ）
  *  ・要点まとめ（app=yoten）：まとまらないまま話した内容を、AIで要点・必要な道具・車両・送る文に整理。要点メモに残す
+ *  ・タイムカード（app=timecard）：本体は gas/timecard_app.gs（ここでは読み込んで渡すだけ）
  *  返り値はすべて { ok:true/false, error?:"..." } 形式（社内アプリ共通ルール）
  *
  * ───────── 置き方 ─────────
@@ -179,11 +180,67 @@ function gemini_(parts, opt) {   // parts：文字列 または Gemini の parts
 }
 
 /* ================================================================
+ *  タイムカード（app=timecard）：本体は GitHub の gas/timecard_app.gs。ここで読み込んで渡す
+ *  ・本体を直して GitHub に上げれば数分で反映（すぐなら ?app=timecard&action=reload）
+ *  ・GitHub につながらないときは、最後に読み込めた控え（マイドライブ）で動く
+ * ================================================================ */
+var TC_SRC_URL = 'https://raw.githubusercontent.com/tomohikomochida-debug/kouenhoukoku/main/gas/timecard_app.gs';
+var TC_BACKUP_NAME = 'タイムカード_本体の控え（自動・消さない）.txt';
+var TC_MOD_ = null;
+function tcMod_() {
+  if (TC_MOD_) return TC_MOD_;
+  TC_MOD_ = new Function(tcSrc_() + '\nreturn { doGet: doGet, doPost: doPost, setup: setup };')();
+  return TC_MOD_;
+}
+function tcClear_() { CacheService.getScriptCache().remove('tc_src_n'); TC_MOD_ = null; }
+function tcSrc_() {
+  var cache = CacheService.getScriptCache(), n = Number(cache.get('tc_src_n') || 0);
+  if (n) {
+    var keys = []; for (var i = 0; i < n; i++) keys.push('tc_src_' + i);
+    var got = cache.getAll(keys), out = '', ok = true;
+    for (var j = 0; j < n; j++) { if (got['tc_src_' + j] == null) { ok = false; break; } out += got['tc_src_' + j]; }
+    if (ok && out) return out;
+  }
+  try {
+    var res = UrlFetchApp.fetch(TC_SRC_URL, { muteHttpExceptions: true, headers: { 'Cache-Control': 'no-cache' } });
+    var t = res.getContentText('UTF-8');
+    if (res.getResponseCode() === 200 && /function doPost\s*\(/.test(t)) {
+      var obj = {}, size = 20000, m = Math.ceil(t.length / size);
+      for (var k = 0; k < m; k++) obj['tc_src_' + k] = t.slice(k * size, (k + 1) * size);
+      obj.tc_src_n = String(m);
+      try { cache.putAll(obj, 300); } catch (e1) {}
+      tcBackup_(t);
+      return t;
+    }
+  } catch (e2) { /* GitHub につながらないときは控えで動く */ }
+  var f = tcBackupFile_(false);
+  if (f) return f.getBlob().getDataAsString('UTF-8');
+  throw new Error('タイムカードの本体を読み込めませんでした（GitHub に接続できません）');
+}
+function tcBackupFile_(create) {
+  var p = PropertiesService.getScriptProperties(), id = String(p.getProperty('TC_BACKUP_FILE_ID') || '').trim();
+  if (id) { try { var f = DriveApp.getFileById(id); if (!f.isTrashed()) return f; } catch (e) {} }
+  var it = DriveApp.getFilesByName(TC_BACKUP_NAME);
+  var file = it.hasNext() ? it.next() : (create ? DriveApp.createFile(TC_BACKUP_NAME, '', MimeType.PLAIN_TEXT) : null);
+  if (file) p.setProperty('TC_BACKUP_FILE_ID', file.getId());
+  return file;
+}
+function tcBackup_(t) {
+  try {
+    var h = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, t, Utilities.Charset.UTF_8).map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+    var f = tcBackupFile_(true);
+    if (f.getDescription() === h) return;
+    f.setContent(t); f.setDescription(h);
+  } catch (e) { /* 控えが書けなくても動作は続ける */ }
+}
+
+/* ================================================================
  *  入口（GET：読み取り／POST：書き込み）。app でアプリを分ける
  * ================================================================ */
 function doGet(e) {
   var p = (e && e.parameter) || {}, app = p.app || '', a = p.action || '';
   try {
+    if (app === 'timecard') { if (a === 'reload') tcClear_(); return tcMod_().doGet(e); }
     if (app === 'park') return out_(parkGet_(a, p));
     if (app === 'chosa') return out_(chosaGet_(a, p));
     if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL) });
@@ -210,6 +267,7 @@ function doPost(e) {
   var b = {};
   try { b = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad json' }); }
   try {
+    if (b.app === 'timecard') return tcMod_().doPost(e);   // タイムカード（本体は gas/timecard_app.gs）
     var key = (b.app || '') + ':' + (b.mode || '');
     if (ADMIN_ONLY.indexOf(key) >= 0 && !isAdmin_(b.by)) return out_({ ok: false, error: '削除は' + admins_().join('・') + 'だけができます。消したいときは頼んでください' });
     switch (key) {
