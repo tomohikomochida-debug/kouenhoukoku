@@ -2143,7 +2143,9 @@ function renderTreeEdit(el){
      +`<label class="fld">実測 幹周 C（cm）${f.src==='scan'?'　※3Dスキャン値を入れてあります':'　※任意'}</label><input id="teC" type="number" min="1" step="1" value="${f.C||''}" placeholder="例：95">`
      +`<div class="legend" style="margin:4px 0 8px">入れると規格（幹周）を自動で直します</div>`
      +(f.chk?`<button class="btn ghost" id="teOk">この値のまま確認済みにする</button>`:'')
-     +`<button class="btn ghost" id="teWork"${w?'':' disabled style="opacity:.5"'}>工種を②の工種に変える<small>${wtxt}</small></button>`;
+     +`<button class="btn ghost" id="teWork"${w?'':' disabled style="opacity:.5"'}>工種を②の工種に変える<small>${wtxt}</small></button>`
+     +`<button class="btn" id="teShoot" style="margin-top:8px">📷 この木の写真を撮る<small>工事写真アプリ（黒板に工種・規格・No.が入ります）</small></button>`;
+    $('teShoot').onclick=()=>shootTree(f);
     $('teC').onchange=()=>{const raw=$('teC').value.trim(); pushHistory(); if(raw===''){delete f.C;} else {const v=Math.round(parseFloat(raw)); if(!(v>0))return; f.C=v; delete f.chk; if(kindRanks(f.cat,f.kind)){const r=bandFromC(f.cat,v); if(r)f.rank=r;}}
       recalcAll(); renderAgg(); renderScanInfo(); renderSansha(); draw();};
     const ok=$('teOk'); if(ok)ok.onclick=()=>{pushHistory(); delete f.chk; renderScanInfo(); renderSansha(); draw();};
@@ -2154,6 +2156,21 @@ function renderTreeEdit(el){
   }
   $('teWork').onclick=()=>{ const w2=curTreeWork(); if(!w2)return; pushHistory(); T.forEach(f=>setTreeWork(f,w2.cat,w2.kind)); recalcAll(); renderAgg(); renderSansha(); draw(); };
   return true;
+}
+/* ---------- 木をタップ →「この木の写真を撮る」→ 工事写真アプリ（黒板つきカメラ）へ ----------
+   木の目印は、木に付けたid（無ければ図面上の位置）。工事写真アプリでも同じ決め方で、どの木を撮ったかをつなぐ */
+function treeFid(f){ return f.id || ('p'+Math.round(f.pt.x)+'_'+Math.round(f.pt.y)); }
+async function shootTree(f){
+  const park=($('parkName').value||'').trim();
+  if(!park){ alert('公園名を入れてください（工事写真アプリで現場をさがすのに使います）'); return; }
+  if(!state.cloudId){
+    if(confirm('この図面はまだ「みんなの共有」に保存されていません。\n保存すると、工事写真アプリの「図面」でも木と撮った写真が見られます。\n\n保存してから撮影に進みますか？（キャンセルでも撮影はできます）')){
+      try{ await $('cloudSave').onclick(); }catch(e){}
+    }
+  }
+  const q=new URLSearchParams({ from:'park', park, contract:($('contractName').value||'').trim(), rec:state.cloudId||'', fid:treeFid(f),
+    cat:f.cat||'', kind:f.kind||'', rank:f.rank||'', C:f.C||'', x:Math.round(f.pt.x*10)/10, y:Math.round(f.pt.y*10)/10 });
+  location.href='shashin.html?'+q.toString();
 }
 function alignTap(ip){
   const A=alignScan; if(!A)return;

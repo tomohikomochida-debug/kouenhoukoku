@@ -165,6 +165,9 @@ header .back{font-size:22px;padding:4px 12px}
 #mapPane{position:relative}
 #mapPane .leaflet-top.leaflet-right{top:58px}
 #map{flex:1;min-height:300px}
+#zumen{position:absolute;inset:0;width:100%;height:100%;display:none;z-index:450;touch-action:none;background:#e9ece8}
+#zumenMsg{position:absolute;left:20px;right:20px;top:90px;z-index:460;display:none;background:#fff;border-radius:12px;padding:14px;font-size:14px;line-height:1.7;color:var(--sub);box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.parkBack{display:block;width:100%;background:#eef3ee;color:var(--main);font-weight:700;padding:9px;font-size:14px;border-bottom:1px solid var(--line)}
 .arrowIcon,.pinIcon{background:none;border:none}
 .pin{display:flex;flex-direction:column;align-items:center;transform:translateY(-4px)}
 .pin .dot{width:26px;height:26px;border-radius:50%;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);
@@ -434,7 +437,10 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
   </div>
   <div class="pane" id="mapPane">
     <div id="map"></div>
+    <canvas id="zumen"></canvas><div id="zumenMsg"></div>
     <div class="mapTools">
+      <button id="mtView">📐 図面</button>
+      <button id="mtAlign" style="display:none">📍 地図と合わせる</button>
       <button id="mtHere" style="display:none">📍 現在地に置く</button>
       <button id="mtTap" style="display:none">👆 地図に置く</button>
       <span class="sp"></span>
@@ -615,6 +621,14 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
     <button class="btn sub" id="psMove">位置を直す</button>
   </div>
   <button class="btn sub" data-close>閉じる</button>
+</div></div>
+
+<div class="modal" id="alignModal"><div class="sheet">
+  <h2 id="alTitle">この木の場所</h2>
+  <div class="s" style="font-size:13px;color:var(--sub);margin-bottom:12px">図面と地図を合わせるため、この木が地図のどこにあるかを教えてください。2本で合わせます（はなれた木ほど正確です）。</div>
+  <button class="btn" id="alHere">📍 いまここ（この木のそばで押す）</button>
+  <button class="btn sub" id="alMap">🗺 地図でさす</button>
+  <button class="btn sub" id="alCancel">やめる</button>
 </div></div>
 
 <!-- ===== 工種・規格の読み込み ===== -->
@@ -1142,7 +1156,7 @@ function openAlbum(id,key,opt){
   $('#albumBanner').innerHTML = cur.publicKoji
     ? `<div class="banner warn"><b>公共工事の現場です。</b>電子黒板の写真は納品写真として認められない可能性が高いため、黒板は<b>オフ</b>で始まります。実物の黒板を写し込むか、納品写真はミライ工事で撮影してください。</div>`
     : '';
-  mapFittedFor=null; placing=null; go('album'); switchTab('photos'); renderItems();
+  mapFittedFor=null; placing=null; ZV.fitted=null; if(ZV.on) showZumen(false); drawParkBanner(); go('album'); switchTab('photos'); renderItems();
   if(!opt||opt.camera!==false){   // 案件をえらんだら、すぐ撮影モード（黒板は左下。タップで中身を入れる）
     curItem=null; const st=curStages(), b=boards[cur.id];
     if(!st.includes(b.stage)){ curStage=st[0]; setStageOnBoard(b,curStage); } else curStage=b.stage;
@@ -1154,7 +1168,7 @@ function switchTab(t){
   $$('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   $$('.pane').forEach(p=>p.classList.toggle('on',p.id===t));
   $('#btnAddItem').style.display='none';
-  if(t==='mapPane') setTimeout(renderMap,50);
+  if(t==='mapPane'){ setTimeout(renderMap,50); if(ZV.on) setTimeout(()=>showZumen(true),60); }
   if(t==='photos') renderPhotos();
   if(t==='check') renderCheck();
   if(t!=='photos') renderSel();
@@ -1458,7 +1472,7 @@ function pinIcon(i){
   const p=itemProgress(i), col=PROG_COLOR[p];
   const fg=p==='none'?'var(--main)':'#fff', bd=p==='none'?'var(--main)':'#fff';
   const head=esc((i.cat||'他').slice(0,1));
-  const label=esc(i.name||i.cat||'');
+  const label=esc(i.name || [(i.cat||'').replace(/（.*?）/,''), i.no?'No.'+i.no:''].filter(Boolean).join(' '));
   return L.divIcon({className:'pinIcon',iconSize:[110,48],iconAnchor:[55,17],
     html:`<div class="pin"><div class="dot" style="background:${col};color:${fg};border-color:${bd}">${head}</div><div class="lb">${label}</div></div>`});
 }
@@ -1480,7 +1494,7 @@ function renderMap(){
   photosCache.filter(p=>p.siteId===cur.id&&p.lat).forEach(p=>{
     const col = stageColor(p.stage);
     L.marker([p.lat,p.lng],{icon:arrowIcon(p.heading,col),draggable:true})
-      .bindPopup(`<img src="${p.thumb}" style="width:150px;border-radius:6px"><br>${esc([p.board.koshu,p.board.sokuten,p.stage].filter(Boolean).join(' '))}${turnBtns(p.id)}`)
+      .bindPopup(`<img src="${p.thumb}" style="width:150px;border-radius:6px"><br>${esc([p.board.koshu,p.board.sokuten,p.stage].filter(Boolean).join(' '))}${(()=>{ const it=p.itemId&&items.find(i=>i.id===p.itemId); return it?`<br>→ 撮った木：${esc(koshuLabel(it))} No.${esc(it.no||'')}`:''; })()}${turnBtns(p.id)}`)
       .on('dragend',e=>fixPhotoPos(p.id,e.target.getLatLng(),null))
       .addTo(mapLayer);
     pts.push([p.lat,p.lng]);
@@ -1494,9 +1508,24 @@ function renderMap(){
       .addTo(mapLayer);
     pts.push([p.lat,p.lng]);
   });
-  items.filter(i=>i.siteId===cur.id&&i.lat).forEach(i=>{
-    L.marker([i.lat,i.lng],{icon:pinIcon(i),zIndexOffset:1000}).on('click',()=>{ if(placing) return; openPointSheet(i.id); }).addTo(mapLayer);
-    pts.push([i.lat,i.lng]);
+  items.filter(i=>i.siteId===cur.id).forEach(i=>{ const ll=itemLL(i); if(!ll) return;
+    L.marker([ll.lat,ll.lng],{icon:pinIcon(i),zIndexOffset:1000}).on('click',()=>{ if(placing) return; openPointSheet(i.id); }).addTo(mapLayer);
+    pts.push([ll.lat,ll.lng]);
+  });
+  // 図面と地図を合わせてあれば、まだ項目になっていない図面の木も小さく出す（タップで撮影）
+  const g=geoOf(cur.id), rec=parkRecOf(cur.id);
+  if(g&&rec){ const R=parkCache[rec];
+    if(!R){ if(canSync()) loadParkRec(rec).then(()=>{ if($('#mapPane').classList.contains('on')&&!ZV.on) renderMap(); }).catch(()=>{}); }
+    else R.trees.filter(f=>!treeItem(f)).forEach(f=>{ const ll=g.px2ll(f.pt.x,f.pt.y);
+      L.circleMarker([ll.lat,ll.lng],{radius:7,color:'#2f6b3f',weight:2,fillColor:'#fff',fillOpacity:1}).on('click',()=>{ if(placing) return; const it=itemForTree(cur.id,rec,f); openPointSheet(it.id); renderMap(); }).addTo(mapLayer); }); }
+  // 撮った場所 → 撮った木 の点線と矢印（どの木を撮ったか分かるように）
+  allPhotosHere().filter(p=>p.itemId&&p.lat!=null&&p.lat!=='').forEach(p=>{
+    const it=items.find(i=>i.id===p.itemId), ll=it&&itemLL(it); if(!ll) return;
+    const col=stageColor(p.stage), a=[+p.lat,+p.lng], b=[ll.lat,ll.lng];
+    L.polyline([a,b],{color:col,weight:3,dashArray:'6 6',opacity:.9}).addTo(mapLayer);
+    const r=Math.PI/180, brg=Math.atan2(Math.sin((b[1]-a[1])*r)*Math.cos(b[0]*r), Math.cos(a[0]*r)*Math.sin(b[0]*r)-Math.sin(a[0]*r)*Math.cos(b[0]*r)*Math.cos((b[1]-a[1])*r))/r;
+    const mid=[a[0]+(b[0]-a[0])*0.62, a[1]+(b[1]-a[1])*0.62];
+    L.marker(mid,{icon:L.divIcon({className:'arrowIcon',iconSize:[18,18],iconAnchor:[9,9],html:`<svg width="18" height="18" viewBox="0 0 18 18" style="transform:rotate(${brg}deg)"><path d="M9 1 L16 16 L9 12 L2 16 Z" fill="${col}" stroke="#fff" stroke-width="1.5"/></svg>`}),interactive:false}).addTo(mapLayer);
   });
   if(mapFittedFor!==cur.id){
     mapFittedFor=cur.id;
@@ -1520,12 +1549,14 @@ async function fixPhotoPos(id,ll,hd){
 }
 function updateMapTools(){
   $('#mtTap').classList.toggle('on',!!placing);
-  $('#mtTap').textContent = placing ? (placing==='new'?'✕ 置くのをやめる':'✕ 移動をやめる') : '👆 地図に置く';
+  $('#mtTap').textContent = placing ? (placing==='new'?'✕ 置くのをやめる':placing==='align'?'✕ 合わせるのをやめる':'✕ 移動をやめる') : '👆 地図に置く';
+  $('#mtTap').style.display = placing ? '' : 'none';
   $('#mtLayer').textContent = S.mapPhoto ? '地図' : '航空写真';
 }
 function onMapClick(e){
   if(!placing) return;
   const {lat,lng}=e.latlng;
+  if(placing==='align'){ placing=null; updateMapTools(); if(ALN&&ALN.pick) alignSetLL({lat,lng}); return; }
   if(placing==='new'){ placing=null; updateMapTools(); openItemModal({lat,lng}); }
   else{
     const it=items.find(i=>i.id===placing); placing=null;
@@ -1547,11 +1578,196 @@ $('#mtLayer').onclick=()=>{
   updateMapTools();
 };
 
+/* =========================================================
+   公園報告の図面とつなぐ
+   ・公園報告アプリで木をタップ →「この木の写真を撮る」→ ここに来て、その木の黒板入りでカメラ
+   ・「撮影位置」タブの【図面】：公園報告の図面に木を出し、撮ったかどうか（白＝まだ／橙＝途中／緑＝そろった）
+   ・2本の木で地図と合わせると、地図にも木が出て、撮った場所から木へ矢印が引ける
+   木の目印は 公園報告と同じ決め方（木のid、無ければ図面上の位置）
+   ========================================================= */
+const treeFid = f => f.id || ('p'+Math.round(f.pt.x)+'_'+Math.round(f.pt.y));
+/* 案件の設定（opts）を直して保存（みんなに共有） */
+function setCaseOpt(fn){
+  let inf=infos[cur.infoKey];
+  if(!inf){ const s=siteOf(cur.id)||cur; inf={ key:cur.infoKey, type:s.contract?'contract':'site', contract:s.contract||'', fy:s.contract?(cur.fy||fyOf()):'', siteId:s.contract?'':s.id, koji:s.contract||s.name, tpl:cur.tpl, stages:curStages().slice(), koshuList:[], opts:{} }; infos[cur.infoKey]=inf; }
+  inf.opts=Object.assign({},inf.opts||{}); fn(inf.opts); saveAll();
+  const pend=LS.get('shashin_infos_pending',{}); pend[cur.infoKey]=inf; LS.set('shashin_infos_pending',pend);
+  clearTimeout(setCaseOpt._t); setCaseOpt._t=setTimeout(pushInfos,1200);
+}
+const parkRecOf = siteId => ((curOpts().parkRec||{})[siteId]) || (items.find(i=>i.siteId===siteId&&i.parkRec)||{}).parkRec || '';
+function setParkRec(siteId,rec){ if(!rec||parkRecOf(siteId)===rec) return; setCaseOpt(o=>{ o.parkRec=Object.assign({},o.parkRec||{},{[siteId]:rec}); }); }
+/* 図面の木 → 撮影項目（無ければ作る。No.は同じ工種・規格の中で次の番号） */
+function itemForTree(siteId,rec,f){
+  const fid=treeFid(f); let it=items.find(i=>i.siteId===siteId&&i.parkFid===fid&&(!rec||!i.parkRec||i.parkRec===rec));
+  if(it) return it;
+  const kikaku=f.rank?'C='+f.rank:'';
+  const no=items.filter(i=>i.siteId===siteId&&i.cat===f.cat&&(i.kind||'')===(f.kind||'')&&(i.kikaku||'')===kikaku).reduce((m,i)=>Math.max(m,Number(i.no)||0),0)+1;
+  it={ id:uid(), siteId, cat:f.cat||'', kind:f.kind||'', kikaku, no:String(no), name:'', jushu:'', memo:f.C?`幹周 C=${f.C}cm`:'', lat:null, lng:null,
+       src:'park-tree', parkRec:rec||'', parkFid:fid, px:f.pt.x, py:f.pt.y, synced:false };
+  items.push(it); saveAll(); pushItem(it); return it;
+}
+/* その項目でまだ撮っていない最初の状況 */
+function nextStageOfItem(it){ const t=targets().find(x=>x.key==='I|'+it.id), st=curStages(); return st.find(s=>!(t&&t.done[s]>0)&&!shotLog[it.id]?.[s]) || st[0]; }
+
+/* 公園報告アプリから来たとき（shashin.html?from=park&park=…&fid=…） */
+async function handleParkLink(P){
+  const norm=s=>String(s||'').replace(/[\s　]/g,'');
+  const name=P.get('park')||'', con=P.get('contract')||'';
+  let c=sites.filter(s=>norm(s.name)===norm(name));
+  if(!c.length) c=sites.filter(s=>norm(name)&&(norm(s.name).includes(norm(name))||norm(name).includes(norm(s.name))));
+  if(c.length>1&&con){ const c2=c.filter(s=>norm(s.contract).includes(norm(con))||norm(con).includes(norm(s.contract))); if(c2.length) c=c2; }
+  const s=c[0];
+  if(!s){ toast(`「${name}」が現場マスタに見つかりません。現場をえらんでください`,4500); $('#btnPick').click(); return; }
+  openAlbum(s.id,infoKey(s,fyOf()),{camera:false});
+  const rec=P.get('rec')||'';
+  if(rec) setParkRec(s.id,rec);
+  try{ sessionStorage.setItem('shashin_from_park','1'); }catch(e){}
+  drawParkBanner();
+  const f={ id:P.get('fid')||'', cat:P.get('cat')||'', kind:P.get('kind')||'', rank:P.get('rank')||'', C:Number(P.get('C'))||null, pt:{x:Number(P.get('x'))||0,y:Number(P.get('y'))||0} };
+  const it=itemForTree(s.id,rec,f);
+  shootItem(it.id,nextStageOfItem(it));
+}
+function drawParkBanner(){
+  let on=false; try{ on=sessionStorage.getItem('shashin_from_park')==='1'; }catch(e){}
+  let b=$('#parkBack'); if(!on){ if(b) b.remove(); return; }
+  if(!b){ b=document.createElement('button'); b.id='parkBack'; b.className='parkBack'; b.textContent='◀ 公園報告の図面にもどる'; $('#album').insertBefore(b,$('#albumBanner')); b.onclick=()=>{ try{ sessionStorage.removeItem('shashin_from_park'); }catch(e){} history.length>1?history.back():(location.href='park_app.html'); }; }
+}
+
+/* ---- 図面と地図の合わせ（2本の木の図面上の位置と、地図上の位置から、拡大・回転・移動を決める） ---- */
+const geoOf = siteId => { const g=(curOpts().parkGeo||{})[siteId]; return g&&g.a&&g.b?mkGeo(g):null; };
+function mkGeo(g){
+  const lat0=g.a.lat, lng0=g.a.lng, r=Math.PI/180, mLat=111132.954-559.822*Math.cos(2*lat0*r), mLon=111412.84*Math.cos(lat0*r);
+  const W=(lat,lng)=>({re:(lng-lng0)*mLon, im:(lat-lat0)*mLat}), P=(x,y)=>({re:x,im:-y});
+  const mul=(a,b)=>({re:a.re*b.re-a.im*b.im, im:a.re*b.im+a.im*b.re});
+  const pa=P(g.a.x,g.a.y), pb=P(g.b.x,g.b.y), wa=W(g.a.lat,g.a.lng), wb=W(g.b.lat,g.b.lng);
+  const dp={re:pb.re-pa.re,im:pb.im-pa.im}, dw={re:wb.re-wa.re,im:wb.im-wa.im}, den=dp.re*dp.re+dp.im*dp.im;
+  const s={re:(dw.re*dp.re+dw.im*dp.im)/den, im:(dw.im*dp.re-dw.re*dp.im)/den}, sp=mul(s,pa), t={re:wa.re-sp.re, im:wa.im-sp.im}, sd=s.re*s.re+s.im*s.im;
+  return {
+    px2ll(x,y){ const w=mul(s,P(x,y)); return {lat:lat0+(w.im+t.im)/mLat, lng:lng0+(w.re+t.re)/mLon}; },
+    ll2px(lat,lng){ const w=W(lat,lng), q={re:w.re-t.re,im:w.im-t.im}; return {x:(q.re*s.re+q.im*s.im)/sd, y:-(q.im*s.re-q.re*s.im)/sd}; },
+    mpp:Math.sqrt(sd), north:Math.atan2(s.re,s.im)   // 図面の上方向から見た北の向き（ラジアン）
+  };
+}
+/* 項目の地図上の位置：手で置いた位置 → 図面の位置を地図に合わせた位置 */
+function itemLL(i){ if(i.lat!=null&&i.lng!=null&&i.lat!=='') return {lat:+i.lat,lng:+i.lng}; if(i.px==null||i.px==='') return null; const g=geoOf(i.siteId); return g?g.px2ll(+i.px,+i.py):null; }
+
+/* ---- 図面の表示 ---- */
+const parkCache={};
+async function loadParkRec(id){
+  if(parkCache[id]) return parkCache[id];
+  const j=await gasGetApp('park',{action:'get',id}); if(!j.ok) throw new Error(j.error||'読み込めませんでした');
+  const d=JSON.parse(j.data), img=d.imgData?await new Promise(res=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>res(null); i.src=d.imgData; }):null;
+  return parkCache[id]={ d, img, trees:(d.features||[]).filter(f=>f.type==='tree'&&f.pt), areas:(d.features||[]).filter(f=>f.type!=='tree'&&Array.isArray(f.pts)) };
+}
+const ZV={ on:false, rec:null, k:1, ox:0, oy:0, fitted:null };
+let ALN=null;   // 地図と合わせている途中 {pairs:[], pick:{f}}
+function zumenCanvas(){ return $('#zumen'); }
+async function showZumen(on){
+  ZV.on=on; $('#zumen').style.display=on?'block':'none'; $('#map').style.visibility=on?'hidden':'';
+  $('#mtView').textContent=on?'🗺 地図':'📐 図面'; $('#mtAlign').style.display=on?'':'none';
+  $('.legend').innerHTML = on
+    ? `○ 図面の木：<i style="background:#fff"></i>まだ <i style="background:${PROG_COLOR.part}"></i>途中 <i style="background:${PROG_COLOR.all}"></i>そろった<br><b>木をタップ</b>で撮影・写真を見る${geoOf(cur.id)?'。矢印＝撮った場所→木':''}`
+    : `➤ 撮った場所と向き（GPS）。<b>矢印を指で動かすと場所を直せます</b><br><span style="color:#d35400">■</span>前　<span style="color:#2471a3">■</span>中　<span style="color:#1e8449">■</span>後　● 木（白＝まだ・橙＝途中・緑＝そろった）`;
+  if(!on){ setTimeout(renderMap,30); return; }
+  const rec=parkRecOf(cur.id);
+  if(!rec){ drawZumenMsg('公園報告の図面がまだつながっていません。<br>公園報告アプリで木をタップ →「📷 この木の写真を撮る」、または 情報 → ③ 読み込む →「公園報告の図面から」でつながります。'); return; }
+  if(!canSync()&&!parkCache[rec]){ drawZumenMsg('電波のある所で開いてください'); return; }
+  try{ drawZumenMsg('図面を読み込んでいます…'); const R=await loadParkRec(rec); ZV.rec=rec; $('#zumenMsg').style.display='none'; if(ZV.fitted!==rec) fitZumen(R); drawZumen(); }
+  catch(e){ drawZumenMsg('図面を読み込めませんでした：'+esc(e.message||e)); }
+}
+function drawZumenMsg(h){ const m=$('#zumenMsg'); m.innerHTML=h; m.style.display='block'; const c=zumenCanvas(); c.getContext('2d').clearRect(0,0,c.width,c.height); }
+function fitZumen(R){
+  const c=zumenCanvas(), W=c.clientWidth, H=c.clientHeight, iw=R.img?R.img.width:1000, ih=R.img?R.img.height:1000;
+  ZV.k=Math.min(W/iw,(H-60)/ih); ZV.ox=(W-iw*ZV.k)/2; ZV.oy=(H-ih*ZV.k)/2+20; ZV.fitted=ZV.rec;
+}
+function treeItem(f){ const fid=treeFid(f); return items.find(i=>i.siteId===cur.id&&i.parkFid===fid); }
+function drawZumen(){
+  const R=parkCache[ZV.rec]; if(!R||!ZV.on) return;
+  const c=zumenCanvas(), dpr=window.devicePixelRatio||1; c.width=c.clientWidth*dpr; c.height=c.clientHeight*dpr;
+  const ctx=c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.fillStyle='#e9ece8'; ctx.fillRect(0,0,c.clientWidth,c.clientHeight);
+  const S=(x,y)=>({x:x*ZV.k+ZV.ox, y:y*ZV.k+ZV.oy});
+  ctx.save(); ctx.translate(ZV.ox,ZV.oy); ctx.scale(ZV.k,ZV.k); if(R.img) ctx.drawImage(R.img,0,0);
+  ctx.globalAlpha=.35; R.areas.forEach(a=>{ ctx.beginPath(); a.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.lineWidth=2/ZV.k; ctx.strokeStyle='#2471a3'; ctx.stroke(); }); ctx.restore();
+  const g=geoOf(cur.id);
+  // 撮った場所 → 木 の矢印（地図と合わせてあるとき）
+  if(g){
+    allPhotosHere().filter(p=>p.lat!=null&&p.lat!=='').forEach(p=>{
+      const a=g.ll2px(+p.lat,+p.lng), A=S(a.x,a.y), it=p.itemId&&items.find(i=>i.id===p.itemId), col=stageColor(p.stage);
+      if(it&&it.px!=null&&it.px!==''){ const B=S(+it.px,+it.py); drawArrow(ctx,A,B,col,true); }
+      else if(p.heading!=null){ const ang=g.north+(+p.heading)*Math.PI/180; drawArrow(ctx,A,{x:A.x+Math.sin(ang)*26,y:A.y-Math.cos(ang)*26},col,false); }
+      ctx.fillStyle=col; ctx.beginPath(); ctx.arc(A.x,A.y,5,0,7); ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+    });
+  }
+  // 木
+  R.trees.forEach(f=>{
+    const P=S(f.pt.x,f.pt.y), it=treeItem(f), pr=it?itemProgress(it):'none', r=Math.max(9,Math.min(16,6*ZV.k+6));
+    const sel=ALN&&ALN.pairs.some(q=>q.fid===treeFid(f));
+    ctx.beginPath(); ctx.arc(P.x,P.y,r,0,7); ctx.fillStyle=pr==='all'?PROG_COLOR.all:pr==='part'?PROG_COLOR.part:'#fff'; ctx.fill();
+    ctx.lineWidth=sel?4:2.5; ctx.strokeStyle=sel?'#f5b400':(pr==='none'?'#2f6b3f':'#fff'); ctx.stroke();
+    if(it){ ctx.fillStyle=pr==='none'?'#2f6b3f':'#fff'; ctx.font=`800 ${Math.round(r*1.05)}px ${FONT}`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(String(it.no||''),P.x,P.y+1); ctx.textAlign='left'; }
+  });
+}
+function drawArrow(ctx,A,B,col,toTarget){
+  const dx=B.x-A.x, dy=B.y-A.y, L=Math.hypot(dx,dy); if(L<4) return;
+  const ux=dx/L, uy=dy/L, end=toTarget?{x:B.x-ux*14,y:B.y-uy*14}:B;
+  ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=3; if(toTarget) ctx.setLineDash([7,5]);
+  ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(end.x,end.y); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle=col; ctx.beginPath(); ctx.moveTo(end.x,end.y); ctx.lineTo(end.x-ux*12-uy*7,end.y-uy*12+ux*7); ctx.lineTo(end.x-ux*12+uy*7,end.y-uy*12-ux*7); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function zumenTreeAt(x,y){
+  const R=parkCache[ZV.rec]; if(!R) return null; let best=null,bd=26;
+  R.trees.forEach(f=>{ const d=Math.hypot(f.pt.x*ZV.k+ZV.ox-x, f.pt.y*ZV.k+ZV.oy-y); if(d<bd){ bd=d; best=f; } }); return best;
+}
+/* 指で動かす・2本指で拡大・タップで木 */
+(function(){
+  const c=$('#zumen'), pts=new Map(); let start=null, moved=false, pinch=null;
+  c.addEventListener('pointerdown',e=>{ c.setPointerCapture(e.pointerId); pts.set(e.pointerId,{x:e.offsetX,y:e.offsetY});
+    if(pts.size===1){ start={x:e.offsetX,y:e.offsetY,ox:ZV.ox,oy:ZV.oy}; moved=false; }
+    if(pts.size===2){ const [a,b]=[...pts.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y),k:ZV.k,ox:ZV.ox,oy:ZV.oy,cx:(a.x+b.x)/2,cy:(a.y+b.y)/2}; moved=true; } });
+  c.addEventListener('pointermove',e=>{ if(!pts.has(e.pointerId)) return; pts.set(e.pointerId,{x:e.offsetX,y:e.offsetY});
+    if(pinch&&pts.size>=2){ const [a,b]=[...pts.values()], k=Math.max(0.05,Math.min(40,pinch.k*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d)); ZV.ox=pinch.cx-(pinch.cx-pinch.ox)*k/pinch.k; ZV.oy=pinch.cy-(pinch.cy-pinch.oy)*k/pinch.k; ZV.k=k; drawZumen(); return; }
+    if(start){ const dx=e.offsetX-start.x, dy=e.offsetY-start.y; if(Math.hypot(dx,dy)>6) moved=true; if(moved){ ZV.ox=start.ox+dx; ZV.oy=start.oy+dy; drawZumen(); } } });
+  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=null;
+    if(pts.size===0){ if(!moved&&start){ const f=zumenTreeAt(start.x,start.y); if(f) onZumenTree(f); } start=null; } };
+  c.addEventListener('pointerup',up); c.addEventListener('pointercancel',e=>{ pts.delete(e.pointerId); pinch=null; start=null; });
+  c.addEventListener('wheel',e=>{ e.preventDefault(); const k=Math.max(0.05,Math.min(40,ZV.k*(e.deltaY<0?1.15:1/1.15))); ZV.ox=e.offsetX-(e.offsetX-ZV.ox)*k/ZV.k; ZV.oy=e.offsetY-(e.offsetY-ZV.oy)*k/ZV.k; ZV.k=k; drawZumen(); },{passive:false});
+})();
+function onZumenTree(f){
+  if(ALN){ alignPickTree(f); return; }
+  const it=itemForTree(cur.id,ZV.rec,f); openPointSheet(it.id); drawZumen();
+}
+/* 地図と合わせる：①木をタップ → その木の場所を「いまここ」か「地図でさす」 ×2本 */
+function alignStart(){
+  ALN={pairs:[]}; drawZumen();
+  toast('1本目：目印にする木を図面でタップしてください',3500);
+}
+function alignPickTree(f){
+  ALN.pick=f;
+  const m=$('#alignModal'); $('#alTitle').textContent=`${ALN.pairs.length+1}本目：${f.cat||''} ${f.kind||''}${f.rank?' '+f.rank:''}`;
+  m.classList.add('on');
+}
+async function alignSetLL(ll){
+  const f=ALN.pick; ALN.pick=null;
+  ALN.pairs.push({fid:treeFid(f),x:f.pt.x,y:f.pt.y,lat:ll.lat,lng:ll.lng});
+  if(ALN.pairs.length<2){ showZumen(true); toast('2本目：はなれた所の木をタップしてください',3500); drawZumen(); return; }
+  const [a,b]=ALN.pairs; ALN=null;
+  if(Math.hypot(a.x-b.x,a.y-b.y)<5){ toast('同じ木です。はなれた2本でやり直してください',3000); return; }
+  setCaseOpt(o=>{ o.parkGeo=Object.assign({},o.parkGeo||{},{[cur.id]:{rec:ZV.rec,a,b}}); });
+  const g=geoOf(cur.id); toast(`地図と合わせました（図面の1マス≒${g?Math.round(g.mpp*100)/100:'?'}m）`,3000);
+  showZumen(true);
+}
+$('#alHere').onclick=async()=>{ $('#alignModal').classList.remove('on'); toast('現在地を取得中…（木のそばで）',3000); const g=await getPositionOnce(); if(!g){ toast('現在地がわかりませんでした。「地図でさす」を使ってください',3500); ALN.pick=null; return; } alignSetLL(g); };
+$('#alMap').onclick=()=>{ $('#alignModal').classList.remove('on'); showZumen(false); placing='align'; updateMapTools(); toast('その木の場所を地図でタップしてください（航空写真が見やすいです）',4000); };
+$('#alCancel').onclick=()=>{ $('#alignModal').classList.remove('on'); ALN=null; drawZumen(); toast('合わせるのをやめました'); };
+$('#mtView').onclick=()=>showZumen(!ZV.on);
+$('#mtAlign').onclick=()=>{ if(geoOf(cur.id)&&!confirm('いまの合わせ方をやり直しますか？')) return; alignStart(); };
+window.addEventListener('resize',()=>{ if(ZV.on) drawZumen(); });
+
 /* 点をタップしたとき：前・中・後（案件の撮り方）を選んで撮影 */
 let sheetItemId=null;
 function openPointSheet(id){
   const it=items.find(i=>i.id===id); if(!it) return; sheetItemId=id;
-  $('#psTitle').textContent=`${it.cat||''}　${it.name||''}`;
+  $('#psTitle').textContent=[koshuLabel(it), it.no?'No.'+it.no:'', it.name||''].filter(Boolean).join('　');
   $('#psMeta').textContent=[it.jushu,it.kikaku,it.memo].filter(Boolean).join(' ／ ')||(it.lat?'':'位置が未登録です（「位置を直す」で置けます）');
   $('#psStages').innerHTML=curStages().map(s=>{ const t=shotLog[id]?.[s];
     return `<button class="${t?'done':''}" data-s="${s}">${t?'✓ ':''}${s}<small>${t?'追加で撮る':'撮影する'}</small></button>`; }).join('');
@@ -2093,13 +2309,13 @@ $('#kmPark').onclick=async()=>{
     $('#kmPreview').querySelectorAll('button').forEach(b=>b.onclick=()=>loadParkRecord(b.dataset.id));
   }catch(e){ toast('読み込めませんでした',3000); }
 };
-let parkFeatures=[];
+let parkFeatures=[], parkRecId='';
 async function loadParkRecord(id){
   try{
     toast('図面を読み込んでいます…',3000);
     const j=await gasGetApp('park',{action:'get',id});
     if(!j.ok) throw new Error(j.error);
-    const d=JSON.parse(j.data); parkFeatures=(d.features||[]).filter(f=>f.cat);
+    const d=JSON.parse(j.data); parkFeatures=(d.features||[]).filter(f=>f.cat); parkRecId=id;
     KM=parkFeatures.map(f=>({ cat:f.cat, kind:f.kind||'', kikaku: f.type==='tree' ? (f.rank?'C='+f.rank:'') : '' }));
     showKM('公園報告の図面の工種・規格');
     const nTree=parkFeatures.filter(f=>f.type==='tree').length, nArea=parkFeatures.length-nTree;
@@ -2120,9 +2336,15 @@ $('#kmAdd').onclick=()=>{
     const kikaku = f.type==='tree' ? (f.rank?'C='+f.rank:'') : (f.area?`${Math.round(f.area*10)/10}㎡`:(f.length?`${Math.round(f.length*10)/10}m`:''));
     const key=`${f.cat}|${f.kind||''}|${f.type==='tree'?kikaku:''}`;
     const no=items.concat(made).filter(i=>i.siteId===siteId&&`${i.cat}|${i.kind||''}|${i.src==='park-tree'?i.kikaku:''}`===key).length+1;
-    made.push({ id:uid(), siteId, cat:f.cat, kind:f.kind||'', kikaku, no:String(no), name:'', jushu:'', memo:'', lat:null, lng:null, src: f.type==='tree'?'park-tree':'park-area', synced:false });
+    const pc = f.type==='tree'&&f.pt ? f.pt : (Array.isArray(f.pts)&&f.pts.length ? {x:f.pts.reduce((a,q)=>a+q.x,0)/f.pts.length, y:f.pts.reduce((a,q)=>a+q.y,0)/f.pts.length} : null);
+    const fid = f.type==='tree'&&f.pt ? treeFid(f) : '';
+    if(fid&&items.some(i=>i.siteId===siteId&&i.parkFid===fid)) return;   // もう項目になっている木
+    made.push({ id:uid(), siteId, cat:f.cat, kind:f.kind||'', kikaku, no:String(no), name:'', jushu:'', memo:f.C?`幹周 C=${f.C}cm`:'', lat:null, lng:null, src: f.type==='tree'?'park-tree':'park-area',
+      parkRec:parkRecId, parkFid:fid, px:pc?pc.x:null, py:pc?pc.y:null, synced:false });
   });
   parkFeatures=[];
+  if(parkRecId&&cur&&cur.id===siteId) setParkRec(siteId,parkRecId);
+  else if(parkRecId){ const k=INFO.key, inf=infos[k]||{key:k}; inf.opts=Object.assign({},inf.opts||{}); inf.opts.parkRec=Object.assign({},inf.opts.parkRec||{},{[siteId]:parkRecId}); infos[k]=inf; F.opts.parkRec=inf.opts.parkRec; }
   items=items.concat(made); saveAll(); made.forEach(pushItem);
   toast(`撮影項目を${made.length}件作りました`,2500);
 };
@@ -2927,7 +3149,9 @@ $('#setCleanup').onclick=async()=>{
   renderHome();
   loadStaff().then(()=>{ if(!me()) openSettings(); });
   loadParkMaster();
-  pushInfos().then(()=>syncAll(true)); processQueue();
+  const ready=pushInfos().then(()=>syncAll(true)); processQueue();
+  const P=new URLSearchParams(location.search);
+  if(P.get('from')==='park'){ history.replaceState(null,'',location.pathname); ready.then(()=>handleParkLink(P)); }
 })();
 </script>
 </body>

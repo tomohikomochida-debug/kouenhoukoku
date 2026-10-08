@@ -50,7 +50,7 @@ var SHEETS = {
   chosa:     { name: '現場調査の案件', head: ['id', 'name', 'date', 'mode', 'n', 'photos', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 中身は Drive の「現場調査データ」、写真は1枚1ファイルで「現場調査データ ＞ 写真」
   chosaPhotos:{ name: '現場調査の写真', head: ['hash', 'fileId', 'mime', 'size', 'at'] },
   parks:     { name: '公園報告',     head: ['id', 'park', 'contract', 'order', 'date', 'figures', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'genzai'] },   // 中身（図面・図形）は Drive の「公園報告データ」に1件1ファイルで置く。genzai＝発生材に使った残材処分の記録（JSON）
-  shashinItems:  { name: '工事写真の撮影項目', head: ['itemId', 'siteId', 'cat', 'name', 'jushu', 'kikaku', 'memo', 'lat', 'lng', 'src', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'kind', 'no'] },   // 地図に置いた点（樹木・除草・補修など）。現場マスタの現場IDでつなぐ
+  shashinItems:  { name: '工事写真の撮影項目', head: ['itemId', 'siteId', 'cat', 'name', 'jushu', 'kikaku', 'memo', 'lat', 'lng', 'src', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'kind', 'no', 'parkRec', 'parkFid', 'px', 'py'] },   // 地図に置いた点（公園報告の図面の木なら、その記録と木の目印・図面上の位置も）。（樹木・除草・補修など）。現場マスタの現場IDでつなぐ
   shashinInfo:   { name: '工事写真の案件情報', head: ['key', 'type', 'contract', 'fy', 'siteId', 'koji', 'orderer', 'sekosha', 'start', 'end', 'tpl', 'memo', 'by', 'at', 'updatedBy', 'updatedAt', 'stages', 'koshuList', 'opts'] },
   shashinBoards:  { name: '工事写真の黒板', head: ['boardId', 'name', 'rows', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // みんなで作った黒板のひな型（rows は項目の並び・JSON）   // 委託は「委託名＋年度」、そのほかは現場ごと。一度入れたら全員が入力なしで撮影へ
   shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
@@ -1366,7 +1366,8 @@ function shashinSite_(siteId) {
 function shashinNum_(v) { return v === '' || v == null || isNaN(Number(v)) ? null : Number(v); }
 function shashinItemOut_(r) {
   return { id: r.itemId, siteId: r.siteId, cat: r.cat, kind: r.kind || '', no: r.no === '' || r.no == null ? '' : String(r.no), name: r.name, jushu: r.jushu, kikaku: r.kikaku, memo: r.memo,
-    lat: shashinNum_(r.lat), lng: shashinNum_(r.lng), src: r.src, by: r.by };
+    lat: shashinNum_(r.lat), lng: shashinNum_(r.lng), src: r.src, by: r.by,
+    parkRec: r.parkRec || '', parkFid: r.parkFid || '', px: shashinNum_(r.px), py: shashinNum_(r.py) };
 }
 function shashinGet_(a, p) {
   if (a === 'data') {
@@ -1406,7 +1407,8 @@ function shashinSaveItems_(items, by) {
   (items || []).forEach(function (it) {
     if (!it || !it.id || !it.siteId) return;
     var obj = { itemId: String(it.id), siteId: String(it.siteId), cat: it.cat || 'その他', kind: it.kind || '', no: it.no == null ? '' : String(it.no), name: it.name || '', jushu: it.jushu || '',
-      kikaku: it.kikaku || '', memo: it.memo || '', lat: it.lat == null ? '' : it.lat, lng: it.lng == null ? '' : it.lng, src: it.src || 'manual', state: '有効' };
+      kikaku: it.kikaku || '', memo: it.memo || '', lat: it.lat == null ? '' : it.lat, lng: it.lng == null ? '' : it.lng, src: it.src || 'manual', state: '有効',
+      parkRec: it.parkRec || '', parkFid: it.parkFid || '', px: it.px == null ? '' : it.px, py: it.py == null ? '' : it.py };
     if (!rows_('shashinItems').some(function (r) { return String(r.itemId) === obj.itemId; })) { obj.by = by || ''; obj.at = now_(); }
     upsert_('shashinItems', 'itemId', 'I', obj, by);
     n++;
