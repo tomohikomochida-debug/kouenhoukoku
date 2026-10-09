@@ -53,7 +53,7 @@ var SHEETS = {
   shashinItems:  { name: '工事写真の撮影項目', head: ['itemId', 'siteId', 'cat', 'name', 'jushu', 'kikaku', 'memo', 'lat', 'lng', 'src', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'kind', 'no', 'parkRec', 'parkFid', 'px', 'py'] },   // 地図に置いた点（公園報告の図面の木なら、その記録と木の目印・図面上の位置も）。（樹木・除草・補修など）。現場マスタの現場IDでつなぐ
   shashinInfo:   { name: '工事写真の案件情報', head: ['key', 'type', 'contract', 'fy', 'siteId', 'koji', 'orderer', 'sekosha', 'start', 'end', 'tpl', 'memo', 'by', 'at', 'updatedBy', 'updatedAt', 'stages', 'koshuList', 'opts'] },
   shashinBoards:  { name: '工事写真の黒板', head: ['boardId', 'name', 'rows', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // みんなで作った黒板のひな型（rows は項目の並び・JSON）   // 委託は「委託名＋年度」、そのほかは現場ごと。一度入れたら全員が入力なしで撮影へ
-  shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
+  shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
 
@@ -394,6 +394,7 @@ function doPost(e) {
       case 'shashin:saveItems':   return withLock_(function () { return shashinSaveItems_(b.items, b.by); });
       case 'shashin:deleteItems': return withLock_(function () { return shashinDeleteItems_(b.ids, b.by); });
       case 'shashin:upload':      return out_(shashinUpload_(b));
+      case 'shashin:uploadRaw':   return out_(shashinUploadRaw_(b));
       case 'shashin:saveInfo':    return withLock_(function () { return shashinSaveInfo_(b.infos, b.by); });
       case 'shashin:saveBoard':   return withLock_(function () { return shashinSaveBoard_(b.board, b.by); });
       case 'shashin:deleteBoard': return withLock_(function () { return upsert_('shashinBoards', 'boardId', 'B', { boardId: String(b.boardId || ''), state: '削除' }, b.by); });
@@ -1461,7 +1462,7 @@ function shashinGet_(a, p) {
     return { ok: true, photos: rows_('shashinPhotos').filter(function (r) { return !p.siteId || String(r.siteId) === String(p.siteId); }).map(function (r) {
       return { photoId: r.photoId, itemId: r.itemId, stage: r.stage, koshu: r.koshu, kikaku: r.kikaku, sokuten: r.sokuten, takenAt: r.takenAt, by: r.by,
         lat: shashinNum_(r.lat), lng: shashinNum_(r.lng), heading: shashinNum_(r.heading), fileName: r.fileName, fileId: r.fileId, url: r.url, excluded: r.excluded === true || String(r.excluded) === 'true' || String(r.excluded) === '1',
-        state: r.state || '', replaces: r.replaces || '', biko: r.biko || '' }; }) };
+        state: r.state || '', replaces: r.replaces || '', biko: r.biko || '', rawFileId: r.rawFileId || '' }; }) };
   }
   if (a === 'folder') {   // ドライブのフォルダを開く（無ければ作る）
     var s = shashinSite_(p.siteId);
@@ -1511,8 +1512,22 @@ function shashinUpdatePhoto_(b) {
   return upsert_('shashinPhotos', 'photoId', 'F', o, b.by);
 }
 /* 写真の中身（報告書のPDF・まとめて渡すときに使う）。工事写真の記録にある写真だけ */
+/* 黒板なしの元写真（画像で出すときに「黒板なし」「両方」を選べるように）。写真と同じフォルダの「黒板なし」に、同じファイル名で置く */
+function shashinUploadRaw_(b) {
+  if (!b.photoId || !b.data) return { ok: false, error: '写真がありません' };
+  var row = null; rows_('shashinPhotos').forEach(function (r) { if (String(r.photoId) === String(b.photoId)) row = r; });
+  if (!row) return { ok: false, error: 'その写真の記録がありません（先に黒板ありの写真を送ってください）' };
+  if (row.rawFileId) return { ok: true, fileId: row.rawFileId, dup: true };
+  var site = shashinSite_(row.siteId) || { kind: '', contract: row.contract, name: row.site };
+  var lock = LockService.getScriptLock(), folder; lock.waitLock(25000);
+  try { folder = subFolder_(shashinFolder_(site), '黒板なし'); } finally { lock.releaseLock(); }
+  var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), 'image/jpeg', shashinClean_(row.fileName) || (b.photoId + '.jpg')));
+  lock.waitLock(25000);
+  try { upsert_('shashinPhotos', 'photoId', 'F', { photoId: String(b.photoId), rawFileId: file.getId() }, b.by); } finally { lock.releaseLock(); }
+  return { ok: true, fileId: file.getId() };
+}
 function shashinPhotoData_(fileId) {
-  var ok = rows_('shashinPhotos').some(function (r) { return String(r.fileId) === String(fileId); });
+  var ok = rows_('shashinPhotos').some(function (r) { return String(r.fileId) === String(fileId) || String(r.rawFileId) === String(fileId); });
   if (!ok) return { ok: false, error: '工事写真の記録にない写真です' };
   var blob = DriveApp.getFileById(fileId).getBlob();
   return { ok: true, mime: blob.getContentType() || 'image/jpeg', data: Utilities.base64Encode(blob.getBytes()) };

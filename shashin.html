@@ -498,7 +498,8 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
     <div class="card">
       <div class="t" style="font-size:16px">写真をまとめて渡す（ZIP）</div>
       <div class="s">ファイル名は「番号_工種_規格_測点_状況.jpg」になります</div>
-      <div class="field" style="margin-top:10px"><label>フォルダ</label><div class="quick" id="rpZip"></div></div>
+      <div class="field" style="margin-top:10px"><label>写真</label><div class="quick" id="rpImg"></div></div>
+      <div class="field"><label>フォルダ</label><div class="quick" id="rpZip"></div></div>
       <button class="btn" id="rpZipGo">写真をまとめる</button>
     </div>
     <div class="progress" id="rpProg"></div>
@@ -767,7 +768,7 @@ const FIELD_CATALOG = [['koji','工事名'],['site','現場名'],['hacchu','発�
 const FIELD_LABELS = Object.fromEntries(FIELD_CATALOG);
 const R_=(k,o)=>Object.assign({k,l:FIELD_LABELS[k]||k},o||{});
 const BUILTIN_BOARDS = [
-  {id:'std',      name:'標準（工事名・工種・測点・撮影日・備考）', rows:[R_('koji',{h:2}),R_('koshu'),R_('sokuten'),R_('date'),R_('biko',{h:4.8,full:true,nolab:true}),R_('sekosha',{h:1.5})]},
+  {id:'std',      name:'役所の委託用（標準：工事名・工種・測点・撮影日・備考・施工者名）', rows:[R_('koji',{h:2}),R_('koshu'),R_('sokuten'),R_('date'),R_('biko',{h:4.8,full:true,nolab:true}),R_('sekosha',{h:1.5})]},
   {id:'std_stage',name:'標準＋状況欄',          rows:[R_('koji',{h:2}),R_('koshu'),R_('sokuten'),R_('stage'),R_('date'),R_('biko',{h:2.2,full:true,nolab:true}),R_('sekosha',{h:1.5})]},
   {id:'park',     name:'公園維持管理（公園名・規格）', rows:[R_('koji',{h:2}),R_('site',{l:'公園名'}),R_('koshu'),R_('kikaku'),R_('sokuten'),R_('date'),R_('biko',{h:2.2,full:true,nolab:true}),R_('sekosha',{h:1.5})]},
   {id:'tree',     name:'樹木（樹種・規格）',      rows:[R_('koji',{h:2}),R_('koshu'),R_('sokuten'),R_('jushu'),R_('kikaku'),R_('date'),R_('biko',{h:2.2,full:true,nolab:true}),R_('sekosha',{h:1.5})]},
@@ -786,13 +787,15 @@ let defaultBoard = (()=>{ try{ return JSON.parse(localStorage.getItem('shashin_d
 let TEMPLATES = {};
 function rebuildTemplates(){ TEMPLATES={}; BUILTIN_BOARDS.concat(customBoards).forEach(t=>{ if(t&&t.id&&Array.isArray(t.rows)) TEMPLATES[t.id]=t; }); }
 rebuildTemplates();
+/* 公共（役所の委託・工事）は役所の委託用の黒板、そのほかは会社の標準 */
+function defaultTplFor(s){ return s&&s.kind==='公共' ? 'std' : defaultBoard; }
 function tplOK(id){ return TEMPLATES[id] ? id : (TEMPLATES[defaultBoard] ? defaultBoard : 'std'); }
 const tplHas = (id,k) => TEMPLATES[tplOK(id)].rows.some(r=>r.k===k);
 
 /* ===== 撮り方（状況の順番） ===== */
 /* 言い方（作業／施工／着手・完了）と並び（前中後・前後・前後中…）の組み合わせで選ぶ */
 const STAGE_WORDS = [['作業前・中・後',['作業前','作業中','作業後']],['施工前・中・後',['施工前','施工中','施工後']],['着手前・施工中・完了',['着手前','施工中','完了']]];
-const STAGE_ORDERS = [['前・中・後',[0,1,2]],['前・後',[0,2]],['前・後・中',[0,2,1]],['前だけ',[0]],['後だけ',[2]]];
+const STAGE_ORDERS = [['前・中・後',[0,1,2]],['前・後',[0,2]],['前・後・中',[0,2,1]],['前だけ',[0]],['中だけ',[1]],['後だけ',[2]]];
 const STAGE_PRESETS = STAGE_ORDERS.map(([l,o])=>[l,o.map(i=>STAGE_WORDS[0][1][i])]);
 const ALL_STAGE_WORDS = [...new Set(STAGE_WORDS.flatMap(w=>w[1]))];
 
@@ -938,11 +941,18 @@ async function processQueue(){
           itemId:p.itemId||'', stage:p.stage||'', board:p.board, fileName:p.fileName, replaces:p.replaces||'', takenAt:new Date(p.takenAt).toISOString(),
           lat:p.lat, lng:p.lng, acc:p.acc, heading:p.heading }});
         if(j.ok){ p.status='done'; p.fileUrl=j.url; p.fileId=j.fileId||''; if(!j.dup) counts[p.siteId]=(counts[p.siteId]||0)+1; } else { p.status='error'; p.err=j.error||''; }
+        if(p.status==='done') await uploadRaw(p);
       }catch(e){ p.status='error'; p.err=String(e); }
       await idbPut(p);
       if(!navigator.onLine) break;
     }
+    // 黒板なしの元写真がまだ送れていないもの（電波が切れたときなど）
+    if(navigator.onLine) for(const p of (await refreshPhotos()).filter(p=>p.status==='done'&&p.raw&&!p.rawUp&&!p.state)) await uploadRaw(p);
   } finally { uploading=false; await refreshPhotos(); updateChip(); if($('#album').classList.contains('active')) renderPhotos(); }
+}
+async function uploadRaw(p){
+  if(!p.raw||p.rawUp) return;
+  try{ const j=await gasPost({mode:'uploadRaw',by:p.staff||me(),photoId:p.id,data:await blobToBase64(p.raw)}); if(j.ok){ p.rawUp=true; p.rawFileId=j.fileId||''; await idbPut(p); } }catch(e){}
 }
 function blobToBase64(b){ return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.readAsDataURL(b); }); }
 function updateChip(){
@@ -1072,7 +1082,7 @@ function openInfo(s,key,opts){
   const y=opts.fy||fyOf(), sameYear=infos[key];
   $('#fStart').value = sameYear&&v.start ? String(v.start).slice(0,10) : (s.contract ? `${y}-04-01` : String(v.start||'').slice(0,10));
   $('#fEnd').value   = sameYear&&v.end   ? String(v.end).slice(0,10)   : (s.contract ? `${y+1}-03-31` : String(v.end||'').slice(0,10));
-  F.tpl = tplOK(v.tpl || defaultBoard); F.stages = Array.isArray(v.stages)&&v.stages.length ? v.stages.slice() : STAGES.slice(); F.koshu = Array.isArray(v.koshuList) ? v.koshuList.slice() : []; F.opts = Object.assign({ noStyle:'no', layout:'one3', zip:'none' }, v.opts||{});
+  F.tpl = tplOK(v.tpl || defaultTplFor(INFO&&INFO.s)); F.stages = Array.isArray(v.stages)&&v.stages.length ? v.stages.slice() : STAGES.slice(); F.koshu = Array.isArray(v.koshuList) ? v.koshuList.slice() : []; F.opts = Object.assign({ noStyle:'no', layout:'one3', zip:'none' }, v.opts||{});
   drawInfoExtras();
   $('#fMemo').value = v.memo || '';
   $('#infoSave').textContent = $('#album').classList.contains('active')||opts.from==='album' ? '保存' : '保存して撮影へ';
@@ -1197,7 +1207,7 @@ function openAlbum(id,key,opt){
   const s=siteOf(id); if(!s) return;
   key = key || infoKey(s,fyOf());
   const info=infos[key]||{};
-  cur={ ...s, tpl: tplOK(info.tpl || tpls[s.id] || defaultBoard), publicKoji: isPublicKoji(s), infoKey:key, fy: info.fy || fyOf() };
+  cur={ ...s, tpl: tplOK(info.tpl || tpls[s.id] || defaultTplFor(s)), publicKoji: isPublicKoji(s), infoKey:key, fy: info.fy || fyOf() };
   $('#albumTitle').textContent=cur.name;
   const b=boards[cur.id]||{};
   const base = info.koji || cur.contract || cur.name;
@@ -2602,9 +2612,9 @@ async function gasGetApp(app,params){
 function targetKeyOf(p){ return p.itemId ? 'I|'+p.itemId : 'B|'+[p.board?.koshu||p.koshu||'', p.board?.kikaku||p.kikaku||'', p.board?.sokuten||p.sokuten||''].join('|'); }
 function allPhotosAll(){   // この端末の写真＋みんなの写真（送信済みは重ならないように）。削除・差し替え済みも入る
   if(!cur) return [];
-  const mine=photosCache.filter(p=>p.siteId===cur.id).map(p=>({ id:p.id, itemId:p.itemId, stage:p.stage, board:p.board, takenAt:p.takenAt, thumb:p.thumb, by:p.staff, local:true, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, acc:p.acc, heading:p.heading }));
+  const mine=photosCache.filter(p=>p.siteId===cur.id).map(p=>({ id:p.id, itemId:p.itemId, stage:p.stage, board:p.board, takenAt:p.takenAt, thumb:p.thumb, by:p.staff, local:true, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, acc:p.acc, heading:p.heading, rawFileId:p.rawFileId||'', hasRaw:!!p.raw }));
   const ids=new Set(mine.map(p=>p.id));
-  const team=teamPhotos.filter(p=>!ids.has(p.photoId)).map(p=>({ id:p.photoId, itemId:p.itemId, stage:p.stage, board:{koshu:p.koshu,sokuten:p.sokuten,kikaku:p.kikaku||'',biko:p.biko||''}, takenAt:new Date(String(p.takenAt).replace(' ','T')).getTime()||0, url:p.url, by:p.by, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, heading:p.heading }));
+  const team=teamPhotos.filter(p=>!ids.has(p.photoId)).map(p=>({ id:p.photoId, itemId:p.itemId, stage:p.stage, board:{koshu:p.koshu,sokuten:p.sokuten,kikaku:p.kikaku||'',biko:p.biko||''}, takenAt:new Date(String(p.takenAt).replace(' ','T')).getTime()||0, url:p.url, by:p.by, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, heading:p.heading, rawFileId:p.rawFileId||'', hasRaw:!!p.rawFileId }));
   return mine.concat(team);
 }
 function allPhotosHere(){   // 見えている写真（削除したもの・撮り直しで入れ替わった前の写真は除く）
@@ -2700,6 +2710,7 @@ function drawReportUI(){
   chip('#rpLayout',LAYOUTS.map(x=>[x[0],x[1]]),v=>RP.layout===v,v=>RP.layout=v);
   chip('#rpParts',[['cover','表紙'],['check','撮影チェック表'],['lines','所見を書く罫線']],v=>RP[v],v=>RP[v]=!RP[v]);
   chip('#rpZip',ZIPS,v=>RP.zip===v,v=>RP.zip=v);
+  chip('#rpImg',[['on','黒板あり'],['off','黒板なし'],['both','両方（フォルダを分ける）']],v=>(RP.img||'on')===v,v=>RP.img=v);
   drawCoverUI();
   const ts=reportTargets();
   $('#rpOrder').innerHTML=ts.map((t,i)=>`<div class="tordRow"><span style="width:22px;color:var(--sub)">${i+1}</span><div class="nm">${esc(t.label)}<small>${esc(t.sub)} ・ ${t.ph.length}枚</small></div><button data-up="${i}">↑</button><button data-dn="${i}">↓</button></div>`).join('')||'<div class="s">写真がまだありません</div>';
@@ -2924,16 +2935,19 @@ $('#rpZipGo').onclick=async()=>{
   try{
     prog('準備しています…');
     await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
-    const zip=new JSZip(); let i=0; const total=ts.reduce((a,t)=>a+t.ph.length,0);
+    const zip=new JSZip(); let i=0, noRaw=0; const total=ts.reduce((a,t)=>a+t.ph.length,0), mode=RP.img||'on';
     for(const t of ts){ for(const p of t.ph){
       prog(`写真をまとめています… ${i+1} / ${total}`);
       const b=p.board||{}, dir = RP.zip==='koshu' ? cleanName(b.koshu||'工種なし')+'/' : RP.zip==='koshu_no' ? cleanName(b.koshu||'工種なし')+'/'+(cleanName(b.sokuten)||'測点なし')+'/' : '';
-      try{ zip.file(dir+photoFileName(p,i), await photoBlob(p)); }catch(e){}
+      const top = mode==='both' ? ['黒板あり/','黒板なし/'] : [''];
+      if(mode!=='off'){ try{ zip.file(top[0]+dir+photoFileName(p,i), await photoBlob(p)); }catch(e){} }
+      if(mode!=='on'){ try{ zip.file((mode==='both'?top[1]:'')+dir+photoFileName(p,i), await rawBlob(p)); }catch(e){ noRaw++; } }
       i++; } }
+    if(noRaw) toast(`黒板なしの写真が無いものが ${noRaw}枚ありました（この機能より前に撮った写真・ほかの端末でまだ送っていない写真）`,5000);
     prog('ファイルにしています…');
     const blob=await zip.generateAsync({type:'blob'});
     prog('できました。保存先・送り先を選んでください');
-    await shareFile(new File([blob],`写真_${cleanName(cur.name)}.zip`,{type:'application/zip'}));
+    await shareFile(new File([blob],`写真_${cleanName(cur.name)}${(RP.img||'on')==='off'?'_黒板なし':(RP.img==='both'?'_黒板あり・なし':'')}.zip`,{type:'application/zip'}));
   }catch(e){ prog(''); toast('まとめられませんでした：'+(e.message||e),4000); }
 };
 
@@ -3307,6 +3321,15 @@ async function photoBlob(p){
   if(!j.ok) throw new Error(j.error||'');
   const bin=atob(j.data), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
   const blob=new Blob([u],{type:j.mime||'image/jpeg'}); imgCache.set(p.id,blob); return blob;
+}
+/* 黒板なしの元写真：この端末にあればそれ、なければドライブの「黒板なし」から */
+async function rawBlob(p){
+  const lp=photosCache.find(x=>x.id===p.id); if(lp&&lp.raw) return lp.raw;
+  const fid=p.rawFileId||(lp&&lp.rawFileId); if(!fid) throw new Error('黒板なしの写真がありません');
+  if(imgCache.has('raw_'+p.id)) return imgCache.get('raw_'+p.id);
+  const j=await gasGet({action:'photoData',fileId:fid},60000); if(!j.ok) throw new Error(j.error||'');
+  const bin=atob(j.data), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+  const blob=new Blob([u],{type:j.mime||'image/jpeg'}); imgCache.set('raw_'+p.id,blob); return blob;
 }
 let VA=null;
 async function openViewerAny(id){
