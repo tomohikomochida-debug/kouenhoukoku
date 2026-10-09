@@ -656,11 +656,14 @@ function renderForm() {
       <div class="row2"><div>${lbl('日付', 1)}${inp('date', '', 'date')}</div><div>${lbl('時刻', 1)}${inp('time', '', 'time')}</div></div>
       ${lbl('天気')}${chips('weather', WEATHERS)}
       ${car ? lbl('路面') + chips('road', ROADS) : ''}
-      ${lbl('場所', 1)}<div class="row2" style="margin-bottom:6px"><button type="button" class="btn sm" id="geoBtn">📍 今いる場所を入れる</button>${pl.lat ? `<a class="btn sm" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${pl.lat},${pl.lng}">🗺 地図で見る</a>` : ''}</div>
-      ${inp('place.address', '例：川崎市高津区○○ ○○交差点の手前')}
-      ${pl.lat ? `<p class="hint">位置を記録しました（誤差 約${Math.round(pl.acc || 0)}m）</p>` : ''}
-      ${lbl('位置図（地図に場所の印）')}<p class="hint" style="margin-top:0">地図を拡大・縮小して範囲を決め、事故の場所に📍を置いた図を残します（報告書PDFに載ります）</p>
-      <div class="row2"><button type="button" class="btn sm" id="mapBtn">🗺 地図で場所を示す</button><button type="button" class="btn sm" id="mapShotBtn">🖼 Googleマップのスクショから</button></div>
+      ${lbl('事故の場所', 1)}
+      <div class="note" style="margin-top:0"><b>場所は必ず地図で確かめます</b>ボタンを押すと地図が開きます。<b>真ん中の📍が事故の起きた場所に重なるまで地図を動かしてから</b>「この場所で決定」を押してください。<br>スマホの「今いる場所」は、事故の場所とずれていることがよくあります（事務所に戻ってから書いている・電波で位置がずれる など）。</div>
+      <div class="row2" style="margin-bottom:6px"><button type="button" class="btn sm${pl.confirmed ? '' : ' primary'}" id="geoBtn">📍 今いる場所から合わせる</button><button type="button" class="btn sm${pl.confirmed ? '' : ' primary'}" id="mapBtn">🗺 地図で探して合わせる</button></div>
+      ${pl.confirmed && pl.lat ? `<div class="note green" style="margin:6px 0"><b>✓ 地図で確かめた場所</b>緯度 ${esc(pl.lat)}　経度 ${esc(pl.lng)}（${esc(pl.method || '')}）<br><a href="https://www.google.com/maps?q=${pl.lat},${pl.lng}" target="_blank" rel="noopener">Googleマップで見る</a>　違っていたら、もう一度ボタンから合わせ直してください</div>`
+        : `<div class="note red" style="margin:6px 0"><b>まだ場所を確かめていません</b>上のボタンから地図で合わせてください（送る前に必要です）</div>`}
+      ${lbl('住所')}${inp('place.address', '例：川崎市高津区○○ ○○交差点の手前（地図で決めると自動で入ります）')}
+      ${lbl('位置図（地図に場所の印）')}<p class="hint" style="margin-top:0">上のボタンで場所を決めると、そのときの地図の範囲がそのまま位置図になります（報告書PDFに載ります）。Googleマップのスクショを使うこともできます</p>
+      <div class="row2"><button type="button" class="btn sm" id="mapShotBtn">🖼 Googleマップのスクショから</button></div>
       ${(() => { const m = photosOf(dr.id, 'map')[0]; return m ? `<div class="thumbs">${thumbHtml(m)}</div><p class="hint">位置図は1枚です。作り直すと入れ替わります</p>` : ''; })()}
       ${lbl('目印')}${inp('place.note', '交差点名・電柱の番号・お店の名前など')}
       ${car ? lbl('場所の種類') + chips('place.type', PLACE_TYPES, {}) : ''}
@@ -856,7 +859,7 @@ function bindForm() {
       touchDraft(); renderForm(); return;
     }
     const t = e.target.closest('button'); if (!t) return;
-    if (t.id === 'geoBtn') return getGeo(false, true);
+    if (t.id === 'geoBtn') return openMapPicker(dr.id, { fromGps: true });
     if (t.id === 'witAdd') { (dr.data.witnesses = dr.data.witnesses || []).push({ name: '', contact: '' }); touchDraft(); renderForm(); return; }
     if (t.dataset.witdel != null) { dr.data.witnesses.splice(+t.dataset.witdel, 1); touchDraft(); renderForm(); return; }
     if (t.dataset.cam) return pickPhoto(t.dataset.cam, true);
@@ -877,6 +880,7 @@ function bindForm() {
     if (el.dataset.k === 'driverId') dr.data.driver = staffName(el.value);
     if (el.dataset.k === 'rousai.staffId') dr.data.rousai.staff = staffName(el.value);
     if (el.dataset.k === 'car.vehicleId') { const v = vehicleById(el.value); if (v) { dr.data.car.vehicle = v.name; dr.data.car.plate = v.plate || ''; ['otherType', 'lender', 'lenderTel', 'lenderIns', 'lendNote'].forEach(k => delete dr.data.car[k]); } else { dr.data.car.vehicle = ''; dr.data.car.plate = ''; } }
+    if (el.dataset.k === 'place.address') dr.data.place.addressAuto = false;
     if (el.dataset.k === 'work.site') { const s = S.sites.find(x => x.name === el.value); dr.data.work.siteId = s ? s.id : ''; }
     if (el.dataset.k === 'car.site') { const s = S.sites.find(x => x.name === el.value); dr.data.car.siteId = s ? s.id : ''; }
     touchDraft();
@@ -896,6 +900,10 @@ async function sendDraft() {
   if (!d.kind) miss.push('事故の種類'); if (!d.party) miss.push('相手の有無');
   if (!(dm.ownThing || dm.theirThing || dm.ownPerson || dm.theirPerson || dm.none)) miss.push('被害');
   if (!d.date) miss.push('日付'); if (!(d.place && (d.place.address || d.place.lat))) miss.push('場所');
+  if (!miss.length && !(d.place || {}).confirmed) {
+    if (navigator.onLine) { toast('事故の場所を地図で確かめてください', 3500); openMapPicker(dr.id, { fromGps: !d.place.lat }); return; }
+    if (!confirm('電波がないので、事故の場所を地図で確かめられていません。\n住所の欄の内容で送り、あとで電波のある所で地図で合わせ直しますか？')) return;
+  }
   if (!d.driverId) miss.push(d.kind === 'car' ? '運転していた人' : '作業していた人');
   if (d.kind === 'car' && !(d.car || {}).purpose) miss.push('移動の目的');
   if (d.kind === 'car' && (d.car || {}).vehicleId === '__other' && !(d.car || {}).otherType) miss.push('どんな車か（レンタカー・借りた車など）');
@@ -927,7 +935,7 @@ function getGeo(silent, setAddr) {
     lastGeo = { lat: +pos.coords.latitude.toFixed(6), lng: +pos.coords.longitude.toFixed(6), acc: pos.coords.accuracy };
     const dr = curDraft(); if (!dr) return;
     const pl = dr.data.place || (dr.data.place = {});
-    if (silent && pl.lat) return;
+    if (silent) { if (!pl.reportGps) { pl.reportGps = Object.assign({ at: nowStr() }, lastGeo, { acc: Math.round(pos.coords.accuracy) }); touchDraft(); } return; }   // 書き始めた所の位置（事故の場所とは別に控えるだけ）
     Object.assign(pl, lastGeo); touchDraft();
     if ((setAddr || !pl.address) && navigator.onLine) {
       try { const j = await api('address', { lat: pl.lat, lng: pl.lng }, 15000); if (j.ok && j.address && (setAddr || !pl.address)) { pl.address = j.address; touchDraft(); } } catch (e) {}
@@ -1124,41 +1132,55 @@ async function saveMapImage(caseId, canvas, caption, lat, lng) {
   const p = { photoId: 'P' + Date.now().toString(36) + rid(), caseId, slot: 'map', caption, takenAt: nowStr(), lat: lat == null ? '' : lat, lng: lng == null ? '' : lng, blob, raw: null, sent: false, at: nowStr() };
   await DB.pput(p); S.localPhotos.push(p); await keepLatestSlot(caseId, 'map', '位置図');
 }
-async function openMapPicker(caseId) {
+async function openMapPicker(caseId, opt = {}) {
   const dr = S.drafts[caseId], pl = (dr && dr.data.place) || {};
   if (!navigator.onLine) { toast('地図は電波があるときに使えます。あとで作り直せます', 3500); return; }
   try { await loadLeaflet(); } catch (e) { toast(e.message); return; }
   $('#modal').dataset.lock = '1';
-  openModal(`<h3>🗺 位置図をつくる</h3><p class="hint" style="margin-top:0">事故の場所が真ん中の📍に来るように地図を動かし、拡大・縮小して見せたい範囲を決めてください</p>
+  openModal(`<h3>📍 事故の場所を合わせる</h3>
+    <div class="note" style="margin-top:0">${opt.fromGps ? '<b>今いる位置を出しました。事故の場所と同じとは限りません</b>' : '<b>事故の場所を探してください</b>'}
+      地図を指で動かして、<b>真ん中の📍の先が事故の起きた所に重なるように</b>してください。交差点・建物・道の形を見て合わせます。2本指で拡大・縮小できます。</div>
+    <div id="pkStat" class="hint" style="margin:0 0 6px">${opt.fromGps ? '今いる位置を調べています…' : ''}</div>
     <div style="position:relative;aspect-ratio:4/3;max-height:62vh;border-radius:10px;overflow:hidden;border:1px solid var(--line)"><div id="pkMap" style="position:absolute;inset:0"></div>
       <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);font-size:40px;line-height:1;pointer-events:none;z-index:500;filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))">📍</div></div>
     <div class="row2" style="margin-top:8px"><button type="button" class="btn sm" id="pkHere">📍 今いる場所へ</button><button type="button" class="btn sm" id="pkKind">🛰 航空写真にする</button></div>
-    <div class="row2" style="margin-top:10px"><button type="button" class="btn" id="pkCancel">やめる</button><button type="button" class="btn primary" id="pkTake">この範囲で位置図にする</button></div>
-    <p class="hint">地図：国土地理院</p>`);
+    <label style="display:flex;gap:8px;align-items:center;font-size:14.5px;margin-top:10px"><input type="checkbox" id="pkMake" checked> この地図の範囲を位置図として残す（報告書PDFに載ります）</label>
+    <div class="row2" style="margin-top:10px"><button type="button" class="btn" id="pkCancel">やめる</button><button type="button" class="btn primary" id="pkTake">この場所で決定</button></div>
+    <p class="hint">地図：国土地理院。決定すると、真ん中の位置（緯度・経度）が事故の場所として記録されます</p>`);
   let kind = 'std';
   const start = pl.lat ? [pl.lat, pl.lng] : (lastGeo ? [lastGeo.lat, lastGeo.lng] : [35.5943, 139.596]);
   const map = L.map('pkMap', { zoomControl: true, attributionControl: false }).setView(start, 17);
   let layer = L.tileLayer(GSI_TILES[kind].url, { maxZoom: 19, maxNativeZoom: 18 }).addTo(map);
   setTimeout(() => map.invalidateSize(), 200);
-  if (!pl.lat) navigator.geolocation && navigator.geolocation.getCurrentPosition(pos => map.setView([pos.coords.latitude, pos.coords.longitude], 17), () => {}, { enableHighAccuracy: true, timeout: 10000 });
+  let accCircle = null;
+  const showGps = (pos, z) => {
+    const ll = [pos.coords.latitude, pos.coords.longitude], acc = Math.round(pos.coords.accuracy || 0);
+    lastGeo = { lat: +ll[0].toFixed(6), lng: +ll[1].toFixed(6), acc };
+    map.setView(ll, z || 18);
+    if (accCircle) map.removeLayer(accCircle);
+    accCircle = L.circle(ll, { radius: Math.max(acc, 5), color: '#2B5287', weight: 1, fillOpacity: .08 }).addTo(map);
+    const st = $('#pkStat'); if (st) st.innerHTML = `青い丸が「今いる位置」です（誤差 約${acc}m）。<b>事故の場所がここでなければ、地図を動かして合わせてください</b>`;
+  };
+  if (opt.fromGps || !pl.lat) navigator.geolocation && navigator.geolocation.getCurrentPosition(pos => showGps(pos), () => { const st = $('#pkStat'); if (st) st.textContent = '今いる位置がとれませんでした。地図を動かして事故の場所を探してください'; }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
   const close = () => { delete $('#modal').dataset.lock; map.remove(); closeModal(); };
   $('#pkCancel').onclick = close;
-  $('#pkHere').onclick = () => navigator.geolocation && navigator.geolocation.getCurrentPosition(pos => map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 17)), () => toast('位置がとれませんでした'), { enableHighAccuracy: true, timeout: 10000 });
+  $('#pkHere').onclick = () => navigator.geolocation && navigator.geolocation.getCurrentPosition(pos => showGps(pos, Math.max(map.getZoom(), 17)), () => toast('位置がとれませんでした'), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
   $('#pkKind').onclick = () => { kind = kind === 'std' ? 'photo' : 'std'; map.removeLayer(layer); layer = L.tileLayer(GSI_TILES[kind].url, { maxZoom: 19, maxNativeZoom: 18 }).addTo(map); $('#pkKind').textContent = kind === 'std' ? '🛰 航空写真にする' : '🗺 地図にする'; };
   $('#pkTake').onclick = async () => {
-    const btn = $('#pkTake'); btn.disabled = true; btn.innerHTML = '<span class="loading"></span> 位置図にしています';
+    const ctr = map.getCenter();
+    if (opt.fromGps && lastGeo && map.distance(ctr, [lastGeo.lat, lastGeo.lng]) < 3 && !confirm('地図を動かしていません。\n事故の場所は、本当に今いる場所と同じですか？\n（違うときは「キャンセル」を押して、地図を動かして合わせてください）')) return;
+    const btn = $('#pkTake'); btn.disabled = true; btn.innerHTML = '<span class="loading"></span> 記録しています';
     try {
-      const cv = await mapToCanvas(map, kind);
-      const ctr = map.getCenter();
-      await saveMapImage(caseId, cv, '位置図（' + GSI_TILES[kind].name + '）', +ctr.lat.toFixed(6), +ctr.lng.toFixed(6));
-      if (dr) {   // 真ん中の位置を事故の場所として記録（住所が空なら調べて入れる）
+      if ($('#pkMake').checked) { try { const cv = await mapToCanvas(map, kind); await saveMapImage(caseId, cv, '位置図（' + GSI_TILES[kind].name + '）', +ctr.lat.toFixed(6), +ctr.lng.toFixed(6)); } catch (e) { toast(e.message, 4000); } }
+      if (dr) {   // 真ん中の位置を事故の場所として記録（住所は地図の場所から調べ直す）
         const pl2 = dr.data.place || (dr.data.place = {});
         pl2.lat = +ctr.lat.toFixed(6); pl2.lng = +ctr.lng.toFixed(6); pl2.acc = '';
-        if (!pl2.address) { try { const j = await api('address', { lat: pl2.lat, lng: pl2.lng }, 15000); if (j.ok && j.address) pl2.address = j.address; } catch (e) {} }
+        pl2.confirmed = true; pl2.method = opt.fromGps ? '今いる場所から地図で確認' : '地図で指定'; pl2.confirmedAt = nowStr();
+        try { const j = await api('address', { lat: pl2.lat, lng: pl2.lng }, 15000); if (j.ok && j.address && (!pl2.address || pl2.addressAuto !== false)) { pl2.address = j.address; pl2.addressAuto = true; } } catch (e) {}
         touchDraft();
       }
-      close(); if (curDraft()) renderForm(); else if (S.view && S.view.name === 'case') renderCase(caseId); sync(); toast('位置図を入れました');
-    } catch (e) { btn.disabled = false; btn.textContent = 'この範囲で位置図にする'; toast(e.message, 4500); }
+      close(); if (curDraft()) renderForm(); else if (S.view && S.view.name === 'case') renderCase(caseId); sync(); toast('事故の場所を記録しました');
+    } catch (e) { btn.disabled = false; btn.textContent = 'この場所で決定'; toast(e.message, 4500); }
   };
 }
 const wmPx = (lat, lng, z) => { const n = 256 * Math.pow(2, z), s = Math.sin(lat * Math.PI / 180); return { x: (lng + 180) / 360 * n, y: (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n }; };
@@ -1267,7 +1289,9 @@ function reportRows(d) {
   const car = d.kind === 'car', c = d.car || {}, w = d.work || {}, o = d.other || {}, dm = d.damage || {}, r = d.rousai || {}, po = d.police || {}, ld = c.load || {};
   const dmg = [dm.ownThing && '自社の物', dm.theirThing && '相手の物', dm.ownPerson && '自社の人のけが', dm.theirPerson && '相手の人のけが', dm.none && '被害なし'].filter(Boolean).join('・');
   const S1 = [['事故の種類', [car ? '車両事故' : '作業事故', d.party === 'other' ? '相手あり' : '単独（自損）', d.party === 'other' ? ({ we: 'こちらが当てた', they: '当てられた', unknown: '双方・はっきりしない' }[d.who] || '') : ''].filter(Boolean).join('・')], ['被害', dmg]];
-  const S2 = [['日時', v2(jaDate(d.date), d.time)], ['天気・路面', v2(d.weather, d.road)], ['場所', [d.place && d.place.address, d.place && d.place.note ? '（目印：' + d.place.note + '）' : '', d.place && d.place.type].filter(Boolean).join('\n')]];
+  const pl = d.place || {};
+  const S2 = [['日時', v2(jaDate(d.date), d.time)], ['天気・路面', v2(d.weather, d.road)], ['場所', [pl.address, pl.note ? '（目印：' + pl.note + '）' : '', pl.type].filter(Boolean).join('\n')],
+    ['座標（緯度・経度）', pl.lat ? pl.lat + ', ' + pl.lng + (pl.confirmed ? '' : '（地図で未確認）') : '']];
   const S3 = car ? [['移動の目的', c.purpose], ...(c.purpose === ONSITE ? [['現場名', c.site], ['現場でしていたこと', c.onsite]] : [['出発地→目的地', [c.from, c.to].filter(Boolean).join(' → ')], ['関連する現場', c.relSite]]), ['車両', [c.vehicle, c.plate].filter(Boolean).join('　')], ...(c.vehicleId === '__other' ? [['車の区分', '会社に登録していない車' + (c.otherType ? '（' + c.otherType + '）' : '')], ['借りた先・持ち主', [c.lender, c.lenderTel].filter(Boolean).join('　')], ['その車の保険', c.lenderIns], ['借りた条件', c.lendNote]] : []), ['運転者', d.driver],
     ['業務中・通勤中', c.commute], ['積載物', c.loadOn === '荷物あり' ? [(ld.kinds || []).join('・'), ld.amount, ld.cover, ld.spill ? '積荷：' + ld.spill : ''].filter(Boolean).join('　') : c.loadOn],
     ['事故の形', [c.scene, c.signal, c.speed ? '速度：' + c.speed : ''].filter(Boolean).join('　')], ['ドライブレコーダー', c.recorder], ['車の状態', c.drivable], ['アルコールチェック', c.alcohol]]

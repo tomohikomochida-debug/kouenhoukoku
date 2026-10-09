@@ -2919,7 +2919,7 @@ function transcribe_(b) {
 var JIKO_SHEET_NAME = '事故報告データ（社外秘）';
 var JIKO_COLS = {
   cases: { name: '事故報告', cols: [['id', '管理ID'], ['no', '報告番号'], ['state', '状態'], ['stage', '進み具合'], ['kind', '事故の種類'], ['party', '相手'], ['who', 'どちらが'], ['damage', '被害'],
-    ['date', '発生日'], ['time', '時刻'], ['place', '場所'], ['driver', '当事者'], ['members', '同乗者・作業班'], ['reporter', '報告者'], ['vehicle', '車両'], ['site', '現場'], ['route', '移動（目的・出発→目的地）'],
+    ['date', '発生日'], ['time', '時刻'], ['place', '場所'], ['lat', '緯度'], ['lng', '経度'], ['placeOk', '場所の確認'], ['driver', '当事者'], ['members', '同乗者・作業班'], ['reporter', '報告者'], ['vehicle', '車両'], ['site', '現場'], ['route', '移動（目的・出発→目的地）'],
     ['other', '相手・持ち主'], ['police', '警察'], ['insurer', '保険会社'], ['insReceipt', '事故受付番号'], ['insUse', '保険の使い方'], ['cost', '修理費・支払い'], ['rousai', '労災'], ['lso', '労働基準監督署'], ['shared', 'みんなに共有'],
     ['createdAt', '報告日時'], ['updatedBy', '更新者'], ['updatedAt', '更新日時'], ['folderUrl', 'フォルダ'], ['folderId', 'フォルダID'], ['data', '（アプリ用：報告の中身）'], ['boss', '（アプリ用：親方の記録）']] },
   logs: { name: '経過記録', cols: [['logId', '記録ID'], ['caseId', '管理ID'], ['no', '報告番号'], ['at', '日時'], ['by', '書いた人'], ['text', '内容'], ['showParty', '当事者にも見せる'], ['kind', '種類'], ['state', '状態']] },
@@ -3124,7 +3124,8 @@ function jkFlat_(c) {
   var pol = d.police || {};
   return {
     kind: JK_JA[d.kind] || '', party: JK_JA[d.party] || '', who: d.party === 'other' ? (JK_JA[d.who] || '') : '', damage: dmg,
-    date: d.date || '', time: d.time || '', place: (d.place && d.place.address) || '',
+    date: d.date || '', time: d.time || '', place: (d.place && d.place.address) || '', lat: (d.place && d.place.lat) || '', lng: (d.place && d.place.lng) || '',
+    placeOk: d.place && d.place.confirmed ? (d.place.method || '地図で確認') : (d.place && d.place.lat ? '未確認' : ''),
     driver: d.driver || '', members: (d.members || []).join('、'), reporter: d.reporter || '',
     vehicle: [car.vehicle, car.plate, car.vehicleId === '__other' ? '（' + ['登録外', car.otherType, car.lender].filter(Boolean).join('・') + '）' : ''].filter(Boolean).join(' '), site: wk.site || car.site || car.relSite || '',
     route: d.kind === 'car' ? (car.purpose === '現場の中' ? ['現場の中', car.onsite].filter(Boolean).join('：') : [car.purpose, [car.from, car.to].filter(Boolean).join('→')].filter(Boolean).join('：')) : '',
