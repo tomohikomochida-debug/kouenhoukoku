@@ -547,7 +547,7 @@ function renderSteps() {
   setHeader('🚨 事故直後にやること', true); setBottom('');
   $('#tabs').hidden = true;
   const st = S.settings || {}, bossTel = (st.bossPhone || '').replace(/[^\d+]/g, '');
-  const vs = S.vehicles.filter(v => (st.vehicles || {})[v.id] && (st.vehicles[v.id].road || st.vehicles[v.id].insurerPhone));
+  const f = fleet();
   const done = S.stepDone || (S.stepDone = {});
   const li = (k, title, hint, act = '') => `<li class="${done[k] ? 'done' : ''}" data-step="${k}"><button class="ck" type="button">✓</button><div class="bd"><b>${title}</b>${hint ? `<div class="hint">${hint}</div>` : ''}${act ? `<div class="act">${act}</div>` : ''}</div></li>`;
   $('#main').innerHTML = `
@@ -562,7 +562,8 @@ function renderSteps() {
       ${li('lso', 'クレーン・ユニックが倒れた／けがで休む人が出た', 'けががなくても労働基準監督署への報告が必要なことがあります。親方が連絡します。報告の画面で「機械・設備の事故」を選ぶと、必要かどうかが出ます')}
       ${li('photo', '写真を撮って報告を書く', '全景（引き）→ 損傷（寄り）→ ナンバー → 周りの様子。下のボタンから')}
     </ul></div>
-    ${vs.length ? `<div class="card"><h2>🚛 車が動かないとき（ロードサービス）</h2>${vs.map(v => { const x = st.vehicles[v.id]; const tel = (x.road || x.insurerPhone || '').replace(/[^\d+]/g, ''); return `<div class="row2" style="align-items:center;margin-bottom:6px"><span>${esc(v.name)} <small class="hint">${esc(v.plate || '')}</small></span><a class="btn sm" style="flex:0 0 auto" href="tel:${esc(tel)}">📞 ${x.road ? 'ロードサービス' : '保険会社'}</a></div>`; }).join('')}</div>` : ''}
+    ${telOf(f.road) || telOf(f.phone) ? `<div class="card"><h2>🚛 会社の車が動かないとき</h2><p class="hint" style="margin-top:0">会社の車はすべて同じ保険（${esc(f.name || 'フリート契約')}）です${f.policy ? '。証券番号：' + esc(f.policy) : ''}</p>
+      <div class="row2">${telOf(f.road) ? `<a class="btn" href="tel:${esc(telOf(f.road))}">📞 ロードサービス</a>` : ''}${telOf(f.phone) ? `<a class="btn" href="tel:${esc(telOf(f.phone))}">📞 事故受付</a>` : ''}</div></div>` : ''}
     <button class="btn primary block" id="toForm" style="min-height:56px;font-size:17px">📝 報告を書く（写真から）</button>`;
   document.querySelectorAll('[data-step] .ck').forEach(b => b.onclick = () => { const k = b.closest('li').dataset.step; done[k] = !done[k]; b.closest('li').classList.toggle('done', done[k]); });
   $('#toForm').onclick = () => startDraft(true);
@@ -825,9 +826,12 @@ function licWarn(d) {
   if (!need || !have || have >= need) return '';
   return `${staffName(d.driverId)}さんの免許（${S.settings.licenses[d.driverId]}）では、この車（${vs.license}以上が必要）は運転できない区分かもしれません。区分が合っていないと保険が出ないことがあります。`;
 }
+const fleet = () => ((S.settings || {}).insurance || {}).auto || {};
+const telOf = t => String(t || '').replace(/[^\d+]/g, '');
 function roadServiceNote(vid) {
-  const x = (S.settings.vehicles || {})[vid] || {}, tel = (x.road || x.insurerPhone || '').replace(/[^\d+]/g, '');
-  return `<div class="note"><b>ロードサービス</b>${tel ? `<a class="btn sm" href="tel:${esc(tel)}" style="margin-top:4px">📞 ${x.road ? 'ロードサービスに電話' : '保険会社に電話'}</a>` : '車の保険のロードサービスを使えます。番号がわからなければ親方へ。'}</div>`;
+  const f = fleet(), own = vid && vid !== '__other';
+  if (!own) return '<div class="note"><b>ロードサービス</b>借りた車は、レンタカー会社・持ち主の保険のロードサービスを使います。わからなければ親方へ。</div>';
+  return `<div class="note"><b>ロードサービス（会社の車の保険）</b>${f.policy ? `証券番号：${esc(f.policy)}<br>` : ''}${telOf(f.road) ? `<a class="btn sm" href="tel:${esc(telOf(f.road))}" style="margin-top:4px">📞 ロードサービスに電話</a> ` : ''}${telOf(f.phone) ? `<a class="btn sm" href="tel:${esc(telOf(f.phone))}" style="margin-top:4px">📞 事故受付に電話</a>` : ''}${!telOf(f.road) && !telOf(f.phone) ? '番号がわからなければ親方へ。' : ''}</div>`;
 }
 function bindForm() {
   const m = $('#main'), dr = curDraft();
@@ -1283,7 +1287,7 @@ function vehLogHint(c) {
 }
 function defaultInsurer(c) {
   const d = c.data || {}, st = S.settings || {}, ins = st.insurance || {};
-  if (d.kind === 'car') { const v = (st.vehicles || {})[(d.car || {}).vehicleId] || {}; return v.insurer || (ins.auto || {}).name || ''; }
+  if (d.kind === 'car') { const vid = (d.car || {}).vehicleId; if (vid === '__other') return ''; const v = (st.vehicles || {})[vid] || {}; return v.insurer || (ins.auto || {}).name || ''; }
   return (ins.work || {}).name || '';
 }
 function bindCase(c) {
@@ -1506,12 +1510,15 @@ function renderSettings() {
     <div class="card"><h2>🏢 会社（PDFに載ります）</h2>${si('company.name', '会社名')}<div style="height:6px"></div>${si('company.address', '住所')}<div style="height:6px"></div>${si('company.phone', '電話番号', 'tel')}</div>
     <div class="card"><h2>📞 連絡先・お知らせ</h2><label class="lbl">親方の携帯（事故直後の画面に「親方に電話」が出ます）</label>${si('contacts.bossPhone', '090-…', 'tel')}
       <label class="lbl">新しい報告を知らせるメールの宛先</label>${si('contacts.notifyEmail', '空欄なら、GASの持ち主のアドレス', 'email')}</div>
-    <div class="card"><h2>🛡 会社の保険</h2>
-      ${[['auto', '自動車保険（代理店・保険会社）'], ['work', '請負業者賠償責任保険'], ['rousai', '労災の上乗せ保険'], ['machine', '動産・機械の保険']].map(([k, t]) => `<h3>${t}</h3><div class="row2"><div>${si('insurance.' + k + '.name', '保険会社・代理店')}</div><div>${si('insurance.' + k + '.phone', '電話', 'tel')}</div></div><div style="height:6px"></div>${si('insurance.' + k + '.policy', '証券番号')}`).join('')}</div>
-    <div class="card"><h2>🚚 車ごとの保険・ロードサービス・必要な免許</h2>
+    <div class="card"><h2>🚗 会社の車の保険（フリート契約）</h2><p class="hint" style="margin-top:0">会社の車は全部この契約で入っている前提です。報告書PDFの証券番号・事故直後の画面のロードサービスに使います</p>
+      <div class="row2"><div><label class="lbl">保険会社</label>${si('insurance.auto.name', '例：○○海上')}</div><div><label class="lbl">証券番号</label>${si('insurance.auto.policy', '')}</div></div>
+      <div class="row2"><div><label class="lbl">事故受付の電話</label>${si('insurance.auto.phone', '', 'tel')}</div><div><label class="lbl">ロードサービスの電話</label>${si('insurance.auto.road', '', 'tel')}</div></div>
+      <div class="row2"><div><label class="lbl">代理店</label>${si('insurance.auto.agent', '')}</div><div><label class="lbl">代理店の電話</label>${si('insurance.auto.agentPhone', '', 'tel')}</div></div></div>
+    <div class="card"><h2>🛡 そのほかの会社の保険</h2>
+      ${[['work', '請負業者賠償責任保険'], ['rousai', '労災の上乗せ保険'], ['machine', '動産・機械の保険']].map(([k, t]) => `<h3>${t}</h3><div class="row2"><div>${si('insurance.' + k + '.name', '保険会社・代理店')}</div><div>${si('insurance.' + k + '.phone', '電話', 'tel')}</div></div><div style="height:6px"></div>${si('insurance.' + k + '.policy', '証券番号')}`).join('')}</div>
+    <div class="card"><h2>🚚 車ごとの設定</h2><p class="hint" style="margin-top:0">保険はフリート契約で共通なので、車ごとに違うところだけ入れます</p>
       ${S.vehicles.filter(v => v.category !== '重機（ユンボなど）').map(v => { const p = 'vehicles.' + v.id; const x = st.vehicles[v.id] || {}; return `<h3>${esc(v.name)} <small>${esc(v.plate || '')}</small></h3>
-        <div class="row2"><div>${si(p + '.insurer', '保険会社')}</div><div>${si(p + '.policy', '証券番号')}</div></div>
-        <div class="row2" style="margin-top:6px"><div>${si(p + '.road', 'ロードサービスの電話', 'tel')}</div><div>${si(p + '.insurerPhone', '保険会社の事故受付', 'tel')}</div></div>
+        <label class="lbl">フリートの明細番号（わかれば）</label>${si(p + '.fleetNo', '')}
         <div class="row2" style="margin-top:6px"><div><select data-s="${p}.carCov"><option value="">車両保険</option><option${x.carCov === 'あり' ? ' selected' : ''}>あり</option><option${x.carCov === 'なし' ? ' selected' : ''}>なし</option></select></div><div>${licSel(p + '.license', x.license, true)}</div></div>`; }).join('') || '<p class="hint">車両アプリに車が登録されていません</p>'}</div>
     <div class="card"><h2>🪪 スタッフの免許の種類</h2><p class="hint" style="margin-top:0">車の「必要な免許」と合わないとき、報告の画面に注意を出します</p>
       ${S.staff.map(s => `<div class="row2" style="align-items:center;margin-bottom:6px"><span>${esc(s.disp)}</span><div>${licSel('licenses.' + s.id, st.licenses[s.id], false)}</div></div>`).join('')}</div>
@@ -1539,7 +1546,8 @@ function loadScript(src) { return new Promise((ok, ng) => { if (document.querySe
 function openPdf(c) {
   const ps = photosOf(c.id).filter(p => p.slot !== 'sketch' && p.slot !== 'doc'), st = S.settings || {}, full = st.full || {}, comp = Object.assign({}, COMPANY_DEFAULT, full.company || st.company || {});
   const d = c.data || {}, ins = (c.boss || {}).insurerCall || {};
-  const vIns = d.kind === 'car' ? ((full.vehicles || {})[(d.car || {}).vehicleId] || {}) : ((full.insurance || {}).work || {});
+  const vid = (d.car || {}).vehicleId, vSet = (full.vehicles || {})[vid] || {}, fl = (full.insurance || {}).auto || {};
+  const vIns = d.kind === 'car' ? (vid && vid !== '__other' ? { policy: (vSet.policy || fl.policy || '') + (vSet.fleetNo ? '（明細 ' + vSet.fleetNo + '）' : '') } : {}) : ((full.insurance || {}).work || {});
   const sel = {}; ps.forEach(p => sel[p.photoId] = p.inPdf !== false);
   openModal(`<h3>📄 保険会社に出す事故報告書</h3>
     <label class="lbl">宛先（保険会社）</label><input type="text" id="pdTo" value="${esc(ins.insurer || defaultInsurer(c))}">

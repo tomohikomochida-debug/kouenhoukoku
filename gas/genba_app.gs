@@ -3167,9 +3167,9 @@ function jikoPost_(b) {
 function jkPublicSettings_(st, me) {
   var o = { company: st.company || {}, bossPhone: (st.contacts || {}).bossPhone || '', vehicles: {}, licenses: st.licenses || {}, insurance: {} };
   var vs = st.vehicles || {};
-  Object.keys(vs).forEach(function (id) { var v = vs[id] || {}; o.vehicles[id] = { insurer: v.insurer || '', road: v.road || '', insurerPhone: v.insurerPhone || '', license: v.license || '', carCov: v.carCov || '' }; });
+  Object.keys(vs).forEach(function (id) { var v = vs[id] || {}; o.vehicles[id] = { insurer: v.insurer || '', road: v.road || '', insurerPhone: v.insurerPhone || '', license: v.license || '', carCov: v.carCov || '', fleetNo: v.fleetNo || '' }; });
   var ins = st.insurance || {};
-  o.insurance = { auto: jkPick_(ins.auto || {}, ['name', 'phone']), work: jkPick_(ins.work || {}, ['name', 'phone']) };
+  o.insurance = { auto: jkPick_(ins.auto || {}, ['name', 'phone', 'road', 'policy']), work: jkPick_(ins.work || {}, ['name', 'phone']) };   // 会社の車はフリート契約で共通（事故直後の画面のロードサービス・証券番号に使う）
   if (me.role === 'boss') { o.full = st; }
   return o;
 }
