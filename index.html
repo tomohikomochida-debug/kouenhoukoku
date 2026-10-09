@@ -244,6 +244,55 @@ function orderedApps(){   // 覚えている並び → まだ並びにない（�
 
 /* 事故報告のお知らせ：親方には第一報がまだの事故、事務担当には労災の対応中の事故を、ホームの一番上に出す
    （タイムカードと同じログインを使う。ログインしていない・電波がないときは何も出さない） */
+/* 事故報告の「まだ送れていないもの」（報告・ヒヤリハット・写真）を、ホームを開いたときにも自動で送る
+   （事故報告アプリを開かなくても届くように。同じ端末に保存されている分だけ。二重にはならない） */
+(async function jikoAutoSend(){
+  let token = ''; try { token = JSON.parse(localStorage.getItem('tc_token') || '""') || ''; } catch (e) {}
+  if (!token || !navigator.onLine || !window.indexedDB) return;
+  const GAS = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
+  const db = await new Promise(ok => { try { const r = indexedDB.open('jiko', 1); r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('kv'); d.createObjectStore('photos', { keyPath: 'photoId' }); }; r.onsuccess = () => ok(r.result); r.onerror = () => ok(null); } catch (e) { ok(null); } });
+  if (!db) return;
+  const tx = (store, mode, fn) => new Promise((ok, ng) => { const t = db.transaction(store, mode), s = t.objectStore(store); let res; const q = fn(s); if (q) q.onsuccess = () => res = q.result; t.oncomplete = () => ok(res); t.onerror = () => ng(t.error); });
+  const kvGet = k => tx('kv', 'readonly', s => s.get(k)), kvSet = (k, v) => tx('kv', 'readwrite', s => s.put(v, k));
+  const b64 = b => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = () => ng(r.error); r.readAsDataURL(b); });
+  const post = async (body, ms) => { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms); try { return await (await fetch(GAS, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ app: 'jiko', token }, body)), signal: ac.signal })).json(); } finally { clearTimeout(t); } };
+  let sent = 0, left = 0;
+  try {
+    const drafts = (await kvGet('drafts')) || {};
+    for (const d of Object.values(drafts)) {
+      if (!d.submitted) continue;
+      const j = await post({ mode: 'save', case: { id: d.id, data: d.data, boss: d.boss }, base: d.base || '' }, 60000);
+      if (j && (j.ok || j.conflict)) { delete drafts[d.id]; await kvSet('drafts', drafts); sent++; } else { left++; break; }
+    }
+    let hy = (await kvGet('hyOut')) || [];
+    for (const h of hy.slice()) {
+      const j = await post(Object.assign({ mode: h.mode || 'hiyari' }, h.body), 30000);
+      if (j && j.ok) { hy = hy.filter(x => x !== h); await kvSet('hyOut', hy); sent++; } else { left++; break; }
+    }
+    const photos = (await tx('photos', 'readonly', s => s.getAll())) || [];
+    for (const p of photos) {
+      const dr = drafts[p.caseId];
+      if (p.removed || (dr && !dr.submitted)) continue;   // まだ書きかけの報告の写真は送らない
+      if (!p.sent) {
+        const j = await post({ mode: 'photo', photo: { photoId: p.photoId, caseId: p.caseId, slot: p.slot, caption: p.caption || '', takenAt: p.takenAt, lat: p.lat, lng: p.lng }, data: await b64(p.blob), mime: p.mime || 'image/jpeg' }, 120000);
+        if (!(j && j.ok)) { left++; continue; }
+        p.sent = true; p.rawPending = !!p.raw; await tx('photos', 'readwrite', s => s.put(p)); sent++;
+      }
+      if (p.sent && p.rawPending && p.raw) {
+        try { const j = await post({ mode: 'photoRaw', photoId: p.photoId, raw: await b64(p.raw), rawMime: p.rawMime || p.raw.type || 'image/jpeg' }, 240000);
+          if ((j && j.ok) || (p.rawTries = (p.rawTries || 0) + 1) >= 3) { p.raw = null; p.rawPending = false; } } catch (e) { p.rawTries = (p.rawTries || 0) + 1; }
+        await tx('photos', 'readwrite', s => s.put(p));
+      }
+    }
+  } catch (e) { left++; }
+  const box = document.getElementById('remind');
+  if (box && (sent || left)) {
+    const a = mk('a','remind'); a.href = 'jiko.html';
+    a.innerHTML = (left ? '📤 <span>事故報告の<b>まだ送れていないもの</b>があります（開くと理由が出ます）</span>' : '📤 <span>事故報告の写真・報告を<b>' + sent + '件</b>送りました</span>') + '<span class="go">開く ›</span>';
+    box.append(a);
+  }
+})();
+
 (async function jikoRemind(){
   let token = ''; try { token = JSON.parse(localStorage.getItem('tc_token') || '""') || ''; } catch (e) {}
   if (!token) return;
