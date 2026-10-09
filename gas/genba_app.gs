@@ -54,7 +54,7 @@ var SHEETS = {
   shashinItems:  { name: '工事写真の撮影項目', head: ['itemId', 'siteId', 'cat', 'name', 'jushu', 'kikaku', 'memo', 'lat', 'lng', 'src', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'kind', 'no', 'parkRec', 'parkFid', 'px', 'py'] },   // 地図に置いた点（公園報告の図面の木なら、その記録と木の目印・図面上の位置も）。（樹木・除草・補修など）。現場マスタの現場IDでつなぐ
   shashinInfo:   { name: '工事写真の案件情報', head: ['key', 'type', 'contract', 'fy', 'siteId', 'koji', 'orderer', 'sekosha', 'start', 'end', 'tpl', 'memo', 'by', 'at', 'updatedBy', 'updatedAt', 'stages', 'koshuList', 'opts'] },
   shashinBoards:  { name: '工事写真の黒板', head: ['boardId', 'name', 'rows', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // みんなで作った黒板のひな型（rows は項目の並び・JSON）   // 委託は「委託名＋年度」、そのほかは現場ごと。一度入れたら全員が入力なしで撮影へ
-  shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
+  shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId', 'kanshu'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
 
@@ -396,6 +396,7 @@ function doPost(e) {
       case 'shashin:saveItems':   return withLock_(function () { return shashinSaveItems_(b.items, b.by); });
       case 'shashin:deleteItems': return withLock_(function () { return shashinDeleteItems_(b.ids, b.by); });
       case 'shashin:parkTargets': return withLock_(function () { return shashinParkTargets_(b); });
+      case 'shashin:parkRule':    return withLock_(function () { return shashinParkRule_(b); });
       case 'shashin:upload':      return out_(shashinUpload_(b));
       case 'shashin:uploadRaw':   return out_(shashinUploadRaw_(b));
       case 'shashin:saveInfo':    return withLock_(function () { return shashinSaveInfo_(b.infos, b.by); });
@@ -1387,9 +1388,12 @@ function shashinParkShots_(p) {
   // 木・範囲の目印（parkFid）ごとに撮った状況。記録を保存し直して別の記録になっても、同じ現場・同じ目印ならつながる（撮る人と図面を作る人がちがっても同じ）
   var its = allItems.filter(function (r) { return r.parkFid && (siteId ? String(r.siteId) === siteId : String(r.parkRec) === rec); });
   var byItem = {}; its.forEach(function (r) { byItem[r.itemId] = r; });
-  var shots = {}, free = {};
+  var shots = {}, free = {}, meas = {};
   rows_('shashinPhotos').forEach(function (r) {
-    if (r.state || !r.stage) return;
+    if (r.state) return;
+    var it0 = byItem[r.itemId], c = it0 ? shashinMeasC_(r) : null;   // 黒板に書いた実際の幹周（範囲ではなく1つの数字）
+    if (c && (!meas[it0.parkFid] || String(r.takenAt) > String(meas[it0.parkFid].at))) meas[it0.parkFid] = { C: c, at: String(r.takenAt || ''), by: r.by || '' };
+    if (!r.stage) return;
     var it = byItem[r.itemId];
     if (it) { var l = shots[it.parkFid] = shots[it.parkFid] || []; if (l.indexOf(r.stage) < 0) l.push(r.stage); return; }
     if (siteId && String(r.siteId) === siteId) {   // 図面の木を選ばずに撮った写真（黒板の 工種・規格・測点 ごと）
@@ -1404,7 +1408,14 @@ function shashinParkShots_(p) {
     if (inf) { stages = shashinJson_(inf.stages, []); var o = shashinJson_(inf.opts, {}); rule = o.photoRule || null; }
   }
   var planned = its.map(function (r) { return String(r.parkFid); });   // 工事写真の撮影項目になっている木（撮る予定）
-  return { ok: true, siteId: siteId, site: s ? s.name : '', stages: stages.length ? stages : ['作業前', '作業中', '作業後'], rule: rule, shots: shots, free: free, planned: planned };
+  return { ok: true, siteId: siteId, site: s ? s.name : '', stages: stages.length ? stages : ['作業前', '作業中', '作業後'], rule: rule, shots: shots, free: free, planned: planned, meas: meas };
+}
+/* 黒板の「幹周」欄（なければ備考の「幹周 C=○cm」）から、測った幹周を1つの数字で取り出す。60〜90cm のような範囲は測った値ではないので取らない */
+function shashinMeasC_(r) {
+  var num = function (t) { var m = String(t || '').replace(/^'/, '').replace(/[０-９．]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); }).match(/^\s*(?:C\s*[=＝]?\s*)?(\d+(?:\.\d+)?)\s*(?:cm|ｃｍ|センチ)?\s*$/i); return m ? Number(m[1]) : null; };
+  var c = num(r.kanshu); if (c > 0 && c < 2000) return c;
+  var m = String(r.biko || '').replace(/[０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); }).match(/幹周\s*(?:C\s*[=＝]?\s*)?(\d+(?:\.\d+)?)\s*cm(?!\s*[〜~～])/);
+  return m && Number(m[1]) > 0 ? Number(m[1]) : null;
 }
 /* ---- 遠隔撮影：iPadの公園報告で木をタップ → iPhoneの工事写真のカメラが開く ----
    部屋番号（4〜6けた）ごとに、最近の指示を CacheService に置く（6時間）。電波が切れても、つながった時に最新の指示を受け取れる */
@@ -1480,15 +1491,38 @@ function shashinGet_(a, p) {
    b: { park, contract, rec, targets:[{fid,type,cat,kind,rank,C,area,x,y}], remove:[fid] }
    ・同じ現場に同じ目印（parkFid）の項目があれば作らない（位置だけ直す）。No.は 同じ工種・規格の中で次の番号
    ・remove：えらぶのをやめた木。まだ1枚も撮っていない項目だけ消す */
-function shashinParkTargets_(b) {
+/* 公園報告の公園名（と委託名）から、現場マスタの現場をさがす */
+function shashinSiteByPark_(parkName, contract) {
   var norm = function (s) { return String(s || '').replace(/[\s　]/g, ''); };
-  var sites = siteList_(), park = norm(b.park), con = norm(b.contract);
-  if (!park) return { ok: false, error: '公園名がありません' };
+  var sites = siteList_(), park = norm(parkName), con = norm(contract);
+  if (!park) return null;
   var c = sites.filter(function (x) { return norm(x.name) === park; });
   if (!c.length) c = sites.filter(function (x) { return norm(x.name) && (norm(x.name).indexOf(park) >= 0 || park.indexOf(norm(x.name)) >= 0); });
   if (c.length > 1 && con) { var c2 = c.filter(function (x) { return norm(x.contract).indexOf(con) >= 0 || con.indexOf(norm(x.contract)) >= 0; }); if (c2.length) c = c2; }
-  if (!c.length) return { ok: false, error: '「' + b.park + '」が現場マスタに見つかりません。公園名を現場マスタ（日報）と同じにしてください' };
-  var site = c[0], siteId = String(site.id), by = String(b.by || ''), rec = String(b.rec || '');
+  return c[0] || null;
+}
+function shashinInfoKey_(s) { var d = new Date(), fy = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1; return { key: s.contract ? 'C|' + s.contract + '|' + fy : 'S|' + s.id, fy: fy }; }
+/* 公園報告で決めた「何本に1本撮るか」を、その案件の情報（opts.photoRule）に入れる。案件の情報がまだなければ最小限で作る */
+function shashinParkRule_(b) {
+  var site = shashinSiteByPark_(b.park, b.contract);
+  if (!site) return { ok: false, error: '「' + (b.park || '') + '」が現場マスタに見つかりません。公園名を現場マスタ（日報）と同じにしてください' };
+  var rows = ((b.rule && b.rule.rows) || []).filter(function (r) { return r && r.cat; }).map(function (r) {
+    return { cat: String(r.cat), rank: String(r.rank || '*'), per: Math.max(1, Number(r.per) || 1), min: Math.max(0, Number(r.min) || 0) }; });
+  var k = shashinInfoKey_(site), inf = rows_('shashinInfo').filter(function (r) { return r.key === k.key; })[0];
+  if (inf) {
+    var o = shashinJson_(inf.opts, {}); o.photoRule = { rows: rows };
+    upsert_('shashinInfo', 'key', 'N', { key: k.key, opts: JSON.stringify(o) }, b.by);
+  } else {
+    upsert_('shashinInfo', 'key', 'N', { key: k.key, type: site.contract ? 'contract' : 'site', contract: site.contract || '', fy: k.fy, siteId: site.contract ? '' : String(site.id),
+      koji: site.contract || site.name, tpl: 'std', stages: JSON.stringify(['作業前', '作業中', '作業後']), koshuList: '[]', opts: JSON.stringify({ photoRule: { rows: rows } }), by: b.by || '', at: now_() }, b.by);
+  }
+  return { ok: true, site: site.name, key: k.key, rule: { rows: rows }, created: !inf };
+}
+function shashinParkTargets_(b) {
+  if (!String(b.park || '').replace(/[\s　]/g, '')) return { ok: false, error: '公園名がありません' };
+  var site = shashinSiteByPark_(b.park, b.contract);
+  if (!site) return { ok: false, error: '「' + b.park + '」が現場マスタに見つかりません。公園名を現場マスタ（日報）と同じにしてください' };
+  var siteId = String(site.id), by = String(b.by || ''), rec = String(b.rec || '');
   var sh = sh_('shashinItems'), head = SHEETS.shashinItems.head, vals = sh.getDataRange().getValues(), H = vals[0];
   var col = {}; H.forEach(function (h, i) { col[h] = i; });
   var mine = [];   // この現場の項目（行番号つき）
@@ -1565,7 +1599,7 @@ function shashinUpdatePhoto_(b) {
   var had = null; rows_('shashinPhotos').forEach(function (r) { if (String(r.photoId) === String(b.photoId)) had = r; });
   if (!had) return { ok: false, error: 'その写真の記録がありません' };
   var o = { photoId: String(b.photoId) };
-  ['lat', 'lng', 'heading', 'stage', 'koshu', 'kikaku', 'sokuten', 'biko', 'excluded', 'state', 'itemId'].forEach(function (k) { if (b[k] !== undefined && b[k] !== null) o[k] = b[k]; });
+  ['lat', 'lng', 'heading', 'stage', 'koshu', 'kikaku', 'sokuten', 'biko', 'kanshu', 'excluded', 'state', 'itemId'].forEach(function (k) { if (b[k] !== undefined && b[k] !== null) o[k] = b[k]; });
   if (o.state !== undefined && String(o.state) !== String(had.state || '') && had.fileId) {
     try { DriveApp.getFileById(had.fileId).setTrashed(o.state === '削除'); } catch (e) {}
   }
@@ -1637,7 +1671,7 @@ function shashinUpload_(b) {
     had = find();
     if (had) { try { file.setTrashed(true); } catch (e) {} return { ok: true, url: had.url, fileId: had.fileId, dup: true }; }
     upsert_('shashinPhotos', 'photoId', 'F', { photoId: String(ph.photoId), siteId: ph.siteId || '', site: site.name || '', contract: site.contract || '',
-      itemId: ph.itemId || '', stage: ph.stage || '', koshu: bd.koshu || '', sokuten: bd.sokuten || '', jushu: bd.jushu || '', kikaku: bd.kikaku || '', biko: bd.biko || '',
+      itemId: ph.itemId || '', stage: ph.stage || '', koshu: bd.koshu || '', sokuten: bd.sokuten || '', jushu: bd.jushu || '', kikaku: bd.kikaku || '', biko: bd.biko || '', kanshu: bd.kanshu || '',
       takenAt: ph.takenAt || '', by: by, lat: ph.lat == null ? '' : ph.lat, lng: ph.lng == null ? '' : ph.lng, acc: ph.acc == null ? '' : ph.acc,
       heading: ph.heading == null ? '' : ph.heading, fileName: name, fileId: file.getId(), url: file.getUrl(), at: now_(), replaces: ph.replaces || '', state: '' }, by);
     // 撮り直し・差し替え：前の写真は「差し替え済」にして残す（元に戻せる）

@@ -69,10 +69,18 @@
   .pickBar .pbMode{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}.pickBar .pbMode button{border:none;border-radius:0}.pickBar .pbMode button.on{background:#ffb547;color:#222}
   .pickBar .pbInfo{font-size:13px}.pickBar .pbInfo b{font-size:17px;color:#ffb547}.pickBar .pbInfo small{margin-left:6px;color:var(--mut)}.pickBar .pbInfo small.un{color:#ff9f7a}
   .pickBar .pbBtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.draftBar.measBar{top:130px;background:#1d2a3d;border-color:#5b8fd6}
 .draftBar{position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:80;background:#163428;border:1px solid #3ecf8e;color:#fff;border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:calc(100% - 24px);font-size:14px}
   .draftBar small{display:block;font-size:11px;color:#a9d8bf}.draftBar button{border:none;border-radius:8px;padding:8px 12px;font-weight:700;font-size:13px}.draftBar .go{background:#3ecf8e;color:#0b2015}.draftBar .x{background:transparent;color:#fff}
+.pkMatch{display:inline-flex;align-items:center;flex:none;height:26px;border-radius:13px;padding:0 9px;font-size:12px;font-weight:700;margin-left:4px;cursor:pointer;white-space:nowrap}
+  .pkMatch.ok{background:#163428;color:#3ecf8e;border:1px solid #2b6b4c}.pkMatch.ng{background:#4a2a12;color:#ffb547;border:1px solid #8a5a20}
+  .pkMatchNu{font-size:12px;margin-top:4px;font-weight:700}.pkMatchNu.ok{color:#3ecf8e}.pkMatchNu.ng{color:#ffb547;text-decoration:underline}
 .slTop{margin-bottom:8px;font-size:15px}.slTop small{display:block;color:var(--mut);font-size:11px;margin-top:3px;font-weight:400}
   .ngT{color:#ff9f7a}.okT{color:#3ecf8e}
+  .rlTbl{width:100%;border-collapse:collapse;font-size:13px}.rlTbl th{font-size:11px;color:var(--mut);font-weight:400;text-align:left;padding:4px}
+  .rlTbl td{border-top:1px solid var(--line);padding:6px 4px;vertical-align:middle}.rlTbl td small{display:block;color:var(--mut);font-size:11px}
+  .rlTbl input{width:52px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px;font-size:15px;text-align:center}
+  .rlTbl .need{font-weight:700;color:#ffb547;text-align:center}
   .slTbl{width:100%;border-collapse:collapse;font-size:13px}
   .slTbl th{color:var(--mut);font-weight:600;text-align:right;padding:5px 4px;border-bottom:1px solid var(--line)}.slTbl th:first-child{text-align:left}
   .slTbl td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}.slTbl td:first-child{text-align:left;white-space:normal}
@@ -452,7 +460,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
 <div class="app">
   <header>
     <a class="home-btn" href="index.html" title="アプリ一覧にもどる" aria-label="アプリ一覧（ホーム）にもどる"><span class="hb-ic">🏠</span><span class="hb-t">ホーム</span></a><div class="logo">公園作業記録 <b>/</b> 求積＆出来形</div>
-    <input class="park" id="parkName" placeholder="公園名（例：久地さくら緑地）">
+    <input class="park" id="parkName" placeholder="公園名（例：久地さくら緑地）"><span id="pkMatch" class="pkMatch" style="display:none"></span>
     <span class="nu-only nu-tabs" id="nuTabs"><button class="nu-tab" data-view="prep">準備</button><button class="nu-tab" data-view="input">入力</button><button class="nu-tab" data-view="finish">仕上げ</button></span>
     <span class="meta" id="contractMeta">業務委託</span>
     <span class="sp"></span>
@@ -704,6 +712,11 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
   <h3>撮影の状況<small>工事写真アプリで撮った写真から数えています</small></h3>
   <div id="slBody"></div>
   <div style="display:flex;gap:8px;margin-top:10px"><button class="sdBtn sm" id="slClose">閉じる</button><button class="sdBtn ok" id="slGo">📷 工事写真アプリで見る</button></div>
+</div></div>
+<div class="sdModal" id="ruleModal"><div class="sdCard">
+  <h3>撮る本数の決まり<small>工種・規格ごとに「何本に1本」「最低何本」撮るか。工事写真の「案件の情報 ⑧」と同じものです</small></h3>
+  <div id="ruleBody"></div>
+  <div style="display:flex;gap:8px;margin-top:10px"><button class="sdBtn sm" id="ruleClose">やめる</button><button class="sdBtn ok" id="ruleSave">保存して「決まりでえらぶ」</button></div>
 </div></div>
 <div class="sdModal" id="shootDevModal"><div class="sdCard">
   <h3>撮影に使うカメラ<small>最初に1回えらべば、毎回は聞きません（あとから変えられます）</small></h3>
@@ -2261,7 +2274,7 @@ let SHOTS=null, shotMarks=lsGet('park_shot_marks')!=='off';
 async function loadShots(){
   if(!state.cloudId||!navigator.onLine) return;
   try{ const j=await fetch(PARK_GAS+'?app=shashin&action=parkShots&rec='+encodeURIComponent(state.cloudId),{cache:'no-store'}).then(r=>r.json());
-    if(j&&j.ok){ SHOTS={stages:j.stages||[],shots:j.shots||{},rule:j.rule||null,free:j.free||{},site:j.site||'',planned:j.planned||[]}; draw(); renderShotSum(); renderPickBar(); } }catch(e){}
+    if(j&&j.ok){ SHOTS={stages:j.stages||[],shots:j.shots||{},rule:j.rule||null,free:j.free||{},site:j.site||'',planned:j.planned||[],meas:j.meas||{}}; draw(); renderShotSum(); renderPickBar(); measNotice(); } }catch(e){}
 }
 function drawShotMark(f,x,y,r){
   if(!shotMarks&&tool!=='shoot') return;
@@ -2285,6 +2298,33 @@ function renderShotSum(){ const el=$('shotSum'); if(!el) return;
   el.textContent=`撮影：そろった ${all}・途中 ${part}・まだ ${F.length-all-part}（全${F.length}）`; }
 setInterval(()=>{ if(!document.hidden&&tool==='shoot') loadShots(); },45000);
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) loadShots(); });
+/* ---------- 工事写真で測った幹周（黒板の幹周欄に書いた数字）を、図面の木に反映する ---------- */
+function measDiffs(){
+  const M=(SHOTS&&SHOTS.meas)||{}, out=[];
+  (state.features||[]).forEach(f=>{ if(f.type!=='tree') return; const m=M[featFid(f)]; if(!m||!(m.C>0)) return; if(Math.abs((Number(f.C)||0)-m.C)<0.5) return;
+    const band=bandFromC(f.cat,m.C); out.push({f,C:m.C,by:m.by||'',band,rankChange:!!(band&&f.rank&&band!==f.rank)}); });
+  return out;
+}
+function measNotice(){
+  const D=measDiffs(), old=document.querySelector('.measBar');
+  const key=D.map(d=>featFid(d.f)+':'+d.C).join(',');
+  let skip=''; try{ skip=sessionStorage.getItem('park_meas_skip')||''; }catch(e){}
+  if(!D.length||key===skip){ if(old) old.remove(); return; }
+  const el=old||document.createElement('div'); el.className='draftBar measBar';
+  const rc=D.filter(d=>d.rankChange).length;
+  el.innerHTML=`<span>📏 工事写真で測った幹周が <b>${D.length}</b> 本あります<small>${rc?`そのうち ${rc} 本は規格（幹周ランク）も変わります`:'図面の幹周と ちがいます'}</small></span><button class="go">見て反映</button><button class="x">✕</button>`;
+  if(!old) document.body.appendChild(el);
+  el.querySelector('.go').onclick=()=>applyMeas(D);
+  el.querySelector('.x').onclick=()=>{ try{ sessionStorage.setItem('park_meas_skip',key); }catch(e){} el.remove(); };
+}
+function applyMeas(D){
+  const lines=D.slice(0,12).map(d=>`・${d.f.cat}${d.f.kind?' '+d.f.kind:''}：C=${d.f.C||'—'} → ${d.C}cm${d.rankChange?`（規格 ${d.f.rank} → ${d.band}）`:''}${d.by?`　${d.by}`:''}`);
+  if(!confirm(`工事写真の黒板に書いた幹周を、図面の木に反映しますか？\n\n${lines.join('\n')}${D.length>12?`\n…ほか ${D.length-12} 本`:''}\n\n規格が変わる木は、本数集計・出来形も変わります（工事写真の黒板の規格はそのままです）。`)) return;
+  pushHistory();
+  D.forEach(d=>{ d.f.C=d.C; if(d.rankChange) d.f.rank=d.band; });
+  recalcAll(); renderAgg(); renderSansha(); draw(); draftLater(); measNotice();
+  alert(`${D.length} 本の幹周を反映しました。\n「☁️ 保存」で、ほかの人の図面にも反映されます。`);
+}
 /* ---------- 撮影の状況リスト（写真は出さない・軽い）：工種・規格ごとに 図面の数／撮る数（決まり）／そろった／残り。くわしくは工事写真アプリへ ---------- */
 function ruleNeed(rule,cat,rank,count){
   const rows=(rule&&rule.rows)||[], m=(r,c,k)=>(r.cat==='*'||r.cat===c)&&(r.rank==='*'||r.rank===k);
@@ -2317,7 +2357,7 @@ async function openShotList(){
 }
 $('shotListBtn').onclick=openShotList;
 $('slClose').onclick=()=>$('shotListModal').classList.remove('on');
-$('slGo').onclick=async()=>{ await draftSaveNow(); const q=new URLSearchParams({from:'park',view:'check',park:($('parkName').value||'').trim(),contract:($('contractName').value||'').trim(),rec:state.cloudId||''}); location.href='shashin.html?'+q.toString(); };
+$('slGo').onclick=async()=>{ await draftSaveNow(); leaveOk=true; const q=new URLSearchParams({from:'park',view:'check',park:($('parkName').value||'').trim(),contract:($('contractName').value||'').trim(),rec:state.cloudId||''}); location.href='shashin.html?'+q.toString(); };
 window.openShotList=openShotList;
 /* ---------- 撮る木をえらぶ → 工事写真へ送る（工事写真の「撮り残し」に入り、そこでまとめて撮る） ----------
    f.shoot＝撮る木にえらんだ、f.shootSent＝工事写真へ送った。えらぶのをやめて送り直すと、まだ撮っていない項目は工事写真からも消える */
@@ -2332,31 +2372,69 @@ function renderPickBar(){
   const shot=SHOTS?F.filter(f=>(SHOTS.shots[featFid(f)]||[]).length).length:0;
   el.innerHTML=`<div class="pbMode"><button data-m="pick" class="${mode==='pick'?'on':''}">えらぶ</button><button data-m="now" class="${mode==='now'?'on':''}">その場で撮る</button></div>`
     +(mode==='pick'?`<div class="pbInfo">撮る木 <b>${sel.length}</b>/${F.length}${SHOTS?`<small>撮った ${shot}</small>`:''}${unsent?`<small class="un">未送信 ${unsent}</small>`:''}</div>
-      <div class="pbBtns"><button id="pbRule">決まりでえらぶ</button><button id="pbAll">全部</button><button id="pbNone">外す</button><button id="pbSend" class="go">📤 工事写真へ送る</button></div>`
+      <div class="pbBtns"><button id="pbRuleSet">決まり</button><button id="pbRule">決まりでえらぶ</button><button id="pbAll">全部</button><button id="pbNone">外す</button><button id="pbSend" class="go">📤 工事写真へ送る</button></div>`
     :`<div class="pbInfo">木をタップ → カメラ（${shootDevLabel()}）</div>`);
   el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{ lsSet('park_shoot_mode',b.dataset.m); renderPickBar(); updateHint(); draw(); });
   if(mode!=='pick') return;
   $('pbAll').onclick=()=>{ F.forEach(f=>f.shoot=true); draftLater(); renderPickBar(); draw(); };
   $('pbNone').onclick=()=>{ if(sel.length&&!confirm('えらんだ木をすべて外しますか？')) return; F.forEach(f=>f.shoot=false); draftLater(); renderPickBar(); draw(); };
   $('pbRule').onclick=pickByRule;
+  $('pbRuleSet').onclick=openRuleEdit;
   $('pbSend').onclick=sendPicked;
 }
 /* 決まり（工事写真の「案件の情報」⑧：N本に1本・最低M本）で、工種・規格ごとに図面の上で散らばるようにえらぶ。もう撮った木は数に入れる */
 async function pickByRule(){
   if(state.cloudId&&!SHOTS) await loadShots();
   const rule=SHOTS&&SHOTS.rule;
-  if(!rule||!(rule.rows||[]).length){ if(!confirm('撮る本数の決まりが まだ決まっていません（工事写真の「案件の情報」⑧で決めます）。\n\nいまは全部えらびますか？')) return; pickFeats().forEach(f=>f.shoot=true); draftLater(); renderPickBar(); draw(); return; }
+  if(!rule||!(rule.rows||[]).length){ if(confirm('撮る本数の決まりが まだありません。\n\nOK＝いま決める\nキャンセル＝全部えらぶ')){ openRuleEdit(); return; } pickFeats().forEach(f=>f.shoot=true); draftLater(); renderPickBar(); draw(); return; }
   const G={}; pickFeats().forEach(f=>{ const k=f.cat+'|'+(f.rank||f.kind||''); (G[k]=G[k]||[]).push(f); });
   let add=0;
   Object.values(G).forEach(L=>{
     const f0=L[0], need=ruleNeed(rule,f0.cat,f0.rank||f0.kind||'',L.length);
-    const has=L.filter(f=>f.shoot||(SHOTS.shots[featFid(f)]||[]).length).length; let lack=need-has; if(lack<=0) return;
-    const rest=L.filter(f=>!f.shoot&&!(SHOTS.shots[featFid(f)]||[]).length).map(f=>({f,p:featPos(f)})).sort((a,b)=>a.p.x-b.p.x||a.p.y-b.p.y);
+    const sh=f=>(SHOTS.shots&&SHOTS.shots[featFid(f)])||[];
+    const has=L.filter(f=>f.shoot||sh(f).length).length; let lack=need-has; if(lack<=0) return;
+    const rest=L.filter(f=>!f.shoot&&!sh(f).length).map(f=>({f,p:featPos(f)})).sort((a,b)=>a.p.x-b.p.x||a.p.y-b.p.y);
     for(let i=0;i<lack&&i<rest.length;i++){ const j=Math.min(rest.length-1,Math.floor((i+0.5)*rest.length/lack)); if(!rest[j].f.shoot){ rest[j].f.shoot=true; add++; } }
   });
   draftLater(); renderPickBar(); draw();
   alert(add?`決まりの数に足りない分を ${add} 本・か所 えらびました（オレンジの点線）。\nちがう木にしたいときは、タップで外して別の木をタップしてください。`:'決まりの数は もうえらばれています');
 }
+/* 撮る本数の決まりを、公園報告の図面の工種・規格から決める（保存すると工事写真の案件の情報にも入る） */
+let RULE_EDIT=null;
+async function openRuleEdit(){
+  const park=($('parkName').value||'').trim();
+  if(!park){ alert('先に公園名を入れてください'); return; }
+  if(state.cloudId&&!SHOTS) await loadShots();
+  const G={}; pickFeats().forEach(f=>{ const rank=f.rank||f.kind||'', k=f.cat+'|'+rank; (G[k]=G[k]||{cat:f.cat,rank,n:0,unit:f.type==='tree'?'本':'か所'}).n++; });
+  const old=((SHOTS&&SHOTS.rule&&SHOTS.rule.rows)||[]).map(r=>Object.assign({},r));
+  const L=Object.values(G).sort((a,b)=>a.cat.localeCompare(b.cat,'ja')||a.rank.localeCompare(b.rank,'ja',{numeric:true}));
+  if(!L.length){ alert('図面に工種の付いた木・範囲がありません'); return; }
+  L.forEach(g=>{ const hit=old.find(r=>r.cat===g.cat&&r.rank===g.rank); g.per=hit?hit.per:''; g.min=hit?hit.min:''; g.base=ruleNeed({rows:old.filter(r=>!(r.cat===g.cat&&r.rank===g.rank))},g.cat,g.rank,g.n); });
+  RULE_EDIT={L,old};
+  const box=$('ruleBody');
+  box.innerHTML=`<table class="rlTbl"><tr><th>工種・規格</th><th>図面</th><th>何本に1本</th><th>最低</th><th>撮る</th></tr>${L.map((g,i)=>`<tr><td>${esc(g.cat)}<small>${esc(g.rank)}</small></td><td>${g.n}${g.unit}</td>
+    <td><input type="number" min="1" inputmode="numeric" data-r="per" data-i="${i}" value="${esc(g.per)}" placeholder="${old.length?'—':'1'}"></td><td><input type="number" min="0" inputmode="numeric" data-r="min" data-i="${i}" value="${esc(g.min)}" placeholder="0"></td><td class="need" id="rlNeed${i}"></td></tr>`).join('')}</table>
+    <div class="sdHow" style="margin-top:10px">空欄は ${old.some(r=>r.cat==='*'||r.rank==='*')?'工事写真で決めた「すべて」の決まり':'全数（1本に1本）'} で数えます。例：10本に1本・最低2本 →「10」「2」。</div>`;
+  const upd=()=>L.forEach((g,i)=>{ const per=Number(g.per)||0, min=Number(g.min)||0;
+    const need=(per||min)?Math.min(g.n,Math.max(Math.ceil(g.n/Math.max(1,per||1)),min)):g.base; $('rlNeed'+i).textContent=need+g.unit; });
+  box.querySelectorAll('[data-r]').forEach(el=>el.oninput=()=>{ L[Number(el.dataset.i)][el.dataset.r]=el.value; upd(); });
+  upd(); $('ruleModal').classList.add('on');
+}
+$('ruleClose').onclick=()=>$('ruleModal').classList.remove('on');
+$('ruleSave').onclick=async()=>{
+  if(!RULE_EDIT) return; if(!myName(true)) return;
+  const {L,old}=RULE_EDIT, keep=old.filter(r=>!L.some(g=>g.cat===r.cat&&g.rank===r.rank));   // 図面にない工種の決まり・「すべて」の決まりは そのまま残す
+  const rows=keep.concat(L.filter(g=>String(g.per)!==''||String(g.min)!=='').map(g=>({cat:g.cat,rank:g.rank,per:Math.max(1,Number(g.per)||1),min:Math.max(0,Number(g.min)||0)})));
+  const b=$('ruleSave'); b.disabled=true; b.textContent='保存しています…';
+  try{
+    const j=await fetch(PARK_GAS,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({app:'shashin',mode:'parkRule',by:myName(),park:($('parkName').value||'').trim(),contract:($('contractName').value||'').trim(),rule:{rows}})}).then(r=>r.json());
+    if(!j.ok) throw new Error(/unknown/.test(j.error||'')?'共通GASが まだ古いままです（少し待ってからもう一度）':(j.error||'保存できませんでした'));
+    SHOTS=SHOTS||{stages:[],shots:{},free:{},site:j.site,planned:[]}; SHOTS.rule=j.rule;
+    $('ruleModal').classList.remove('on'); renderPickBar();
+    await pickByRule();
+  }catch(e){ alert('保存できませんでした。\n'+(e&&e.message||e)); }
+  finally{ b.disabled=false; b.textContent='保存して「決まりでえらぶ」'; }
+};
 async function cloudSaveQuiet(){
   const payload=parkPayload();
   const d=await cloudPost({mode:'save',id:state.cloudId||null,ver:state.cloudId?state.cloudVer:null,park:payload.park,contract:payload.contract,
@@ -2364,25 +2442,43 @@ async function cloudSaveQuiet(){
   if(!d.ok) throw new Error(d.error||'保存できませんでした');
   state.cloudId=d.id; state.cloudVer=d.ver; return d;
 }
-async function sendPicked(){
+function pickUnsent(){ return pickFeats().filter(f=>(!!f.shoot)!==(!!f.shootSent)).length; }
+/* 撮る木を工事写真へ送る本体（図面の保存もする）。うまくいけば GAS の返事、だめなら例外 */
+async function sendPickedCore(){
   const park=($('parkName').value||'').trim();
-  if(!park){ alert('公園名を入れてください（工事写真の現場をさがすのに使います）'); return; }
+  if(!park) throw new Error('公園名を入れてください（工事写真の現場をさがすのに使います）');
   const F=pickFeats(), sel=F.filter(f=>f.shoot), rm=F.filter(f=>f.shootSent&&!f.shoot);
-  if(!sel.length&&!rm.length){ alert('撮る木をタップでえらんでください（オレンジの点線の輪が付きます）'); return; }
-  if(!myName(true)) return;
-  const b=$('pbSend'); b.disabled=true; b.textContent='送っています…';
+  const was=new Map(F.map(f=>[f,!!f.shootSent]));
+  ensureIds(false);
+  sel.forEach(f=>f.shootSent=true); rm.forEach(f=>f.shootSent=false);   // 先に印を付けてから保存（図面にも残る）
   try{
-    ensureIds(false);
-    sel.forEach(f=>f.shootSent=true); rm.forEach(f=>f.shootSent=false);   // 先に印を付けてから保存（図面にも残る）
     await cloudSaveQuiet();
     const T=sel.map(f=>{ const p=featPos(f); return { fid:featFid(f), type:f.type||'tree', cat:f.cat||'', kind:f.kind||'', rank:f.rank||'', C:f.C||'', area:f.area?Math.round(f.area*10)/10:'', x:Math.round(p.x*10)/10, y:Math.round(p.y*10)/10 }; });
     const j=await fetch(PARK_GAS,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({app:'shashin',mode:'parkTargets',by:myName(),park,contract:($('contractName').value||'').trim(),rec:state.cloudId,targets:T,remove:rm.map(featFid)})}).then(r=>r.json());
-    if(!j.ok){ sel.forEach(f=>f.shootSent=false); throw new Error(/unknown/.test(j.error||'')?'共通GASの更新がまだです（GASを新しいバージョンで公開し直してください）':(j.error||'送れませんでした')); }
+    if(!j.ok) throw new Error(/unknown/.test(j.error||'')?'共通GASが まだ古いままです（少し待ってからもう一度）':(j.error||'送れませんでした'));
     draftLater(); setTimeout(loadShots,600);
-    alert(`工事写真の「${j.site}」に送りました。\n\n新しく入れた：${j.added} 本・か所${j.already?`\nもう入っていた：${j.already}`:''}${j.removed?`\n外した：${j.removed}`:''}${j.kept?`\n（撮った写真があるので外さなかった：${j.kept}）`:''}\n\n工事写真アプリでこの現場を開き「撮り残し」→「まとめて撮る」で順に撮れます。`);
-  }catch(e){ alert('送れませんでした。\n'+(e&&e.message||e)); }
+    return j;
+  }catch(e){ was.forEach((v,f)=>f.shootSent=v); throw e; }
+}
+function sentMsg(j){ return `工事写真の「${j.site}」に送りました。\n\n新しく入れた：${j.added} 本・か所${j.already?`\nもう入っていた：${j.already}`:''}${j.removed?`\n外した：${j.removed}`:''}${j.kept?`\n（撮った写真があるので外さなかった：${j.kept}）`:''}`; }
+async function sendPicked(){
+  const F=pickFeats();
+  if(!F.some(f=>f.shoot)&&!F.some(f=>f.shootSent)){ alert('撮る木をタップでえらんでください（オレンジの点線の輪が付きます）'); return; }
+  if(!myName(true)) return;
+  const b=$('pbSend'); b.disabled=true; b.textContent='送っています…';
+  try{ const j=await sendPickedCore(); alert(sentMsg(j)+'\n\n工事写真アプリでこの現場を開き「撮り残し」→「まとめて撮る」で順に撮れます。'); }
+  catch(e){ alert('送れませんでした。\n'+(e&&e.message||e)); }
   finally{ renderPickBar(); draw(); }
 }
+/* 送り忘れ：アプリ一覧へ戻る・ページを閉じるとき、えらんだのに送っていない木があれば知らせる */
+var leaveOk=false;
+window.addEventListener('beforeunload',e=>{ if(!leaveOk&&pickUnsent()>0){ e.preventDefault(); e.returnValue=''; } });
+document.addEventListener('click',e=>{
+  const a=e.target.closest&&e.target.closest('a.home-btn'); if(!a) return;
+  const n=pickUnsent(); if(!n) return;
+  if(!confirm(`撮る木を えらんだのに、工事写真へ まだ送っていません（${n} 本・か所）。\n\nOK＝送らずに戻る\nキャンセル＝戻らない（下の「📤 工事写真へ送る」で送れます）`)){ e.preventDefault(); return; }
+  leaveOk=true;
+},true);
 /* ---------- 作業中の図面を この端末に自動でとっておく（工事写真へ移って戻ってきても、クラウドから読み直さずに続きができる） ---------- */
 var draftT=null;
 function draftDB(){ return new Promise((res,rej)=>{ const r=indexedDB.open('park_app_draft',1); r.onupgradeneeded=()=>r.result.createObjectStore('d'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
@@ -2479,7 +2575,7 @@ async function shootTree(f){
   if(!dev){ openShootDev(()=>shootTree(f)); return; }
   const q=await treeQuery(f); if(!q) return;
   if(dev==='phone') return sendToPhone(f,q);
-  await draftSaveNow();
+  await draftSaveNow(); leaveOk=true;
   location.href='shashin.html?'+new URLSearchParams(Object.assign({from:'park'},q)).toString();
 }
 /* iPhoneへ送る：共通GASに置いて、iPhoneの工事写真アプリ（📡つなぎ中）が受け取る。届いた・撮ったを下に出す */
@@ -2507,7 +2603,7 @@ function rmtFail(f,q,why){
   const el=rmtStat(`⚠ ${why}<small>iPhoneの工事写真アプリが iPad（部屋番号 ${rmtCode()}）とつながっているか確認してください（つないでいなければ「QRを出す」）。指示は10分間残るので、つながれば届きます。</small><div class="rmtBtns"><button id="rmtRetry">もう一度送る</button><button id="rmtQr">QRを出す</button><button id="rmtSelf">この端末のカメラで撮る</button><button id="rmtX">✕</button></div>`,'ng');
   $('rmtRetry').onclick=()=>sendToPhone(f,q);
   $('rmtQr').onclick=()=>{ el.style.display='none'; openShootDev(()=>sendToPhone(f,q)); };
-  $('rmtSelf').onclick=async()=>{ await draftSaveNow(); location.href='shashin.html?'+new URLSearchParams(Object.assign({from:'park'},q)).toString(); };
+  $('rmtSelf').onclick=async()=>{ await draftSaveNow(); leaveOk=true; location.href='shashin.html?'+new URLSearchParams(Object.assign({from:'park'},q)).toString(); };
   $('rmtX').onclick=()=>{ el.style.display='none'; };
 }
 $('sdSelf').onclick=()=>{ lsSet(SHOOT_DEV_KEY,'self'); closeShootDev(true); };
@@ -3305,8 +3401,11 @@ $('cloudSave').onclick=async()=>{
         order:payload.order,date:payload.date,figures:state.features.length,json:JSON.stringify(payload)});
     if(!d.ok) throw new Error(/unknown/.test(d.error||'')?'共通GASの更新がまだです（数分で反映されます）':(d.error||'保存できませんでした'));
     state.cloudId=d.id; state.cloudVer=d.ver; setTimeout(loadShots,500);
+    let sendNote='';
+    if(pickUnsent()>0){ try{ const j=await sendPickedCore(); sendNote='\n\n📤 撮る木も工事写真へ送りました（新しく '+j.added+' 本・か所'+(j.removed?'・外した '+j.removed:'')+'）'; }
+      catch(err){ sendNote='\n\n⚠ 撮る木を工事写真へ送れませんでした：'+(err&&err.message||err); } renderPickBar(); draw(); }
     alert((d.forked?'ほかの人が先にこの記録を保存し直していたので、上書きせず「別の記録」として保存しました。\n一覧で2つを見くらべてください。\n\n':'みんなの共有に保存しました。\n')
-      +'公園：'+payload.park+(payload.date?('（'+payload.date+'）'):'')+'\n更新：'+d.updated+'\n\nほかの端末・事務所では「クラウドから開く」で読み込めます。');
+      +'公園：'+payload.park+(payload.date?('（'+payload.date+'）'):'')+'\n更新：'+d.updated+'\n\nほかの端末・事務所では「クラウドから開く」で読み込めます。'+sendNote);
   }catch(e){
     alert('クラウドに保存できませんでした。\n'+(e&&e.message?e.message:e)+'\n\n電波の届くところで、もう一度お試しください。念のため「この公園を保存（.json）」もしておくと安全です。');
   }finally{ b.firstChild.textContent=label; b.disabled=false; }
@@ -4523,6 +4622,7 @@ function pkFill(siteGroups){
   dc.innerHTML=Object.keys(g).map(c=>`<option value="${esc2(c)}"></option>`).join('');
   // ※ datalist（list属性）はiPad/iPhoneだと変換候補のバーを乗っ取って漢字変換ができなくなるので使わない。自前の候補リストを出す。
   ['parkName','contractName'].forEach(id=>{ const el=$(id); if(el) el.removeAttribute('list'); });
+  if(typeof renderPkMatch==='function') setTimeout(()=>renderPkMatch(true),0);
 }
 /* 自前の候補リスト（入力の下に出す。キーボードの変換候補はそのまま使える） */
 let sugBox=null, sugFor=null, sugHideT=0;
@@ -4564,6 +4664,36 @@ try{ const m=JSON.parse(localStorage.getItem('nippou_masters')||'null'); if(m&&m
 fetch(PK_MASTERS_URL).then(r=>r.json()).then(m=>{ if(m&&m.siteGroups){ pkFill(m.siteGroups);
   try{ const old=JSON.parse(localStorage.getItem('nippou_masters')||'null')||{}; localStorage.setItem('nippou_masters',JSON.stringify({staff:m.staff||old.staff||[],siteGroups:m.siteGroups})); }catch(e){} } }).catch(()=>{});
 // 新しい画面の公園名欄にも同じ候補を出す
+/* 公園名が現場マスタ（日報）と合っているか：合っていないと工事写真へ送れない・撮った写真とつながらない */
+function pkNorm(x){ return String(x||'').replace(/[\s　]/g,''); }
+function pkMatchState(name){
+  const n=pkNorm(name); if(!n||!pkParks.length) return null;
+  if(pkParks.some(x=>pkNorm(x.park)===n)) return {ok:true};
+  const c=[...new Set(pkParks.filter(x=>{ const m=pkNorm(x.park); return m&&(m.includes(n)||n.includes(m)); }).map(x=>x.park))];
+  return {ok:false,cands:c.slice(0,3)};
+}
+let pkMatchLast=null;
+function renderPkMatch(force){
+  const name=$('parkName').value||''; if(!force&&name+'|'+pkParks.length===pkMatchLast) return; pkMatchLast=name+'|'+pkParks.length;
+  const st=pkMatchState(name), el=$('pkMatch');
+  if(!st){ el.style.display='none'; }
+  else { el.style.display=''; el.className='pkMatch '+(st.ok?'ok':'ng'); el.textContent=st.ok?'✓ 現場マスタ':'⚠ マスタにない名前'; el.title=st.ok?'日報の現場マスタと同じ名前です（工事写真とつながります）':'日報の現場マスタにない名前です。タップで確認'; }
+  const np=$('nuPark');
+  if(np){ let d=$('pkMatchNu'); if(!d){ d=document.createElement('div'); d.id='pkMatchNu'; np.insertAdjacentElement('afterend',d); d.onclick=pkMatchFix; }
+    if(!st){ d.style.display='none'; } else { d.style.display=''; d.className='pkMatchNu '+(st.ok?'ok':'ng'); d.textContent=st.ok?'✓ 現場マスタと同じ名前（工事写真とつながります）':'⚠ 現場マスタにない名前です（タップで確認）'; } }
+}
+function pkMatchFix(){
+  const name=($('parkName').value||'').trim(), st=pkMatchState(name); if(!st) return;
+  if(st.ok){ alert('「'+name+'」は日報の現場マスタと同じ名前です。\n工事写真へ送る・撮った写真とつなぐことができます。'); return; }
+  if(st.cands.length){
+    for(const c of st.cands){ if(confirm('「'+name+'」は現場マスタにありません。\n「'+c+'」のことですか？\n\nOK＝この名前に直す')){ const pn=$('parkName'); pn.value=c; pn.dispatchEvent(new Event('input',{bubbles:true})); pn.dispatchEvent(new Event('change',{bubbles:true})); const np=$('nuPark'); if(np) np.value=c; renderPkMatch(true); return; } }
+    return;
+  }
+  alert('「'+name+'」は日報の現場マスタにない名前です。\nこのままだと「工事写真へ送る」ができず、撮った写真ともつながりません。\n\n公園名の欄をタップすると候補が出るので、そこから選んでください（無いときは日報の現場マスタに登録）。');
+}
+$('pkMatch').onclick=pkMatchFix;
+document.addEventListener('input',e=>{ if(e.target&&(e.target.id==='parkName'||e.target.id==='nuPark')) setTimeout(()=>renderPkMatch(),0); });
+setInterval(()=>renderPkMatch(),1500);   // 図面を開いたとき（名前が入れ替わったとき）にも
 // 一覧にある公園を選んだら、委託名が空なら入れる
 $('parkName').addEventListener('change',()=>{
   const p=($('parkName').value||'').trim(), c=$('contractName'); if(!p||!c||c.value.trim()) return;

@@ -384,6 +384,7 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
 .batchBar .bbH{width:100%;font-size:12px;color:var(--sub)}
 .batchBar button{flex:1;min-width:0;padding:10px 6px;border-radius:12px;background:var(--main);color:#fff;font-weight:700;font-size:14px;line-height:1.3}
 .batchBar button small{display:block;font-size:11px;font-weight:400;opacity:.9}
+.batchBar .bbH a{color:var(--main);font-weight:700;white-space:nowrap}
 .batchNote{background:#fff7e6;border:1px solid #f5c26b;color:#7a4a00;border-radius:10px;padding:9px 12px;margin:0 0 10px;font-size:13px}
 .batchNote a{color:#b25e00;font-weight:700}
 .camRmt{position:absolute;right:62px;top:calc(var(--safe-t) + 10px);background:#1f7a46;color:#fff;font-size:12px;font-weight:700;border-radius:99px;padding:6px 10px}
@@ -1453,11 +1454,24 @@ function batchHeadHTML(){
   const L=batchLists(), st=curStages(), has=st.filter(s=>(L[s]||[]).length);
   if(!has.length) return '';
   if(photoSort!=='todo'){ const n=Math.max(...has.map(s=>L[s].length)); return `<div class="batchNote">まだ撮っていない項目が ${n} あります（公園報告から送った木など）。<a href="#" id="bnGo">撮り残し → まとめて撮る</a></div>`; }
-  return `<div class="batchBar"><div class="bbH"><b>まとめて撮る</b>：1枚撮ると、カメラのまま次の木へ（図面で近い順）</div>${has.map(s=>`<button data-batch="${esc(s)}">📷 ${esc(s)}<small>${L[s].length} 本・か所</small></button>`).join('')}</div>`;
+  return `<div class="batchBar"><div class="bbH"><b>まとめて撮る</b>：1枚撮ると、カメラのまま次の木へ（図面で近い順）　<a href="#" id="bbOffline">📥 電波がない所用に保存</a></div>${has.map(s=>`<button data-batch="${esc(s)}">📷 ${esc(s)}<small>${L[s].length} 本・か所</small></button>`).join('')}</div>`;
 }
 function bindBatchHead(){
   const g=$('#bnGo'); if(g) g.onclick=e=>{ e.preventDefault(); photoSort='todo'; LS.set('shashin_sort',photoSort); renderPhotos(); };
   $$('#photoGrid [data-batch]').forEach(b=>b.onclick=()=>batchStart(b.dataset.batch));
+  const off=$('#bbOffline'); if(off) off.onclick=async e=>{ e.preventDefault(); await prepareOffline(); };
+}
+/* 出発前に：この現場の撮るリスト・図面・ほかの人の写真を端末に入れておく */
+async function prepareOffline(){
+  if(!canSync()){ toast('いまは電波がありません。電波のある所で押してください',3000); return; }
+  toast('端末に保存しています…',8000);
+  try{ await syncAll(true); }catch(e){}
+  await loadTeamPhotos();
+  const rec=parkRecOf(cur.id); let zu='';
+  if(rec){ try{ delete parkCache[rec]; await loadParkRec(rec); zu='・図面'; }catch(e){ zu='（図面は読み込めませんでした）'; } }
+  const n=Math.max(0,...Object.values(batchLists()).map(l=>l.length));
+  toast(`保存しました：撮るリスト ${n} 件${zu}。電波がなくても撮れます（写真は電波が戻ったら送ります）`,4500);
+  renderPhotos();
 }
 function batchOrder(list){
   if(list.length<3||!list.every(it=>it.px!=null&&it.py!=null&&it.px!==''&&it.py!=='')) return list;
@@ -1469,23 +1483,37 @@ function batchOrder(list){
 function batchStart(stage){
   const L=batchOrder(batchLists()[stage]||[]); if(!L.length){ toast('撮るものがありません'); return; }
   BATCH={stage, ids:L.map(it=>it.id), i:0};
-  shootItem(BATCH.ids[0],stage); updateBatchUI();
+  shootItem(BATCH.ids[0],stage); updateBatchUI(); batchPoll();
+}
+/* 2人以上で撮るとき：まとめて撮る中は、ほかの人の写真を数秒ごとに読む。いま撮ろうとしている木を ほかの人が撮ったら、次の木へ（撮った木は順番からも とばす） */
+let batchPollT=null;
+function batchPoll(){
+  clearInterval(batchPollT);
+  batchPollT=setInterval(async()=>{
+    if(!BATCH){ clearInterval(batchPollT); batchPollT=null; return; }
+    if(document.hidden||!$('#camera').classList.contains('active')||!canSync()) return;
+    await loadTeamPhotos(); if(!BATCH) return;
+    const id=BATCH.ids[BATCH.i], other=teamPhotos.find(x=>x.itemId===id&&x.stage===BATCH.stage&&!x.state&&x.by&&x.by!==me());
+    if(other){ if(navigator.vibrate) navigator.vibrate([40,40,40]); if(!batchNext(`この木は ${other.by}さんが撮りました。`)) showList(); }
+    else updateBatchUI();
+  },8000);
 }
 function batchItemDone(id,stage){ const t=targets().find(x=>x.key==='I|'+id); return !!(t&&t.done[stage]>0); }
-function batchNext(){
+function batchNext(pre){
   if(!BATCH) return false;
   let i=BATCH.i+1; while(i<BATCH.ids.length&&(batchItemDone(BATCH.ids[i],BATCH.stage)||!items.find(x=>x.id===BATCH.ids[i]))) i++;
   if(i>=BATCH.ids.length){ const st=BATCH.stage; BATCH=null; updateBatchUI(); toast(`${st}をまとめて撮り終えました 👍`,3000); return false; }
   BATCH.i=i; shootItem(BATCH.ids[i],BATCH.stage); updateBatchUI();
-  const it=items.find(x=>x.id===BATCH.ids[i]); toast(`次：${koshuLabel(it)} ${[it.kikaku,it.no?'No.'+it.no:''].filter(Boolean).join(' ')}`,2200);
+  const it=items.find(x=>x.id===BATCH.ids[i]); toast(`${pre||''}次：${koshuLabel(it)} ${[it.kikaku,it.no?'No.'+it.no:''].filter(Boolean).join(' ')}`,pre?3500:2200);
   return true;
 }
-function batchStop(){ BATCH=null; updateBatchUI(); }
+function batchStop(){ BATCH=null; clearInterval(batchPollT); batchPollT=null; updateBatchUI(); }
 function updateBatchUI(){
   const el=$('#camBatch'); if(!el) return;
   if(!BATCH){ el.classList.remove('on'); el.innerHTML=''; drawCamLoc(); return; }
   const it=items.find(x=>x.id===BATCH.ids[BATCH.i])||{};
-  el.innerHTML=`<div class="bt">まとめて <b>${esc(BATCH.stage)}</b> ${BATCH.i+1}/${BATCH.ids.length}<small>${esc(koshuLabel(it))} ${esc([it.kikaku,it.no?'No.'+it.no:''].filter(Boolean).join(' '))}</small></div><button id="cbSkip">とばす ▶</button><button id="cbStop">やめる</button>`;
+  const left=BATCH.ids.slice(BATCH.i).filter(id=>!batchItemDone(id,BATCH.stage)).length;
+  el.innerHTML=`<div class="bt">まとめて <b>${esc(BATCH.stage)}</b> 残り${left}<small>${esc(koshuLabel(it))} ${esc([it.kikaku,it.no?'No.'+it.no:''].filter(Boolean).join(' '))}</small></div><button id="cbSkip">とばす ▶</button><button id="cbStop">やめる</button>`;
   el.classList.add('on');
   $('#cbSkip').onclick=e=>{ e.stopPropagation(); if(!batchNext()) showList(); };
   $('#cbStop').onclick=e=>{ e.stopPropagation(); batchStop(); toast('まとめて撮るのをやめました'); };
@@ -1495,18 +1523,19 @@ function updateBatchUI(){
 function drawCamLoc(){
   const c=$('#camLoc'); if(!c) return;
   const it=curItem, rec=cur&&parkRecOf(cur.id);
-  if(!it||it.px==null||it.px===''||!rec){ c.classList.remove('on'); return; }
+  const ip=it&&itemPx(it);
+  if(!it||!ip||!rec){ c.classList.remove('on'); return; }
   const R=parkCache[rec];
-  if(!R){ c.classList.remove('on'); if(canSync()&&!drawCamLoc.loading){ drawCamLoc.loading=true; loadParkRec(rec).then(()=>{ drawCamLoc.loading=false; drawCamLoc(); }).catch(()=>{ drawCamLoc.loading=false; }); } return; }
+  if(!R){ c.classList.remove('on'); if(!drawCamLoc.loading){ drawCamLoc.loading=true; loadParkRec(rec).then(()=>{ drawCamLoc.loading=false; drawCamLoc(); }).catch(()=>{ drawCamLoc.loading=false; }); } return; }
   if(!R.img){ c.classList.remove('on'); return; }
   const big=c.classList.contains('big'), W=big?Math.round(Math.min(innerWidth,innerHeight)*0.78):104, dpr=devicePixelRatio||1;
   c.width=W*dpr; c.height=W*dpr; c.classList.add('on');
   const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.fillStyle='#fff'; g.fillRect(0,0,W,W);
   const mpp=Number(R.d.scale)||0, span=Math.max(120,Math.min(R.img.width,R.img.height,mpp?(big?60:30)/mpp:(big?900:420)));   // 小さい窓は約30m四方
-  const x=Number(it.px), y=Number(it.py), k=W/span;
+  const x=ip.x, y=ip.y, k=W/span;
   g.drawImage(R.img,x-span/2,y-span/2,span,span,0,0,W,W);
   // ほかのまとめて撮る木（薄く）と、いまの木（赤い輪）
-  if(BATCH) BATCH.ids.forEach((id,j)=>{ const o=items.find(q=>q.id===id); if(!o||o===it||o.px==null||o.px==='') return; const ox=(o.px-x)*k+W/2, oy=(o.py-y)*k+W/2; if(ox<0||oy<0||ox>W||oy>W) return;
+  if(BATCH) BATCH.ids.forEach((id,j)=>{ const o=items.find(q=>q.id===id), op=o&&o!==it&&itemPx(o); if(!op) return; const ox=(op.x-x)*k+W/2, oy=(op.y-y)*k+W/2; if(ox<0||oy<0||ox>W||oy>W) return;
     g.beginPath(); g.arc(ox,oy,big?7:4,0,7); g.strokeStyle=batchItemDone(id,BATCH.stage)?'rgba(30,150,80,.9)':'rgba(255,150,0,.9)'; g.lineWidth=2; g.stroke(); });
   g.beginPath(); g.arc(W/2,W/2,big?16:10,0,7); g.strokeStyle='#e0241b'; g.lineWidth=big?4:3; g.stroke();
   g.beginPath(); g.arc(W/2,W/2,2.5,0,7); g.fillStyle='#e0241b'; g.fill();
@@ -1874,12 +1903,19 @@ function itemLL(i){ if(i.lat!=null&&i.lng!=null&&i.lat!=='') return {lat:+i.lat,
 
 /* ---- 図面の表示 ---- */
 const parkCache={};
+/* 公園報告の図面は、読み込めたら端末（IndexedDB）にもとっておく → 電波がない公園でも図面・赤い輪・まとめて撮るが使える */
+function parkDB(){ return new Promise((res,rej)=>{ const r=indexedDB.open('shashin_park',1); r.onupgradeneeded=()=>r.result.createObjectStore('rec'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function parkStorePut(id,data){ try{ const db=await parkDB(); await new Promise(res=>{ const t=db.transaction('rec','readwrite'); t.objectStore('rec').put({data,t:Date.now()},id); t.oncomplete=res; t.onerror=res; }); }catch(e){} }
+async function parkStoreGet(id){ try{ const db=await parkDB(); return await new Promise(res=>{ const r=db.transaction('rec','readonly').objectStore('rec').get(id); r.onsuccess=()=>res(r.result||null); r.onerror=()=>res(null); }); }catch(e){ return null; } }
 async function loadParkRec(id){
   if(parkCache[id]&&Date.now()-parkCache[id].t<10*60*1000) return parkCache[id];   // 10分たったら読み直す（図面を作る人が直していることがある）
-  const j=await gasGetApp('park',{action:'get',id}); if(!j.ok) throw new Error(j.error||'読み込めませんでした');
+  let raw=null, stored=false;
+  if(canSync()){ try{ const j=await gasGetApp('park',{action:'get',id}); if(j.ok){ raw=j.data; parkStorePut(id,raw); } else if(!parkCache[id]) throw new Error(j.error||'読み込めませんでした'); }catch(e){ if(parkCache[id]) return parkCache[id]; } }
+  if(!raw){ if(parkCache[id]) return parkCache[id]; const o=await parkStoreGet(id); if(!o) throw new Error('図面を読み込めませんでした（電波のある所で一度開いてください）'); raw=o.data; stored=true; }
+  const j={data:raw};
   const d=JSON.parse(j.data), img=d.imgData?await new Promise(res=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>res(null); i.src=d.imgData; }):null;
   const F=(d.features||[]).filter(f=>f.pt||Array.isArray(f.pts)), byFid={}; F.forEach(f=>{ byFid[treeFid(f)]=f; });
-  return parkCache[id]={ t:Date.now(), d, img, byFid, trees:F.filter(f=>f.type==='tree'&&f.pt), areas:F.filter(f=>f.type!=='tree'&&Array.isArray(f.pts)), feats:F.filter(f=>f.cat) };
+  return parkCache[id]={ t:stored?0:Date.now(), stored, d, img, byFid, trees:F.filter(f=>f.type==='tree'&&f.pt), areas:F.filter(f=>f.type!=='tree'&&Array.isArray(f.pts)), feats:F.filter(f=>f.cat) };
 }
 const ZV={ on:false, rec:null, k:1, ox:0, oy:0, fitted:null };
 let ALN=null;   // 地図と合わせている途中 {pairs:[], pick:{f}}
@@ -1894,7 +1930,6 @@ async function showZumen(on){
   if(!on){ setTimeout(renderMap,30); return; }
   const rec=parkRecOf(cur.id);
   if(!rec){ drawZumenMsg('この現場の公園報告の図面が見つかりません。<br>公園報告アプリで、公園名を現場マスタと同じにして「☁️ クラウドに保存」すると、だれが作った図面でも自動でここに出ます。'); discoverParkRec(siteOf(cur.id)).then(()=>{ if(parkRecOf(cur.id)&&ZV.on) showZumen(true); }); return; }
-  if(!canSync()&&!parkCache[rec]){ drawZumenMsg('電波のある所で開いてください'); return; }
   try{ drawZumenMsg('図面を読み込んでいます…'); const R=await loadParkRec(rec); ZV.rec=rec; $('#zumenMsg').style.display='none'; if(ZV.fitted!==rec) fitZumen(R); drawZumen();
     const auto=R.d.geo&&R.d.geo.kind==='wm'; $('#mtAlign').style.display=auto?'none':''; const nU=unlinkedTargets().length; $('#mtLink').style.display=nU||LINK?'':'none'; $('#mtLink').textContent=`🔗 写真をつなぐ${nU?'（'+nU+'）':''}`; drawLinkBar(); $('#mtAlign').textContent=geoOf(cur.id)?'📍 地図と合わせ直す':'📍 地図と合わせる'; }
   catch(e){ drawZumenMsg('図面を読み込めませんでした：'+esc(e.message||e)); }
@@ -2830,7 +2865,7 @@ function missingBefore(key,stage){
 function needTableHTML(){
   const rec=parkRecOf(cur.id); if(!rec) return '';
   const R=parkCache[rec];
-  if(!R){ if(canSync()&&!needTableHTML.loading){ needTableHTML.loading=true; loadParkRec(rec).then(()=>{ needTableHTML.loading=false; if($('#check').classList.contains('on')) renderCheck(); }).catch(()=>{ needTableHTML.loading=false; }); } return '<div class="s" style="margin-bottom:10px;color:var(--sub)">公園報告の図面から本数を読み込んでいます…</div>'; }
+  if(!R){ if(!needTableHTML.loading){ needTableHTML.loading=true; loadParkRec(rec).then(()=>{ needTableHTML.loading=false; if($('#check').classList.contains('on')) renderCheck(); }).catch(()=>{ needTableHTML.loading=false; }); } return '<div class="s" style="margin-bottom:10px;color:var(--sub)">公園報告の図面から本数を読み込んでいます…</div>'; }
   const st=curStages(), FS=fidShots(), rule=curOpts().photoRule, G={};
   R.feats.forEach(f=>{ const sub=f.rank||f.kind||'', k=f.cat+'|'+sub, g=G[k]=G[k]||{cat:f.cat,sub,unit:f.type==='tree'?'本':'か所',cnt:0,all:0,part:0};
     const got=FS[treeFid(f)], n=got?st.filter(s=>got.has(s)).length:0; g.cnt++; if(n>=st.length) g.all++; else if(n>0) g.part++; });
@@ -2876,17 +2911,17 @@ function drawSortBar(){
    ・ページは端末の中で絵として描いてPDFにする（日本語の字が崩れない・スマホだけで完結）
    ・並びは 対象（工種→規格→測点）→ 案件の撮り方の順（前後中なら前・後・中）→ 撮った時刻
    ========================================================= */
-const RP={ layout:'one3', cover:true, check:true, lines:true, zip:'none' };
+const RP={ layout:'one3', cover:true, check:true, posmap:true, lines:true, zip:'none' };
 $('#btnOut').onclick=openReport;
 $('#rpBack').onclick=()=>{ go('album'); renderPhotos(); };
 function openReport(){
-  const o=curOpts(); RP.layout=o.layout; RP.zip=o.zip;
+  const o=curOpts(); RP.layout=o.layout; RP.zip=o.zip; RP.posmap=o.posmap!==false;   // 撮影位置図を付けるか（案件ごとに覚える）
   CV=coverOf(); drawReportUI(); $('#rpPages').innerHTML=''; $('#rpProg').style.display='none'; go('report');
 }
 function drawReportUI(){
   const chip=(id,list,get,set)=>{ $(id).innerHTML=list.map(([v,l])=>`<button data-v="${v}" class="${get(v)?'on':''}">${l}</button>`).join(''); $(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{ set(b.dataset.v); drawReportUI(); }); };
   chip('#rpLayout',LAYOUTS.map(x=>[x[0],x[1]]),v=>RP.layout===v,v=>RP.layout=v);
-  chip('#rpParts',[['cover','表紙'],['check','撮影チェック表'],['lines','所見を書く罫線']],v=>RP[v],v=>RP[v]=!RP[v]);
+  chip('#rpParts',[['cover','表紙'],['check','撮影チェック表'],...(parkRecOf(cur.id)?[['posmap','撮影位置図']]:[]),['lines','所見を書く罫線']],v=>RP[v],v=>{ RP[v]=!RP[v]; if(v==='posmap'){ const on=RP.posmap; setCaseOpt(o=>{ o.posmap=on; }); } });
   chip('#rpZip',ZIPS,v=>RP.zip===v,v=>RP.zip=v);
   chip('#rpImg',[['on','黒板あり'],['off','黒板なし'],['both','両方（フォルダを分ける）']],v=>(RP.img||'on')===v,v=>RP.img=v);
   drawCoverUI();
@@ -3005,6 +3040,7 @@ function buildPages(){
   const ts=reportTargets(), pages=[];
   if(RP.cover) pages.push({type:'cover'});
   if(RP.check) pages.push({type:'check',ts});
+  if(RP.posmap&&parkRecOf(cur.id)) pages.push({type:'posmap',ts});
   if(RP.layout==='pack'){
     const all=[]; ts.forEach(t=>t.ph.forEach(p=>all.push({p,t})));
     for(let i=0;i<all.length;i+=3) pages.push({type:'photos',slots:all.slice(i,i+3),n:3,title:null});
@@ -3015,6 +3051,9 @@ function buildPages(){
   // チェック表に、対象が何ページ目か
   let pg=0; const first={}; pages.forEach((P,i)=>{ if(P.type==='photos'){ pg++; P.no=pg; if(P.title&&first[P.title.key]==null) first[P.title.key]=pg; if(!P.title) P.slots.forEach(s=>{ if(first[s.t.key]==null) first[s.t.key]=pg; }); } });
   pages.forEach(P=>{ if(P.type==='check') P.first=first; P.total=pg; });
+  // 写真番号（1から通し。まとめて渡すZIPのファイル番号と同じ）と、撮影位置図に書く「対象ごとの写真番号」
+  let num=0; const nums={}; pages.forEach(P=>{ if(P.type!=='photos') return; P.slots.forEach(sl=>{ sl.num=++num; (nums[sl.t.key]=nums[sl.t.key]||[]).push(num); }); });
+  pages.forEach(P=>{ if(P.type==='posmap') P.nums=nums; });
   return pages;
 }
 const PW=1240, PH=1754, MG=72;   // A4 縦（150dpi）
@@ -3050,6 +3089,7 @@ async function renderPage(P,scale){
     if(P.ts.length>26) txt(ctx,`ほか ${P.ts.length-26} か所`,x0,y+40,20,{color:'#666'});
     return c;
   }
+  if(P.type==='posmap'){ await drawPosMap(ctx,P); return c; }
   // 写真ページ
   let top=110;
   if(P.title){
@@ -3064,6 +3104,7 @@ async function renderPage(P,scale){
     if(!s){ ctx.strokeStyle='#e3e3e3'; ctx.lineWidth=1.5; ctx.setLineDash([10,8]); ctx.strokeRect(MG,y,pw,ph); ctx.setLineDash([]); continue; }
     try{ const img=await loadImgFromBlob(await photoBlob(s.p)); fitImage(ctx,img,MG,y,pw,ph); }
     catch(e){ ctx.fillStyle='#f3f3f3'; ctx.fillRect(MG,y,pw,ph); txt(ctx,'写真を読み込めませんでした',MG+pw/2,y+ph/2,22,{align:'center',color:'#999'}); }
+    if(s.num){ const lb='写真 '+s.num; ctx.font=`700 20px ${FONT}`; const lw=ctx.measureText(lb).width+16; ctx.fillStyle='rgba(255,255,255,.88)'; ctx.fillRect(MG+pw-lw-6,y+6,lw,30); txt(ctx,lb,MG+pw-14,y+28,20,{bold:true,align:'right',color:'#222'}); }
     const x=MG+pw+gap, w=PW-MG-x; let ty=y+40;
     const stg=s.p.stage||'';
     if(stg){ ctx.font=`700 26px ${FONT}`; const bw=ctx.measureText(stg).width+28; ctx.fillStyle=stageColor(stg); ctx.fillRect(x,ty-30,bw,40); txt(ctx,stg,x+14,ty-1,26,{bold:true,color:'#fff'}); ty+=46; }
@@ -3077,6 +3118,34 @@ async function renderPage(P,scale){
   }
   txt(ctx,String(P.no||''),PW/2,PH-40,20,{align:'center',color:'#666'});
   return c;
+}
+/* 撮影位置図：公園報告の図面に、撮った木・範囲の場所と写真番号を書く（公共委託の提出用） */
+function numRange(a){ const out=[]; let s0=a[0], p=a[0]; for(let i=1;i<=a.length;i++){ const v=a[i]; if(v===p+1){ p=v; continue; } out.push(s0===p?String(s0):s0+'〜'+p); s0=p=v; } return out.join(','); }
+async function drawPosMap(ctx,P){
+  txt(ctx,'撮影位置図',MG,150,34,{bold:true});
+  const rec=parkRecOf(cur.id); let R=null; try{ R=await loadParkRec(rec); }catch(e){}
+  if(!R||!R.img){ txt(ctx,'公園報告の図面を読み込めませんでした（電波のある所で作り直してください）',MG,220,24,{color:'#c0392b'}); return; }
+  const X0=MG, Y0=180, W=PW-2*MG, H=PH-Y0-170, k=Math.min(W/R.img.width,H/R.img.height), dw=R.img.width*k, dh=R.img.height*k, ox=X0+(W-dw)/2, oy=Y0+(H-dh)/2;
+  ctx.drawImage(R.img,ox,oy,dw,dh); ctx.strokeStyle='#999'; ctx.lineWidth=1.5; ctx.strokeRect(ox,oy,dw,dh);
+  const g=geoOf(cur.id), pts=[]; let noPos=0;
+  P.ts.forEach(t=>{ const n=P.nums[t.key]; if(!n||!n.length) return;
+    let q=t.item?itemPx(t.item):null;
+    if(!q&&g){ const ph=t.ph.find(p=>p.lat!=null&&p.lat!==''); if(ph){ const v=g.ll2px(+ph.lat,+ph.lng); if(v&&v.x>=0&&v.y>=0&&v.x<=R.img.width&&v.y<=R.img.height) q=v; } }
+    if(!q){ noPos++; return; }
+    pts.push({x:ox+q.x*k,y:oy+q.y*k,label:numRange(n)}); });
+  // 印（赤い丸）→ 番号（重ならないように、置ける場所を少しずつずらす）
+  pts.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x,p.y,9,0,7); ctx.strokeStyle='#d62020'; ctx.lineWidth=3.5; ctx.stroke(); ctx.beginPath(); ctx.arc(p.x,p.y,3,0,7); ctx.fillStyle='#d62020'; ctx.fill(); });
+  const boxes=[]; ctx.font=`700 22px ${FONT}`;
+  const hit=b=>boxes.some(o=>b.x<o.x+o.w&&b.x+b.w>o.x&&b.y<o.y+o.h&&b.y+b.h>o.y);
+  pts.forEach(p=>{ const w=ctx.measureText(p.label).width+14, h=30; let best=null;
+    for(const [dx,dy] of [[14,-34],[14,6],[-w-14,-34],[-w-14,6],[-w/2,-50],[-w/2,16],[24,-62],[24,34],[-w-24,-62],[-w-24,34]]){ const b={x:p.x+dx,y:p.y+dy,w,h}; if(b.x<ox||b.x+w>ox+dw||b.y<oy||b.y+h>oy+dh) continue; if(!hit(b)){ best=b; break; } if(!best) best=b; }
+    if(!best) best={x:p.x+14,y:p.y-34,w,h}; boxes.push(best);
+    ctx.strokeStyle='rgba(214,32,32,.7)'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(best.x+(best.x>p.x?0:w),best.y+h/2); ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.93)'; ctx.fillRect(best.x,best.y,w,h); ctx.strokeStyle='#d62020'; ctx.strokeRect(best.x,best.y,w,h);
+    txt(ctx,p.label,best.x+7,best.y+23,22,{bold:true,color:'#b01010'}); });
+  txt(ctx,'○ 撮影した木・範囲　　数字 ＝ 写真番号（写真ページの右上の番号）',MG,PH-120,22,{color:'#333'});
+  if(noPos) txt(ctx,`※ 図面の位置が分からない対象が ${noPos} あります（図面の木を選ばずに撮った写真など）`,MG,PH-86,20,{color:'#777'});
+  txt(ctx,'',PW/2,PH-40,20,{align:'center',color:'#666'});
 }
 function prog(t){ const e=$('#rpProg'); e.style.display=t?'':'none'; e.textContent=t||''; }
 $('#rpPreview').onclick=async()=>{
