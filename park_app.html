@@ -1677,7 +1677,8 @@ function draw(){
       }
       if(!exporting&&f===selected)drawHandles(f);
       if(!exporting&&f===selected)drawEdgeLengths(f);
-      if(!exporting&&((SHOTS&&(SHOTS.shots[featFid(f)]||[]).length)||(f.shoot&&(shotMarks||tool==='shoot')))){ const c=centroid(f.pts), r=6/view.zoom; ctx.beginPath(); ctx.arc(c.x,c.y,r,0,7); ctx.fillStyle='rgba(20,30,25,.75)'; ctx.fill(); drawShotMark(f,c.x,c.y,r); }
+      // 範囲の撮影の印：撮った分（緑）は「撮影の印：表示」のとき、撮る予定（オレンジの点線）は📷撮るのときだけ
+      if(!exporting&&((shotMarks&&SHOTS&&(SHOTS.shots[featFid(f)]||[]).length)||(tool==='shoot'&&(f.shoot||(SHOTS&&SHOTS.planned&&SHOTS.planned.indexOf(featFid(f))>=0))))){ const c=centroid(f.pts), r=6/view.zoom; ctx.beginPath(); ctx.arc(c.x,c.y,r,0,7); ctx.fillStyle='rgba(20,30,25,.75)'; ctx.fill(); drawShotMark(f,c.x,c.y,r); }
       if(labelVisible(f)){
         const c=centroid(f.pts);const _maxY=f.pts.reduce((a,p)=>Math.max(a,p.y),-Infinity);
         const tag=(f.calc==='trim')?'（投影＋側面）':'';
@@ -2332,7 +2333,8 @@ async function loadShots(){
 function drawShotMark(f,x,y,r){
   if(!shotMarks&&tool!=='shoot') return;
   const got=SHOTS&&SHOTS.shots[featFid(f)];
-  if(!got||!got.length){   // まだ撮っていない：撮る木にえらんだもの（工事写真へ送った・送る前）は オレンジの点線の輪
+  if(!got||!got.length){   // まだ撮っていない：撮る木にえらんだもの（工事写真へ送った・送る前）は オレンジの点線の輪（📷撮るのときだけ）
+    if(tool!=='shoot') return;
     const planned=f.shoot||(SHOTS&&SHOTS.planned&&SHOTS.planned.indexOf(featFid(f))>=0); if(!planned) return;
     const R=r+3.5/view.zoom; ctx.save(); ctx.lineWidth=2.4/view.zoom; ctx.setLineDash([4/view.zoom,3/view.zoom]);
     ctx.beginPath(); ctx.arc(x,y,R,0,7); ctx.strokeStyle=f.shoot&&!f.shootSent?'#ffb547':'rgba(255,181,71,.75)'; ctx.stroke(); ctx.restore(); return; }
