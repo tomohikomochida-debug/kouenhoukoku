@@ -167,6 +167,9 @@
   .err{color:var(--danger);font-size:13px}
   .leavebtns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .leavebtns.two{grid-template-columns:repeat(2,1fr)}
+  .leavebtns.one{grid-template-columns:1fr}
+  .leavebtns.one .lbtn{flex-direction:row;justify-content:space-between;padding:14px 16px;text-align:left}
+  .lbtn.go{background:var(--leaf);color:#fff;border-color:transparent}
   .lbtn{border:1px solid var(--line);background:var(--rest-soft);color:var(--rest);border-radius:12px;padding:14px 4px;font-size:16px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:2px}
   .lbtn small{font-size:12px;font-weight:400}
   .lbtn.on{background:var(--rest);color:#fff;border-color:transparent}
@@ -576,6 +579,7 @@ async function doPunch(type){
   if (type === 'in'){
     let away = officeAway(pos);
     while (away){
+      $('#toast').className = 'toast';
       const ans = await new Promise(resolve => { S.awayAsk = { dist: away, site, resolve, busy:false }; render(); });
       if (ans.act === 'retry'){ S.awayAsk = { dist: away, site, busy:true }; render(); const p2 = await getPos(true); if (p2) pos = p2; away = officeAway(pos); continue; }
       S.awayAsk = null;
@@ -1118,7 +1122,7 @@ function officePanel(){
     </div>
     <div class="small muted">範囲の中なら事務所で押したことにします。スマホの位置は建物の中や朝いちばんで数十mずれることがあるので、そのずれ（100mまで）も足して判断します。標準は150mです。</div>
     ${o.msg ? `<div class="small" style="margin-top:6px">${esc(o.msg)}</div>` : ''}
-    <div class="row">${map ? `<a class="btn" href="${map}" target="_blank" rel="noopener">地図で見る</a>` : ''}<button class="btn" data-act="ofHere">今いる場所を事務所にする</button><span class="grow"></span><button class="btn primary" data-act="ofSave">事務所の位置を保存する</button></div>
+    <div class="row">${map ? `<a class="btn" href="${map}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">地図で見る</a>` : ''}<button class="btn" data-act="ofHere">今いる場所を事務所にする</button><span class="grow"></span><button class="btn primary" data-act="ofSave">事務所の位置を保存する</button></div>
   </section>`;
 }
 
@@ -1244,9 +1248,9 @@ function awaySheet(){
     <div class="small muted" style="margin-top:6px">現場に直接行く日（直行）は、現場名を入れて「直行で出勤する」を押してください。直行の記録は担当が確認します。</div>
     <label class="f" style="margin-top:10px">現場名<input id="awaySite" list="siteList" value="${esc(a.site || '')}" placeholder="直行する現場"></label>
     <div class="err" id="awayErr"></div>
-    <div class="leavebtns" style="margin-top:10px">
-      <button class="lbtn" data-act="awayDirect" ${a.busy?'disabled':''}>直行で出勤する<small>現場から始める</small></button>
-      <button class="lbtn" data-act="awayRetry" ${a.busy?'disabled':''}>${a.busy ? '確かめています…' : 'もう一度位置を確かめる'}<small>事務所にいるのに出たとき</small></button>
+    <div class="leavebtns one" style="margin-top:10px">
+      <button class="lbtn go" data-act="awayDirect" ${a.busy?'disabled':''}>直行で出勤する<small>現場から始める</small></button>
+      <button class="lbtn" data-act="awayRetry" ${a.busy?'disabled':''}>${a.busy ? '測っています…' : '位置を測り直す'}<small>事務所にいるのに出たとき</small></button>
       <button class="lbtn ab" data-act="awayCancel" ${a.busy?'disabled':''}>取り消す<small>事務所に着いてから押す</small></button>
     </div>
   </div></div>`;
