@@ -1022,7 +1022,7 @@ function updateHint(){
   else if(tool==='pan')h.innerHTML='<b>地図移動モード</b>：ドラッグ（iPadは指1本）で<b>表示位置だけ</b>を動かします。記録に戻るには上で別のモードを選択。';
   else if(tool==='area'){
     if(curGeom()==='line')h.innerHTML='＜つる：管理柵＞フェンスに沿って<b>端から端へタップ</b>→<b>「✓ 確定」</b>。左の<b>高さ(m)</b>を掛けて面積にします。';
-    else h.innerHTML='外周の角を順に<b>タップ</b>→<b>「✓ 確定」</b>か<b>始点（黄色）をタップ</b>で閉じます。<b>除草など既存の面積の上からでも描き始められます</b>。'+(curCalc()==='trim'?'中木は<b>高さ(m)</b>で側面も加算（確定後も求積表で変更可）。':'');
+    else h.innerHTML='外周の角を順に<b>タップ</b>→<b>「✓ 確定」</b>か<b>始点（黄色）をタップ</b>で閉じます。<b>除草など既存の面積の上からでも描き始められます</b>。描き始める前なら、<b>木の丸をタップで選べます</b>。'+(curCalc()==='trim'?'中木は<b>高さ(m)</b>で側面も加算（確定後も求積表で変更可）。':'');
   }
   else if(tool==='tree'){
     if($('catSel').value==='巣撤去')h.innerHTML='<b>巣の位置をクリック</b>で配置（カラス／スズメバチ）。位置は出力画像・印刷にも丸＋名称で残ります。既存の<b>巣をクリックで選択・移動</b>。';
@@ -1953,6 +1953,8 @@ function downCommon(p,ip){
     }
   }
   if(tool==='cal')return null;
+  // 面積・四角・幅刈りでも、描き始める前なら木の丸をタップで選べる（描いている途中は今までどおり点を足す）
+  if((tool==='area'||tool==='rect'||tool==='strip')&&!draft&&!holeMode){ const t=nearestTree(ip); if(t){ hlHole=null; if(selMod) toggleSel(t); else setSingle(t); renderSansha(); draw(); return 'sel'; } }
   if(tool==='area')return null;                 // 面積モードは常に描画（樹木と同様、既存図形の上でも開始可）。編集は選択中図形のハンドル or 選択モードで。
   if(alignScan) return null;                     // 目印合わせ中：指を離したときに alignTap
   selScan=null;
@@ -2098,8 +2100,9 @@ cv.addEventListener('mousemove',e=>{
 /* 選べる図形の上に来たら、青い輪とポインタの形で知らせる（樹木・選ぶ・撮るのとき） */
 function hoverAt(p){
   let f=null;
-  if(p&&['select','tree','shoot'].indexOf(tool)>=0&&state.img){ const ip=toImg(p.x,p.y); f=nearestTree(ip); if(!f&&tool!=='tree'){ const h=pickHit(ip); if(h) f=h; } }
+  if(p&&['select','tree','shoot','area','rect','strip'].indexOf(tool)>=0&&state.img&&!holeMode){ const ip=toImg(p.x,p.y); f=nearestTree(ip); if(!f&&(tool==='select'||tool==='shoot')){ const h=pickHit(ip); if(h) f=h; } }
   if(f!==hoverF){ hoverF=f; cv.style.cursor=f?'pointer':(tool==='select'||tool==='pan'?'grab':tool==='shoot'?'pointer':'crosshair'); draw(); }
+  else if(!f&&cv.style.cursor==='pointer'&&tool!=='shoot') cv.style.cursor=(tool==='select'||tool==='pan')?'grab':'crosshair';
 }
 cv.addEventListener('mouseleave',()=>{ if(hoverF){ hoverF=null; draw(); } });
 // 指：押したところの図形に青い輪（離すと消える）
