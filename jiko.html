@@ -187,6 +187,7 @@ nav.tabs .badge{position:absolute;top:3px;left:calc(50% + 8px);background:var(--
 <div class="toast" id="toast"></div>
 <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
 <input type="file" id="fileLib" accept="image/*" multiple hidden>
+<input type="file" id="fileDoc" accept="image/*,application/pdf" multiple hidden>
 
 <script>
 /* =========================================================
@@ -215,6 +216,11 @@ const MACH_ACC = [
   ['craneDown', 'クレーン・ユニックが倒れた（転倒・倒壊）'], ['craneJib', 'クレーンのブーム（ジブ）が折れた・壊れた'], ['craneWire', 'クレーンのワイヤー・吊りチェーンが切れた'],
   ['backhoeDown', 'ユンボ・重機が倒れた'], ['awpDown', '高所作業車が倒れた'], ['building', '建物・煙突などが倒れた'], ['fire', '火事・爆発'], ['none', '機械の事故ではない']];
 const CRANE_KEYS = ['craneDown', 'craneJib', 'craneWire'];
+const DOC_KINDS = ['見積書', '請求書', '修理の明細', '示談書', '保険会社からの書類', '労災の書類', 'その他の書類'];
+/* 現場で起きた事故か（作業事故、または車両事故の「現場の中」）→ 発注者への連絡が要る */
+const isSiteAcc = d => d.kind === 'work' || (d.kind === 'car' && (d.car || {}).purpose === ONSITE);
+const accSite = d => d.kind === 'work' ? (d.work || {}).site : (d.car || {}).site;
+function isPublicSite(d) { const n = accSite(d), m = S.sites.find(x => x.name === n); return !!(m && (m.kind === '公共' || /委託|市|区|県/.test(m.contract || ''))); }
 /* 労働基準監督署への報告が要るかを、入力から判断する（最後は親方が監督署に確かめる前提の目安） */
 function lsoJudge(d) {
   const m = (d.mach || {}), acc = m.acc || [], out = [], dm = d.damage || {}, r = d.rousai || {};
@@ -247,7 +253,7 @@ const ROUSAI_STAGES = ['受診', '書類提出', '休業補償の申請', '職�
 const LICENSES = [['普通', 1], ['準中型（5t限定）', 2], ['準中型', 3], ['中型（8t限定）', 4], ['中型', 5], ['大型', 6]];
 const licRank = n => (LICENSES.find(l => l[0] === n) || [0, 0])[1];
 const SLOT_JA = { scene: '全景', own_far: '自社の損傷（引き）', own_near: '自社の損傷（寄り）', their_far: '相手側（引き）', their_near: '相手側（寄り）', detail: '損傷の詳細', plate: '相手のナンバー',
-  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', police: '警察の名刺・メモ', hiyari: 'ヒヤリハット' };
+  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', police: '警察の名刺・メモ', doc: '書類', hiyari: 'ヒヤリハット' };
 
 /* ---------------- 小道具 ---------------- */
 const $ = s => document.querySelector(s);
@@ -454,13 +460,13 @@ async function sync() {
     for (const p of S.localPhotos.filter(x => !x.sent)) {
       if (!photoReady(p)) continue;
       const meta = { photoId: p.photoId, caseId: p.caseId, slot: p.slot, caption: p.caption || '', takenAt: p.takenAt, lat: p.lat, lng: p.lng };
-      const body = { photo: meta, data: await blobToB64(p.blob) };
+      const body = { photo: meta, data: await blobToB64(p.blob), mime: p.mime || 'image/jpeg' };
       if (p.raw && p.raw.size <= 12 * 1024 * 1024) { body.raw = await blobToB64(p.raw); body.rawMime = p.rawMime || p.raw.type || 'image/jpeg'; }
       const j = await api('photo', body, 180000);
       if (j.ok) {
         p.sent = true; p.raw = null; await DB.pput(p); changed = true;
         const c = caseById(p.caseId);
-        if (c && c.photos && !c.photos.some(x => x.photoId === p.photoId)) c.photos.push({ photoId: p.photoId, slot: p.slot, caption: p.caption, takenAt: p.takenAt, by: S.me.disp, inPdf: p.slot !== 'sketch', share: ['scene', 'around'].includes(p.slot) });
+        if (c && c.photos && !c.photos.some(x => x.photoId === p.photoId)) c.photos.push({ photoId: p.photoId, slot: p.slot, caption: p.caption, takenAt: p.takenAt, by: S.me.disp, inPdf: !['sketch', 'doc'].includes(p.slot), share: ['scene', 'around'].includes(p.slot), mime: p.mime || 'image/jpeg' });
       } else { failed = j.error; break; }
     }
   } catch (e) { failed = e.message; }
@@ -610,7 +616,7 @@ function slotsFor(d) {
 function photosOf(caseId, slot) {
   const loc = S.localPhotos.filter(p => p.caseId === caseId && !p.removed && (!slot || p.slot === slot));
   const c = caseById(caseId), srv = c && c.photos ? c.photos.filter(p => (!slot || p.slot === slot) && !loc.some(l => l.photoId === p.photoId)) : [];
-  return loc.map(p => ({ photoId: p.photoId, slot: p.slot, caption: p.caption, local: true, sent: p.sent, takenAt: p.takenAt })).concat(srv.map(p => Object.assign({ srv: true }, p)));
+  return loc.map(p => ({ photoId: p.photoId, slot: p.slot, caption: p.caption, local: true, sent: p.sent, takenAt: p.takenAt, mime: p.mime || 'image/jpeg', name: p.name })).concat(srv.map(p => Object.assign({ srv: true }, p)));
 }
 
 function renderForm() {
@@ -915,13 +921,13 @@ function getGeo(silent, setAddr) {
 }
 
 /* --- 写真 --- */
-let pickSlot = null, pickCase = null, pickCb = null;
+let pickSlot = null, pickCase = null, pickCb = null, pickCaption = '';
 function pickPhoto(slot, cam, caseId, cb) {
   pickSlot = slot; pickCase = caseId || (curDraft() && curDraft().id); pickCb = cb || null;
-  const el = cam ? $('#fileCam') : $('#fileLib'); el.value = ''; el.click();
+  const el = cam ? $('#fileCam') : (slot === 'doc' ? $('#fileDoc') : $('#fileLib')); el.value = ''; el.click();
   if (cam) getGeo(true);
 }
-['#fileCam', '#fileLib'].forEach(sel => $(sel).addEventListener('change', async e => {
+['#fileCam', '#fileLib', '#fileDoc'].forEach(sel => $(sel).addEventListener('change', async e => {
   const files = Array.from(e.target.files || []); if (!files.length || !pickCase) return;
   toast('写真を入れています…');
   for (const f of files) {
@@ -941,9 +947,14 @@ async function resizeImage(file, max = 1600, q = 0.85) {
   } finally { URL.revokeObjectURL(url); }
 }
 async function addPhoto(file, slot, caseId, fromCam) {
+  if (file.type === 'application/pdf') {   // 書類のPDFはそのまま
+    if (file.size > 20 * 1024 * 1024) throw new Error('PDFが大きすぎます（20MBまで）');
+    const p0 = { photoId: 'P' + Date.now().toString(36) + rid(), caseId, slot, caption: pickCaption || '', takenAt: nowStr(), lat: '', lng: '', blob: file, raw: null, mime: 'application/pdf', name: file.name, sent: false, at: nowStr() };
+    await DB.pput(p0); S.localPhotos.push(p0); return p0;
+  }
   const blob = await resizeImage(file);
   const takenAt = fromCam ? nowStr() : (() => { const d = new Date(file.lastModified || Date.now()); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); })();
-  const p = { photoId: 'P' + Date.now().toString(36) + rid(), caseId, slot, caption: '', takenAt, lat: fromCam && lastGeo ? lastGeo.lat : '', lng: fromCam && lastGeo ? lastGeo.lng : '',
+  const p = { photoId: 'P' + Date.now().toString(36) + rid(), caseId, slot, caption: slot === 'doc' ? (pickCaption || '') : '', takenAt, lat: fromCam && lastGeo ? lastGeo.lat : '', lng: fromCam && lastGeo ? lastGeo.lng : '',
     blob, raw: file.size <= 12 * 1024 * 1024 ? file : null, rawMime: file.type || 'image/jpeg', sent: false, at: nowStr() };
   await DB.pput(p); S.localPhotos.push(p);
   return p;
@@ -951,6 +962,7 @@ async function addPhoto(file, slot, caseId, fromCam) {
 const urlCache = new Map();
 function thumbHtml(p, o = {}) {
   const off = o.pdf && p.inPdf === false;
+  if (p.mime === 'application/pdf') return `<div class="th" data-pid="${esc(p.photoId)}" data-pdf="1" role="button" tabindex="0" style="flex-direction:column;font-size:12px;text-align:center;padding:4px"><span style="font-size:28px">📄</span>${esc((p.caption || 'PDF').slice(0, 10))}${p.local && !p.sent ? '<span class="badge">未送信</span>' : ''}</div>`;
   return `<div class="th${off ? ' off' : ''}" data-pid="${esc(p.photoId)}" role="button" tabindex="0"><span class="ph-load">…</span>${p.local && !p.sent ? '<span class="badge">未送信</span>' : ''}${o.label ? `<span class="badge">${esc(SLOT_JA[p.slot] || '')}</span>` : ''}</div>`;
 }
 async function photoUrl(id) {
@@ -966,7 +978,7 @@ async function photoBlob(id) {
 }
 function loadThumbs() {
   document.querySelectorAll('.th[data-pid]').forEach(async el => {
-    if (el.querySelector('img')) return;
+    if (el.querySelector('img') || el.dataset.pdf) return;
     try { const u = await photoUrl(el.dataset.pid); const s = el.querySelector('.ph-load'); if (s) s.remove(); const im = new Image(); im.src = u; im.alt = ''; el.prepend(im); }
     catch (e) { const s = el.querySelector('.ph-load'); if (s) s.textContent = '読めません'; }
   });
@@ -975,12 +987,16 @@ function photoMenu(pid, caseId, after) {
   const lp = S.localPhotos.find(p => p.photoId === pid), c = caseById(caseId), sp = c && c.photos ? c.photos.find(p => p.photoId === pid) : null, p = lp || sp;
   if (!p) return;
   const canDel = lp ? true : (c && (isBoss() || p.by === S.me.disp));
-  openModal(`<h3>${esc(SLOT_JA[p.slot] || '写真')}</h3><img id="pmImg" style="width:100%;border-radius:10px;background:var(--leaf-soft);min-height:120px" alt="">
-    <label class="lbl">説明（PDFに載ります）</label><input type="text" id="pmCap" value="${esc(p.caption || '')}" placeholder="例：自社車両 左後方">
-    <label class="lbl">枠を変える</label><select id="pmSlot">${Object.keys(SLOT_JA).filter(k => !['sketch', 'hiyari'].includes(k)).map(k => `<option value="${k}"${k === p.slot ? ' selected' : ''}>${esc(SLOT_JA[k])}</option>`).join('')}</select>
+  const isPdf = p.mime === 'application/pdf';
+  openModal(`<h3>${esc(SLOT_JA[p.slot] || '写真')}</h3>${isPdf ? '<button class="btn block" id="pmOpen">📄 PDFを開く</button>' : '<img id="pmImg" style="width:100%;border-radius:10px;background:var(--leaf-soft);min-height:120px" alt="">'}
+    ${p.slot === 'doc' ? `<label class="lbl">書類の種類</label><div class="chips">${DOC_KINDS.map(k => `<button type="button" class="chip" data-dk="${esc(k)}">${esc(k)}</button>`).join('')}</div>` : ''}
+    <label class="lbl">${p.slot === 'doc' ? '説明' : '説明（PDFに載ります）'}</label><input type="text" id="pmCap" value="${esc(p.caption || '')}" placeholder="例：自社車両 左後方">
+    <label class="lbl"${isPdf ? ' hidden' : ''}>枠を変える</label><select id="pmSlot"${isPdf ? ' hidden' : ''}>${Object.keys(SLOT_JA).filter(k => !['sketch', 'hiyari'].includes(k)).map(k => `<option value="${k}"${k === p.slot ? ' selected' : ''}>${esc(SLOT_JA[k])}</option>`).join('')}</select>
     <p class="hint">撮影 ${esc(p.takenAt || '')}${p.by ? '・' + esc(p.by) : ''}</p>
     <div class="row2" style="margin-top:12px">${canDel ? '<button class="btn line-danger" id="pmDel">消す</button>' : ''}<button class="btn primary" id="pmOk">閉じる</button></div>`);
-  photoUrl(pid).then(u => { const i = $('#pmImg'); if (i) i.src = u; }).catch(() => {});
+  if (isPdf) $('#pmOpen').onclick = async () => { try { const u = await photoUrl(pid); window.open(u, '_blank'); } catch (e) { toast(e.message); } };
+  else photoUrl(pid).then(u => { const i = $('#pmImg'); if (i) i.src = u; }).catch(() => {});
+  document.querySelectorAll('[data-dk]').forEach(b => b.onclick = () => { $('#pmCap').value = b.dataset.dk; });
   $('#pmOk').onclick = async () => {
     const cap = $('#pmCap').value.trim(), slot = $('#pmSlot').value;
     if (cap !== (p.caption || '') || slot !== p.slot) {
@@ -1146,6 +1162,7 @@ function checkItems(c) {
   const d = c.data || {}, b = c.boss || {}, dm = d.damage || {}, out = [];
   if (d.kind === 'car') out.push(['police', '警察への届け出', (d.police || {}).status === '届け出た']);
   out.push(['firstCall', '保険会社へ第一報', !!(b.insurerCall || {}).at]);
+  if (isSiteAcc(d)) out.push(['orderer', ((b.orderer || {}).type || (isPublicSite(d) ? '市・公共' : '民間')).startsWith('市') ? '発注者（市の監督員）へ連絡' : '発注者（担当者）へ連絡', !!(b.orderer || {}).at]);
   out.push(['pdf', '詳細報告書（PDF）を提出', !!b.pdfSentAt]);
   if (dm.theirThing) out.push(['owner', '持ち主・道路管理者へ連絡', false]);
   if ((d.car || {}).recorder === 'あり・まだ保存していない') out.push(['recorder', 'ドラレコの映像を保存', false]);
@@ -1195,10 +1212,17 @@ function renderCase(id) {
     reportRows(d).forEach(([t, rows]) => { h += `<div class="secline">${esc(t)}</div><dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`; });
     if (d.story) h += `<div class="secline">事故の経緯</div><p style="white-space:pre-wrap;margin:0;font-size:14px">${esc(d.story)}</p>`;
     if (d.aiRaw && d.aiRaw.story) h += `<details style="margin-top:6px;font-size:13.5px"><summary class="hint" style="cursor:pointer">🤖 AIでまとめる前の、本人が書いた文を見る</summary><p style="white-space:pre-wrap;margin:6px 0 0;color:var(--bark)">${esc(d.aiRaw.story)}</p></details>`;
-    const ps = photosOf(c.id);
+    const ps = photosOf(c.id).filter(p => p.slot !== 'doc');
     if (ps.length) h += `<div class="secline">写真（${ps.length}枚）</div><div class="thumbs">${ps.map(p => thumbHtml(p, { label: 1, pdf: role === 'boss' })).join('')}</div>${role === 'boss' ? '<p class="hint">薄い写真はPDFに入れません（PDFの画面で選べます）</p>' : ''}`;
     if (role === 'party' || role === 'boss') h += `<div class="row2" style="margin-top:8px"><button class="btn sm" data-addph="cam">📷 写真を足す</button><button class="btn sm" data-addph="lib">🖼 選んで足す</button></div>`;
     h += `</div>`;
+  }
+  if (role === 'boss' || role === 'office' || isOffice()) {
+    const docs = photosOf(c.id, 'doc');
+    h += `<div class="card"><h2>📎 書類（親方・事務だけ）</h2><p class="hint" style="margin-top:0">見積書・請求書・示談書・保険会社からの書類など。写真でもPDFでも入れられ、事故のフォルダにも入ります</p>
+      ${docs.length ? `<div class="thumbs">${docs.map(p => thumbHtml(p)).join('')}</div>` : ''}
+      <label class="lbl">種類</label><div class="chips" id="docKinds">${DOC_KINDS.map((k, i) => `<button type="button" class="chip${i === 0 ? ' on' : ''}" data-dkind="${esc(k)}">${esc(k)}</button>`).join('')}</div>
+      <div class="row2" style="margin-top:8px"><button class="btn sm" data-adddoc="cam">📷 撮る</button><button class="btn sm" data-adddoc="lib">📄 写真・PDFを選ぶ</button></div></div>`;
   }
   if (isBoss()) h += `<div style="text-align:center;margin:16px 0"><button class="btn sm line-danger" id="delCase">この報告を消す</button></div>`;
   $('#main').innerHTML = h;
@@ -1213,11 +1237,18 @@ function bossPanel(c) {
   return `<div class="card"><h2>📊 進み具合</h2>${sChips('stage', STAGES_DEF, c.stage || '報告受付')}
     <h3>保険会社への第一報</h3><div class="row2"><div>${bi('insurerCall.insurer', ic.insurer || '', defIns || '保険会社')}</div><div>${bi('insurerCall.at', ic.at || '', '連絡した日', 'date')}</div></div>
     <div class="row2" style="margin-top:6px"><div>${bi('insurerCall.receiptNo', ic.receiptNo, '事故受付番号')}</div><div>${bi('insurerCall.person', ic.person, '担当者')}</div></div>
+    ${isSiteAcc(c.data || {}) ? (() => { const d = c.data || {}, o = b.orderer || {}, pub = (o.type || (isPublicSite(d) ? '市・公共の発注' : '民間の発注')).startsWith('市'), sm = S.sites.find(x => x.name === accSite(d)) || {};
+      return `<h3>発注者への連絡（現場：${esc(accSite(d) || '')}）</h3>${sChips('orderer.type', ['市・公共の発注', '民間の発注'], o.type || (pub ? '市・公共の発注' : '民間の発注'))}
+      <div class="row2" style="margin-top:6px"><div>${bi('orderer.name', o.name || (d.work || {}).orderer || sm.contract || '', '発注者（例：川崎市 高津区役所）')}</div><div>${bi('orderer.person', o.person, pub ? '監督員の名前' : '担当者の名前')}</div></div>
+      <div class="row2" style="margin-top:6px"><div>${bi('orderer.tel', o.tel, '電話', 'tel')}</div><div>${bi('orderer.at', o.at, '連絡した日', 'date')}</div></div>
+      ${sChips('orderer.how', ['電話', 'メール', '訪問'], o.how)}
+      ${pub ? `<p class="hint">市の業務では、事故報告書の提出を求められることがあります</p>${sChips('orderer.report', ['事故報告書を出した', '出さなくてよいと言われた', 'まだ'], o.report)}` : ''}`; })() : ''}
     <h3>保険の使い方</h3>${sChips('insUse', ['保険を使う', '自費で直す', 'まだ決めていない'], b.insUse)}
     <p class="hint">小さな損傷は、等級が下がるより自費の方が安いことがあります</p>
     ${dm.ownThing || dm.theirThing ? `<h3>修理・お金</h3><div class="row2"><div>${bi('repair.shop', rp.shop, '修理先')}</div><div>${bi('repair.estimate', rp.estimate, '見積額（円）', 'number')}</div></div>
       <div class="row2" style="margin-top:6px"><div>${bi('repair.deductible', rp.deductible, '免責額（円）', 'number')}</div><div>${bi('repair.paid', rp.paid, '支払った額（円）', 'number')}</div></div>
-      <div class="row2" style="margin-top:6px"><div>${bi('repair.payout', rp.payout, '保険金の入金（円）', 'number')}</div><div></div></div>` : ''}
+      <div class="row2" style="margin-top:6px"><div>${bi('repair.payout', rp.payout, '保険金の入金（円）', 'number')}</div><div>${bi('repair.date', rp.date, '修理した日', 'date')}</div></div>
+      ${vehLogHint(c)}` : ''}
     ${(c.data || {}).party === 'other' ? `<h3>過失割合・示談</h3>${bi('fault', b.fault, '例：こちら8：相手2')}<textarea data-bi="settlement" rows="2" placeholder="示談の内容" style="margin-top:6px">${esc(b.settlement || '')}</textarea>` : ''}
     ${dm.ownPerson ? `<h3>労災の進み具合</h3>${sChips('rousaiStage', ROUSAI_STAGES, b.rousaiStage)}` : ''}
     <h3>次にやること</h3><div class="row2"><div>${bi('nextTodo', b.nextTodo, '例：見積をもらう')}</div><div style="flex:0 0 40%">${bi('nextDue', b.nextDue, '', 'date')}</div></div>
@@ -1233,9 +1264,15 @@ function officePanel(c) {
   return `<div class="card"><h2>💴 事務の記録</h2>
     <p class="hint" style="margin-top:0">保険の使い方：<b>${esc(b.insUse || '未定')}</b></p>
     ${dm.ownThing || dm.theirThing ? `<h3>修理・お金</h3><div class="row2"><div>${bi('repair.shop', rp.shop, '修理先')}</div><div>${bi('repair.estimate', rp.estimate, '見積額（円）', 'number')}</div></div>
-      <div class="row2" style="margin-top:6px"><div>${bi('repair.paid', rp.paid, '支払った額（円）', 'number')}</div><div>${bi('repair.payout', rp.payout, '保険金の入金（円）', 'number')}</div></div>` : ''}
+      <div class="row2" style="margin-top:6px"><div>${bi('repair.paid', rp.paid, '支払った額（円）', 'number')}</div><div>${bi('repair.payout', rp.payout, '保険金の入金（円）', 'number')}</div></div>
+      <div class="row2" style="margin-top:6px"><div>${bi('repair.date', rp.date, '修理した日', 'date')}</div><div></div></div>${vehLogHint(c)}` : ''}
     ${dm.ownPerson ? `<h3>労災の進み具合</h3><div class="chips">${ROUSAI_STAGES.map(s => `<button type="button" class="chip${b.rousaiStage === s ? ' on' : ''}" data-bk="rousaiStage" data-v="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
     <button class="btn primary block" id="bossSave" style="margin-top:12px">保存</button></div>`;
+}
+function vehLogHint(c) {
+  const d = c.data || {}, car = d.car || {};
+  if (d.kind !== 'car' || !car.vehicleId || car.vehicleId === '__other' || !(d.damage || {}).ownThing) return '';
+  return `<p class="hint">🚚 修理先か金額を入れて保存すると、車両アプリの「${esc(car.vehicle || '')}」の修理の記録にも残ります${(c.boss || {}).vehicleLogId ? '（記録済み）' : ''}</p>`;
 }
 function defaultInsurer(c) {
   const d = c.data || {}, st = S.settings || {}, ins = st.insurance || {};
@@ -1246,7 +1283,7 @@ function bindCase(c) {
   const edit = clone(c.boss || {});
   const m = $('#main');
   bindCasePhotos(c);
-  m.querySelectorAll('[data-bk]').forEach(el => el.onclick = () => { const k = el.dataset.bk, v = el.dataset.v; edit[k] = edit[k] === v ? '' : v; m.querySelectorAll(`[data-bk="${k}"]`).forEach(z => z.classList.toggle('on', z.dataset.v === edit[k])); });
+  m.querySelectorAll('[data-bk]').forEach(el => el.onclick = () => { const k = el.dataset.bk, v = el.dataset.v, nv = getP(edit, k) === v ? '' : v; setP(edit, k, nv); m.querySelectorAll(`[data-bk="${k}"]`).forEach(z => z.classList.toggle('on', z.dataset.v === nv)); });
   m.querySelectorAll('[data-bi]').forEach(el => el.oninput = () => setP(edit, el.dataset.bi, el.value));
   m.querySelectorAll('[data-bc]').forEach(el => el.onchange = () => setP(edit, el.dataset.bc, el.checked));
   m.querySelectorAll('[data-ck]').forEach(el => el.onclick = async () => {
@@ -1268,6 +1305,9 @@ function bindCase(c) {
     if (!confirm('この記録を消しますか？')) return;
     try { const j = await api('log', { caseId: c.id, logId: el.dataset.logdel, remove: true }); if (!j.ok) throw new Error(j.error); upsertCase(j.case); renderCase(c.id); } catch (e) { toast(e.message); }
   });
+  let docKind = DOC_KINDS[0];
+  m.querySelectorAll('[data-dkind]').forEach(el => el.onclick = () => { docKind = el.dataset.dkind; m.querySelectorAll('[data-dkind]').forEach(z => z.classList.toggle('on', z === el)); });
+  m.querySelectorAll('[data-adddoc]').forEach(el => el.onclick = () => { pickCaption = docKind; pickPhoto('doc', el.dataset.adddoc === 'cam', c.id, () => { pickCaption = ''; renderCase(c.id); toast('書類を入れました'); }); });
   m.querySelectorAll('[data-addph]').forEach(el => el.onclick = () => pickPhoto('other', el.dataset.addph === 'cam', c.id, () => { renderCase(c.id); toast('写真を足しました。「枠」は写真をタップして変えられます'); }));
   const dl = $('#delCase'); if (dl) dl.onclick = async () => {
     if (!confirm('この報告を消しますか？（スプレッドシートには「削除」として残ります）')) return;
@@ -1490,7 +1530,7 @@ function renderSettings() {
 const FONT = "'Hiragino Kaku Gothic ProN','Hiragino Sans','Noto Sans JP','Yu Gothic',Meiryo,sans-serif";
 function loadScript(src) { return new Promise((ok, ng) => { if (document.querySelector(`script[src="${src}"]`)) return ok(); const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ng(new Error('部品を読み込めませんでした（電波を確かめてください）')); document.head.appendChild(s); }); }
 function openPdf(c) {
-  const ps = photosOf(c.id).filter(p => p.slot !== 'sketch'), st = S.settings || {}, full = st.full || {}, comp = Object.assign({}, COMPANY_DEFAULT, full.company || st.company || {});
+  const ps = photosOf(c.id).filter(p => p.slot !== 'sketch' && p.slot !== 'doc'), st = S.settings || {}, full = st.full || {}, comp = Object.assign({}, COMPANY_DEFAULT, full.company || st.company || {});
   const d = c.data || {}, ins = (c.boss || {}).insurerCall || {};
   const vIns = d.kind === 'car' ? ((full.vehicles || {})[(d.car || {}).vehicleId] || {}) : ((full.insurance || {}).work || {});
   const sel = {}; ps.forEach(p => sel[p.photoId] = p.inPdf !== false);
