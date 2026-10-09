@@ -705,8 +705,10 @@ function renderForm() {
       <p class="hint" style="margin-top:0">起きた順に。まとまっていなくて大丈夫です。🎤で話して入れてもOK</p>
       ${area('story', '例：処分場に向かう途中、○○の交差点を左に曲がるとき、左後ろのポールに気づかずこすった。', 6)}
       ${aiTools('story', '事故の経緯')}
-      ${lbl('位置関係の略図')}<p class="hint" style="margin-top:0">道路・車・相手・進む向きを指で描きます（保険会社にほぼ必ず聞かれます）</p>
-      <div class="row2"><button type="button" class="btn sm" id="sketchBtn">✏️ ${sk ? '略図を描き直す' : '略図を描く'}</button></div>
+      ${lbl('位置関係の略図')}<p class="hint" style="margin-top:0">道路・車・相手・進む向き。画面に指で描くか、紙に手書きしたメモを写真で取り込みます（保険会社にほぼ必ず聞かれます）</p>
+      <div class="row2"><button type="button" class="btn sm" id="sketchBtn">✏️ ${sk ? '描き直す' : '画面に描く'}</button></div>
+      <div class="row2" style="margin-top:6px"><button type="button" class="btn sm" data-skcam="1">📷 手書きメモを撮る</button><button type="button" class="btn sm" data-sklib="1">🖼 写真から選ぶ</button></div>
+      ${sk ? '<p class="hint">略図は1枚です。新しく描く・撮ると入れ替わります</p>' : ''}
       ${sk ? `<div class="thumbs">${thumbHtml(sk, { noX: true })}</div>` : ''}
     </div>`;
 
@@ -801,6 +803,7 @@ function bindForm() {
     if (t.dataset.mic) return toggleMic(t.dataset.mic, t);
     if (t.dataset.airevert) { const k = t.dataset.airevert, d = dr.data; if (d.aiRaw && d.aiRaw[k] != null) { setP(d, k, d.aiRaw[k]); delete d.aiRaw[k]; touchDraft(); renderForm(); } return; }
     if (t.id === 'sketchBtn') return openSketch();
+    if (t.dataset.skcam || t.dataset.sklib) return pickPhoto('sketch', !!t.dataset.skcam, dr.id, async () => { await keepLatestSketch(dr.id); renderForm(); });
     if (t.id === 'discardBtn') return discardDraft();
     if (t.closest('.th')) return photoMenu(t.closest('.th').dataset.pid, dr.id);
   };
@@ -1011,6 +1014,16 @@ function toggleMic(path, btn, el) {
 }
 
 /* --- 略図 --- */
+/* 略図は1枚だけ：新しく描いた・撮ったものを残し、前のものは消す（送ってあったものはサーバーでも消える） */
+async function keepLatestSketch(caseId) {
+  const loc = S.localPhotos.filter(p => p.caseId === caseId && p.slot === 'sketch' && !p.removed).sort((a, b) => a.photoId > b.photoId ? 1 : -1);
+  const newest = loc[loc.length - 1]; if (!newest) return;
+  newest.caption = newest.caption || '位置関係の略図（手書き）'; await DB.pput(newest);
+  for (const p of loc.slice(0, -1)) { if (p.sent) api('photoMeta', { photoId: p.photoId, remove: true }).catch(() => {}); await DB.pdel(p.photoId); }
+  S.localPhotos = S.localPhotos.filter(p => !(p.caseId === caseId && p.slot === 'sketch' && p !== newest));
+  const c = caseById(caseId);
+  if (c && c.photos) { c.photos.filter(p => p.slot === 'sketch' && p.photoId !== newest.photoId).forEach(p => api('photoMeta', { photoId: p.photoId, remove: true }).catch(() => {})); c.photos = c.photos.filter(p => p.slot !== 'sketch'); }
+}
 function openSketch() {
   const dr = curDraft();
   const W = 1200, H = 800, strokes = [];
@@ -1053,7 +1066,7 @@ function openSketch() {
     const c = caseById(dr.id); if (c && c.photos) c.photos = c.photos.filter(p => p.slot !== 'sketch');
     S.localPhotos.filter(p => p.caseId === dr.id && p.slot === 'sketch').forEach(p => p.removed = true);
     const p = { photoId: 'P' + Date.now().toString(36) + rid(), caseId: dr.id, slot: 'sketch', caption: '位置関係の略図', takenAt: nowStr(), lat: '', lng: '', blob, raw: null, sent: false, at: nowStr() };
-    await DB.pput(p); S.localPhotos.push(p);
+    await DB.pput(p); S.localPhotos.push(p); await keepLatestSketch(dr.id);
     close(); renderForm(); sync();
   };
 }
