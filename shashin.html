@@ -614,7 +614,8 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
     <button class="mi" id="cmEdit">黒板の内容を入れる <small>工種・測点・備考…</small></button>
     <button class="mi" id="cmAdjust">黒板の大きさ・位置・透け具合 <small>▸</small></button>
     <div class="lbl">撮る向き（木などは縦で）</div>
-    <div class="seg2" id="cmOri"><button data-o="auto">持ち方で自動</button><button data-o="p">いつも縦</button><button data-o="l">いつも横</button></div>
+    <div class="seg2" id="cmOri"><button data-o="screen">画面の向き</button><button data-o="auto">持ち方で自動</button><button data-o="p">いつも縦</button><button data-o="l">いつも横</button></div>
+    <div class="s" id="cmOriNote" style="font-size:11px;color:#bbb;margin:-2px 0 8px;line-height:1.5"></div>
     <div class="lbl">撮ったあと</div>
     <div class="seg2" id="cmAfter"><button data-a="list">一覧にもどる</button><button data-a="stay">続けて撮る</button></div>
     <button class="mi" id="cmInfo">位置・方位を画面に出す <small id="cmInfoV">出さない</small></button>
@@ -874,7 +875,8 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvO
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
 /* 黒板：bsz＝写真の短い辺に対する黒板の幅、bx・by＝置き場所（0＝左/上、1＝右/下）、balpha＝黒板の濃さ */
 const BOARD_DEF = { bsz:0.47, bx:0, by:1, balpha:1 };   // ミライ工事と同じ：写真の短い辺の47%の幅、左下にぴったり
-let S = Object.assign({ mapPhoto:false, oriMode:'auto', showInfo:false, lens:'', afterShot:'list' }, BOARD_DEF, LS.get('shashin_settings',{}));
+let S = Object.assign({ mapPhoto:false, oriMode:'screen', showInfo:false, lens:'', afterShot:'list' }, BOARD_DEF, LS.get('shashin_settings',{}));
+if(!S.oriV){ if(S.oriMode==='auto') S.oriMode='screen'; S.oriV=2; }   // iPhoneは「持ち方で自動」だと開くたびに「動作と方向」の許可が出るので、はじめは画面の向きに合わせる
 if(S.bsz==null||S.bsz<0.3) S.bsz=BOARD_DEF.bsz;
 if(S.bver!==2){ Object.assign(S,BOARD_DEF,{bver:2}); try{ localStorage.setItem('shashin_settings',JSON.stringify(S)); }catch(e){} }   // 黒板の大きさ・形をミライ工事に合わせた版に一度そろえる
 let sites = LS.get('shashin_sites',[]);          // 現場マスタ（電波が無いときのための控え）
@@ -3322,7 +3324,7 @@ let lenses=[], lensOn=null, dzoom=1;
 function pageRotated(){ const a=(screen.orientation&&screen.orientation.angle)??window.orientation??0; return Math.abs(a)%180===90; }
 function effRot(){
   if(pageRotated()) return 'p';
-  if(S.oriMode==='p') return 'p';
+  if(S.oriMode==='p'||S.oriMode==='screen') return 'p';
   if(S.oriMode==='l') return devOri==='cw'?'cw':'ccw';
   return devOri;
 }
@@ -3421,10 +3423,12 @@ function getPositionOnce(){
     navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude}),()=>res(null),{enableHighAccuracy:true,timeout:15000}); });
 }
 let compassAsked=false;
-function requestCompass(){
+function requestCompass(force){
   const on=()=>window.addEventListener('deviceorientation',onOrient,true);
+  const needAsk=typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function';
+  if(needAsk&&S.oriMode!=='auto'&&!force) return;   // iPhone：毎回聞かれるので、「持ち方で自動」を選んだときだけ
   if(compassAsked){ return; } compassAsked=true;
-  if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+  if(needAsk){
     DeviceOrientationEvent.requestPermission().then(s=>{ if(s==='granted') on(); }).catch(()=>{ compassAsked=false; });
   } else on();
 }
@@ -3468,6 +3472,7 @@ function updateCamUI(){
   $('#cmBoardV').textContent=boardOn?'ON':'OFF';
   $('#cmInfoV').textContent=S.showInfo?'出す':'出さない';
   $$('#cmOri [data-o]').forEach(b=>b.classList.toggle('on',b.dataset.o===S.oriMode));
+  const on=$('#cmOriNote'); if(on) on.textContent={screen:'iPhoneを横にすると横の写真になります（許可の画面は出ません）。画面が回らないときは「画面縦向きのロック」を外すか「いつも横」に。',auto:'センサーで持ち方を見ます。iPhoneでは、アプリを開くたびに「動作と方向」の許可が出ます。',p:'いつも縦の写真になります。',l:'いつも横の写真になります。'}[S.oriMode]||'';
   $$('#cmAfter [data-a]').forEach(b=>b.classList.toggle('on',b.dataset.a===(S.afterShot||'list')));
   const r=effRot(); $('#camera').classList.toggle('ccw',r==='ccw'); $('#camera').classList.toggle('cw',r==='cw');
   updateCamInfo(); drawOverlay();
@@ -3567,7 +3572,7 @@ $('#cmBoard').onclick=()=>{
   if(!boardOn && cur.publicKoji && !confirm('公共工事の台帳です。電子黒板の写真は納品に使えない可能性があります。黒板をONにしますか？')) return;
   boardOn=!boardOn; updateCamUI();
 };
-$$('#cmOri [data-o]').forEach(b=>b.onclick=()=>{ S.oriMode=b.dataset.o; saveAll(); updateCamUI(); });
+$$('#cmOri [data-o]').forEach(b=>b.onclick=()=>{ S.oriMode=b.dataset.o; saveAll(); if(S.oriMode==='auto') requestCompass(true); updateCamUI(); });
 $$('#cmAfter [data-a]').forEach(b=>b.onclick=()=>{ S.afterShot=b.dataset.a; saveAll(); updateCamUI(); });
 $('#cmInfo').onclick=()=>{ S.showInfo=!S.showInfo; saveAll(); updateCamUI(); };
 $('#cmImport').onclick=()=>{ closeCamSheets(); $('#fileIn').click(); };
