@@ -1412,7 +1412,7 @@ function shashinParkShots_(p) {
 }
 /* 黒板の「幹周」欄（なければ備考の「幹周 C=○cm」）から、測った幹周を1つの数字で取り出す。60〜90cm のような範囲は測った値ではないので取らない */
 function shashinMeasC_(r) {
-  var num = function (t) { var m = String(t || '').replace(/^'/, '').replace(/[０-９．]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); }).match(/^\s*(?:C\s*[=＝]?\s*)?(\d+(?:\.\d+)?)\s*(?:cm|ｃｍ|センチ)?\s*$/i); return m ? Number(m[1]) : null; };
+  var num = function (t) { var m = String(t || '').replace(/^'/, '').replace(/[０-９．]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); }).match(/^\s*(?:C\s*[=＝]?\s*)?(\d+(?:\.\d+)?)\s*(?:cm|ｃｍ|センチ)?\s*(?:[（(][\d.・,、\s]+[）)])?\s*$/i); return m ? Number(m[1]) : null; };   // 株立ちは 70cm（50・50） の書き方
   var c = num(r.kanshu); if (c > 0 && c < 2000) return c;
   var m = String(r.biko || '').replace(/[０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); }).match(/幹周\s*(?:C\s*[=＝]?\s*)?(\d+(?:\.\d+)?)\s*cm(?!\s*[〜~～])/);
   return m && Number(m[1]) > 0 ? Number(m[1]) : null;

@@ -596,7 +596,7 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
     <div class="camRow">
       <div class="side l"><img id="lastThumb" class="rot" alt=""></div>
       <button id="shutter" aria-label="撮影"></button>
-      <div class="side r"><button class="cbtn rot txt" id="camStage">作業前 ▸</button><button class="cbtn rot txt" id="camNo">測点＋1</button></div>
+      <div class="side r"><button class="cbtn rot txt" id="camStage">作業前 ▸</button><button class="cbtn rot txt" id="camNo">測点＋1</button><button class="cbtn rot txt" id="camKan" style="display:none">📏 幹周</button></div>
     </div>
   </div>
   <!-- ≡ メニュー -->
@@ -2484,6 +2484,8 @@ function openBoardEdit(toCamera,keepFocus){
   $('#bfNav').onclick=e=>{ const d=e.target.dataset.nav; if(d===undefined) return; const ks=rows.map(r=>r.k);
     if(d==='0') setBfFocus(null); else setBfFocus(ks[Math.min(ks.length-1,Math.max(0,ks.indexOf(bfFocus)+Number(d)))]); };
   $('#boardFields').querySelectorAll('[data-k]').forEach(el=>el.oninput=()=>{ b[el.dataset.k]=el.value; saveAll(); drawPreview(); });
+  $('#boardFields').querySelectorAll('[data-k="kanshu"]').forEach(el=>{ el.readOnly=true; el.setAttribute('inputmode','none'); el.placeholder='タップで入力（株立ちもOK）';
+    el.onclick=()=>openKanshuKP(()=>{ el.value=b.kanshu||''; drawPreview(); }); });
   $('#boardFields').querySelectorAll('[data-kp]').forEach(btn=>btn.onclick=()=>{
     const lv=btn.dataset.kp, v=btn.dataset.v, K=Object.assign({cat:b.kCat||'',kind:b.kKind||'',kikaku:b.kKikaku||''});
     if(lv==='cat'){ K.cat=v; K.kind=''; K.kikaku=''; } if(lv==='kind'){ K.kind=v; K.kikaku=''; } if(lv==='kikaku') K.kikaku=v;
@@ -2514,6 +2516,7 @@ function setBfFocus(k,noFocusInput){
   $('#bfNav').style.display=bfFocus?'':'none'; $('#tplPick').style.display=bfFocus?'none':'';
   $('#bpHint').textContent=bfFocus?'ほかの欄も、黒板をタップして切り替えられます':'黒板の欄をタップすると、そこだけ書けます・選べます';
   drawPreview();
+  if(bfFocus==='kanshu'&&!noFocusInput&&tplHas(cur.tpl,'kanshu')){ const el=$('#boardFields [data-k="kanshu"]'); openKanshuKP(()=>{ if(el) el.value=boards[cur.id].kanshu||''; drawPreview(); }); }
   if(bfFocus){ $('#boardFields').scrollTop=0;
     const f=$(`#boardFields .field[data-field="${bfFocus}"]`), inp=f&&f.querySelector('[data-k]');
     if(inp&&!noFocusInput&&!f.querySelector('.quick')) inp.focus(); }
@@ -3351,6 +3354,7 @@ function updateCamInfo(){
 }
 function updateCamUI(){
   if(typeof updateRmtUI==='function') updateRmtUI();
+  const kb=$('#camKan'); if(kb&&cur){ const on=kanshuWanted(); kb.style.display=on?'':'none'; const k=kanshuOf(boards[cur.id]); kb.textContent=k?`📏 ${k.C}cm`:'📏 幹周'; }
   if(cur&&$('#camStage')){ const s=curStage||boards[cur.id].stage||''; $('#camStage').textContent=`${s||'状況'} ▸`; }
   $('#cmBoardV').textContent=boardOn?'ON':'OFF';
   $('#cmInfoV').textContent=S.showInfo?'出す':'出さない';
@@ -3481,6 +3485,35 @@ function bumpNo(b,d){ const s=String(b.sokuten||''), p=parseNo(s);
 function setNextNo(b){ const n=nextBoardNo(b), s=String(b.sokuten||''), p=parseNo(s); b.sokuten = p ? s.replace(p.tok,fmtLike(p.tok,n)) : (fmtNo(n)+' '+s).trim(); }
 function nextBoardNo(b){ let max=0; allPhotosHere().forEach(p=>{ const q=p.board||{}; if((q.koshu||'')===(b.koshu||'')&&(q.kikaku||'')===(b.kikaku||'')){ const x=parseNo(q.sokuten); if(x) max=Math.max(max,x.n); } }); return max+1; }
 function nextBoardNo_old(b){ let max=0; allPhotosHere().forEach(p=>{ const q=p.board||{}; if((q.koshu||'')===(b.koshu||'')&&(q.kikaku||'')===(b.kikaku||'')){ const m=String(q.sokuten||'').match(/No\.?\s*(\d+)/i); if(m) max=Math.max(max,Number(m[1])); } }); return max+1; }
+/* 📏 幹周：測った幹周をテンキーで黒板へ（幹周の欄がある型は幹周欄、ない型は備考に「幹周 C=○cm」）。株立ちは総和×0.7
+   ここに入れた幹周は、公園報告の図面の木にも返せる（公園報告に「測った幹周があります」と出る） */
+function kanshuWanted(){ if(!cur) return false; const b=boards[cur.id]||{}; return tplHas(cur.tpl,'kanshu')||!!(curItem&&curItem.src==='park-tree')||/^C=|幹周/.test(String(b.kikaku||'')); }
+const KAN_RE=/幹周\s*C?\s*[=＝]?\s*(\d+(?:\.\d+)?)\s*cm(?:[（(]([\d.・,、\s]+)[）)])?/;
+function kanshuOf(b){
+  if(!b) return null;
+  const m=String(b.kanshu||'').match(/^\s*(?:C\s*[=＝]?\s*)?(\d+(?:\.\d+)?)\s*(?:cm)?\s*(?:[（(]([\d.・,、\s]+)[）)])?\s*$/i);
+  const m2=m||(!tplHas(cur.tpl,'kanshu')&&String(b.biko||'').match(KAN_RE));
+  if(!m2) return null; return {C:Number(m2[1]), stems:m2[2]?m2[2].split(/[・,、\s]+/).map(Number).filter(x=>x>0):null};
+}
+function kikakuRange(t){ const m=String(t||'').replace(/^C=/,'').match(/(\d+)\s*(?:cm)?\s*[〜~～-]\s*(\d+)/); if(m) return {lo:+m[1],hi:+m[2],text:m[1]+'〜'+m[2]+'cm'}; const u=String(t||'').match(/(\d+)\s*cm\s*未満/); return u?{lo:0,hi:+u[1],text:u[1]+'cm未満'}:null; }
+function openKanshuKP(after){
+  const b=boards[cur.id], k=kanshuOf(b), rg=kikakuRange(b.kikaku||(curItem&&curItem.kikaku));
+  kpOpen({ title:'幹周 C　'+String(b.koshu||'').split('　')[0], value:k?k.C:'', stems:k&&k.stems,
+    ref:rg?'図面の規格：'+rg.text:'',
+    judge:C=>rg?(C>=rg.lo&&C<rg.hi?{cls:'ok',text:'規格の範囲内 ✓'}:{cls:'ng',text:'規格の範囲外（公園報告に返すと規格が変わります）'}):null,
+    onOk:r=>{ setKanshu(b,r); saveAll(); drawOverlay(); updateCamUI(); if(after) after(r); else toast(`幹周 ${r.text}cm を黒板に入れました`,1800); } });
+}
+function setKanshu(b,r){
+  const t=r.C+'cm'+(r.stems?'（'+r.stems.join('・')+'）':'');
+  if(tplHas(cur.tpl,'kanshu')){ b.kanshu=t; return; }
+  const words=allStageWords(); let L=String(b.biko||'').split('\n').map(l=>l.replace(new RegExp(KAN_RE.source,'g'),'').replace(/^[\s　]+|[\s　]+$/g,''));
+  const kt='幹周 C='+t;
+  if(!L.length||(L.length===1&&!L[0])) L=[kt];
+  else if(words.includes(L[0])) L.unshift(kt);
+  else L[0]=L[0]?L[0]+'　'+kt:kt;
+  b.biko=L.filter((l,i)=>l||i===L.length-1).join('\n');
+}
+$('#camKan').onclick=e=>{ e.stopPropagation(); openKanshuKP(); };
 $('#camNo').onclick=()=>{ const b=boards[cur.id]; bumpNo(b,1); curItem=null; curStage=curStages()[0]; setStageOnBoard(b,curStage); saveAll(); updateCamUI(); toast(`${b.sokuten}・${curStage}`,1200); };
 $('#camStage').onclick=()=>{
   const st=curStages(), b=boards[cur.id], now=curStage||b.stage||'';
@@ -3696,5 +3729,107 @@ $('#setCleanup').onclick=async()=>{
   if(P.get('pair')){ const pc=P.get('pair'); history.replaceState(null,'',location.pathname); rmtConnect(pc); }   // iPadのQRをiPhoneのカメラで読んだとき
 })();
 </script>
+<script>
+/* =========================================================
+   幹周のテンキー（公園報告・工事写真で共通。現場調査アプリと同じ決まり）
+   ・数字だけ。最初に押した数字で今の値を置きかえる
+   ・株立ち：幹ごとに入れて、総和×0.7 を幹周にする（書き方：70（50・50））
+   kpOpen({ title, value, stems, judge(C)→{cls:'ok'|'ng', text}, ref, onOk({C,stems,text}), onCancel })
+   ========================================================= */
+var KABU_RATE_KP=0.7, KP=null;
+function kpCSS(){
+  if(document.getElementById('kpStyle')) return;
+  var st=document.createElement('style'); st.id='kpStyle';
+  st.textContent='.kpWrap{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center}'
+   +'.kpWrap.on{display:flex}'
+   +'.kpCard{background:#1b2330;color:#eef3f8;width:min(430px,100%);border-radius:18px 18px 0 0;padding:12px 12px calc(env(safe-area-inset-bottom) + 12px);box-shadow:0 -10px 30px rgba(0,0,0,.45);font-family:inherit;-webkit-user-select:none;user-select:none}'
+   +'@media (min-width:700px){.kpWrap{align-items:center}.kpCard{border-radius:18px}}'
+   +'.kpHead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;color:#b8c6d6;font-weight:700}'
+   +'.kpHead button{background:transparent;color:#b8c6d6;border:none;font-size:15px;padding:6px 8px}'
+   +'.kpVal{display:flex;align-items:baseline;justify-content:flex-end;gap:6px;font-size:46px;font-weight:800;background:#0f151d;border-radius:12px;margin:6px 0 4px;padding:2px 14px;min-height:64px;font-variant-numeric:tabular-nums}'
+   +'.kpVal .lb{font-size:16px;color:#8ea0b5;margin-right:auto;font-weight:700}.kpVal small{font-size:18px;color:#8ea0b5}'
+   +'.kpVal .cur{border-bottom:3px solid #ffb547}'
+   +'.kpRef{font-size:13px;min-height:20px;margin:2px 2px 6px;color:#b8c6d6}.kpRef b.ok{color:#3ecf8e}.kpRef b.ng{color:#ffb547}'
+   +'.kpStems{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}'
+   +'.kpStems button{background:#2a3546;color:#fff;border:2px solid transparent;border-radius:10px;padding:5px 10px;font-size:15px;font-weight:700;min-width:58px}'
+   +'.kpStems button small{display:block;font-size:10px;color:#8ea0b5;font-weight:400}'
+   +'.kpStems button.on{border-color:#ffb547}'
+   +'.kpSum{font-size:13px;color:#ffcf6b;margin:0 2px 8px}'
+   +'.kpKeys{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}'
+   +'.kpKeys button{height:56px;border-radius:12px;font-size:26px;font-weight:700;background:#2a3546;color:#fff;border:none;touch-action:manipulation}'
+   +'.kpKeys button:active{filter:brightness(1.3)}'
+   +'.kpKeys .fn{font-size:15px;background:#3a4658}.kpKeys .kb{font-size:15px;background:#3a4658}.kpKeys .kb.on{background:#ffb547;color:#222}'
+   +'.kpKeys .ok{background:#2f8f5b;font-size:18px}.kpKeys .add{font-size:15px;background:#4a5a72}.kpKeys button:disabled{opacity:.3}';
+  document.head.appendChild(st);
+}
+function kpNum(v){ var n=parseFloat(v); return isFinite(n)&&n>0?n:null; }
+function kpResult(){ var s=KP.s;
+  if(s.kabu){ var n=s.stems.map(kpNum).filter(function(x){return x;}); if(!n.length) return null; return Math.round(n.reduce(function(a,b){return a+b;},0)*KABU_RATE_KP); }
+  var v=kpNum(s.buf); return v==null?null:Math.round(v*10)/10; }
+function kpRender(){
+  var s=KP.s, o=KP.o, el=KP.el, C=kpResult();
+  var stemsOk=s.stems.map(kpNum).filter(function(x){return x;});
+  el.querySelector('.kpTitle').textContent=o.title||'幹周 C';
+  el.querySelector('.kpVal').innerHTML='<span class="lb">'+(s.kabu?'幹周（株立ち）':'幹周 C')+'</span>'+(s.kabu?'<span>'+(C==null?'—':C)+'</span>':'<span class="cur">'+(s.buf||'&nbsp;')+'</span>')+'<small>cm</small>';
+  var j=(C!=null&&o.judge)?o.judge(C):null;
+  el.querySelector('.kpRef').innerHTML=(o.ref?o.ref+'　':'')+(j?'<b class="'+j.cls+'">'+j.text+'</b>':'');
+  var sb=el.querySelector('.kpStems'), sm=el.querySelector('.kpSum');
+  if(s.kabu){
+    sb.style.display=''; sm.style.display='';
+    sb.innerHTML=s.stems.map(function(v,i){ return '<button data-si="'+i+'" class="'+(i===s.i?'on':'')+'"><small>幹'+(i+1)+'</small>'+(v||'—')+'</button>'; }).join('');
+    sm.textContent=stemsOk.length?'（'+stemsOk.join('＋')+'）× 0.7 ＝ '+C+' cm':'幹ごとの幹周を入れてください。総和×0.7 で幹周を出します';
+    sb.querySelectorAll('[data-si]').forEach(function(b){ b.onclick=function(){ s.i=Number(b.dataset.si); s.fresh=true; kpRender(); }; });
+  } else { sb.style.display='none'; sm.style.display='none'; }
+  el.querySelector('[data-k="kb"]').classList.toggle('on',s.kabu);
+  el.querySelector('[data-k="kb"]').textContent=s.kabu?'✓ 株立ち':'株立ち';
+  el.querySelector('[data-k="add"]').disabled=!s.kabu;
+  el.querySelector('[data-k="ok"]').disabled=(C==null);
+}
+function kpKey(k){
+  var s=KP.s; var cur=s.kabu?(s.stems[s.i]||''):s.buf;
+  var set=function(v){ if(s.kabu) s.stems[s.i]=v; else s.buf=v; };
+  if(/^\d$/.test(k)||k==='.'){
+    if(s.fresh){ cur=''; s.fresh=false; }
+    if(k==='.'&&(cur.indexOf('.')>=0)) return;
+    if(cur.replace('.','').length>=4) return;
+    if(k==='.'&&!cur) cur='0';
+    set(cur+k);
+  } else if(k==='bs'){ s.fresh=false;
+    if(cur) set(cur.slice(0,-1));
+    else if(s.kabu&&s.stems.length>1){ s.stems.splice(s.i,1); s.i=Math.max(0,s.i-1); }
+  } else if(k==='clr'){ s.fresh=false; set(''); }
+  else if(k==='kb'){
+    if(!s.kabu){ s.kabu=true; s.stems=kpNum(s.buf)?[s.buf,'']:['']; s.i=s.stems.length-1; s.fresh=false; }
+    else { var r=kpResult(); s.kabu=false; s.buf=r==null?'':String(r); s.fresh=true; }
+  } else if(k==='add'){ if(!s.kabu) return; if(!(s.stems[s.i]||'')){ return; } s.stems=s.stems.filter(function(v){return v;}); s.stems.push(''); s.i=s.stems.length-1; s.fresh=false; }
+  else if(k==='ok'){ var C=kpResult(); if(C==null) return;
+    var stems=s.kabu?s.stems.map(kpNum).filter(function(x){return x;}):null;
+    var text=stems&&stems.length?C+'（'+stems.join('・')+'）':String(C);
+    var o=KP.o; kpClose(); if(o.onOk) o.onOk({C:C,stems:stems&&stems.length?stems:null,text:text}); return; }
+  else if(k==='x'){ var o2=KP.o; kpClose(); if(o2.onCancel) o2.onCancel(); return; }
+  kpRender();
+}
+function kpClose(){ if(KP&&KP.el) KP.el.classList.remove('on'); if(KP) KP.open=false; }
+function kpOpen(o){
+  kpCSS();
+  if(!KP){ KP={};
+    var el=document.createElement('div'); el.className='kpWrap'; el.id='kpWrap';
+    el.innerHTML='<div class="kpCard"><div class="kpHead"><span class="kpTitle"></span><button data-k="x">やめる ✕</button></div><div class="kpVal"></div><div class="kpRef"></div><div class="kpStems"></div><div class="kpSum"></div>'
+      +'<div class="kpKeys">'+['7','8','9','bs','4','5','6','clr','1','2','3','kb','0','.','add','ok'].map(function(k){
+        var lb={bs:'⌫',clr:'クリア',kb:'株立ち',add:'＋幹',ok:'✓ 決定'}[k]||k, cls={bs:'fn',clr:'fn',kb:'kb',add:'add',ok:'ok'}[k]||'';
+        return '<button data-k="'+k+'" class="'+cls+'">'+lb+'</button>'; }).join('')+'</div></div>';
+    document.body.appendChild(el); KP.el=el;
+    el.addEventListener('click',function(e){ var b=e.target.closest('[data-k]'); if(b){ e.preventDefault(); kpKey(b.dataset.k); } else if(e.target===el){ kpKey('x'); } });
+    document.addEventListener('keydown',function(e){ if(!KP.open) return; var k=e.key;
+      if(/^\d$/.test(k)||k==='.') kpKey(k); else if(k==='Backspace') kpKey('bs'); else if(k==='Enter') kpKey('ok'); else if(k==='Escape') kpKey('x'); else if(k==='+') kpKey('add'); else return;
+      e.preventDefault(); e.stopPropagation(); },true);
+  }
+  var stems=(o.stems||[]).map(function(x){return String(x);}).filter(function(x){return x;});
+  KP.o=o; KP.open=true;
+  KP.s={ kabu:stems.length>0, stems:stems.length?stems:[], i:Math.max(0,stems.length-1), buf:o.value!=null&&o.value!==''?String(o.value):'', fresh:true };
+  KP.el.classList.add('on'); kpRender();
+}
+</script>
+
 </body>
 </html>
