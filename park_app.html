@@ -57,7 +57,20 @@
   .sdBtn.on{border-color:#3ecf8e;background:#163428}
   .sdBtn.sm{font-size:13px;padding:9px;text-align:center}.sdBtn.ok{background:#2f6b3f;border-color:#2f6b3f;text-align:center}
   .sdCodeWrap{text-align:center;font-size:14px;color:var(--mut);margin:6px 0}.sdCodeWrap b{display:block;font-size:44px;letter-spacing:10px;color:#fff}
+  .sdQrWrap{display:flex;align-items:center;gap:14px;justify-content:center;margin:4px 0 10px}
+  .sdQr{background:#fff;border-radius:10px;padding:8px;width:176px;height:176px;flex:none;display:flex;align-items:center;justify-content:center;color:#333;font-size:12px}
+  .sdQr svg,.sdQr img{width:100%;height:100%;display:block}
+  .sdQrWrap .sdCodeWrap b{font-size:34px;letter-spacing:6px}
+  .sdLink{display:block;font-size:13px;margin-top:6px;color:var(--mut)}.sdLink.ok{color:#3ecf8e;font-weight:700}
   .sdHow{font-size:13px;line-height:1.7;color:var(--ink);background:var(--panel2);border-radius:8px;padding:10px;margin-bottom:10px}
+.pickBar{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:30;display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:center;background:rgba(17,24,33,.94);border:1px solid var(--line);border-radius:14px;padding:8px 10px;max-width:calc(100% - 20px);box-shadow:0 8px 24px rgba(0,0,0,.4);color:var(--ink)}
+  .pickBar button{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px;font-weight:700;cursor:pointer}
+  .pickBar button.go{background:#2f6b3f;border-color:#2f6b3f;color:#fff}
+  .pickBar .pbMode{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}.pickBar .pbMode button{border:none;border-radius:0}.pickBar .pbMode button.on{background:#ffb547;color:#222}
+  .pickBar .pbInfo{font-size:13px}.pickBar .pbInfo b{font-size:17px;color:#ffb547}.pickBar .pbInfo small{margin-left:6px;color:var(--mut)}.pickBar .pbInfo small.un{color:#ff9f7a}
+  .pickBar .pbBtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.draftBar{position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:80;background:#163428;border:1px solid #3ecf8e;color:#fff;border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:calc(100% - 24px);font-size:14px}
+  .draftBar small{display:block;font-size:11px;color:#a9d8bf}.draftBar button{border:none;border-radius:8px;padding:8px 12px;font-weight:700;font-size:13px}.draftBar .go{background:#3ecf8e;color:#0b2015}.draftBar .x{background:transparent;color:#fff}
 .slTop{margin-bottom:8px;font-size:15px}.slTop small{display:block;color:var(--mut);font-size:11px;margin-top:3px;font-weight:400}
   .ngT{color:#ff9f7a}.okT{color:#3ecf8e}
   .slTbl{width:100%;border-collapse:collapse;font-size:13px}
@@ -566,7 +579,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <button class="btn on" id="toolArea" data-tool="area">面積（㎡）<small>外周をタップ→「✓確定」か始点をタップ</small></button>
       <button class="btn" id="toolTree" data-tool="tree">樹木（本）<small>クリックで1本配置</small></button>
       <button class="btn" id="toolSelect" data-tool="select">選択・編集・削除<small>クリックで選択／頂点ドラッグ移動・辺の○で追加・頂点ダブルタップで削除</small></button>
-      <button class="btn" id="toolShoot" data-tool="shoot">📷 木の写真を撮る<small>撮りたい木をタップ → 工事写真のカメラ（黒板に工種・規格・No.）</small></button>
+      <button class="btn" id="toolShoot" data-tool="shoot">📷 撮る木をえらぶ<small>撮る木をタップでえらんで「工事写真へ送る」→ 工事写真でまとめて撮る（その場で撮ることもできます）</small></button>
       <button class="btn" id="toolPan" data-tool="pan">✋ 地図を移動<small>地図右上の✋でも切替できます</small></button>
       <button class="btn on" id="snapToggle">寸法を0.1m刻みにそろえる<small>2.01m → 2.00m。頂点を置く・動かすときに効きます</small></button>
     </div>
@@ -697,8 +710,11 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
   <button class="sdBtn" id="sdSelf">📷 この端末のカメラで撮る<small>木をタップすると、この端末で工事写真アプリのカメラが開きます</small></button>
   <button class="sdBtn" id="sdPhone">📱 iPhoneで撮る（遠隔）<small>iPadは図面のまま。木をタップすると、iPhoneのカメラにその木の黒板が出ます</small></button>
   <div id="sdPhoneBox" style="display:none">
-    <div class="sdCodeWrap">部屋番号 <b id="sdCode">0000</b></div>
-    <div class="sdHow">iPhoneで：工事写真アプリ → 撮影画面の <b>≡</b> →「<b>📡 iPadとつなぐ</b>」→ この番号を入れる。<br>つないだ後は、iPhoneは工事写真アプリを開いたまま（画面を消さない）にしておいてください。</div>
+    <div class="sdQrWrap"><div id="sdQr" class="sdQr"></div><div class="sdCodeWrap">部屋番号<b id="sdCode">0000</b><span id="sdLink" class="sdLink">iPhoneを待っています…</span></div></div>
+    <div class="sdHow"><b>iPhoneで、このQRを読むだけ</b>でつながります。<br>
+      ・<b>工事写真アプリ</b>のはじめの画面「📡 iPadとつなぐ（QRを読む）」で読む（おすすめ）<br>
+      ・またはiPhoneの<b>カメラ</b>で読む（Safariで工事写真が開きます）<br>
+      QRが読めないときは、工事写真の「番号で入れる」から部屋番号を入れてください。つないだ後は、iPhoneは工事写真アプリを開いたままに。</div>
     <div style="display:flex;gap:8px"><button class="sdBtn sm" id="sdNewCode">番号を作り直す</button><button class="sdBtn ok" id="sdPhoneOk">これで決める</button></div>
   </div>
   <button class="sdBtn sm" id="sdClose">閉じる</button>
@@ -802,7 +818,7 @@ let undoStack=[], redoStack=[];
 function snapshot(){return JSON.stringify({features:state.features,manual:state.manual,scale:state.scale,scan:state.scan||[]});}
 function restore(s){const o=JSON.parse(s);state.features=o.features;state.manual=o.manual;state.scale=o.scale;state.scan=o.scan||[];selScan=null;alignScan=null;renderScanInfo();
   recalcAll();multiSel=[];selected=null;draft=null;updateScaleBadge();renderAgg();renderSansha();refreshDraftBar();draw();updateUndoButtons();}
-function pushHistory(){undoStack.push(snapshot());if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();}
+function pushHistory(){undoStack.push(snapshot());if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();if(typeof draftLater==='function')draftLater();}
 function undo(){if(!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop());}
 function redo(){if(!redoStack.length)return;undoStack.push(snapshot());restore(redoStack.pop());}
 function updateUndoButtons(){const u=$('undoBtn'),r=$('redoBtn');if(u)u.style.opacity=undoStack.length?'1':'.4';if(r)r.style.opacity=redoStack.length?'1':'.4';}
@@ -963,7 +979,7 @@ function setTool(t){
   document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));
   cv.style.cursor = (t==='select'||t==='pan')?'grab':t==='shoot'?'pointer':'crosshair';
   const mp=$('mPan'); if(mp)mp.classList.toggle('on',t==='pan');
-  updateHint(); draw();
+  updateHint(); draw(); renderPickBar(); if(t==='shoot'&&typeof loadShots==='function') loadShots();
 }
 document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>{holeMode=null;setTool(b.dataset.tool);});
 // 地図上の浮動コントロール（移動・ズーム）
@@ -983,7 +999,8 @@ function updateHint(){
   if(tool==='cal')h.innerHTML='既知の長さの<b>一端を押して、もう一端までドラッグ</b>（タップ2回でもOK）。置いた点は<b>離さず動かせば微調整</b>できます。先に左の「実距離(m)」を合わせて。';
   else if(tool==='strip')h.innerHTML='＜幅刈り＞道や法面に沿って<b>端から順にタップ</b>→<b>「✓ 確定」</b>。左の「長さ」欄の数字を最初の幅に使います（あとから区間ごとに変えられます）。';
   else if(tool==='rect')h.innerHTML='＜寸法で置く＞左の<b>長さ×奥行</b>の四角を、<b>タップした場所</b>に置きます。置いたあとは普通の面積として頂点を動かしたり回したりできます。';
-  else if(tool==='shoot')h.innerHTML='＜写真＞<b>撮りたい木をタップ</b>すると、カメラが開きます（黒板に工種・規格・No.・幹周）。撮るカメラ：<b>'+shootDevLabel()+'</b>　<a href="#" onclick="openShootDev();return false" style="color:#7fd1a3">変える</a>　<a href="#" onclick="openShotList();return false" style="color:#7fd1a3">📋 撮影の状況</a>';
+  else if(tool==='shoot'&&shootMode()==='pick')h.innerHTML='＜撮る木をえらぶ＞<b>撮る木・範囲をタップ</b>（もう一度タップで外す）。えらび終わったら下の<b>「📤 工事写真へ送る」</b>。工事写真の「撮り残し」に入るので、そこでまとめて撮れます。<a href="#" onclick="openShotList();return false" style="color:#7fd1a3">📋 撮影の状況</a>';
+  else if(tool==='shoot')h.innerHTML='＜その場で撮る＞<b>撮りたい木をタップ</b>すると、カメラが開きます。撮るカメラ：<b>'+shootDevLabel()+'</b>　<a href="#" onclick="openShootDev();return false" style="color:#7fd1a3">変える</a>　<a href="#" onclick="openShotList();return false" style="color:#7fd1a3">📋 撮影の状況</a>';
   else if(tool==='pan')h.innerHTML='<b>地図移動モード</b>：ドラッグ（iPadは指1本）で<b>表示位置だけ</b>を動かします。記録に戻るには上で別のモードを選択。';
   else if(tool==='area'){
     if(curGeom()==='line')h.innerHTML='＜つる：管理柵＞フェンスに沿って<b>端から端へタップ</b>→<b>「✓ 確定」</b>。左の<b>高さ(m)</b>を掛けて面積にします。';
@@ -1642,7 +1659,7 @@ function draw(){
       }
       if(!exporting&&f===selected)drawHandles(f);
       if(!exporting&&f===selected)drawEdgeLengths(f);
-      if(!exporting&&SHOTS&&(SHOTS.shots[featFid(f)]||[]).length){ const c=centroid(f.pts), r=6/view.zoom; ctx.beginPath(); ctx.arc(c.x,c.y,r,0,7); ctx.fillStyle='rgba(20,30,25,.75)'; ctx.fill(); drawShotMark(f,c.x,c.y,r); }
+      if(!exporting&&((SHOTS&&(SHOTS.shots[featFid(f)]||[]).length)||(f.shoot&&(shotMarks||tool==='shoot')))){ const c=centroid(f.pts), r=6/view.zoom; ctx.beginPath(); ctx.arc(c.x,c.y,r,0,7); ctx.fillStyle='rgba(20,30,25,.75)'; ctx.fill(); drawShotMark(f,c.x,c.y,r); }
       if(labelVisible(f)){
         const c=centroid(f.pts);const _maxY=f.pts.reduce((a,p)=>Math.max(a,p.y),-Infinity);
         const tag=(f.calc==='trim')?'（投影＋側面）':'';
@@ -1910,7 +1927,9 @@ function downCommon(p,ip){
   if(alignScan) return null;                     // 目印合わせ中：指を離したときに alignTap
   selScan=null;
   if(tool==='tree'&&nearestScan(ip)) return null;   // 仮置きの木：指を離したとき（placeTree）に工種を決める
-  if(tool==='shoot'){ let t=nearestTree(ip); if(!t){ const h=pickHit(ip); if(h&&h.cat) t=h; } if(t&&t.cat){ setSingle(t); renderSansha(); draw(); setTimeout(()=>shootTree(t),150); return 'sel'; }
+  if(tool==='shoot'){ let t=nearestTree(ip); if(!t){ const h=pickHit(ip); if(h&&h.cat) t=h; }
+    if(t&&t.cat&&shootMode()==='pick'){ t.shoot=!t.shoot; draftLater(); renderPickBar(); draw(); return 'sel'; }
+    if(t&&t.cat){ setSingle(t); renderSansha(); draw(); setTimeout(()=>shootTree(t),150); return 'sel'; }
     panning=true; panStart={x:p.x-view.ox,y:p.y-view.oy}; return 'pan'; }
   if(tool==='select'){ const st=nearestScan(ip); if(st){ hlHole=null; multiSel=[]; selected=null; selScan=st; renderSansha(); draw(); return 'sel'; } }
   let f=(tool==='tree')?nearestTree(ip):pickHit(ip); if(!f){const lf=labelHitFeature(ip); if(lf&&state.features.indexOf(lf)>=0)f=lf;}   // 図形が外れたらラベルでも選択
@@ -2242,10 +2261,16 @@ let SHOTS=null, shotMarks=lsGet('park_shot_marks')!=='off';
 async function loadShots(){
   if(!state.cloudId||!navigator.onLine) return;
   try{ const j=await fetch(PARK_GAS+'?app=shashin&action=parkShots&rec='+encodeURIComponent(state.cloudId),{cache:'no-store'}).then(r=>r.json());
-    if(j&&j.ok){ SHOTS={stages:j.stages||[],shots:j.shots||{},rule:j.rule||null,free:j.free||{},site:j.site||''}; draw(); renderShotSum(); } }catch(e){}
+    if(j&&j.ok){ SHOTS={stages:j.stages||[],shots:j.shots||{},rule:j.rule||null,free:j.free||{},site:j.site||'',planned:j.planned||[]}; draw(); renderShotSum(); renderPickBar(); } }catch(e){}
 }
 function drawShotMark(f,x,y,r){
-  if(!SHOTS||!shotMarks) return; const got=SHOTS.shots[featFid(f)]; if(!got||!got.length) return;
+  if(!shotMarks&&tool!=='shoot') return;
+  const got=SHOTS&&SHOTS.shots[featFid(f)];
+  if(!got||!got.length){   // まだ撮っていない：撮る木にえらんだもの（工事写真へ送った・送る前）は オレンジの点線の輪
+    const planned=f.shoot||(SHOTS&&SHOTS.planned&&SHOTS.planned.indexOf(featFid(f))>=0); if(!planned) return;
+    const R=r+3.5/view.zoom; ctx.save(); ctx.lineWidth=2.4/view.zoom; ctx.setLineDash([4/view.zoom,3/view.zoom]);
+    ctx.beginPath(); ctx.arc(x,y,R,0,7); ctx.strokeStyle=f.shoot&&!f.shootSent?'#ffb547':'rgba(255,181,71,.75)'; ctx.stroke(); ctx.restore(); return; }
+  if(!SHOTS) return;
   const st=SHOTS.stages.length?SHOTS.stages:['作業前','作業中','作業後'], n=st.length, done=st.filter(s=>got.includes(s)).length;
   const R=r+3.5/view.zoom; ctx.save(); ctx.lineWidth=2.4/view.zoom; ctx.lineCap='round';
   if(done>=n){ ctx.beginPath(); ctx.arc(x,y,R,0,7); ctx.strokeStyle='#3ecf8e'; ctx.stroke(); ctx.restore(); return; }
@@ -2292,8 +2317,104 @@ async function openShotList(){
 }
 $('shotListBtn').onclick=openShotList;
 $('slClose').onclick=()=>$('shotListModal').classList.remove('on');
-$('slGo').onclick=()=>{ const q=new URLSearchParams({from:'park',view:'check',park:($('parkName').value||'').trim(),contract:($('contractName').value||'').trim(),rec:state.cloudId||''}); location.href='shashin.html?'+q.toString(); };
+$('slGo').onclick=async()=>{ await draftSaveNow(); const q=new URLSearchParams({from:'park',view:'check',park:($('parkName').value||'').trim(),contract:($('contractName').value||'').trim(),rec:state.cloudId||''}); location.href='shashin.html?'+q.toString(); };
 window.openShotList=openShotList;
+/* ---------- 撮る木をえらぶ → 工事写真へ送る（工事写真の「撮り残し」に入り、そこでまとめて撮る） ----------
+   f.shoot＝撮る木にえらんだ、f.shootSent＝工事写真へ送った。えらぶのをやめて送り直すと、まだ撮っていない項目は工事写真からも消える */
+function shootMode(){ return lsGet('park_shoot_mode')==='now'?'now':'pick'; }
+function pickFeats(){ return (state.features||[]).filter(f=>f.cat); }
+function renderPickBar(){
+  let el=$('pickBar');
+  if(tool!=='shoot'||!state.img){ if(el) el.style.display='none'; return; }
+  if(!el){ el=document.createElement('div'); el.id='pickBar'; el.className='pickBar'; document.querySelector('.stage').appendChild(el); }
+  el.style.display='';
+  const mode=shootMode(), F=pickFeats(), sel=F.filter(f=>f.shoot), unsent=F.filter(f=>(!!f.shoot)!==(!!f.shootSent)).length;
+  const shot=SHOTS?F.filter(f=>(SHOTS.shots[featFid(f)]||[]).length).length:0;
+  el.innerHTML=`<div class="pbMode"><button data-m="pick" class="${mode==='pick'?'on':''}">えらぶ</button><button data-m="now" class="${mode==='now'?'on':''}">その場で撮る</button></div>`
+    +(mode==='pick'?`<div class="pbInfo">撮る木 <b>${sel.length}</b>/${F.length}${SHOTS?`<small>撮った ${shot}</small>`:''}${unsent?`<small class="un">未送信 ${unsent}</small>`:''}</div>
+      <div class="pbBtns"><button id="pbRule">決まりでえらぶ</button><button id="pbAll">全部</button><button id="pbNone">外す</button><button id="pbSend" class="go">📤 工事写真へ送る</button></div>`
+    :`<div class="pbInfo">木をタップ → カメラ（${shootDevLabel()}）</div>`);
+  el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{ lsSet('park_shoot_mode',b.dataset.m); renderPickBar(); updateHint(); draw(); });
+  if(mode!=='pick') return;
+  $('pbAll').onclick=()=>{ F.forEach(f=>f.shoot=true); draftLater(); renderPickBar(); draw(); };
+  $('pbNone').onclick=()=>{ if(sel.length&&!confirm('えらんだ木をすべて外しますか？')) return; F.forEach(f=>f.shoot=false); draftLater(); renderPickBar(); draw(); };
+  $('pbRule').onclick=pickByRule;
+  $('pbSend').onclick=sendPicked;
+}
+/* 決まり（工事写真の「案件の情報」⑧：N本に1本・最低M本）で、工種・規格ごとに図面の上で散らばるようにえらぶ。もう撮った木は数に入れる */
+async function pickByRule(){
+  if(state.cloudId&&!SHOTS) await loadShots();
+  const rule=SHOTS&&SHOTS.rule;
+  if(!rule||!(rule.rows||[]).length){ if(!confirm('撮る本数の決まりが まだ決まっていません（工事写真の「案件の情報」⑧で決めます）。\n\nいまは全部えらびますか？')) return; pickFeats().forEach(f=>f.shoot=true); draftLater(); renderPickBar(); draw(); return; }
+  const G={}; pickFeats().forEach(f=>{ const k=f.cat+'|'+(f.rank||f.kind||''); (G[k]=G[k]||[]).push(f); });
+  let add=0;
+  Object.values(G).forEach(L=>{
+    const f0=L[0], need=ruleNeed(rule,f0.cat,f0.rank||f0.kind||'',L.length);
+    const has=L.filter(f=>f.shoot||(SHOTS.shots[featFid(f)]||[]).length).length; let lack=need-has; if(lack<=0) return;
+    const rest=L.filter(f=>!f.shoot&&!(SHOTS.shots[featFid(f)]||[]).length).map(f=>({f,p:featPos(f)})).sort((a,b)=>a.p.x-b.p.x||a.p.y-b.p.y);
+    for(let i=0;i<lack&&i<rest.length;i++){ const j=Math.min(rest.length-1,Math.floor((i+0.5)*rest.length/lack)); if(!rest[j].f.shoot){ rest[j].f.shoot=true; add++; } }
+  });
+  draftLater(); renderPickBar(); draw();
+  alert(add?`決まりの数に足りない分を ${add} 本・か所 えらびました（オレンジの点線）。\nちがう木にしたいときは、タップで外して別の木をタップしてください。`:'決まりの数は もうえらばれています');
+}
+async function cloudSaveQuiet(){
+  const payload=parkPayload();
+  const d=await cloudPost({mode:'save',id:state.cloudId||null,ver:state.cloudId?state.cloudVer:null,park:payload.park,contract:payload.contract,
+      order:payload.order,date:payload.date,figures:state.features.length,json:JSON.stringify(payload)});
+  if(!d.ok) throw new Error(d.error||'保存できませんでした');
+  state.cloudId=d.id; state.cloudVer=d.ver; return d;
+}
+async function sendPicked(){
+  const park=($('parkName').value||'').trim();
+  if(!park){ alert('公園名を入れてください（工事写真の現場をさがすのに使います）'); return; }
+  const F=pickFeats(), sel=F.filter(f=>f.shoot), rm=F.filter(f=>f.shootSent&&!f.shoot);
+  if(!sel.length&&!rm.length){ alert('撮る木をタップでえらんでください（オレンジの点線の輪が付きます）'); return; }
+  if(!myName(true)) return;
+  const b=$('pbSend'); b.disabled=true; b.textContent='送っています…';
+  try{
+    ensureIds(false);
+    sel.forEach(f=>f.shootSent=true); rm.forEach(f=>f.shootSent=false);   // 先に印を付けてから保存（図面にも残る）
+    await cloudSaveQuiet();
+    const T=sel.map(f=>{ const p=featPos(f); return { fid:featFid(f), type:f.type||'tree', cat:f.cat||'', kind:f.kind||'', rank:f.rank||'', C:f.C||'', area:f.area?Math.round(f.area*10)/10:'', x:Math.round(p.x*10)/10, y:Math.round(p.y*10)/10 }; });
+    const j=await fetch(PARK_GAS,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({app:'shashin',mode:'parkTargets',by:myName(),park,contract:($('contractName').value||'').trim(),rec:state.cloudId,targets:T,remove:rm.map(featFid)})}).then(r=>r.json());
+    if(!j.ok){ sel.forEach(f=>f.shootSent=false); throw new Error(/unknown/.test(j.error||'')?'共通GASの更新がまだです（GASを新しいバージョンで公開し直してください）':(j.error||'送れませんでした')); }
+    draftLater(); setTimeout(loadShots,600);
+    alert(`工事写真の「${j.site}」に送りました。\n\n新しく入れた：${j.added} 本・か所${j.already?`\nもう入っていた：${j.already}`:''}${j.removed?`\n外した：${j.removed}`:''}${j.kept?`\n（撮った写真があるので外さなかった：${j.kept}）`:''}\n\n工事写真アプリでこの現場を開き「撮り残し」→「まとめて撮る」で順に撮れます。`);
+  }catch(e){ alert('送れませんでした。\n'+(e&&e.message||e)); }
+  finally{ renderPickBar(); draw(); }
+}
+/* ---------- 作業中の図面を この端末に自動でとっておく（工事写真へ移って戻ってきても、クラウドから読み直さずに続きができる） ---------- */
+var draftT=null;
+function draftDB(){ return new Promise((res,rej)=>{ const r=indexedDB.open('park_app_draft',1); r.onupgradeneeded=()=>r.result.createObjectStore('d'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function draftPut(v){ const db=await draftDB(); return new Promise((res,rej)=>{ const t=db.transaction('d','readwrite'); t.objectStore('d').put(v,'cur'); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); }); }
+async function draftGet(){ const db=await draftDB(); return new Promise((res)=>{ const t=db.transaction('d','readonly'), r=t.objectStore('d').get('cur'); r.onsuccess=()=>res(r.result||null); r.onerror=()=>res(null); }); }
+async function draftSaveNow(){
+  clearTimeout(draftT); draftT=null;
+  if(!state.img&&!(state.features||[]).length) return;
+  try{ const p=parkPayload(); await draftPut({at:Date.now(),park:p.park,n:(state.features||[]).length,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,json:JSON.stringify(p)}); }catch(e){}
+}
+function draftLater(){ clearTimeout(draftT); draftT=setTimeout(draftSaveNow,2500); }
+document.addEventListener('visibilitychange',()=>{ if(document.hidden&&draftT) draftSaveNow(); });
+window.addEventListener('pagehide',()=>{ if(draftT) draftSaveNow(); });
+document.addEventListener('change',e=>{ if(e.target&&e.target.closest&&e.target.closest('input,select,textarea')) draftLater(); },true);
+function draftOpen(d){
+  applyParkJson(d.json); state.cloudId=d.cloudId||null; state.cloudVer=d.cloudVer||null;
+  if(state.cloudId) setTimeout(loadShots,600);
+}
+async function draftOffer(){
+  let d=null; try{ d=await draftGet(); }catch(e){} if(!d||!d.json) return;
+  const resume=/[?&]resume=1/.test(location.search);
+  if(resume){ history.replaceState(null,'',location.pathname); if(!state.img&&!(state.features||[]).length) draftOpen(d); return; }
+  if(state.img||(state.features||[]).length) return;
+  if(Date.now()-d.at>14*24*3600*1000) return;
+  const t=new Date(d.at), el=document.createElement('div'); el.className='draftBar';
+  el.innerHTML=`<span>前回の続き：<b>${esc(d.park||'（公園名なし）')}</b><small>${t.getMonth()+1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2,'0')}・図形${d.n||0}</small></span><button class="go">続きを開く</button><button class="x">✕</button>`;
+  document.body.appendChild(el);
+  el.querySelector('.go').onclick=()=>{ el.remove(); draftOpen(d); };
+  el.querySelector('.x').onclick=()=>el.remove();
+  setTimeout(()=>{ if(el.isConnected) el.remove(); },30000);
+}
+setTimeout(draftOffer,300);
 function syncShootFab(){ const b=$('shootFab'); if(!b) return; const tr=selected&&selected.type==='tree', ph=lsGet('park_shoot_dev')==='phone'; b.textContent=ph?(tr?'📱 この木をiPhoneで撮る':'📱 ここをiPhoneで撮る'):(tr?'📷 この木の写真を撮る':'📷 ここの写真を撮る'); const one=selected&&selected.cat&&multiSel.length<=1&&tool!=='shoot'; b.style.display=one?'':'none'; }
 /* 図形の目印：はじめて読み込んだときに、それまでの位置から目印を付けて固定（あとで動かしても工事写真の写真とつながったまま）。新しい図形はその場で付ける */
 function featPos(f){ return f.pt ? f.pt : (Array.isArray(f.pts)&&f.pts.length ? centroid(f.pts) : {x:0,y:0}); }
@@ -2306,12 +2427,41 @@ function lsGet(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 function rmtCode(){ let c=lsGet(RMT_CODE_KEY); if(!/^\d{4}$/.test(c)){ c=String(Math.floor(1000+Math.random()*9000)); lsSet(RMT_CODE_KEY,c); } return c; }
 function shootDevLabel(){ const d=lsGet(SHOOT_DEV_KEY); return d==='phone'?`iPhone（部屋番号 ${rmtCode()}）`:d==='self'?'この端末のカメラ':'まだ決めていません'; }
+/* iPhoneとつなぐQR：shashin.html?pair=部屋番号。qrcode-generator は lib/ に同梱（必要なときだけ読む） */
+var sdQrFor='', sdLinkT=null, sdLinkFrom=0;
+function loadQrLib(){
+  if(window.qrcode) return Promise.resolve(window.qrcode);
+  if(loadQrLib._p) return loadQrLib._p;
+  return loadQrLib._p=new Promise(function(res,rej){ var sc=document.createElement('script'); sc.src='lib/qrcode-generator-1.4.4.js'; sc.onload=function(){ res(window.qrcode); }; sc.onerror=function(){ loadQrLib._p=null; rej(new Error('qr')); }; document.head.appendChild(sc); });
+}
+function pairUrl(code){ return new URL('shashin.html?pair='+code, location.href).href; }
+function drawPairQr(){
+  var code=rmtCode(), box=$('sdQr'); if(!box) return;
+  if(sdQrFor===code&&box.firstChild&&box.firstChild.tagName) return;
+  box.textContent='QRを作っています…';
+  loadQrLib().then(function(qrcode){ var q=qrcode(0,'M'); q.addData(pairUrl(code)); q.make(); box.innerHTML=q.createSvgTag({cellSize:4,margin:2,scalable:true}); sdQrFor=code; })
+    .catch(function(){ box.textContent='QRを出せませんでした（電波を確認）。右の番号で入れてください'; });
+}
+/* iPhoneがつながったか（iPhoneが共通GASを見に来た時刻）を見て、「つながりました」を出す */
+function watchPairLink(){
+  clearInterval(sdLinkT); sdLinkFrom=Date.now(); var el=$('sdLink'); if(el){ el.className='sdLink'; el.textContent='iPhoneを待っています…'; }
+  var tick=function(){
+    if(!$('shootDevModal').classList.contains('on')||$('sdPhoneBox').style.display==='none'){ clearInterval(sdLinkT); return; }
+    fetch(PARK_GAS+'?app=shashin&action=remoteStatus&code='+rmtCode()+'&id=',{cache:'no-store'}).then(function(r){ return r.json(); }).then(function(s){
+      var e=$('sdLink'); if(!e||!s) return;
+      if(s.phoneSeen!=null&&s.phoneSeen<10){ e.className='sdLink ok'; e.textContent='✅ iPhoneとつながっています'; }
+      else { e.className='sdLink'; e.textContent='iPhoneを待っています…'; }
+    }).catch(function(){});
+  };
+  sdLinkT=setInterval(tick,3000); tick();
+}
+function showPhoneBox(){ $('sdPhoneBox').style.display=''; $('sdCode').textContent=rmtCode(); drawPairQr(); watchPairLink(); }
 function openShootDev(after){
   const m=$('shootDevModal'); m.classList.add('on'); m._after=after||null;
   const d=lsGet(SHOOT_DEV_KEY); $('sdSelf').classList.toggle('on',d==='self'); $('sdPhone').classList.toggle('on',d==='phone');
-  $('sdPhoneBox').style.display=d==='phone'?'':'none'; $('sdCode').textContent=rmtCode();
+  $('sdPhoneBox').style.display='none'; if(d==='phone') showPhoneBox();
 }
-function closeShootDev(go){ const m=$('shootDevModal'); m.classList.remove('on'); const a=m._after; m._after=null; updateHint(); syncShootFab(); if(go&&a) a(); }
+function closeShootDev(go){ clearInterval(sdLinkT); const m=$('shootDevModal'); m.classList.remove('on'); const a=m._after; m._after=null; updateHint(); syncShootFab(); if(go&&a) a(); }
 async function treeQuery(f){
   const park=($('parkName').value||'').trim();
   if(!park){ alert('公園名を入れてください（工事写真アプリで現場をさがすのに使います）'); return null; }
@@ -2329,6 +2479,7 @@ async function shootTree(f){
   if(!dev){ openShootDev(()=>shootTree(f)); return; }
   const q=await treeQuery(f); if(!q) return;
   if(dev==='phone') return sendToPhone(f,q);
+  await draftSaveNow();
   location.href='shashin.html?'+new URLSearchParams(Object.assign({from:'park'},q)).toString();
 }
 /* iPhoneへ送る：共通GASに置いて、iPhoneの工事写真アプリ（📡つなぎ中）が受け取る。届いた・撮ったを下に出す */
@@ -2353,15 +2504,16 @@ async function sendToPhone(f,q){
   },2000);
 }
 function rmtFail(f,q,why){
-  const el=rmtStat(`⚠ ${why}<small>iPhoneの工事写真アプリで「📡 iPadとつなぐ」（部屋番号 ${rmtCode()}）になっているか確認してください。指示は10分間残るので、つながれば届きます。</small><div class="rmtBtns"><button id="rmtRetry">もう一度送る</button><button id="rmtSelf">この端末のカメラで撮る</button><button id="rmtX">✕</button></div>`,'ng');
+  const el=rmtStat(`⚠ ${why}<small>iPhoneの工事写真アプリが iPad（部屋番号 ${rmtCode()}）とつながっているか確認してください（つないでいなければ「QRを出す」）。指示は10分間残るので、つながれば届きます。</small><div class="rmtBtns"><button id="rmtRetry">もう一度送る</button><button id="rmtQr">QRを出す</button><button id="rmtSelf">この端末のカメラで撮る</button><button id="rmtX">✕</button></div>`,'ng');
   $('rmtRetry').onclick=()=>sendToPhone(f,q);
-  $('rmtSelf').onclick=()=>{ location.href='shashin.html?'+new URLSearchParams(Object.assign({from:'park'},q)).toString(); };
+  $('rmtQr').onclick=()=>{ el.style.display='none'; openShootDev(()=>sendToPhone(f,q)); };
+  $('rmtSelf').onclick=async()=>{ await draftSaveNow(); location.href='shashin.html?'+new URLSearchParams(Object.assign({from:'park'},q)).toString(); };
   $('rmtX').onclick=()=>{ el.style.display='none'; };
 }
 $('sdSelf').onclick=()=>{ lsSet(SHOOT_DEV_KEY,'self'); closeShootDev(true); };
-$('sdPhone').onclick=()=>{ lsSet(SHOOT_DEV_KEY,'phone'); $('sdPhone').classList.add('on'); $('sdSelf').classList.remove('on'); $('sdPhoneBox').style.display=''; $('sdCode').textContent=rmtCode(); };
+$('sdPhone').onclick=()=>{ lsSet(SHOOT_DEV_KEY,'phone'); $('sdPhone').classList.add('on'); $('sdSelf').classList.remove('on'); showPhoneBox(); };
 $('sdPhoneOk').onclick=()=>closeShootDev(true);
-$('sdNewCode').onclick=()=>{ lsSet(RMT_CODE_KEY,''); $('sdCode').textContent=rmtCode(); };
+$('sdNewCode').onclick=()=>{ lsSet(RMT_CODE_KEY,''); showPhoneBox(); };
 $('sdClose').onclick=()=>closeShootDev(false);
 window.openShootDev=openShootDev;
 $('shootFab').onclick=e=>{ e.stopPropagation(); if(selected&&selected.cat) shootTree(selected); };
@@ -3058,7 +3210,7 @@ function applyParkData(d,kb){
   if(d.customWorks){ importCustomWorks(d.customWorks); buildTreeColors(); fillCats(); }
   state.cloudId=d.cloudId||state.cloudId||null; state.cloudVer=d.cloudId?(d.cloudVer||null):(state.cloudVer||null);
   if(d.mapImg){state.mapImg=d.mapImg;const b=$('rpMapBtn');if(b)b.firstChild.textContent='🖼 履行場所の図：読み込みました（変えるならもう一度）';}
-  state.features=d.features||[];ensureIds(true);SHOTS=null;setTimeout(loadShots,800);state.manual=d.manual||[];state.scan=Array.isArray(d.scan)?d.scan:[];selScan=null;renderScanInfo();recalcAll();
+  state.features=d.features||[];ensureIds(true);SHOTS=null;setTimeout(loadShots,800);setTimeout(renderPickBar,50);state.manual=d.manual||[];state.scan=Array.isArray(d.scan)?d.scan:[];selScan=null;renderScanInfo();recalcAll();
   undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
   if(!state.features.length&&!(state.scan&&state.scan.length)) alert('読み込みは成功しましたが、記録が0件でした（大きさ '+kb+' KB）。\n保存したときに図形が入っていたか確認してください。');
@@ -4369,13 +4521,49 @@ function pkFill(siteGroups){
   if(!dc){ dc=document.createElement('datalist'); dc.id='dlContracts'; document.body.appendChild(dc); }
   dp.innerHTML=pkParks.map(x=>`<option value="${esc2(x.park)}">${esc2(x.contract)}</option>`).join('');
   dc.innerHTML=Object.keys(g).map(c=>`<option value="${esc2(c)}"></option>`).join('');
-  $('parkName').setAttribute('list','dlParks'); $('contractName').setAttribute('list','dlContracts');
+  // ※ datalist（list属性）はiPad/iPhoneだと変換候補のバーを乗っ取って漢字変換ができなくなるので使わない。自前の候補リストを出す。
+  ['parkName','contractName'].forEach(id=>{ const el=$(id); if(el) el.removeAttribute('list'); });
 }
+/* 自前の候補リスト（入力の下に出す。キーボードの変換候補はそのまま使える） */
+let sugBox=null, sugFor=null, sugHideT=0;
+function sugItems(id){
+  if(id==='contractName') return [...new Set(pkParks.map(x=>x.contract))].map(c=>({v:c,sub:''}));
+  return pkParks.map(x=>({v:x.park,sub:x.contract}));
+}
+function sugShow(inp){
+  if(!pkParks.length){ sugHide(); return; }
+  const id=inp.id==='nuPark'?'parkName':inp.id;
+  const q=(inp.value||'').trim().toLowerCase();
+  let list=sugItems(id); const seen=new Set();
+  list=list.filter(x=>{ const k=x.v+'|'+x.sub; if(seen.has(k)) return false; seen.add(k); return !q||x.v.toLowerCase().includes(q)||x.sub.toLowerCase().includes(q); });
+  if(!list.length||(list.length===1&&list[0].v===inp.value.trim())){ sugHide(); return; }
+  if(!sugBox){ sugBox=document.createElement('div'); sugBox.id='sugBox';
+    sugBox.style.cssText='position:fixed;z-index:99999;background:#1b2330;border:1px solid #3a4658;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.45);overflow:auto;-webkit-overflow-scrolling:touch;font-size:15px;color:#e8eef6';
+    sugBox.addEventListener('pointerdown',e=>e.preventDefault()); // 入力欄からフォーカスを外さない
+    sugBox.addEventListener('click',e=>{ const b=e.target.closest('[data-v]'); if(!b||!sugFor) return;
+      const el=sugFor; el.value=b.dataset.v; sugHide();
+      el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); el.blur(); });
+    document.body.appendChild(sugBox); }
+  sugFor=inp;
+  const esc2=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  sugBox.innerHTML='<div style="padding:6px 12px;font-size:12px;color:#8fa0b5">現場マスタの候補（そのまま入力してもOK）</div>'+list.slice(0,40).map(x=>`<div data-v="${esc2(x.v)}" style="padding:10px 12px;border-top:1px solid #2a3442;cursor:pointer"><b style="font-weight:600">${esc2(x.v)}</b>${x.sub?`<small style="display:block;color:#8fa0b5;font-size:12px">${esc2(x.sub)}</small>`:''}</div>`).join('');
+  const r=inp.getBoundingClientRect(), vh=(window.visualViewport?window.visualViewport.height:innerHeight);
+  const w=Math.max(r.width,280); sugBox.style.width=w+'px';
+  sugBox.style.left=Math.max(6,Math.min(r.left,innerWidth-w-6))+'px';
+  sugBox.style.top=(r.bottom+4)+'px';
+  sugBox.style.maxHeight=Math.max(120,vh-r.bottom-16)+'px';
+  sugBox.style.display='block';
+}
+function sugHide(){ if(sugBox) sugBox.style.display='none'; sugFor=null; }
+const SUG_IDS=['parkName','contractName','nuPark'];
+document.addEventListener('focusin',e=>{ const t=e.target; if(t&&SUG_IDS.includes(t.id)){ clearTimeout(sugHideT); t.removeAttribute('list'); sugShow(t); } });
+document.addEventListener('input',e=>{ const t=e.target; if(t&&SUG_IDS.includes(t.id)&&document.activeElement===t) sugShow(t); });
+document.addEventListener('focusout',e=>{ const t=e.target; if(t&&SUG_IDS.includes(t.id)) sugHideT=setTimeout(sugHide,150); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') sugHide(); });
 try{ const m=JSON.parse(localStorage.getItem('nippou_masters')||'null'); if(m&&m.siteGroups) pkFill(m.siteGroups); }catch(e){}
 fetch(PK_MASTERS_URL).then(r=>r.json()).then(m=>{ if(m&&m.siteGroups){ pkFill(m.siteGroups);
   try{ const old=JSON.parse(localStorage.getItem('nippou_masters')||'null')||{}; localStorage.setItem('nippou_masters',JSON.stringify({staff:m.staff||old.staff||[],siteGroups:m.siteGroups})); }catch(e){} } }).catch(()=>{});
 // 新しい画面の公園名欄にも同じ候補を出す
-document.addEventListener('focusin',e=>{ if(e.target&&e.target.id==='nuPark'&&pkParks.length) e.target.setAttribute('list','dlParks'); });
 // 一覧にある公園を選んだら、委託名が空なら入れる
 $('parkName').addEventListener('change',()=>{
   const p=($('parkName').value||'').trim(), c=$('contractName'); if(!p||!c||c.value.trim()) return;

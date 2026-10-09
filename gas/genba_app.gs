@@ -393,6 +393,7 @@ function doPost(e) {
       /* 工事写真 */
       case 'shashin:saveItems':   return withLock_(function () { return shashinSaveItems_(b.items, b.by); });
       case 'shashin:deleteItems': return withLock_(function () { return shashinDeleteItems_(b.ids, b.by); });
+      case 'shashin:parkTargets': return withLock_(function () { return shashinParkTargets_(b); });
       case 'shashin:upload':      return out_(shashinUpload_(b));
       case 'shashin:uploadRaw':   return out_(shashinUploadRaw_(b));
       case 'shashin:saveInfo':    return withLock_(function () { return shashinSaveInfo_(b.infos, b.by); });
@@ -1400,7 +1401,8 @@ function shashinParkShots_(p) {
     var inf = rows_('shashinInfo').filter(function (r) { return r.key === key; })[0];
     if (inf) { stages = shashinJson_(inf.stages, []); var o = shashinJson_(inf.opts, {}); rule = o.photoRule || null; }
   }
-  return { ok: true, siteId: siteId, site: s ? s.name : '', stages: stages.length ? stages : ['作業前', '作業中', '作業後'], rule: rule, shots: shots, free: free };
+  var planned = its.map(function (r) { return String(r.parkFid); });   // 工事写真の撮影項目になっている木（撮る予定）
+  return { ok: true, siteId: siteId, site: s ? s.name : '', stages: stages.length ? stages : ['作業前', '作業中', '作業後'], rule: rule, shots: shots, free: free, planned: planned };
 }
 /* ---- 遠隔撮影：iPadの公園報告で木をタップ → iPhoneの工事写真のカメラが開く ----
    部屋番号（4〜6けた）ごとに、最近の指示を CacheService に置く（6時間）。電波が切れても、つながった時に最新の指示を受け取れる */
@@ -1471,6 +1473,62 @@ function shashinGet_(a, p) {
     try { return { ok: true, url: shashinFolder_(s).getUrl() }; } finally { l.releaseLock(); }
   }
   return { ok: false, error: 'unknown action' };
+}
+/* 公園報告で「撮る木」をえらんで送る → その現場の撮影項目にまとめて入れる（工事写真の「撮り残し」に出て、まとめて撮れる）
+   b: { park, contract, rec, targets:[{fid,type,cat,kind,rank,C,area,x,y}], remove:[fid] }
+   ・同じ現場に同じ目印（parkFid）の項目があれば作らない（位置だけ直す）。No.は 同じ工種・規格の中で次の番号
+   ・remove：えらぶのをやめた木。まだ1枚も撮っていない項目だけ消す */
+function shashinParkTargets_(b) {
+  var norm = function (s) { return String(s || '').replace(/[\s　]/g, ''); };
+  var sites = siteList_(), park = norm(b.park), con = norm(b.contract);
+  if (!park) return { ok: false, error: '公園名がありません' };
+  var c = sites.filter(function (x) { return norm(x.name) === park; });
+  if (!c.length) c = sites.filter(function (x) { return norm(x.name) && (norm(x.name).indexOf(park) >= 0 || park.indexOf(norm(x.name)) >= 0); });
+  if (c.length > 1 && con) { var c2 = c.filter(function (x) { return norm(x.contract).indexOf(con) >= 0 || con.indexOf(norm(x.contract)) >= 0; }); if (c2.length) c = c2; }
+  if (!c.length) return { ok: false, error: '「' + b.park + '」が現場マスタに見つかりません。公園名を現場マスタ（日報）と同じにしてください' };
+  var site = c[0], siteId = String(site.id), by = String(b.by || ''), rec = String(b.rec || '');
+  var sh = sh_('shashinItems'), head = SHEETS.shashinItems.head, vals = sh.getDataRange().getValues(), H = vals[0];
+  var col = {}; H.forEach(function (h, i) { col[h] = i; });
+  var mine = [];   // この現場の項目（行番号つき）
+  for (var i = 1; i < vals.length; i++) {
+    if (String(vals[i][col.siteId]) !== siteId || vals[i][col.state] === '削除') continue;
+    var o = {}; H.forEach(function (h, j) { o[h] = vals[i][j]; }); o._row = i + 1; mine.push(o);
+  }
+  var byFid = {}; mine.forEach(function (r) { if (r.parkFid) byFid[String(r.parkFid)] = r; });
+  var removed = 0, kept = 0;
+  if ((b.remove || []).length) {
+    var shot = {}; rows_('shashinPhotos').forEach(function (r) { if (!r.state) shot[r.itemId] = true; });
+    b.remove.forEach(function (fid) {
+      var r = byFid[String(fid)]; if (!r || !r._row) return;
+      if (shot[r.itemId]) { kept++; return; }
+      sh.getRange(r._row, col.state + 1).setValue('削除'); removed++; r._gone = true; delete byFid[String(fid)];
+    });
+  }
+  mine = mine.filter(function (r) { return !r._gone; });
+  var add = [], moved = 0, n0 = 0;
+  (b.targets || []).forEach(function (t) {
+    if (!t || !t.fid) return;
+    var had = byFid[String(t.fid)];
+    if (had) {   // 位置・記録だけ直す（木を動かしたとき）
+      if (t.x != null && (Number(had.px) !== Number(t.x) || Number(had.py) !== Number(t.y) || (rec && String(had.parkRec) !== rec))) {
+        sh.getRange(had._row, col.px + 1).setValue(t.x); sh.getRange(had._row, col.py + 1).setValue(t.y); if (rec) sh.getRange(had._row, col.parkRec + 1).setValue(rec); moved++;
+      }
+      n0++; return;
+    }
+    var tree = !t.type || t.type === 'tree', ar = Number(t.area) || 0;
+    var kikaku = tree ? (t.rank ? 'C=' + t.rank : '') : (ar ? (Math.round(ar * 10) / 10) + '㎡' : '');
+    var same = mine.filter(function (r) { return String(r.cat) === String(t.cat || '') && String(r.kind || '') === String(t.kind || '') && (tree ? String(r.kikaku || '') === kikaku : r.src === 'park-area'); });
+    var no = same.reduce(function (m, r) { return Math.max(m, Number(String(r.no).replace(/^'/, '')) || 0); }, 0) + 1;
+    var o = { itemId: 'I' + Utilities.getUuid().replace(/-/g, '').slice(0, 12), siteId: siteId, cat: t.cat || 'その他', name: '', jushu: '', kikaku: kikaku,
+      memo: t.C ? '幹周 C=' + t.C + 'cm' : '', lat: '', lng: '', src: tree ? 'park-tree' : 'park-area', state: '有効', by: by, at: now_(), updatedBy: by, updatedAt: now_(),
+      kind: t.kind || '', no: String(no), parkRec: rec, parkFid: String(t.fid), px: t.x == null ? '' : t.x, py: t.y == null ? '' : t.y };
+    mine.push(o); byFid[o.parkFid] = o; add.push(o);
+  });
+  if (add.length) {
+    var rows = add.map(function (o) { return H.map(function (h) { return cell_(o.hasOwnProperty(h) ? o[h] : ''); }); });
+    sh.getRange(sh.getLastRow() + 1, 1, rows.length, H.length).setValues(rows);
+  }
+  return { ok: true, siteId: siteId, site: site.name, added: add.length, already: n0, moved: moved, removed: removed, kept: kept };
 }
 function shashinSaveItems_(items, by) {
   var n = 0;

@@ -373,8 +373,31 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
 #snack button{background:#f5b400;color:#222;border-radius:8px;padding:8px 12px;font-weight:700}
 #camMode{position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--safe-t) + 10px);background:#f5b400;color:#222;font-size:12px;font-weight:700;border-radius:99px;padding:6px 12px;display:none;white-space:nowrap}
 #camMode.on{display:block}
+#camBatch{position:absolute;left:8px;top:8px;z-index:5;display:none;flex-wrap:wrap;align-items:center;gap:6px;background:rgba(0,0,0,.66);color:#fff;border-radius:12px;padding:6px 8px 8px 10px;font-size:13px;max-width:calc(100% - 132px)}
+#camBatch.on{display:flex}
+#camBatch .bt{line-height:1.35;min-width:0;width:100%}#camBatch .bt b{color:#ffcf6b}#camBatch .bt small{display:block;font-size:11px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#camBatch button{flex:none;background:rgba(255,255,255,.92);color:#222;border-radius:8px;padding:6px 9px;font-size:12px;font-weight:700}
+#camLoc{position:absolute;right:8px;top:8px;z-index:5;width:104px;height:104px;border-radius:10px;border:2px solid rgba(255,255,255,.85);background:#fff;display:none;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+#camLoc.on{display:block}
+#camLoc.big{width:min(78vw,78vh);height:min(78vw,78vh);right:50%;transform:translateX(50%);top:10%}
+.batchBar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.batchBar .bbH{width:100%;font-size:12px;color:var(--sub)}
+.batchBar button{flex:1;min-width:0;padding:10px 6px;border-radius:12px;background:var(--main);color:#fff;font-weight:700;font-size:14px;line-height:1.3}
+.batchBar button small{display:block;font-size:11px;font-weight:400;opacity:.9}
+.batchNote{background:#fff7e6;border:1px solid #f5c26b;color:#7a4a00;border-radius:10px;padding:9px 12px;margin:0 0 10px;font-size:13px}
+.batchNote a{color:#b25e00;font-weight:700}
 .camRmt{position:absolute;right:62px;top:calc(var(--safe-t) + 10px);background:#1f7a46;color:#fff;font-size:12px;font-weight:700;border-radius:99px;padding:6px 10px}
 .camRmt.ng{background:#a05a00}
+#qrScan{position:fixed;inset:0;z-index:300;background:#000;display:none;flex-direction:column;color:#fff}
+#qrScan.on{display:flex}
+#qrScan.over{background:transparent}
+#qrScan video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#qrScan .qrFrame{position:absolute;left:50%;top:45%;width:min(64vw,64vh);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:18px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);border:3px solid #3ecf8e}
+#qrScan .qrTop{position:relative;padding:calc(var(--safe-t) + 14px) 16px 10px;text-align:center;font-size:16px;font-weight:700;line-height:1.6}
+#qrScan .qrTop small{display:block;font-size:12px;font-weight:400;opacity:.85}
+#qrScan .qrBtns{position:absolute;left:0;right:0;bottom:calc(var(--safe-b) + 20px);display:flex;gap:10px;justify-content:center;padding:0 16px}
+#qrScan .qrBtns button{flex:1;max-width:220px;padding:13px;border-radius:12px;font-size:15px;font-weight:700;background:rgba(255,255,255,.92);color:#123}
+#qrScan .qrMsg{position:absolute;left:16px;right:16px;bottom:calc(var(--safe-b) + 84px);text-align:center;font-size:13px;opacity:.9}
 @media (min-width:900px){
   .tcards{grid-template-columns:repeat(auto-fill,minmax(440px,1fr))}
   #selBar{left:50%;transform:translateX(-50%);width:560px;bottom:16px;border-radius:16px}
@@ -389,6 +412,7 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
   <div class="scroll" id="homeBody">
     <button class="btn" id="btnPick" style="padding:20px;font-size:18px;margin:0 0 6px">📋 現場をえらぶ</button>
     <div class="s" style="color:var(--sub);font-size:12px;text-align:center;margin-bottom:6px">日報と同じ 種類 → 委託 → 現場 の順にえらびます</div>
+    <button class="btn sub" id="btnRmtHome" style="margin:0 0 12px;padding:11px;font-size:15px">📡 iPadとつなぐ（QRを読む）</button>
     <div class="group-h" style="display:flex;align-items:center">最近撮った現場（新しい順）<span style="flex:1"></span><button id="btnSync" style="background:none;color:var(--main);font-weight:700;font-size:13px">↻ 更新</button></div>
     <div id="recentList"></div>
   </div>
@@ -544,6 +568,11 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
   <div id="beBar"><button id="beTpl">黒板の型をえらぶ</button><button id="beGo">📷 撮影にすすむ</button></div>
 </section>
 
+<div id="qrScan"><video id="qrVideo" playsinline muted autoplay></video><div class="qrFrame"></div>
+  <div class="qrTop">iPadに出ているQRコードを、わくの中に写してください<small>iPadの公園報告 →「📱 iPhoneで撮る（遠隔）」で出ます</small></div>
+  <div class="qrMsg" id="qrMsg"></div>
+  <div class="qrBtns"><button id="qrNum">番号で入れる</button><button id="qrCancel">やめる</button></div>
+</div>
 <!-- ===== カメラ ===== -->
 <section id="camera" class="screen">
   <div id="camWrap">
@@ -552,6 +581,8 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
     <div id="camInfo"></div>
     <div id="flash"></div>
     <div id="camMsg"></div>
+    <div id="camBatch"></div>
+    <canvas id="camLoc" title="この木の場所（タップで大きく）"></canvas>
   </div>
   <div class="camTop">
     <button class="cbtn rot txt" id="camClose">一覧</button>
@@ -1333,7 +1364,7 @@ function shootItem(itemId,stage){
   const it=items.find(i=>i.id===itemId); if(!it) return;
   curItem=it; curStage=stage;
   fillBoardFromItem(boards[cur.id],it,stage);
-  saveAll(); openCamera();
+  saveAll(); openCamera(); $('#camLoc').classList.remove('big'); drawCamLoc();
 }
 /* 一覧の「📷 撮影」：最後に撮った写真の黒板で、測点を次の番号・状況を最初にした黒板を出す → 欄をタップで直して「撮影にすすむ」 */
 $('#btnShoot').onclick=()=>{
@@ -1356,7 +1387,8 @@ function renderPhotos(){
   if(photoSort==='recent') ts.sort((a,b)=>last(b)-last(a));
   if(photoSort==='todo'){ ts=ts.filter(t=>{ const j=judge(t); return st.some(s=>j[s]!=='ok'); });
     const w=t=>{ const j=judge(t); return st.filter(s=>j[s]==='ng').length*10+st.filter(s=>j[s]!=='ok').length; }; ts.sort((a,b)=>w(b)-w(a)||last(b)-last(a)); }
-  if(!ts.length){ box.innerHTML=`<div class="empty">${photoSort==='todo'?'撮り残しはありません 👍':'まだ写真はありません。<br>右下の「📷 撮影」から撮ってください。'}</div>`; renderSel(); return; }
+  const bHead=batchHeadHTML();
+  if(!ts.length){ box.innerHTML=bHead+`<div class="empty">${photoSort==='todo'?'撮り残しはありません 👍':'まだ写真はありません。<br>右下の「📷 撮影」から撮ってください。'}</div>`; bindBatchHead(); renderSel(); return; }
   const cell=p=>{ const lp=p.local?photosCache.find(x=>x.id===p.id):null;
     return `<div class="ph ${p.id===selId?'sel':''}" data-id="${esc(p.id)}">${lp?`<img src="${lp.thumb}" loading="lazy">`:`<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:11px;color:#555;padding:4px;text-align:center">${esc(p.by||'')}<br>（ドライブ）</div>`}
       ${p.stage?`<span class="stg2" style="background:${stageColor(p.stage)}">${esc(p.stage)}</span>`:''}${p.excluded?'<span class="stg2" style="top:auto;bottom:4px;background:#c0392b">報告書に入れない</span>':''}
@@ -1369,7 +1401,7 @@ function renderPhotos(){
         <div class="pinf">${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())} ・ ${esc(p.by||'')}
         <b>${esc(b.koshu||'工種なし')}</b><b>${esc(b.sokuten||'')}</b>${b.date?`<div>撮影日：${esc(b.date)}</div>`:''}${String(b.biko||'').split('\n').filter(l=>l.trim()&&l.trim()!==p.stage).map(l=>`<div>${esc(l)}</div>`).join('')||(b.kikaku?`<div>${esc(b.kikaku)}</div>`:'')}
         ${p.stage?`<span class="stg3" style="background:${stageColor(p.stage)}">${esc(p.stage)}</span>`:''}</div><span class="no">${n}</span></div>`; };
-    box.innerHTML='<div class="plist">'+ts.map(t=>{
+    box.innerHTML=bHead+'<div class="plist">'+ts.map(t=>{
       const j=judge(t), ph=t.photos.slice().sort((a,b)=>si(a.stage)-si(b.stage)||a.takenAt-b.takenAt), out=[];
       st.forEach(s=>{ const l=ph.filter(p=>p.stage===s);
         if(l.length) l.forEach(p=>out.push(row(p)));
@@ -1383,7 +1415,7 @@ function renderPhotos(){
       selId=el.dataset.id; box.querySelectorAll('.prow.sel').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); renderSel(); });
     box.querySelectorAll('[data-re]').forEach(el=>el.onclick=e=>{ e.stopPropagation(); const p=allPhotosHere().find(x=>x.id===el.dataset.re); if(p) shootFrom(p,p.stage,{retake:true}); });
   } else
-  box.innerHTML='<div class="tcards">'+ts.map(t=>{
+  box.innerHTML=bHead+'<div class="tcards">'+ts.map(t=>{
     const j=judge(t), ph=t.photos.slice().sort((a,b)=>si(a.stage)-si(b.stage)||a.takenAt-b.takenAt), cells=[];
     st.forEach(s=>{ const l=ph.filter(p=>p.stage===s);
       if(l.length) l.forEach(p=>cells.push(cell(p)));
@@ -1402,8 +1434,85 @@ function renderPhotos(){
     if(!t.photos.length&&t.item){ shootItem(t.item.id,el.dataset.s); return; }
     const ref=t.photos.slice().sort((a,b)=>b.takenAt-a.takenAt)[0]; shootFrom(ref,el.dataset.s);
   });
+  bindBatchHead();
   renderSel();
 }
+/* =========================================================
+   まとめて撮る：公園報告で「撮る木」をえらんで送った項目（や、まだ撮っていない項目）を、状況ごとに順番に撮る
+   ・1枚撮ると、カメラのまま次の木の黒板に変わる（図面の場所も右上に出る）
+   ・順番は図面上の位置で近い順（位置がなければ 工種・規格・No. 順）
+   ========================================================= */
+let BATCH=null;   // {stage, ids:[itemId], i}
+function batchLists(){
+  if(!cur) return {};
+  const st=curStages(), T=targets().filter(t=>t.item), out={};
+  st.forEach(s=>{ out[s]=T.filter(t=>!(t.done[s]>0)).map(t=>t.item); });
+  return out;
+}
+function batchHeadHTML(){
+  const L=batchLists(), st=curStages(), has=st.filter(s=>(L[s]||[]).length);
+  if(!has.length) return '';
+  if(photoSort!=='todo'){ const n=Math.max(...has.map(s=>L[s].length)); return `<div class="batchNote">まだ撮っていない項目が ${n} あります（公園報告から送った木など）。<a href="#" id="bnGo">撮り残し → まとめて撮る</a></div>`; }
+  return `<div class="batchBar"><div class="bbH"><b>まとめて撮る</b>：1枚撮ると、カメラのまま次の木へ（図面で近い順）</div>${has.map(s=>`<button data-batch="${esc(s)}">📷 ${esc(s)}<small>${L[s].length} 本・か所</small></button>`).join('')}</div>`;
+}
+function bindBatchHead(){
+  const g=$('#bnGo'); if(g) g.onclick=e=>{ e.preventDefault(); photoSort='todo'; LS.set('shashin_sort',photoSort); renderPhotos(); };
+  $$('#photoGrid [data-batch]').forEach(b=>b.onclick=()=>batchStart(b.dataset.batch));
+}
+function batchOrder(list){
+  if(list.length<3||!list.every(it=>it.px!=null&&it.py!=null&&it.px!==''&&it.py!=='')) return list;
+  const rest=list.slice(), out=[]; let c=rest.reduce((m,it)=>(Number(it.px)+Number(it.py)<Number(m.px)+Number(m.py)?it:m),rest[0]);
+  while(rest.length){ rest.splice(rest.indexOf(c),1); out.push(c); if(!rest.length) break;
+    c=rest.reduce((m,it)=>Math.hypot(it.px-c.px,it.py-c.py)<Math.hypot(m.px-c.px,m.py-c.py)?it:m,rest[0]); }
+  return out;
+}
+function batchStart(stage){
+  const L=batchOrder(batchLists()[stage]||[]); if(!L.length){ toast('撮るものがありません'); return; }
+  BATCH={stage, ids:L.map(it=>it.id), i:0};
+  shootItem(BATCH.ids[0],stage); updateBatchUI();
+}
+function batchItemDone(id,stage){ const t=targets().find(x=>x.key==='I|'+id); return !!(t&&t.done[stage]>0); }
+function batchNext(){
+  if(!BATCH) return false;
+  let i=BATCH.i+1; while(i<BATCH.ids.length&&(batchItemDone(BATCH.ids[i],BATCH.stage)||!items.find(x=>x.id===BATCH.ids[i]))) i++;
+  if(i>=BATCH.ids.length){ const st=BATCH.stage; BATCH=null; updateBatchUI(); toast(`${st}をまとめて撮り終えました 👍`,3000); return false; }
+  BATCH.i=i; shootItem(BATCH.ids[i],BATCH.stage); updateBatchUI();
+  const it=items.find(x=>x.id===BATCH.ids[i]); toast(`次：${koshuLabel(it)} ${[it.kikaku,it.no?'No.'+it.no:''].filter(Boolean).join(' ')}`,2200);
+  return true;
+}
+function batchStop(){ BATCH=null; updateBatchUI(); }
+function updateBatchUI(){
+  const el=$('#camBatch'); if(!el) return;
+  if(!BATCH){ el.classList.remove('on'); el.innerHTML=''; drawCamLoc(); return; }
+  const it=items.find(x=>x.id===BATCH.ids[BATCH.i])||{};
+  el.innerHTML=`<div class="bt">まとめて <b>${esc(BATCH.stage)}</b> ${BATCH.i+1}/${BATCH.ids.length}<small>${esc(koshuLabel(it))} ${esc([it.kikaku,it.no?'No.'+it.no:''].filter(Boolean).join(' '))}</small></div><button id="cbSkip">とばす ▶</button><button id="cbStop">やめる</button>`;
+  el.classList.add('on');
+  $('#cbSkip').onclick=e=>{ e.stopPropagation(); if(!batchNext()) showList(); };
+  $('#cbStop').onclick=e=>{ e.stopPropagation(); batchStop(); toast('まとめて撮るのをやめました'); };
+  drawCamLoc();
+}
+/* カメラ右上：いま撮る木が図面のどこか（公園報告の図面。タップで大きく） */
+function drawCamLoc(){
+  const c=$('#camLoc'); if(!c) return;
+  const it=curItem, rec=cur&&parkRecOf(cur.id);
+  if(!it||it.px==null||it.px===''||!rec){ c.classList.remove('on'); return; }
+  const R=parkCache[rec];
+  if(!R){ c.classList.remove('on'); if(canSync()&&!drawCamLoc.loading){ drawCamLoc.loading=true; loadParkRec(rec).then(()=>{ drawCamLoc.loading=false; drawCamLoc(); }).catch(()=>{ drawCamLoc.loading=false; }); } return; }
+  if(!R.img){ c.classList.remove('on'); return; }
+  const big=c.classList.contains('big'), W=big?Math.round(Math.min(innerWidth,innerHeight)*0.78):104, dpr=devicePixelRatio||1;
+  c.width=W*dpr; c.height=W*dpr; c.classList.add('on');
+  const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.fillStyle='#fff'; g.fillRect(0,0,W,W);
+  const mpp=Number(R.d.scale)||0, span=Math.max(120,Math.min(R.img.width,R.img.height,mpp?(big?60:30)/mpp:(big?900:420)));   // 小さい窓は約30m四方
+  const x=Number(it.px), y=Number(it.py), k=W/span;
+  g.drawImage(R.img,x-span/2,y-span/2,span,span,0,0,W,W);
+  // ほかのまとめて撮る木（薄く）と、いまの木（赤い輪）
+  if(BATCH) BATCH.ids.forEach((id,j)=>{ const o=items.find(q=>q.id===id); if(!o||o===it||o.px==null||o.px==='') return; const ox=(o.px-x)*k+W/2, oy=(o.py-y)*k+W/2; if(ox<0||oy<0||ox>W||oy>W) return;
+    g.beginPath(); g.arc(ox,oy,big?7:4,0,7); g.strokeStyle=batchItemDone(id,BATCH.stage)?'rgba(30,150,80,.9)':'rgba(255,150,0,.9)'; g.lineWidth=2; g.stroke(); });
+  g.beginPath(); g.arc(W/2,W/2,big?16:10,0,7); g.strokeStyle='#e0241b'; g.lineWidth=big?4:3; g.stroke();
+  g.beginPath(); g.arc(W/2,W/2,2.5,0,7); g.fillStyle='#e0241b'; g.fill();
+  if(big){ g.fillStyle='rgba(0,0,0,.6)'; g.fillRect(0,W-28,W,28); g.fillStyle='#fff'; g.font='bold 14px sans-serif'; g.fillText(`赤い輪の木　${koshuLabel(it)} ${[it.kikaku,it.no?'No.'+it.no:''].filter(Boolean).join(' ')}`,8,W-9,W-16); }
+}
+$('#camLoc').addEventListener('click',e=>{ e.stopPropagation(); $('#camLoc').classList.toggle('big'); drawCamLoc(); });
 function scrollToSel(){ const el=document.querySelector('#photoGrid .ph.sel, #photoGrid .prow.sel'); if(el) el.scrollIntoView({block:'center'}); }
 /* 選んだ写真と同じ黒板（工種・規格・測点…）を作る。みんなの写真は工種・規格・測点だけ分かる */
 function boardFromPhoto(p){
@@ -1729,7 +1838,7 @@ async function handleParkLink(P,opt){
 function drawParkBanner(){
   let on=false; try{ on=sessionStorage.getItem('shashin_from_park')==='1'; }catch(e){}
   let b=$('#parkBack'); if(!on){ if(b) b.remove(); return; }
-  if(!b){ b=document.createElement('button'); b.id='parkBack'; b.className='parkBack'; b.textContent='◀ 公園報告の図面にもどる'; $('#album').insertBefore(b,$('#albumBanner')); b.onclick=()=>{ try{ sessionStorage.removeItem('shashin_from_park'); }catch(e){} history.length>1?history.back():(location.href='park_app.html'); }; }
+  if(!b){ b=document.createElement('button'); b.id='parkBack'; b.className='parkBack'; b.textContent='◀ 公園報告の図面にもどる'; $('#album').insertBefore(b,$('#albumBanner')); b.onclick=()=>{ try{ sessionStorage.removeItem('shashin_from_park'); }catch(e){} location.href='park_app.html?resume=1'; }; }
 }
 
 /* ---- 図面と地図の合わせ（2本の木の図面上の位置と、地図上の位置から、拡大・回転・移動を決める） ---- */
@@ -2001,16 +2110,85 @@ function updateRmtUI(){
   const on=rmtOn(), ok=on&&S.remote.seenOk&&Date.now()-S.remote.seenOk<15000;
   const c=$('#camRmt'); if(c){ c.style.display=on?'':'none'; c.textContent=on?(ok?`📡 iPad ${S.remote.code}`:`📡 つながり待ち ${S.remote.code}`):''; c.classList.toggle('ng',on&&!ok); }
   const v=$('#cmRmtV'); if(v) v.textContent=on?`つないでいる（${S.remote.code}）`:'つないでいない';
+  const hb=$('#btnRmtHome'); if(hb) hb.textContent=on?(ok?`📡 iPad（${S.remote.code}）とつながっています`:`📡 iPad（${S.remote.code}）つながり待ち…`):'📡 iPadとつなぐ（QRを読む）';
+}
+function rmtConnect(code,how){
+  code=String(code||'').replace(/\D/g,'');
+  if(!/^\d{4,6}$/.test(code)){ toast('部屋番号が読めませんでした',2500); return false; }
+  S.remote={code,on:true,last:String(Date.now()*100)}; saveAll();   // つないだ時より前の指示は開かない
+  rmtStart(); toast(`📡 iPad（${code}）とつなぎました。工事写真アプリを開いたままにしてください`,4000);
+  if(navigator.vibrate) navigator.vibrate(80);
+  return true;
 }
 function rmtPair(){
-  if(rmtOn()){ if(confirm(`iPad（部屋番号 ${S.remote.code}）との つながりを切りますか？`)) rmtStop(); return; }
+  if(rmtOn()){
+    if(confirm(`iPad（部屋番号 ${S.remote.code}）と つながっています。\n\nOK＝つながりを切る\nキャンセル＝そのまま`)) rmtStop();
+    return;
+  }
+  qrOpen();
+}
+function rmtPairByNumber(){
   const c=prompt('iPadの公園報告に出ている「部屋番号」（4けた）を入れてください', (S.remote&&S.remote.code)||'');
   if(c==null) return;
-  const code=String(c).replace(/\D/g,'');
-  if(!/^\d{4,6}$/.test(code)){ toast('4けたの数字を入れてください',2500); return; }
-  S.remote={code,on:true,last:String(Date.now()*100)}; saveAll();   // つないだ時より前の指示は開かない
-  rmtStart(); toast(`📡 iPad（${code}）とつなぎました。工事写真アプリを開いたままにしてください`,3500);
+  rmtConnect(c);
 }
+/* QRを読む：iPadに出たQR（shashin.html?pair=番号）を、このアプリのカメラで読む。
+   ・撮影画面が開いていれば、そのカメラ映像をそのまま使う（iPhoneはカメラを2つ同時に開けないため）
+   ・BarcodeDetector があれば使い、なければ jsQR（lib/）を読み込む */
+let qrRun=null;
+function qrCodeFrom(text){
+  text=String(text||'').trim();
+  if(/^\d{4,6}$/.test(text)) return text;
+  try{ const u=new URL(text); const c=u.searchParams.get('pair'); if(c&&/^\d{4,6}$/.test(c)) return c; }catch(e){}
+  const m=text.match(/[?&]pair=(\d{4,6})/); return m?m[1]:'';
+}
+function qrLoadJsQR(){
+  if(window.jsQR) return Promise.resolve(window.jsQR);
+  if(qrLoadJsQR._p) return qrLoadJsQR._p;
+  return qrLoadJsQR._p=new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src='lib/jsQR-1.4.0.min.js'; sc.onload=()=>res(window.jsQR); sc.onerror=()=>{ qrLoadJsQR._p=null; rej(new Error('jsQR')); }; document.head.appendChild(sc); });
+}
+async function qrDecoder(){
+  try{ if('BarcodeDetector' in window){ const f=await BarcodeDetector.getSupportedFormats(); if(f.includes('qr_code')){ const d=new BarcodeDetector({formats:['qr_code']}); return async c=>{ const r=await d.detect(c); return r&&r[0]?r[0].rawValue:''; }; } } }catch(e){}
+  const jq=await qrLoadJsQR();
+  return async c=>{ const g=c.getContext('2d',{willReadFrequently:true}); const d=g.getImageData(0,0,c.width,c.height); const r=jq(d.data,c.width,c.height,{inversionAttempts:'dontInvert'}); return r?r.data:''; };
+}
+async function qrOpen(){
+  const box=$('#qrScan'), qv=$('#qrVideo'), msg=$('#qrMsg');
+  const camLive=$('#camera').classList.contains('active')&&stream&&stream.active;
+  box.classList.add('on'); box.classList.toggle('over',!!camLive); qv.style.display=camLive?'none':'';
+  msg.textContent='カメラを準備しています…';
+  const run={stop:false,own:null}; qrRun=run;
+  let src=video;
+  try{
+    if(!camLive){
+      run.own=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}});
+      if(run.stop){ run.own.getTracks().forEach(t=>t.stop()); return; }
+      qv.srcObject=run.own; await qv.play().catch(()=>{}); src=qv;
+    }
+  }catch(e){ msg.textContent='カメラが使えません。「番号で入れる」から入れてください'; return; }
+  let decode; try{ decode=await qrDecoder(); }catch(e){ msg.textContent='QRを読む部品を読み込めませんでした（電波を確認）。「番号で入れる」から入れてください'; return; }
+  msg.textContent='';
+  const c=document.createElement('canvas');
+  while(!run.stop){
+    await new Promise(r=>setTimeout(r,220));
+    if(run.stop) break;
+    const w=src.videoWidth, h=src.videoHeight; if(!w||!h) continue;
+    const k=Math.min(1,800/Math.max(w,h)); c.width=Math.round(w*k); c.height=Math.round(h*k);
+    c.getContext('2d',{willReadFrequently:true}).drawImage(src,0,0,c.width,c.height);
+    let t=''; try{ t=await decode(c); }catch(e){}
+    if(!t) continue;
+    const code=qrCodeFrom(t);
+    if(code){ qrClose(); rmtConnect(code); return; }
+    msg.textContent='これは つなぐためのQRではないようです';
+  }
+}
+function qrClose(){
+  if(qrRun){ qrRun.stop=true; if(qrRun.own) qrRun.own.getTracks().forEach(t=>t.stop()); qrRun=null; }
+  const qv=$('#qrVideo'); qv.srcObject=null; $('#qrScan').classList.remove('on');
+}
+$('#qrCancel').onclick=()=>qrClose();
+$('#qrNum').onclick=()=>{ qrClose(); rmtPairByNumber(); };
+$('#btnRmtHome').onclick=()=>rmtPair();
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&rmtOn()) rmtTick(); });
 window.addEventListener('online',()=>{ if(rmtOn()) rmtTick(); });
 setInterval(updateRmtUI,5000);
@@ -2987,7 +3165,7 @@ async function openCamera(){
   updateCamMode();
   hintUntil = (LS.get('shashin_hint',0)<5) ? Date.now()+3500 : 0;
   if(hintUntil){ LS.set('shashin_hint',LS.get('shashin_hint',0)+1); setTimeout(drawOverlay,3600); }
-  updateCamUI();
+  updateCamUI(); drawCamLoc();
   try{
     if(!keep){
       const saved=LS.get('shashin_lens',null);
@@ -3215,7 +3393,7 @@ $('#cmRmt').onclick=()=>{ closeCamSheets(); rmtPair(); };
 $('#camRmt').onclick=()=>rmtPair();
 $('#cmNative').onclick=()=>{ closeCamSheets(); $('#capIn').click(); };
 
-$('#camClose').onclick=()=>{ camJob=null; updateCamMode(); go('album'); renderItems(); renderPhotos(); updateCheckBadge(); if($('#mapPane').classList.contains('on')) setTimeout(renderMap,50); if($('#check').classList.contains('on')) renderCheck(); };
+$('#camClose').onclick=()=>{ camJob=null; updateCamMode(); if(BATCH) batchStop(); go('album'); renderItems(); renderPhotos(); updateCheckBadge(); if($('#mapPane').classList.contains('on')) setTimeout(renderMap,50); if($('#check').classList.contains('on')) renderCheck(); };
 /* 測点の No. を1つ進める（次の木・次の場所へ）。進めたら状況は最初にもどす */
 function curOpts(){ const i=cur&&infos[cur.infoKey]; return Object.assign({ noStyle:'no', layout:'one3', zip:'none' }, (i&&i.opts)||{}); }
 const COLL=new Intl.Collator('ja',{numeric:true,sensitivity:'base'});
@@ -3262,6 +3440,7 @@ function afterShot(p){
   const wasRetake=!!camJob; camJob=null; updateCamMode();
   if(!p) return;
   if(rmtShot(p)&&!wasRetake) return;     // iPadから撮っているときは、カメラのまま次の指示を待つ
+  if(BATCH&&!wasRetake){ if(batchNext()) return; selId=p.id; showList(); return; }   // まとめて撮る：カメラのまま次の木へ
   if(S.afterShot!=='stay'||wasRetake){ selId=p.id; showList(); }
 }
 function updateCamMode(){ const m=$('#camMode'); m.textContent=camJob?`撮り直し：${camJob.stage||''}（前の写真と入れ替え）`:''; m.classList.toggle('on',!!camJob); }
@@ -3445,6 +3624,7 @@ $('#setCleanup').onclick=async()=>{
   if(rmtOn()) ready.then(rmtStart);
   const P=new URLSearchParams(location.search);
   if(P.get('from')==='park'){ history.replaceState(null,'',location.pathname); ready.then(()=>handleParkLink(P)); }
+  if(P.get('pair')){ const pc=P.get('pair'); history.replaceState(null,'',location.pathname); rmtConnect(pc); }   // iPadのQRをiPhoneのカメラで読んだとき
 })();
 </script>
 </body>
