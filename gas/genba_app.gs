@@ -2827,7 +2827,7 @@ function jkFlat_(c) {
     kind: JK_JA[d.kind] || '', party: JK_JA[d.party] || '', who: d.party === 'other' ? (JK_JA[d.who] || '') : '', damage: dmg,
     date: d.date || '', time: d.time || '', place: (d.place && d.place.address) || '',
     driver: d.driver || '', members: (d.members || []).join('、'), reporter: d.reporter || '',
-    vehicle: [car.vehicle, car.plate].filter(Boolean).join(' '), site: wk.site || car.site || car.relSite || '',
+    vehicle: [car.vehicle, car.plate, car.vehicleId === '__other' ? '（' + ['登録外', car.otherType, car.lender].filter(Boolean).join('・') + '）' : ''].filter(Boolean).join(' '), site: wk.site || car.site || car.relSite || '',
     route: d.kind === 'car' ? (car.purpose === '現場の中' ? ['現場の中', car.onsite].filter(Boolean).join('：') : [car.purpose, [car.from, car.to].filter(Boolean).join('→')].filter(Boolean).join('：')) : '',
     other: [o.name, [o.thing, o.ownerType, o.ownerName].filter(Boolean).join(' ')].filter(Boolean).join('／'),
     police: [pol.status, pol.station, pol.receiptNo].filter(Boolean).join(' '),

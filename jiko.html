@@ -201,6 +201,7 @@ const COMPANY_DEFAULT = { name: '庭乃持田園有限会社', address: '神奈�
 /* ---------------- 選択肢 ---------------- */
 const PURPOSES = ['現場へ移動', '現場の中', '処分場へ搬出', '資材の仕入れ', '帰社', 'その他'];
 const ONSITE = '現場の中';
+const OTHER_CAR_TYPES = ['レンタカー', '仲間・知り合いから借りた', '社員の自家用車', 'その他'];
 const ONSITE_MOVES = ['現場内の移動', 'バックで寄せる', '積込・荷下ろし', 'ユニック・重機の作業', '駐車中', 'その他'];
 const LOAD_KINDS = ['剪定枝', '伐採材', '刈草', '土砂', '資材', '機械'];
 const CAR_SCENES = ['交差点', '駐車場・敷地内', 'バック中', '追突した', '追突された', '車線変更', '狭い道ですれ違い', '右左折', 'その他'];
@@ -629,8 +630,16 @@ function renderForm() {
         ${lbl('現場でしていたこと')}${chips('car.onsite', ONSITE_MOVES)}`
         : `<div class="row2"><div>${lbl('出発地')}${inp('car.from', '例：○○公園（作業帰り）', 'text', { list: 'dlPlaces' })}</div><div>${lbl('目的地')}${inp('car.to', '例：○○処分場', 'text', { list: 'dlPlaces' })}</div></div>
         ${lbl('関連する現場（あれば）')}${inp('car.relSite', '現場の名前（一覧から選べます）', 'text', { list: 'dlSites' })}`}
-        ${lbl('車', 1)}<select data-k="car.vehicleId" data-re="1"><option value="">選ぶ</option>${S.vehicles.map(x => `<option value="${esc(x.id)}"${String(c.vehicleId) === String(x.id) ? ' selected' : ''}>${esc(x.name)}${x.plate ? '（' + esc(x.plate) + '）' : ''}</option>`).join('')}<option value="__other"${c.vehicleId === '__other' ? ' selected' : ''}>一覧にない車（手で入れる）</option></select>
-        ${c.vehicleId === '__other' ? `<div class="row2" style="margin-top:6px"><div>${inp('car.vehicle', '車の名前')}</div><div>${inp('car.plate', 'ナンバー')}</div></div>` : ''}
+        ${lbl('車', 1)}<select data-k="car.vehicleId" data-re="1"><option value="">選ぶ</option>${S.vehicles.map(x => `<option value="${esc(x.id)}"${String(c.vehicleId) === String(x.id) ? ' selected' : ''}>${esc(x.name)}${x.plate ? '（' + esc(x.plate) + '）' : ''}</option>`).join('')}<option value="__other"${c.vehicleId === '__other' ? ' selected' : ''}>その他（会社に登録していない車）</option></select>
+        ${c.vehicleId === '__other' ? `<div style="border-left:3px solid var(--line);padding-left:10px;margin-top:8px">
+          ${lbl('どんな車？', 1)}${chips('car.otherType', OTHER_CAR_TYPES)}
+          <div class="row2"><div>${lbl('車の名前・車種')}${inp('car.vehicle', '例：ハイエース・2tダンプ')}</div><div>${lbl('ナンバー')}${inp('car.plate', '例：横浜 400 あ 12-34')}</div></div>
+          ${c.otherType && c.otherType !== '社員の自家用車' ? `<div class="row2"><div>${lbl(c.otherType === 'レンタカー' ? 'レンタカー会社・店' : '借りた先（名前）')}${inp('car.lender', c.otherType === 'レンタカー' ? '例：○○レンタカー 溝の口店' : '例：○○造園 ○○さん')}</div><div>${lbl('連絡先')}${inp('car.lenderTel', '', 'tel')}</div></div>` : ''}
+          ${c.otherType === '社員の自家用車' ? `${lbl('車の持ち主')}${inp('car.lender', '例：岩崎さん本人')}` : ''}
+          ${lbl('その車の保険（わかれば）')}${inp('car.lenderIns', c.otherType === 'レンタカー' ? '例：レンタカー会社の補償・免責補償あり' : '例：持ち主の自動車保険（○○保険）')}
+          ${lbl('借りた条件・メモ')}${inp('car.lendNote', '例：10/9〜10/11の3日間・無償で借りた')}
+          <div class="note"><b>借りた車の事故は、使う保険が変わります</b>レンタカー会社の補償、持ち主の保険、会社の保険（ほかの車を運転したときの特約）のどれを使うかは親方が確認します。${c.otherType === 'レンタカー' ? 'レンタカーは、借りた店にもすぐ連絡してください（契約書に事故の連絡先があります）。' : ''}</div>
+        </div>` : ''}
         ${lic ? `<div class="note red"><b>免許の区分を確かめてください</b>${esc(lic)}</div>` : ''}
         ${lbl('業務中・通勤中')}${chips('car.commute', ['業務中', '通勤中'])}
         ${lbl('荷物')}${chips('car.loadOn', ['荷物あり', '空車'])}
@@ -800,7 +809,7 @@ function bindForm() {
     setP(dr.data, el.dataset.k, el.value);
     if (el.dataset.k === 'driverId') dr.data.driver = staffName(el.value);
     if (el.dataset.k === 'rousai.staffId') dr.data.rousai.staff = staffName(el.value);
-    if (el.dataset.k === 'car.vehicleId') { const v = vehicleById(el.value); if (v) { dr.data.car.vehicle = v.name; dr.data.car.plate = v.plate || ''; } else if (el.value !== '__other') { dr.data.car.vehicle = ''; dr.data.car.plate = ''; } }
+    if (el.dataset.k === 'car.vehicleId') { const v = vehicleById(el.value); if (v) { dr.data.car.vehicle = v.name; dr.data.car.plate = v.plate || ''; ['otherType', 'lender', 'lenderTel', 'lenderIns', 'lendNote'].forEach(k => delete dr.data.car[k]); } else { dr.data.car.vehicle = ''; dr.data.car.plate = ''; } }
     if (el.dataset.k === 'work.site') { const s = S.sites.find(x => x.name === el.value); dr.data.work.siteId = s ? s.id : ''; }
     if (el.dataset.k === 'car.site') { const s = S.sites.find(x => x.name === el.value); dr.data.car.siteId = s ? s.id : ''; }
     touchDraft();
@@ -822,6 +831,7 @@ async function sendDraft() {
   if (!d.date) miss.push('日付'); if (!(d.place && (d.place.address || d.place.lat))) miss.push('場所');
   if (!d.driverId) miss.push(d.kind === 'car' ? '運転していた人' : '作業していた人');
   if (d.kind === 'car' && !(d.car || {}).purpose) miss.push('移動の目的');
+  if (d.kind === 'car' && (d.car || {}).vehicleId === '__other' && !(d.car || {}).otherType) miss.push('どんな車か（レンタカー・借りた車など）');
   if (d.kind === 'car' && (d.car || {}).purpose === ONSITE && !(d.car || {}).site) miss.push('現場名');
   if (d.kind === 'work' && !(d.work || {}).site) miss.push('現場名');
   if (dm.ownPerson && !(d.rousai || {}).staffId) miss.push('けがをした人');
@@ -1057,7 +1067,7 @@ function reportRows(d) {
   const dmg = [dm.ownThing && '自社の物', dm.theirThing && '相手の物', dm.ownPerson && '自社の人のけが', dm.theirPerson && '相手の人のけが', dm.none && '被害なし'].filter(Boolean).join('・');
   const S1 = [['事故の種類', [car ? '車両事故' : '作業事故', d.party === 'other' ? '相手あり' : '単独（自損）', d.party === 'other' ? ({ we: 'こちらが当てた', they: '当てられた', unknown: '双方・はっきりしない' }[d.who] || '') : ''].filter(Boolean).join('・')], ['被害', dmg]];
   const S2 = [['日時', v2(jaDate(d.date), d.time)], ['天気・路面', v2(d.weather, d.road)], ['場所', [d.place && d.place.address, d.place && d.place.note ? '（目印：' + d.place.note + '）' : '', d.place && d.place.type].filter(Boolean).join('\n')]];
-  const S3 = car ? [['移動の目的', c.purpose], ...(c.purpose === ONSITE ? [['現場名', c.site], ['現場でしていたこと', c.onsite]] : [['出発地→目的地', [c.from, c.to].filter(Boolean).join(' → ')], ['関連する現場', c.relSite]]), ['車両', [c.vehicle, c.plate].filter(Boolean).join('　')], ['運転者', d.driver],
+  const S3 = car ? [['移動の目的', c.purpose], ...(c.purpose === ONSITE ? [['現場名', c.site], ['現場でしていたこと', c.onsite]] : [['出発地→目的地', [c.from, c.to].filter(Boolean).join(' → ')], ['関連する現場', c.relSite]]), ['車両', [c.vehicle, c.plate].filter(Boolean).join('　')], ...(c.vehicleId === '__other' ? [['車の区分', '会社に登録していない車' + (c.otherType ? '（' + c.otherType + '）' : '')], ['借りた先・持ち主', [c.lender, c.lenderTel].filter(Boolean).join('　')], ['その車の保険', c.lenderIns], ['借りた条件', c.lendNote]] : []), ['運転者', d.driver],
     ['業務中・通勤中', c.commute], ['積載物', c.loadOn === '荷物あり' ? [(ld.kinds || []).join('・'), ld.amount, ld.cover, ld.spill ? '積荷：' + ld.spill : ''].filter(Boolean).join('　') : c.loadOn],
     ['事故の形', [c.scene, c.signal, c.speed ? '速度：' + c.speed : ''].filter(Boolean).join('　')], ['ドライブレコーダー', c.recorder], ['車の状態', c.drivable], ['アルコールチェック', c.alcohol]]
     : [['現場名', w.site], ['発注者', w.orderer], ['作業内容', w.task], ['使用機械・道具', (w.machines || []).join('・')], ['安全対策', (w.safety || []).join('・')], ['作業者', d.driver]];
@@ -1221,6 +1231,7 @@ function firstCall(c) {
   const row = (k, v) => v ? `<dt>${k}</dt><dd style="white-space:pre-wrap">${esc(v)}</dd>` : '';
   openModal(`<h3>📞 第一報の要点</h3><dl class="bigsum">
     ${row('いつ', v2(jaDate(d.date), d.time))}${row('どこで', [d.place && d.place.address, d.place && d.place.note].filter(Boolean).join('　'))}
+    ${car && cr.vehicleId === '__other' ? row('借りた車', [cr.otherType, cr.lender, cr.lenderTel, cr.lenderIns ? '保険：' + cr.lenderIns : ''].filter(Boolean).join('　')) : ''}
     ${row(car ? '運転者・車' : '作業者・現場', car ? [d.driver, cr.vehicle, cr.plate, cr.purpose === ONSITE ? '（現場の中：' + [cr.site, cr.onsite].filter(Boolean).join('・') + '）' : ''].filter(Boolean).join('　') : [d.driver, (d.work || {}).site].filter(Boolean).join('　'))}
     ${row('何が起きた', whatHappened)}${row('経緯', String(d.story || '').slice(0, 160) + (String(d.story || '').length > 160 ? '…' : ''))}
     ${row('けが', injury)}${row('警察', [(d.police || {}).status, (d.police || {}).station].filter(Boolean).join('　'))}
