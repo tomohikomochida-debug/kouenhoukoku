@@ -1813,6 +1813,11 @@ function flushLabels(list){
 
 /* ---------- 凡例（記号＋工種＋集計数） ---------- */
 let legend={x:null,y:null,show:true,_box:null};
+/* 凡例をたたむ（タップで開け閉め）。スマホははじめからたたむ。たたんでも画像の書き出しには全部出す */
+function legendMini(){ let v=null; try{ v=localStorage.getItem('park_legend_mini'); }catch(e){} return v==null ? (Math.min(innerWidth,innerHeight)<600) : v==='1'; }
+function setLegendMini(on){ try{ localStorage.setItem('park_legend_mini',on?'1':'0'); }catch(e){} }
+/* 縮尺の表示（右下）の場所（キャンバスの中の位置）。凡例はここに重ならないようにする */
+function badgeBox(){ const b=$('scaleBadge'); if(!b||b.offsetParent===null) return null; const r=b.getBoundingClientRect(), c=cv.getBoundingClientRect(); if(!r.width) return null; return {x:r.left-c.left,y:r.top-c.top,w:r.width,h:r.height}; }
 // 図面に置いた要素を集計（面積=cat›kind、樹木=cat›kind+規格）
 function aggregate(){
   const areas={},trees={};
@@ -1845,14 +1850,25 @@ function drawLegend(){
   if(!legend.show)return;
   const rows=legendRows(); if(!rows.length)return;
   const pad=10,rowH=21,symW=26,titleH=22;
+  const bb=exporting?null:badgeBox(), avoidY=bb?bb.y-6:cv.height-12;   // 縮尺の表示の上に置く
+  if(!exporting&&legendMini()){   // たたんだ凡例：小さな札だけ
+    ctx.save(); ctx.font='700 12px sans-serif'; const t='凡例（'+rows.length+'種）▸', w=ctx.measureText(t).width+20, h=26;
+    let x=legend.x==null?cv.width-w-12:legend.x, y=legend.y==null?avoidY-h:legend.y;
+    x=Math.max(4,Math.min(x,cv.width-w-4)); y=Math.max(4,Math.min(y,cv.height-h-4));
+    if(bb&&x<bb.x+bb.w&&x+w>bb.x&&y<bb.y+bb.h&&y+h>bb.y) y=bb.y-h-6;
+    legend._box={x,y,w,h,mini:true};
+    ctx.fillStyle='rgba(255,255,255,.93)'; ctx.strokeStyle='rgba(40,52,68,.55)'; ctx.lineWidth=1; roundRect2(x,y,w,h,13); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#16202c'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText(t,x+10,y+h/2+1); ctx.restore(); return;
+  }
   ctx.save();ctx.font='12px sans-serif';
   let textW=0; rows.forEach(r=>{const w=ctx.measureText(r.label).width+ctx.measureText(r.val).width;if(w>textW)textW=w;});
   const title='凡例（'+rows.length+'種）';
-  const boxW=Math.max(textW+symW+pad*2+26, ctx.measureText(title).width+pad*2, 150);
+  const boxW=Math.max(textW+symW+pad*2+26, ctx.measureText(title).width+pad*2+(exporting?0:70), 150);
   const boxH=pad*2+titleH+rows.length*rowH;
   let x=legend.x==null?cv.width-boxW-16:legend.x;
-  let y=legend.y==null?cv.height-boxH-16:legend.y;
+  let y=legend.y==null?(exporting?cv.height-boxH-16:avoidY-boxH):legend.y;
   x=Math.max(4,Math.min(x,cv.width-boxW-4));y=Math.max(4,Math.min(y,cv.height-boxH-4));
+  if(bb&&x<bb.x+bb.w&&x+boxW>bb.x&&y<bb.y+bb.h&&y+boxH>bb.y) y=Math.max(4,bb.y-boxH-6);   // 縮尺の表示に重なったら上へ
   legend._box={x,y,w:boxW,h:boxH};
   // 背景
   ctx.fillStyle='rgba(255,255,255,.93)';ctx.strokeStyle='rgba(40,52,68,.55)';ctx.lineWidth=1;
@@ -1860,6 +1876,7 @@ function drawLegend(){
   // タイトル
   ctx.fillStyle='#16202c';ctx.font='700 13px sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';
   ctx.fillText(title,x+pad,y+pad+10);
+  if(!exporting){ ctx.font='12px sans-serif'; ctx.fillStyle='#5b6b7d'; ctx.textAlign='right'; ctx.fillText('▾ たたむ',x+boxW-pad,y+pad+10); ctx.textAlign='left'; }
   ctx.strokeStyle='rgba(40,52,68,.2)';ctx.beginPath();ctx.moveTo(x+pad,y+pad+titleH-2);ctx.lineTo(x+boxW-pad,y+pad+titleH-2);ctx.stroke();
   // 行
   rows.forEach((r,i)=>{
@@ -1976,7 +1993,10 @@ function downCommon(p,ip){
   if(tool==='select'){panning=true;panStart={x:p.x-view.ox,y:p.y-view.oy};return 'pan';}
   return null;                                   // 空クリック → 描画/配置へ
 }
-function startLegendDrag(p){legend.x=legend._box.x;legend.y=legend._box.y;draggingLegend=true;legDragOff={x:p.x-legend._box.x,y:p.y-legend._box.y};}
+var legMoved=false, legStart=null;
+function startLegendDrag(p){legend.x=legend._box.x;legend.y=legend._box.y;draggingLegend=true;legMoved=false;legStart=p;legDragOff={x:p.x-legend._box.x,y:p.y-legend._box.y};}
+function legendMoveTo(p){ if(legStart&&Math.hypot(p.x-legStart.x,p.y-legStart.y)>6) legMoved=true; if(!legMoved) return; legend.x=p.x-legDragOff.x; legend.y=p.y-legDragOff.y; draw(); }
+function legendUp(){ if(!legMoved){ const was=legend._box&&legend._box.mini; setLegendMini(!was); if(was){ legend.x=null; legend.y=null; } } legStart=null; draw(); }
 function moveFeature(f,dx,dy){
   if(f.pt){f.pt.x+=dx;f.pt.y+=dy;}
   else{
@@ -2090,7 +2110,7 @@ cv.addEventListener('mousedown',e=>{
 });
 cv.addEventListener('mousemove',e=>{
   if(lblDrag){const p=evtPos(e);moveLabelDrag(toImg(p.x,p.y));return;}
-  if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;draw();return;}
+  if(draggingLegend){legendMoveTo(evtPos(e));return;}
   if(tool==='cal'){const p=evtPos(e),ip=toImg(p.x,p.y);if(calDragIdx!==null)draft.pts[calDragIdx]=ip;else if(draft)hover=ip;draw();return;}
   if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(function(){const _p=ringPts(editV.f,editV.ring),_pv=_p.length>1?_p[(editV.idx-1+_p.length)%_p.length]:null,_s=snapLen(ip,_pv);_p[editV.idx]={x:_s.x,y:_s.y};})();recalcAreaFeature(editV.f);draw();return;}
   if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(dragGroup?multiSel.forEach(g=>moveFeature(g,ip.x-dragLast.x,ip.y-dragLast.y)):moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y));dragLast=ip;draw();return;}
@@ -2110,7 +2130,7 @@ cv.addEventListener('touchstart',e=>{ if(e.touches.length!==1) return; const t=e
 cv.addEventListener('touchend',()=>{ setTimeout(()=>{ if(hoverF){ hoverF=null; draw(); } },400); },{passive:true});
 window.addEventListener('mouseup',()=>{
   if(lblDrag){const d=lblDrag;lblDrag=null;if(!d.moved){selectFeature(d.f);}renderAgg();draw();return;}
-  if(draggingLegend){draggingLegend=false;cv.style.cursor=tool==='select'?'grab':'crosshair';return;}
+  if(draggingLegend){draggingLegend=false;legendUp();cv.style.cursor=tool==='select'?'grab':'crosshair';return;}
   if(tool==='cal'&&calDragIdx!==null){calUp();return;}
   if(editV){recalcAll();editV=null;dragSnap=null;renderAgg();renderSansha();}
   if(dragging){recalcAll();dragging=null;dragGroup=false;dragSnap=null;dragRing=null;renderAgg();renderSansha();}
@@ -2138,7 +2158,7 @@ cv.addEventListener('touchmove',e=>{
   e.preventDefault();
   if(e.touches.length===2&&pinchD){const d=touchDist(e),c=touchMid(e);zoomAt(c.x,c.y,d/pinchD);pinchD=d;return;}
   if(lblDrag){const p=evtPos(e);moveLabelDrag(toImg(p.x,p.y));lastTouch=null;return;}
-  if(draggingLegend){const p=evtPos(e);legend.x=p.x-legDragOff.x;legend.y=p.y-legDragOff.y;lastTouch=null;draw();return;}
+  if(draggingLegend){legendMoveTo(evtPos(e));lastTouch=null;return;}
   if(tool==='cal'&&calDragIdx!==null){const p=evtPos(e),ip=toImg(p.x,p.y);draft.pts[calDragIdx]=ip;lastTouch=null;draw();return;}
   if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(function(){const _p=ringPts(editV.f,editV.ring),_pv=_p.length>1?_p[(editV.idx-1+_p.length)%_p.length]:null,_s=snapLen(ip,_pv);_p[editV.idx]={x:_s.x,y:_s.y};})();recalcAreaFeature(editV.f);lastTouch=null;draw();return;}
   if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(dragGroup?multiSel.forEach(g=>moveFeature(g,ip.x-dragLast.x,ip.y-dragLast.y)):moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y));dragLast=ip;lastTouch=null;draw();return;}
@@ -2147,7 +2167,7 @@ cv.addEventListener('touchmove',e=>{
 cv.addEventListener('touchend',e=>{
   if(pinchD&&e.touches.length<2){pinchD=null;return;}
   if(lblDrag){const d=lblDrag;lblDrag=null;if(!d.moved){selectFeature(d.f);}renderAgg();draw();lastTouch=null;return;}
-  if(draggingLegend){draggingLegend=false;lastTouch=null;return;}
+  if(draggingLegend){draggingLegend=false;legendUp();lastTouch=null;return;}
   if(tool==='cal'&&!alignScan){if(calDragIdx!==null)calUp();lastTouch=null;return;}
   if(editV){recalcAll();editV=null;dragSnap=null;renderAgg();renderSansha();lastTouch=null;return;}
   if(dragging){recalcAll();dragging=null;dragGroup=false;dragSnap=null;dragRing=null;renderAgg();renderSansha();lastTouch=null;return;}
@@ -4990,7 +5010,7 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     const openRow=document.createElement('div');
     gPrep.appendChild(openRow);
     move($('cloudOpen'),openRow); move($('openJson'),openRow);
-    move($('secMap'),gPrep); move($('secCal'),gPrep);
+    move($('secMap'),gPrep); move($('secCal'),gPrep); move($('scanSec'),gPrep);   // 3Dスキャンの木（LASを取り込む）も準備に
     const tip=document.createElement('div'); tip.className='legend'; tip.style.marginTop='4px';
     tip.textContent='図面を読み込んで縮尺を合わせたら、上の「入力」へ。'; gPrep.appendChild(tip);
     // パネル：選んだ図形
@@ -5013,7 +5033,7 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     setView(ls.get(VIEW_KEY)||(!state.img?'prep':'input'), true);
     if(!state.img) setView('prep',true);
     wasDone=prepDone(); poll=setInterval(tick,600);
-    if(isPhone()&&legend.show){ $('legendToggle').onclick(); hidLegend=true; }   // スマホは地図を広く：凡例は最初は隠す
+    // スマホは地図を広く：凡例は「凡例（○種）▸」の小さな札にたたんで出す（タップで開く）
     watchHint();
     afterLayout();
   }
