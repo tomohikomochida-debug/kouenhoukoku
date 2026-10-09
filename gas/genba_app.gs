@@ -15,7 +15,8 @@
  * ───────── 置き方 ─────────
  *  この本体は GitHub に置き、GAS「現場アプリ」に貼った「読み込み係（gas/loader.gs）」が自動で読み込みます。
  *  ここを直して GitHub に上げれば、数分でアプリに反映されます（GASの貼り直し・デプロイのし直しは不要）。
- *  スクリプト プロパティ：GEMINI_API_KEY（AIのキー）／SHEET_ID（自動）／GEMINI_MODEL（任意：AIのモデル名）
+ *  スクリプト プロパティ：GEMINI_API_KEY（GeminiのAIのキー）／ANTHROPIC_API_KEY（ClaudeのAIのキー）／SHEET_ID（自動）／GEMINI_MODEL（任意）
+ *  AIは「AI窓口」（ai_）を通す。どの用途にどのモデルを使うかは、スプレッドシートの「AIの使い分け」で決める
  *  ※カレンダー：マイカレンダーの「現場カレンダー」を現場、「出勤調整カレンダー」を休みとして読みます
  *    （時間の決まった予定は、段取りアプリで「使う／使わない」を聞いてから使います）
  *    名前を変えたときは、スクリプト プロパティ SITE_CALENDAR／HOLIDAY_CALENDAR に新しい名前を登録
@@ -55,6 +56,8 @@ var SHEETS = {
   shashinInfo:   { name: '工事写真の案件情報', head: ['key', 'type', 'contract', 'fy', 'siteId', 'koji', 'orderer', 'sekosha', 'start', 'end', 'tpl', 'memo', 'by', 'at', 'updatedBy', 'updatedAt', 'stages', 'koshuList', 'opts'] },
   shashinKai:     { name: '工事写真の回', head: ['kaiId', 'scope', 'fy', 'name', 'order', 'start', 'rec', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 回（指示・作業期間）。委託は委託ごと（C|委託名）、そのほかは現場ごと（S|現場ID）。年度ごと
   shashinBoards:  { name: '工事写真の黒板', head: ['boardId', 'name', 'rows', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // みんなで作った黒板のひな型（rows は項目の並び・JSON）   // 委託は「委託名＋年度」、そのほかは現場ごと。一度入れたら全員が入力なしで撮影へ
+  aiRoutes:  { name: 'AIの使い分け', head: ['用途', '何に使うか', 'モデル', '1日の上限', 'メモ'] },   // モデル欄を書き換えると、その用途のAIが切り替わる（AI窓口）
+  aiLog:     { name: 'AIの利用記録', head: ['日時', '用途', 'モデル', '使った人', '読んだ量', '書いた量', '概算円', '秒', '結果'] },   // AI窓口が1回ずつ残す
   shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId', 'kanshu', 'msId', 'msRawId', 'msGone', 'kai'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
@@ -78,13 +81,14 @@ function setup() {
   if (first && ss.getSheets().length > 1 && first.getLastRow() === 0) ss.deleteSheet(first);
   var n = rows_('terms').length ? { terms: 0, aliases: 0 } : seedImport_();   // 用語集の下書きを取り込む（空のときだけ）
   folder_();                                     // 写真フォルダ
+  aiRoutes_();                                   // AIの使い分け（用途とモデルの表）
   CalendarApp.getDefaultCalendar().getName();    // カレンダーの読み取り許可
   ['SITE_CALENDAR', 'HOLIDAY_CALENDAR'].forEach(function (k) {
     var n = calName_(k); Logger.log((k === 'SITE_CALENDAR' ? '現場' : '休み') + 'のカレンダー「' + n + '」：' + (calByName_(n) ? '見つかりました' : '見つかりません（色で見分けます）'));
   });
   Logger.log('準備できました。スプレッドシート：' + ss.getUrl());
   Logger.log('用語の取り込み：' + n.terms + '語、呼び方：' + n.aliases + '件');
-  Logger.log('次は ⚙スクリプト プロパティに GEMINI_API_KEY を登録して、ウェブアプリとしてデプロイしてください。');
+  Logger.log('次は ⚙スクリプト プロパティに GEMINI_API_KEY（と、Claude を使うなら ANTHROPIC_API_KEY）を登録して、ウェブアプリとしてデプロイしてください。');
 }
 
 /* ================================================================
@@ -142,48 +146,258 @@ function nextId_(key, col, prefix) {
 }
 function withLock_(fn) { var l = LockService.getScriptLock(); l.waitLock(25000); try { return out_(fn()); } finally { l.releaseLock(); } }
 
-// 使うモデルの順番。混み合っている（503など）ときは少し待ってやり直し、だめなら次のモデルへ
-var GEMINI_FALLBACK = ['gemini-2.5-flash-lite', 'gemini-3.5-flash-lite'];
-function models_() {
-  var list = [prop_('GEMINI_MODEL', GEMINI_MODEL)].concat(String(prop_('GEMINI_FALLBACK', GEMINI_FALLBACK.join(','))).split(','));
-  return list.map(function (m) { return String(m).trim(); }).filter(function (m, i, a) { return m && a.indexOf(m) === i; });
-}
-function gemini_(parts, opt) {   // parts：文字列 または Gemini の parts 配列。opt.fast：考える時間を使わず速く答える（要点まとめ用）
-  var key = prop_('GEMINI_API_KEY', '');
-  if (!key) throw new Error('GEMINI_API_KEY が未設定です（スクリプト プロパティに登録してください）');
+/* ================================================================
+ *  AI窓口：アプリのAIは、すべてここを通る
+ *  ・どの用途にどのモデルを使うかは、スプレッドシートの「AIの使い分け」で決める
+ *    （モデル欄を書き換えるだけで切り替わる。コードを直す必要はない）
+ *  ・モデル欄に書けるもの：opus／sonnet／haiku（Claude）、gemini-flash／gemini-flash-lite（Gemini）
+ *    （モデルの正式名 claude-… ／ gemini-… をそのまま書いてもよい）
+ *  ・Claude のキー（ANTHROPIC_API_KEY）が未登録のあいだは、自動で Gemini を使う（今まで通り動く）
+ *  ・混み合い・失敗のときは、1つ下のモデルへ自動で回す（opus→sonnet→gemini-flash→gemini-flash-lite）
+ *  ・声（録音）を聞けるのは Gemini だけなので、録音を渡す用途は Claude を飛ばして Gemini で聞く
+ *  ・使った量と概算の料金を「AIの利用記録」に1回ずつ残す
+ *  ・上限：用途ごとの1日の回数（「AIの使い分け」の「1日の上限」）／1人1日の回数／月の概算額
+ *    月の概算額を超えたら Claude を止め、安い Gemini で動かす（節約モード）。翌月1日に自動で戻る
+ *  スクリプト プロパティ（どれも任意）：
+ *    ANTHROPIC_API_KEY  … Claude のキー（Claude の管理画面で作る。月の上限額もそちらで必ず設定する）
+ *    AI_USER_DAILY      … 1人1日の上限回数（既定 150）
+ *    AI_MONTH_LIMIT_YEN … 月の概算額の上限（既定 15000）
+ *    AI_YEN_PER_USD     … 料金を円にするときの為替（既定 160）
+ *  状態の確認：ウェブアプリのURLの後ろに ?app=ai&action=status を付けて開く
+ *  つながるかの確認：?app=ai&action=test（ごく短い質問を Claude と Gemini に1回ずつ送る）
+ * ================================================================ */
+var AI_MODELS = {
+  'opus':              { provider: 'claude', id: 'claude-opus-5-5',       inUsd: 4,    outUsd: 20,   next: 'sonnet' },
+  'sonnet':            { provider: 'claude', id: 'claude-sonnet-5-5',     inUsd: 2,    outUsd: 10,   next: 'gemini-flash' },
+  'haiku':             { provider: 'claude', id: 'claude-haiku-5-5',      inUsd: 0.10, outUsd: 0.50, next: 'gemini-flash-lite' },
+  'gemini-flash':      { provider: 'gemini', id: '',                      inUsd: 0.30, outUsd: 2.50, next: 'gemini-flash-lite' },   // id はスクリプト プロパティ GEMINI_MODEL（既定 gemini-2.5-flash）
+  'gemini-flash-lite': { provider: 'gemini', id: 'gemini-2.5-flash-lite', inUsd: 0.10, outUsd: 0.40, next: 'gemini-lite-new' },
+  'gemini-lite-new':   { provider: 'gemini', id: 'gemini-3.5-flash-lite', inUsd: 0.10, outUsd: 0.40, next: '' }
+};
+var AI_SAVING = { opus: 'gemini-flash', sonnet: 'gemini-flash', haiku: 'gemini-flash-lite' };   // 節約モードのときの代わり
+
+/* 用途の一覧（はじめの値）。「AIの使い分け」シートに無い用途は、ここから自動で足す。シートに書いた値が優先 */
+var AI_ROUTES = [
+  // 用途,                何に使うか,                                                 モデル,         1日の上限（回）
+  ['段取り_整理',         '段取り：順不同に話した段取りを、日付×現場のカードに分ける',   'opus',         80],
+  ['要点まとめ_自分用',   '要点まとめ：親方の自分用メモ（先の約束・見積の期限など）',     'opus',         80],
+  ['要点まとめ',          '要点まとめ：スタッフの話を要点と送る文にまとめる',             'sonnet',       200],
+  ['返事の読み取り',      '要点まとめ：親方の返事から、修理・お知らせの案を作る',         'sonnet',       100],
+  ['事故_説明整理',       '事故報告：起きたことの説明を、要点と報告書の文に整える',       'opus',         30],
+  ['黒板のひな型読み取り', '工事写真：黒板の写真から項目の並びを読み、ひな型にする',       'sonnet',       30],
+  ['車検証読み取り',      '車両：車検証からナンバー・車名・満了日を読む',                 'sonnet',       30],
+  ['点検記録読み取り',    '車両：年次点検の記録表・シールから検査日を読む',               'sonnet',       30],
+  ['伝票読み取り',        '残材処分：計量票・伝票から日付・重さ・金額を読む',             'sonnet',       100],
+  ['請求書読み取り',      '取引先：請求書・名刺などから会社の情報を読む',                 'sonnet',       50],
+  ['用語の意味下書き',    '用語集：新しい言葉の意味を下書きする（人が確認する前提）',     'sonnet',       100],
+  ['用語さがし',          '用語集：うろ覚え・聞き間違いから候補を探す',                   'haiku',        300],
+  ['読みがな',            '用語集：言葉にひらがなの読みを付ける',                         'haiku',        300],
+  ['道具の照合',          '道具管理：写真と話した名前から、登録済みの道具か見分ける',     'haiku',        300],
+  ['日報_清書',           '日報：音声入力の聞き間違い・誤字だけ直す',                     'haiku',        300],
+  ['日報_聞き取り',       '日報：録音した声を文字にする（声を聞けるのは Gemini だけ）',   'gemini-flash', 300],
+  ['その他',              '用途が決まっていない呼び出し',                                 'sonnet',       100]
+];
+var AI_JSON_RULE = '答えは JSON だけを返してください。前置き・説明・```（コードの囲み）は付けないでください。';
+var AI_BY_ = '';   // いま使っている人（doPost で入れる）。利用記録と1人1日の上限に使う
+
+function ai_(use, parts, opt) {
+  opt = opt || {};
   if (typeof parts === 'string') parts = [{ text: parts }];
-  var models = (opt && opt.models) ? opt.models : models_(), started = Date.now(), last = '';
-  for (var m = 0; m < models.length; m++) {
-    var model = models[m];
-    var cfg = { responseMimeType: 'application/json' };
-    if (/^gemini-[12]\./.test(model)) cfg.temperature = 0;   // Gemini 3 以降は既定の温度のまま使う（下げると答えが乱れることがある）
-    if (opt && opt.fast && /^gemini-2\.5-flash/.test(model)) cfg.thinkingConfig = { thinkingBudget: 0 };   // 2.5 Flash は既定で「考えてから答える」ので、速さ優先のときは切る
-    for (var tryNo = 0; tryNo < 2; tryNo++) {
-      var res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key, {
-        method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-        payload: JSON.stringify({ contents: [{ parts: parts }], generationConfig: cfg })
-      });
-      var code = res.getResponseCode();
-      if (code === 200) {
-        var data = JSON.parse(res.getContentText());
-        var t = ((((data.candidates || [])[0] || {}).content || {}).parts || []).filter(function (p) { return !p.thought; }).map(function (p) { return p.text || ''; }).join('');
-        try { return JSON.parse(t); } catch (e) {
-          var a = t.indexOf('{'), z = t.lastIndexOf('}');
-          if (a >= 0 && z > a) { try { return JSON.parse(t.slice(a, z + 1)); } catch (e2) {} }
-          last = 'AIの結果を解釈できませんでした'; break;   // 次のモデルで試す
-        }
-      }
-      last = 'Gemini HTTP ' + code + '：' + res.getContentText().slice(0, 200);
-      if (code === 400 || code === 401 || code === 403) {   // キーや設定の問題はやり直しても同じ
-        throw new Error(code === 400 && /model/i.test(res.getContentText()) ? 'AIのモデル名「' + model + '」が使えません：' + last : 'AIのキーを確認してください（' + last + '）');
-      }
-      if (code === 404) break;   // モデルが無い → 次のモデル
-      if (Date.now() - started > 60000) break;
-      if (tryNo === 0 && typeof Utilities.sleep === 'function') Utilities.sleep(2000);   // 混み合い（429・500・503）は少し待ってもう一度
+  var route = aiRoute_(use), by = String(opt.by || AI_BY_ || '').trim();
+  var st = aiCount_(use, by, route);   // 上限を超えていたらここで止まる
+  var hasAudio = parts.some(function (p) { var d = p && (p.inline_data || p.inlineData); return d && /^audio\//.test(String(d.mime_type || d.mimeType || '')); });
+  var keys = { claude: !!prop_('ANTHROPIC_API_KEY', ''), gemini: !!prop_('GEMINI_API_KEY', '') };
+  var chain = aiChain_(route.model, st.saving), started = Date.now(), last = '', first = '';
+  for (var i = 0; i < chain.length; i++) {
+    var key = chain[i], m = aiModel_(key);
+    if (m.provider === 'claude' && (!keys.claude || hasAudio)) continue;
+    if (m.provider === 'gemini' && !keys.gemini) continue;
+    if (!first) first = key;
+    var t0 = Date.now();
+    try {
+      var r = m.provider === 'claude' ? aiClaude_(m, parts, opt) : aiGemini_(m, parts, opt);
+      var yen = aiYen_(m, r.inTok, r.outTok);
+      var note = key === route.model ? 'OK' : (st.saving && m.provider === 'gemini' && AI_MODELS[route.model] && AI_MODELS[route.model].provider === 'claude' ? '節約モード' : '代わりに使用（' + route.model + '：' + (last || 'キー未登録') + '）');
+      aiLog_(use, key, by, r.inTok, r.outTok, yen, Date.now() - t0, note.slice(0, 200));
+      aiAddYen_(yen);
+      return r.json;
+    } catch (e) {
+      last = String((e && e.message) || e).slice(0, 160);
+      if (Date.now() - started > 100000) break;   // 時間がかかりすぎたら打ち切る
     }
   }
-  if (/HTTP (429|500|503)/.test(last)) throw new Error('AIが混み合っていて使えませんでした。少し時間をおいて、もう一度押してください。（' + last.slice(0, 60) + '）');
-  throw new Error(last || 'AIに接続できませんでした');
+  aiLog_(use, first || route.model, by, 0, 0, 0, Date.now() - started, '失敗：' + (last || 'AIのキーが登録されていません'));
+  if (!first) throw new Error('AIのキーが登録されていません（スクリプト プロパティに ANTHROPIC_API_KEY か GEMINI_API_KEY を登録してください）');
+  if (/HTTP (429|500|503|529)|overloaded|混み/.test(last)) throw new Error('AIが混み合っていて使えませんでした。少し時間をおいて、もう一度押してください。');
+  throw new Error('AIがうまく答えられませんでした。もう一度押してください。（' + last.slice(0, 80) + '）');
+}
+function gemini_(parts, opt) { return ai_('その他', parts, opt); }   // 古い呼び方の受け口（新しく書くときは ai_ に用途名を付けて呼ぶ）
+
+/* 用途 → モデル（シート優先・無ければ AI_ROUTES） */
+var AI_ROUTES_CACHE_ = null;
+function aiRoutes_() {
+  if (AI_ROUTES_CACHE_) return AI_ROUTES_CACHE_;
+  var have = {}, list = [];
+  rows_('aiRoutes').forEach(function (r) { var u = String(r['用途'] || '').trim(); if (u && !have[u]) { have[u] = 1; list.push(r); } });
+  var add = AI_ROUTES.filter(function (d) { return !have[d[0]]; });
+  if (add.length) {   // 新しい用途をシートに足す
+    var s = sh_('aiRoutes');
+    s.getRange(s.getLastRow() + 1, 1, add.length, 5).setValues(add.map(function (d) { return [d[0], d[1], d[2], d[3], '']; }));
+    add.forEach(function (d) { list.push({ '用途': d[0], '何に使うか': d[1], 'モデル': d[2], '1日の上限': d[3], 'メモ': '' }); });
+  }
+  var map = {};
+  list.forEach(function (r) {
+    var model = String(r['モデル'] || '').trim().toLowerCase();
+    map[String(r['用途']).trim()] = { use: String(r['用途']).trim(), desc: String(r['何に使うか'] || ''), model: model || 'sonnet', limit: Number(r['1日の上限']) || 0 };
+  });
+  return (AI_ROUTES_CACHE_ = map);
+}
+function aiRoute_(use) { var map = aiRoutes_(); return map[use] || map['その他'] || { use: use, model: 'sonnet', limit: 0 }; }
+function aiModel_(key) {
+  var m = AI_MODELS[key];
+  if (m) return m.provider === 'gemini' && !m.id ? Object.assign({}, m, { id: prop_('GEMINI_MODEL', GEMINI_MODEL) }) : m;
+  if (/^claude-/.test(key)) {   // 正式名で書かれたとき：料金は名前から近いものを使う
+    var base = /opus/.test(key) ? AI_MODELS.opus : /haiku/.test(key) ? AI_MODELS.haiku : AI_MODELS.sonnet;
+    return Object.assign({}, base, { id: key });
+  }
+  if (/^gemini-/.test(key)) return Object.assign({}, /lite/.test(key) ? AI_MODELS['gemini-flash-lite'] : AI_MODELS['gemini-flash'], { id: key });
+  return aiModel_('sonnet');
+}
+function aiChain_(start, saving) {
+  var key = AI_MODELS[start] ? start : (/^claude-/.test(start) ? (/opus/.test(start) ? 'opus' : /haiku/.test(start) ? 'haiku' : 'sonnet') : (/^gemini-/.test(start) ? (/lite/.test(start) ? 'gemini-flash-lite' : 'gemini-flash') : 'sonnet'));
+  var chain = [];
+  if (start !== key) chain.push(start);   // 正式名で書かれたものを最初に試す
+  if (saving && AI_SAVING[key]) key = AI_SAVING[key];
+  var guard = 0;
+  while (key && chain.indexOf(key) < 0 && guard++ < 10) { chain.push(key); key = AI_MODELS[key].next; }
+  ['gemini-flash', 'gemini-flash-lite', 'gemini-lite-new'].forEach(function (k) { if (chain.indexOf(k) < 0) chain.push(k); });   // 最後の頼みは Gemini
+  return chain;
+}
+
+/* Claude に送る（Gemini 形式の parts を Claude の形に直す） */
+function aiClaude_(m, parts, opt) {
+  var content = [];
+  parts.forEach(function (p) {
+    if (p == null) return;
+    if (typeof p === 'string') { content.push({ type: 'text', text: p }); return; }
+    if (p.text != null) { content.push({ type: 'text', text: String(p.text) }); return; }
+    var d = p.inline_data || p.inlineData; if (!d) return;
+    var mime = String(d.mime_type || d.mimeType || '').toLowerCase(), data = String(d.data || '').replace(/^data:[^,]*,/, '');
+    if (mime === 'image/jpg') mime = 'image/jpeg';
+    if (/^image\/(jpeg|png|gif|webp)$/.test(mime)) content.push({ type: 'image', source: { type: 'base64', media_type: mime, data: data } });
+    else if (mime === 'application/pdf') content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: data } });
+    else throw new Error('Claude では読めない形式（' + mime + '）');   // HEIC・音声など → Gemini に回す
+  });
+  var res = null, code = 0, body = '';
+  for (var tryNo = 0; tryNo < 2; tryNo++) {
+    res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { 'x-api-key': prop_('ANTHROPIC_API_KEY', ''), 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify({ model: m.id, max_tokens: opt.maxTokens || 8000, system: AI_JSON_RULE, messages: [{ role: 'user', content: content }] })
+    });
+    code = res.getResponseCode(); body = res.getContentText();
+    if (code === 200) break;
+    if (code === 400 || code === 401 || code === 403 || code === 404 || code === 413) break;   // やり直しても同じ → 次のモデルへ
+    if (tryNo === 0) Utilities.sleep(2000);   // 混み合い（429・500・529）は少し待ってもう一度
+  }
+  if (code !== 200) {
+    var msg = ''; try { msg = (JSON.parse(body).error || {}).message || ''; } catch (e) { msg = body.slice(0, 120); }
+    throw new Error('Claude HTTP ' + code + '：' + (code === 401 || code === 403 ? 'キーを確認してください' : msg).slice(0, 120));
+  }
+  var data = JSON.parse(body);
+  var t = (data.content || []).filter(function (c) { return c.type === 'text'; }).map(function (c) { return c.text || ''; }).join('');
+  if (data.stop_reason === 'max_tokens') throw new Error('答えが長すぎて途中で切れました');
+  var u = data.usage || {};
+  return { json: aiParse_(t), inTok: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0), outTok: u.output_tokens || 0 };
+}
+
+/* Gemini に送る（1つのモデルで、混み合いのときだけ1回やり直す） */
+function aiGemini_(m, parts, opt) {
+  var model = m.id, cfg = { responseMimeType: 'application/json' };
+  if (/^gemini-[12]\./.test(model)) cfg.temperature = 0;   // Gemini 3 以降は既定の温度のまま使う（下げると答えが乱れることがある）
+  if (opt.fast && /^gemini-2\.5-flash/.test(model)) cfg.thinkingConfig = { thinkingBudget: 0 };   // 2.5 Flash は既定で「考えてから答える」ので、速さ優先のときは切る
+  var code = 0, body = '';
+  for (var tryNo = 0; tryNo < 2; tryNo++) {
+    var res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + prop_('GEMINI_API_KEY', ''), {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      payload: JSON.stringify({ contents: [{ parts: parts }], generationConfig: cfg })
+    });
+    code = res.getResponseCode(); body = res.getContentText();
+    if (code === 200) break;
+    if (code === 400 || code === 401 || code === 403 || code === 404) break;
+    if (tryNo === 0) Utilities.sleep(2000);
+  }
+  if (code !== 200) throw new Error('Gemini HTTP ' + code + '：' + body.slice(0, 120));
+  var data = JSON.parse(body);
+  var t = ((((data.candidates || [])[0] || {}).content || {}).parts || []).filter(function (p) { return !p.thought; }).map(function (p) { return p.text || ''; }).join('');
+  var u = data.usageMetadata || {};
+  return { json: aiParse_(t), inTok: u.promptTokenCount || 0, outTok: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0) };
+}
+function aiParse_(t) {
+  t = String(t || '').trim();
+  try { return JSON.parse(t); } catch (e) {}
+  var a = t.indexOf('{'), z = t.lastIndexOf('}');
+  if (a >= 0 && z > a) { try { return JSON.parse(t.slice(a, z + 1)); } catch (e2) {} }
+  throw new Error('AIの結果を解釈できませんでした');
+}
+
+/* 料金・回数・上限 */
+function aiYen_(m, inTok, outTok) { return Math.round(((inTok * m.inUsd + outTok * m.outUsd) / 1e6) * Number(prop_('AI_YEN_PER_USD', '160')) * 100) / 100; }
+function aiState_() {
+  var s = {}; try { s = JSON.parse(prop_('AI_STATE', '{}')); } catch (e) { s = {}; }
+  var d = ymd_(new Date()), mo = d.slice(0, 7);
+  if (s.d !== d) { s.d = d; s.use = {}; s.user = {}; }
+  if (s.m !== mo) { s.m = mo; s.yen = 0; }
+  s.use = s.use || {}; s.user = s.user || {}; s.yen = Number(s.yen) || 0;
+  return s;
+}
+function aiSave_(s) { PropertiesService.getScriptProperties().setProperty('AI_STATE', JSON.stringify(s)); }
+function aiCount_(use, by, route) {
+  var s = aiState_(), userMax = Number(prop_('AI_USER_DAILY', '150')) || 0;
+  if (route.limit && (s.use[use] || 0) >= route.limit) throw new Error('今日の「' + use + '」のAIは上限（' + route.limit + '回）に達しました。明日また使えます。（上限はスプレッドシートの「AIの使い分け」で変えられます）');
+  if (by && userMax && (s.user[by] || 0) >= userMax) throw new Error('今日のAIの利用が上限（1人' + userMax + '回）に達しました。明日また使えます。');
+  s.use[use] = (s.use[use] || 0) + 1;
+  if (by) s.user[by] = (s.user[by] || 0) + 1;
+  aiSave_(s);
+  return { saving: s.yen >= (Number(prop_('AI_MONTH_LIMIT_YEN', '15000')) || 15000) };
+}
+function aiAddYen_(yen) { if (!yen) return; var s = aiState_(); s.yen = Math.round((s.yen + yen) * 100) / 100; aiSave_(s); }
+function aiLog_(use, model, by, inTok, outTok, yen, ms, result) {
+  try { sh_('aiLog').appendRow([now_(), use, model, by, inTok, outTok, yen, Math.round(ms / 100) / 10, result]); } catch (e) { /* 記録できなくても答えは返す */ }
+}
+
+/* 状態の確認ページ（?app=ai&action=status）・つながるかの確認（?app=ai&action=test） */
+function aiPage_(a) {
+  var esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var s = aiState_(), limit = Number(prop_('AI_MONTH_LIMIT_YEN', '15000')) || 15000;
+  var keys = { claude: !!prop_('ANTHROPIC_API_KEY', ''), gemini: !!prop_('GEMINI_API_KEY', '') };
+  var html = '<h2>AI窓口の状態</h2>';
+  if (a === 'test') {
+    html += '<h3>つながるかの確認</h3><ul>';
+    [['haiku', 'Claude'], ['gemini-flash-lite', 'Gemini']].forEach(function (x) {
+      var m = aiModel_(x[0]);
+      if (!keys[m.provider]) { html += '<li>' + x[1] + '：キーが未登録</li>'; return; }
+      var t0 = Date.now();
+      try {
+        var r = m.provider === 'claude' ? aiClaude_(m, [{ text: '{"ok":true} とだけ返してください' }], {}) : aiGemini_(m, [{ text: '{"ok":true} とだけ返してください' }], { fast: true });
+        var yen = aiYen_(m, r.inTok, r.outTok);
+        aiLog_('接続テスト', x[0], '', r.inTok, r.outTok, yen, Date.now() - t0, 'OK');
+        html += '<li>' + x[1] + '（' + esc(m.id) + '）：<b>つながりました</b>（' + ((Date.now() - t0) / 1000).toFixed(1) + '秒）</li>';
+      } catch (e) { html += '<li>' + x[1] + '（' + esc(m.id) + '）：<b style="color:#c00">つながりません</b> ' + esc(e.message) + '</li>'; }
+    });
+    html += '</ul>';
+  }
+  html += '<p>Claude のキー：' + (keys.claude ? '登録済み' : '<b>未登録</b>（いまは Gemini で動いています）') + '　／　Gemini のキー：' + (keys.gemini ? '登録済み' : '<b>未登録</b>') + '</p>';
+  html += '<p>今月（' + esc(s.m) + '）の概算：<b>' + Math.round(s.yen).toLocaleString() + '円</b> ／ 上限 ' + limit.toLocaleString() + '円' +
+    (s.yen >= limit ? '　<b style="color:#c00">節約モード中（Claude を止めて Gemini で動いています）</b>' : '') + '</p>';
+  html += '<h3>用途ごとの使い分けと今日の回数（' + esc(s.d) + '）</h3><table><tr><th>用途</th><th>何に使うか</th><th>モデル</th><th>今日</th><th>1日の上限</th></tr>';
+  var map = aiRoutes_();
+  Object.keys(map).forEach(function (k) { var r = map[k]; html += '<tr><td>' + esc(r.use) + '</td><td>' + esc(r.desc) + '</td><td>' + esc(r.model) + '</td><td>' + (s.use[k] || 0) + '</td><td>' + (r.limit || 'なし') + '</td></tr>'; });
+  html += '</table><h3>今日の1人ごとの回数</h3><ul>';
+  Object.keys(s.user).forEach(function (k) { html += '<li>' + esc(k) + '：' + s.user[k] + '回</li>'; });
+  html += (Object.keys(s.user).length ? '' : '<li>まだありません</li>') + '</ul><p style="color:#666">モデルの切り替え・上限の変更は、スプレッドシートの「AIの使い分け」で。1回ずつの記録は「AIの利用記録」にあります。</p>';
+  var style = '<style>body{font-family:sans-serif;padding:12px;line-height:1.6}table{border-collapse:collapse;font-size:14px}td,th{border:1px solid #ccc;padding:4px 8px;text-align:left}th{background:#f3f3f3}</style>';
+  return HtmlService.createHtmlOutput('<meta name="viewport" content="width=device-width,initial-scale=1">' + style + html).setTitle('AI窓口');
 }
 
 /* ================================================================
@@ -307,7 +521,8 @@ function doGet(e) {
     if (app === 'park') return out_(parkGet_(a, p));
     if (app === 'shashin') return out_(shashinGet_(a, p));
     if (app === 'chosa') return out_(chosaGet_(a, p));
-    if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL) });
+    if (app === 'ai') return aiPage_(a);   // AI窓口の状態（?app=ai&action=status）・つながるかの確認（action=test）
+    if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL), claude: !!prop_('ANTHROPIC_API_KEY', '') });
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
     if (app === 'dougu' && a === 'data' && p.only === 'tools') return out_({ ok: true, tools: rows_('tools'), admins: admins_() });   // 段取り・要点まとめは道具の一覧だけ使う
     if (app === 'dougu' && a === 'data') return out_({ ok: true, tools: rows_('tools'), locations: rows_('locations'), repairs: rows_('toolRepair'), suppliers: rows_('suppliers'), admins: admins_(), outs: openOuts_(), sites: rows_('sites') });
@@ -333,6 +548,7 @@ function doPost(e) {
   var b = {};
   try { b = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad json' }); }
   keepFresh_();
+  AI_BY_ = String(b.by || b.speaker || b.me || '').slice(0, 40);   // AI窓口：利用記録と1人1日の上限に使う
   try {
     if (b.app === 'timecard') return tcMod_().doPost(e);   // タイムカード（本体は gas/timecard_app.gs）
     if (b.app === 'jiko') return out_(jikoPost_(b));       // 事故報告（本人確認はタイムカードのログイン）
@@ -558,13 +774,13 @@ function readShaken_(b64, mime) {   // 車検証の写真・PDFから、ナン�
   var prompt = 'これは日本の自動車検査証（車検証）、または電子車検証の「自動車検査証記録事項」の写真かPDFです。次の項目を読み取り、JSONだけ返してください。' +
     '{"plate":"自動車登録番号・車両番号（例：川崎 400 あ 12-34）","model":"車名と型式（例：いすゞ エルフ TRG-NJR85AN）","shakenDate":"有効期間の満了する日を西暦 YYYY-MM-DD で（令和n年＝2018+n年）","firstReg":"初度登録年月 YYYY-MM","kind":"自家用・事業用 など"}' +
     '。読めない項目は空文字。推測で埋めない。';
-  var j = gemini_([{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
+  var j = ai_('車検証読み取り', [{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
   return { ok: true, data: { plate: j.plate || '', model: j.model || '', shakenDate: /^\d{4}-\d{2}-\d{2}$/.test(j.shakenDate || '') ? j.shakenDate : '', firstReg: j.firstReg || '', kind: j.kind || '' } };
 }
 function readInspect_(b64, mime) {   // 年次点検（特定自主検査）の記録表・検査標章（シール）から、検査した日と次の期限を読む
   var prompt = 'これは建設機械（ユンボ・バックホウなど）の特定自主検査、またはクレーン付きトラック（ユニック車）の年次自主検査の、検査記録表か検査標章（シール）の写真です。' +
     '次の項目を読み取り、JSONだけ返してください。{"inspectedOn":"検査した年月日 YYYY-MM-DD（シールで年月だけなら YYYY-MM）","machine":"機械の名前・型式","inspector":"検査した会社"}。令和n年＝2018+n年。読めない項目は空文字。推測で埋めない。';
-  var j = gemini_([{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
+  var j = ai_('点検記録読み取り', [{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
   var on = String(j.inspectedOn || ''), next = '';
   var m = on.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
   if (m) {   // 次の期限は1年後（年月だけのときは、その月の末日）
@@ -587,7 +803,7 @@ function readSlip_(b64, mime, hints) {
     '"netKg":"正味重量（総重量−空車重量。搬入量）を kg の数値で。t表記なら kg に直す。無ければ空",' +
     '"amount":"支払った金額（手数料・処分費の税込合計）を円の数値で。無ければ空",' +
     '"plate":"車両番号（ナンバー）"}。読めない項目は空文字。推測で埋めない。';
-  var j = gemini_([{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
+  var j = ai_('伝票読み取り', [{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
   var num = function (v) { var n = Number(String(v == null ? '' : v).replace(/[^\d.]/g, '')); return isFinite(n) && n > 0 ? n : ''; };
   var d = String(j.date || '').replace(/\//g, '-');
   var m = d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
@@ -617,7 +833,7 @@ function readInvoice_(files, kinds) {
     '。書かれていない項目は空文字。推測で埋めない（kana・short・kind・items 以外）。';
   var parts = files.map(function (f) { return { inline_data: { mime_type: f.mime || 'image/jpeg', data: f.data } }; });
   parts.push({ text: prompt });
-  var j = gemini_(parts) || {};
+  var j = ai_('請求書読み取り', parts) || {};
   var t = function (v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); };
   var inv = t(j.invoiceNo).normalize('NFKC').replace(/[^T\d]/gi, '').toUpperCase();
   return { ok: true, data: { name: t(j.name), kana: t(j.kana), short: t(j.short), kind: kinds.indexOf(j.kind) >= 0 ? j.kind : '',
@@ -858,7 +1074,7 @@ function catalog_(categories) {
 }
 function aiSearch_(query, categories) {   // 聞き間違い・うろ覚え・説明から候補を探す
   if (!query) return { ok: false, error: '検索する言葉がありません' };
-  var j = gemini_(
+  var j = ai_('用語さがし',
     'あなたは造園会社（植木屋）のベテラン職人です。新人が現場で聞いた言葉を調べています。新人の入力：「' + query + '」。' +
     'これは用語・社内の呼び方・聞き間違い（音が似た別の言葉、例：「竹屋」→「掛矢」、「しおる」→「枝しおり」）・' +
     'うろ覚え・意味の説明のどれかです。読み（音）の近さも考えて、次の一覧から当てはまるものを最大3つ選んでください。' +
@@ -868,7 +1084,7 @@ function aiSearch_(query, categories) {   // 聞き間違い・うろ覚え・�
 }
 function explain_(word) {   // 新しい言葉の意味を下書き（必ず人が確認する前提）
   if (!word) return { ok: false, error: '言葉がありません' };
-  var j = gemini_(
+  var j = ai_('用語の意味下書き',
     'あなたは造園会社（植木屋）のベテラン職人で、新入社員に言葉を教えます。言葉：「' + word + '」。' +
     '造園・植木の現場での意味を、中学生にも分かるやさしい言葉で1〜2文で説明してください。分からなければ meaning を空にしてください。' +
     '分類は次から1つ：' + CATEGORIES.join('／') + '。' +
@@ -876,7 +1092,7 @@ function explain_(word) {   // 新しい言葉の意味を下書き（必ず人�
   return { ok: true, data: { kana: toHira_(j.kana || ''), category: CATEGORIES.indexOf(j.category) >= 0 ? j.category : '社内用語', meaning: j.meaning || '', usage: j.usage || '' } };
 }
 function reading_(word) {
-  try { return toHira_((gemini_('造園の言葉「' + word + '」のひらがな読みをJSONだけで返す：{"kana":"よみ"}') || {}).kana || ''); }
+  try { return toHira_((ai_('読みがな', '造園の言葉「' + word + '」のひらがな読みをJSONだけで返す：{"kana":"よみ"}') || {}).kana || ''); }
   catch (e) { return ''; }
 }
 
@@ -930,7 +1146,7 @@ function identify_(text, image, loc, catalog) {   // 写真と話した名前か
   var parts = [];
   if (image) parts.push({ inline_data: { mime_type: 'image/jpeg', data: image } });
   parts.push({ text: prompt });
-  var j = gemini_(parts);
+  var j = ai_('道具の照合', parts);
   return { ok: true, data: { matchId: j.matchId && j.matchId !== 'null' ? String(j.matchId) : null, matchConfidence: Number(j.matchConfidence) || 0,
     name: j.name || '', kana: toHira_(j.kana || ''), commonName: j.commonName || '', feature: j.feature || '', why: j.why || '' } };
 }
@@ -1197,7 +1413,7 @@ function organize_(b) {   // 順不同に話した段取りを「日付×現場�
     (b.vehicles ? '車両（vehicle はこの名前に合わせる）：\n' + b.vehicles + '\n' : '') +
     '道具・資材の辞書（呼び方→正式名）：\n' + (b.dict || '') + '\n\n' +
     '話した内容：\n' + b.text;
-  var j = gemini_(prompt);
+  var j = ai_('段取り_整理', prompt, { by: b.by });
   return { ok: true, cards: j.cards || [] };
 }
 
@@ -1652,7 +1868,7 @@ function shashinReadBoard_(b64, mime) {
     '書き込まれている中身（工事の名前・日付の数字など）は項目名ではないので入れないでください。1行に左右2つの項目が並ぶときは、左から右の順に別の項目として並べてください。' +
     '各項目について、行の高さを普通=1・やや大きい=1.4・大きい（2行分以上）=2 で、また「項目名が上にあって中身が下に広い欄」（備考欄によくある形）なら top=true としてください。' +
     'JSONだけ返す：{"name":"この黒板の名前の案（例：公園維持管理）","rows":[{"label":"工事名","size":1,"top":false}]}。読めない文字は推測で埋めず、その行を入れない。';
-  var j = gemini_([{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
+  var j = ai_('黒板のひな型読み取り', [{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
   var rows = (Array.isArray(j.rows) ? j.rows : []).map(function (r) {
     var size = Number(r && r.size) || 1; size = size >= 1.8 ? 2 : (size >= 1.2 ? 1.4 : 1);
     return { label: String((r && r.label) || '').replace(/[\s　:：]/g, '').slice(0, 20), size: size, top: !!(r && r.top) };
@@ -2182,7 +2398,7 @@ function summarizeCore_(b) {
     (b.terms ? 'その他の用語（正式名）：\n' + b.terms + '\n' : '') + '\n' +
     (b.previous ? '前にまとめた結果（今回の話は、これへの付け足し・答え。合わせて1つにまとめ直す）：\n' + JSON.stringify(b.previous) + '\n\n' : '') +
     '話した内容：\n' + b.text;
-  var j = gemini_(prompt, { fast: true });
+  var j = ai_(to === '自分用メモ' ? '要点まとめ_自分用' : '要点まとめ', prompt, { fast: true, by: b.speaker || b.by });
   var arr = function (v) { return Array.isArray(v) ? v : (v ? [v] : []); };
   return { ok: true, result: {
     kind: MEMO_KINDS.indexOf(j.kind) >= 0 ? j.kind : 'その他', headline: String(j.headline || ''), points: arr(j.points).map(String),
@@ -2297,7 +2513,7 @@ function interpretReply_(b) {   // 返事から「反映の案」を作る（実
     '取引先一覧（正式名：呼び方）：\n' + (b.suppliers || '') + '\n\n' +
     'スタッフ（' + (m.by || '') + '）の相談：' + (m.headline || '') + '\n' + [].concat(m.points || []).join('\n') + '\n必要なもの：' + JSON.stringify(m.needs || []) + '\n\n' +
     '親方の返事：\n' + b.text;
-  var j = gemini_(prompt, { fast: true });
+  var j = ai_('返事の読み取り', prompt, { fast: true, by: b.by });
   var acts = (Array.isArray(j.actions) ? j.actions : []).filter(function (x) { return x && (x.type === 'repair' || x.type === 'notice'); });
   return { ok: true, actions: acts, done: !!j.done };
 }
@@ -2874,7 +3090,7 @@ function fixText_(b) {
     (v.suppliers ? '取引先の一覧（正式名（読み・呼び方）：扱う品）：\n' + v.suppliers + '\n\n' : '') +
     'これまでの日報の業務内容（書き方の見本）：\n' + v.works + '\n\n' +
     '音声入力した文：\n' + text;
-  var j = gemini_(prompt, { fast: true, models: ['gemini-2.5-flash-lite', 'gemini-2.5-flash'] });
+  var j = ai_('日報_清書', prompt, { fast: true, by: b.by });
   var out = String(j.text || '').trim() || text;
   var ch = (Array.isArray(j.changes) ? j.changes : []).filter(function (c) { return c && c.from && c.to && String(c.from) !== String(c.to); }).slice(0, 20);
   return { ok: true, text: out, raw: text, changes: ch };
@@ -2901,7 +3117,7 @@ function transcribe_(b) {
     (v.suppliers ? '取引先の一覧（正式名（読み・呼び方）：扱う品）：\n' + v.suppliers + '\n\n' : '') +
     '現場の一覧（正式名（別名））：\n' + v.sites + '\n\n' +
     'これまでの日報の業務内容（書き方の見本）：\n' + v.works;
-  var j = gemini_([{ inlineData: { mimeType: mime, data: audio } }, { text: prompt }], { fast: true, models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite'] });
+  var j = ai_('日報_聞き取り', [{ inlineData: { mimeType: mime, data: audio } }, { text: prompt }], { fast: true, by: b.by });
   return { ok: true, text: String(j.text || '').trim(), unsure: (Array.isArray(j.unsure) ? j.unsure : []).map(String).slice(0, 8) };
 }
 
@@ -3433,7 +3649,7 @@ function jkPolish_(b) {   // 要点まとめアプリと同じ考え方：まと
     'JSONだけ返す：{"headline":"","points":[""],"text":"","missing":[""]}\n\n' +
     (b.context ? '事故の情報（入力済みの項目）：' + String(b.context).slice(0, 800) + '\n\n' : '') +
     '話した・書いた内容：\n' + text.slice(0, 5000);
-  var j = gemini_(prompt, { fast: true });
+  var j = ai_('事故_説明整理', prompt, { fast: true, by: b.by });
   var pts = (Array.isArray(j.points) ? j.points : []).map(String).filter(Boolean).slice(0, 8);
   return { ok: true, headline: String(j.headline || '').trim(), points: pts, text: String(j.text || '').trim() || text, missing: (Array.isArray(j.missing) ? j.missing : []).map(String).slice(0, 3) };
 }
