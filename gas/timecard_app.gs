@@ -35,7 +35,7 @@ const CODE_MIN = { qr: 10, temp: 60 * 24 };
 
 const SHEETS = {
   staff:    ['id', 'name', 'disp', 'freeeNo', 'setting', 'pay', 'role', 'punch', 'join', 'active'],
-  days:     ['key', 'staffId', 'date', 'kind', 'half', 'pay', 'leaveBy', 'in', 'out', 'brk', 'site', 'src', 'by', 'lag', 'bio', 'gps', 'lat', 'lng', 'acc', 'checked', 'updatedAt'],
+  days:     ['key', 'staffId', 'date', 'kind', 'half', 'pay', 'leaveBy', 'in', 'out', 'brk', 'site', 'src', 'by', 'lag', 'bio', 'gps', 'lat', 'lng', 'acc', 'checked', 'updatedAt', 'dist', 'away', 'direct'],
   punches:  ['receivedAt', 'staffId', 'type', 'pressedAt', 'date', 'time', 'lat', 'lng', 'acc', 'site', 'clientId', 'bio', 'device'],
   history:  ['at', 'by', 'staffId', 'date', 'field', 'before', 'after', 'reason'],
   calendar: ['date', 'off'],
@@ -47,7 +47,9 @@ const AUTH_SHEETS = {
   sessions: ['tokenHash', 'staffId', 'device', 'createdAt', 'lastUsed', 'expiresAt'],
   codes:    ['codeHash', 'staffId', 'kind', 'expiresAt', 'usedAt', 'by', 'createdAt'],
 };
-const DEFAULT_SETTINGS = { start: '07:30', end: '17:10', break: '100', useFrom: '' };
+const DEFAULT_SETTINGS = { start: '07:30', end: '17:10', break: '100', useFrom: '',
+  // 朝の出勤は事務所で押す。事務所（川崎市高津区向ケ丘94-2）から離れて出勤を押したら知らせる
+  officeLat: '35.594349', officeLng: '139.595978', officeR: '150', officeCheck: '1' };
 const DATE_COLS = { date: 1, join: 1, useFrom: 1 };
 const TIME_COLS = { in: 1, out: 1, start: 1, end: 1 };
 const KINDS = ['出勤', '休日出勤', '休み', '振休', '代休', '雨天中止（半日）', '雨天中止（全日）', '公休'];
@@ -219,6 +221,8 @@ const API = {
     if (type === 'in') {
       if (old.in && old.in !== time) addHistory_(me.disp, me.id, date, '出勤（打ち直し）', old.in, time, 'スマホ打刻');
       upd.in = time;
+      const ofc = officeCheck_(b.lat, b.lng, b.acc);
+      upd.dist = ofc.dist; upd.away = ofc.away ? '1' : ''; upd.direct = b.direct ? '1' : '';
     } else {
       if (old.out && old.out !== time) addHistory_(me.disp, me.id, date, '退勤（打ち直し）', old.out, time, 'スマホ打刻');
       upd.out = time;
@@ -423,6 +427,23 @@ const API = {
       if (hit) t.update(hit, { value: v[k] }); else t.append({ key: k, value: v[k] });
     });
     addHistory_(me.disp, '', '', '勤務時間の設定', '', v.start + '〜' + v.end + ' 休憩' + v.break + '分' + (v.useFrom ? ' 使い始め ' + v.useFrom : ''), '設定を保存');
+    return { settings: settings_() };
+  }),
+
+  /** 事務所の位置（朝の出勤を事務所で押したかの確かめ） */
+  officeSave: b => withLock_(() => {
+    const me = adminAuth_(b);
+    const o = b.office || {};
+    const lat = Number(o.lat), lng = Number(o.lng), r = Math.round(Number(o.r));
+    if (!(lat > 20 && lat < 50 && lng > 120 && lng < 155)) throw err_('事務所の位置が正しくありません');
+    if (!(r >= 30 && r <= 2000)) throw err_('認める範囲は30〜2000mで入れてください');
+    const v = { officeLat: lat.toFixed(6), officeLng: lng.toFixed(6), officeR: String(r), officeCheck: o.check === false || o.check === '0' ? '0' : '1' };
+    const t = dataTable_('settings');
+    Object.keys(v).forEach(k => {
+      const hit = t.rows.find(x => x.key === k);
+      if (hit) t.update(hit, { value: v[k] }); else t.append({ key: k, value: v[k] });
+    });
+    addHistory_(me.disp, '', '', '事務所の位置', '', v.officeLat + ',' + v.officeLng + ' 半径' + v.officeR + 'm' + (v.officeCheck === '1' ? '' : '（確かめない）'), '設定を保存');
     return { settings: settings_() };
   }),
 
@@ -748,6 +769,23 @@ function staffAll_() {
 function staffById_(id) { return staffAll_().find(s => s.id === String(id)); }
 function staffPublic_(s) { return { id: s.id, name: s.name, disp: s.disp, freeeNo: s.freeeNo, setting: s.setting, pay: s.pay, role: s.role, punch: s.punch, join: s.join, active: s.active }; }
 function mePayload_(s) { return Object.assign(staffPublic_(s), { admin: isAdminRole_(s.role) }); }
+/** 事務所からの距離（m）と、離れているか。位置がないとき・ずれが大きすぎるときは決めない */
+function officeCheck_(lat, lng, acc) {
+  const st = settings_();
+  lat = Number(lat); lng = Number(lng); acc = Number(acc) || 0;
+  if (!lat || !lng) return { dist: '', away: false };
+  const dist = Math.round(distM_(lat, lng, Number(st.officeLat), Number(st.officeLng)));
+  if (st.officeCheck === '0') return { dist, away: false };
+  return { dist, away: acc <= 1000 && dist > officeLimit_(st, acc) };
+}
+/** 認める距離：半径＋GPSのずれ（100mまで） */
+function officeLimit_(st, acc) { return (Number(st.officeR) || 150) + Math.min(Math.max(Number(acc) || 0, 0), 100); }
+function distM_(a1, o1, a2, o2) {
+  const R = 6371000, rad = x => x * Math.PI / 180;
+  const dA = rad(a2 - a1), dO = rad(o2 - o1);
+  const h = Math.sin(dA / 2) ** 2 + Math.cos(rad(a1)) * Math.cos(rad(a2)) * Math.sin(dO / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
 function settings_() {
   const o = Object.assign({}, DEFAULT_SETTINGS);
   dataTable_('settings').rows.forEach(r => { if (r.key) o[r.key] = String(r.value); });
@@ -796,7 +834,11 @@ function table_(book, name, head, cacheKey) {
     s.getRange(1, 1, Math.max(2, s.getMaxRows()), head.length).setNumberFormat('@');
   }
   const values = s.getDataRange().getValues();
-  const top = values.shift() || [];
+  let top = values.shift() || [];
+  if (top.length && head.some(h => top.indexOf(h) < 0) && head.slice(0, top.filter(String).length).every((h, i) => top[i] === h)) {
+    s.getRange(1, 1, 1, head.length).setValues([head]);   // 列が後ろに増えたときは見出しを足す
+    top = head.slice();
+  }
   const cols = head.map(h => top.indexOf(h));
   const rows = values.map((v, i) => {
     const o = { _row: i + 2 };

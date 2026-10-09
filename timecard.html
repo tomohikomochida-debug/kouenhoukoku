@@ -407,7 +407,19 @@ function flags(id, s, d){
   if ((Number(d.lag)||0) >= 10) f.push({t:`送信遅れ ${d.lag}分`, lv:'warn'});
   if (d.in && d.src==='打刻' && !d.gps) f.push({t:'位置なし', lv:'warn'});
   if (d.bio==='unverified') f.push({t:'本人確認なし', lv:'warn'});
+  if (d.in && d.away==='1') f.push({t:`事務所から離れて出勤（${d.dist ? distLabel(Number(d.dist)) : ''}${d.direct==='1' ? '・直行' : ''}）`, lv:'warn'});
   return f;
+}
+/* 事務所からの距離（朝の出勤は事務所で押す） */
+const distM = (a1, o1, a2, o2) => { const R = 6371000, r = x => x*Math.PI/180, dA = r(a2-a1), dO = r(o2-o1); const h = Math.sin(dA/2)**2 + Math.cos(r(a1))*Math.cos(r(a2))*Math.sin(dO/2)**2; return 2*R*Math.asin(Math.sqrt(h)); };
+const distLabel = m => m >= 1000 ? `約${(m/1000).toFixed(1)}km` : `約${Math.max(10, Math.round(m/10)*10)}m`;
+const officeLimit = acc => (Number(S.settings.officeR) || 150) + Math.min(Math.max(Number(acc) || 0, 0), 100);
+function officeAway(pos){
+  const st = S.settings;
+  if (!pos || st.officeCheck === '0' || !st.officeLat) return null;
+  if ((Number(pos.acc) || 0) > 1000) return null;   // ずれが大きすぎるときは決めない
+  const d = distM(pos.lat, pos.lng, Number(st.officeLat), Number(st.officeLng));
+  return d > officeLimit(pos.acc) ? Math.round(d) : null;
 }
 const openFlag = (fl, d) => fl.some(f => f.must) || (fl.length > 0 && !(d && d.checked));
 
@@ -534,12 +546,12 @@ async function confirmMe(){
 }
 
 /* ===================== 打刻 ===================== */
-function getPos(){
+function getPos(fresh){
   return new Promise(res => {
     if (!navigator.geolocation) return res(null);
     let done = false; const fin = v => { if (!done){ done = true; res(v); } };
     setTimeout(() => fin(null), 7000);
-    navigator.geolocation.getCurrentPosition(p => fin({ lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6), acc: Math.round(p.coords.accuracy) }), () => fin(null), { enableHighAccuracy:true, timeout:6500, maximumAge:60000 });
+    navigator.geolocation.getCurrentPosition(p => fin({ lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6), acc: Math.round(p.coords.accuracy) }), () => fin(null), { enableHighAccuracy:true, timeout:6500, maximumAge: fresh ? 0 : 60000 });
   });
 }
 async function doPunch(type){
@@ -555,13 +567,31 @@ async function doPunch(type){
   const item = { staffId: S.me.id, clientId: uuid(), type, pressedAt, site, kind, bio, device: device(), lat: '', lng: '', acc: '' };
   S.queue.push(item); lsSet(LS.queue, S.queue);
   const t = jstParts(new Date(pressedAt));
-  const k = K(S.me.id, t.date), old = S.days[k] || { staffId:S.me.id, date:t.date, kind, brk:S.settings.break };
+  const k = K(S.me.id, t.date), prevDay = S.days[k], old = prevDay || { staffId:S.me.id, date:t.date, kind, brk:S.settings.break };
   S.days[k] = Object.assign({}, old, type==='in' ? { in:t.time } : { out:t.time }, { site: site || old.site, src: old.src || '打刻', pending:true });
   render();
   item.waiting = true;
-  const pos = await getPos();
+  let pos = await getPos();
+  // 朝の出勤は事務所で押す。離れていたら、直行か、事務所に着いてから押すかを聞く
+  if (type === 'in'){
+    let away = officeAway(pos);
+    while (away){
+      const ans = await new Promise(resolve => { S.awayAsk = { dist: away, site, resolve, busy:false }; render(); });
+      if (ans.act === 'retry'){ S.awayAsk = { dist: away, site, busy:true }; render(); const p2 = await getPos(true); if (p2) pos = p2; away = officeAway(pos); continue; }
+      S.awayAsk = null;
+      if (ans.act === 'cancel'){
+        S.queue.splice(S.queue.indexOf(item), 1); lsSet(LS.queue, S.queue);
+        if (prevDay) S.days[k] = prevDay; else delete S.days[k];
+        render(); toast('出勤の記録を取り消しました。事務所に着いてから押してください'); return;
+      }
+      item.direct = true; if (ans.site){ item.site = ans.site; lsSet(LS.site, ans.site); if (S.days[k]) S.days[k].site = ans.site; }
+      break;
+    }
+    S.awayAsk = null;
+  }
   if (pos){ Object.assign(item, { lat: pos.lat, lng: pos.lng, acc: pos.acc }); if (S.days[k]) S.days[k].gps = true; }
   delete item.waiting; lsSet(LS.queue, S.queue);
+  render();
   await flushQueue(true);
 }
 let flushing = false;
@@ -606,7 +636,7 @@ function render(){
   document.body.classList.toggle('syncing', !!(S.busy && S.loaded));
   main.innerHTML = (S.busy && !S.loaded) ? '<div class="loading">読み込み中…</div>' : view();
   if (S.scrollMonth){ const el = document.getElementById('am-' + S.scrollMonth); S.scrollMonth = null; if (el && el.scrollIntoView) setTimeout(() => el.scrollIntoView({ block:'start' }), 0); }
-  layer.innerHTML = (S.edit ? editSheet() : '') + (S.day ? daySheet() : '') + (S.menu ? menuSheet() : '') + (S.code ? codeSheet() : '') + (S.pinAsk ? pinAskSheet() : '') + (S.bioOffer ? bioOfferSheet() : '');
+  layer.innerHTML = (S.edit ? editSheet() : '') + (S.day ? daySheet() : '') + (S.menu ? menuSheet() : '') + (S.code ? codeSheet() : '') + (S.pinAsk ? pinAskSheet() : '') + (S.bioOffer ? bioOfferSheet() : '') + (S.awayAsk ? awaySheet() : '');
 }
 function tabList(){
   const t = [];
@@ -1072,6 +1102,23 @@ function settingsView(){
     <div class="small muted">使い始めた日より前は、打刻がなくても「記録なし」にしません（紙のタイムカードの分）。</div>
     <div class="small muted">所定労働時間：${hm(Math.max(0, (toMin(se.end||'0:00')||0) - (toMin(se.start||'0:00')||0) - (Number(se.break)||0)))}。遅刻早退と、年間休日カレンダーの時間に使います。</div>
     ${boss ? '<div class="row"><span class="grow"></span><button class="btn primary" data-act="setSave">勤務時間を保存する</button></div>' : ''}
+  </section>
+  ${officePanel()}`;
+}
+function officePanel(){
+  if (!S.office) S.office = { lat: S.settings.officeLat || '', lng: S.settings.officeLng || '', r: S.settings.officeR || '150', check: S.settings.officeCheck !== '0', msg: '' };
+  const o = S.office, map = o.lat && o.lng ? `https://www.google.com/maps?q=${encodeURIComponent(o.lat + ',' + o.lng)}` : '';
+  return `<section class="panel"><h2>事務所の位置（朝の出勤）</h2>
+    <div class="small muted">朝の出勤を事務所から離れた所で押すと、「直行」か「事務所に着いてから押す」かを聞きます。直行を選んだ日と、離れた所で押した日は、集計に「事務所から離れて出勤」と出ます。</div>
+    <div class="fields">
+      <label class="f">緯度<input id="ofLat" inputmode="decimal" value="${esc(o.lat)}"></label>
+      <label class="f">経度<input id="ofLng" inputmode="decimal" value="${esc(o.lng)}"></label>
+      <label class="f">事務所とみなす範囲（m）<input id="ofR" type="number" min="30" max="2000" step="10" value="${esc(o.r)}"></label>
+      <label class="f">確かめる<select id="ofCheck"><option value="1" ${o.check?'selected':''}>確かめる</option><option value="0" ${o.check?'':'selected'}>確かめない</option></select></label>
+    </div>
+    <div class="small muted">範囲の中なら事務所で押したことにします。スマホの位置は建物の中や朝いちばんで数十mずれることがあるので、そのずれ（100mまで）も足して判断します。標準は150mです。</div>
+    ${o.msg ? `<div class="small" style="margin-top:6px">${esc(o.msg)}</div>` : ''}
+    <div class="row">${map ? `<a class="btn" href="${map}" target="_blank" rel="noopener">地図で見る</a>` : ''}<button class="btn" data-act="ofHere">今いる場所を事務所にする</button><span class="grow"></span><button class="btn primary" data-act="ofSave">事務所の位置を保存する</button></div>
   </section>`;
 }
 
@@ -1189,6 +1236,21 @@ function pinAskSheet(){
     <div class="pad">${['1','2','3','4','5','6','7','8','9','やめる','0','消す'].map(k => `<button data-act="pak" data-arg="${k}">${k}</button>`).join('')}</div>
   </div></div>`;
 }
+function awaySheet(){
+  const a = S.awayAsk;
+  return `<div class="sheet"><div class="box" role="dialog" aria-label="事務所から離れています">
+    <h3>事務所から離れています（${distLabel(a.dist)}）</h3>
+    <div class="small">朝の出勤は、事務所で押すきまりです。</div>
+    <div class="small muted" style="margin-top:6px">現場に直接行く日（直行）は、現場名を入れて「直行で出勤する」を押してください。直行の記録は担当が確認します。</div>
+    <label class="f" style="margin-top:10px">現場名<input id="awaySite" list="siteList" value="${esc(a.site || '')}" placeholder="直行する現場"></label>
+    <div class="err" id="awayErr"></div>
+    <div class="leavebtns" style="margin-top:10px">
+      <button class="lbtn" data-act="awayDirect" ${a.busy?'disabled':''}>直行で出勤する<small>現場から始める</small></button>
+      <button class="lbtn" data-act="awayRetry" ${a.busy?'disabled':''}>${a.busy ? '確かめています…' : 'もう一度位置を確かめる'}<small>事務所にいるのに出たとき</small></button>
+      <button class="lbtn ab" data-act="awayCancel" ${a.busy?'disabled':''}>取り消す<small>事務所に着いてから押す</small></button>
+    </div>
+  </div></div>`;
+}
 function bioOfferSheet(){
   return `<div class="sheet"><div class="box">
     <h3>顔認証・指紋認証を使いますか？</h3>
@@ -1249,13 +1311,20 @@ document.addEventListener('click', async e => {
   if (bg[act]){ if (e.target === el){ S[bg[act]] = act === 'menubg' ? false : null; S.pinChange = false; render(); } return; }
   switch (act){
     case 'retry': showBanner(''); S.loaded = null; loadData(true); return;
-    case 'tab': S.view = arg; S.confirm = null; if (arg === 'mine' && S.recMode === 'cal') S.scrollMonth = today().slice(0,7); if (arg === 'settings'){ S.staffEdit = null; S.setEdit = null; } render(); window.scrollTo(0,0); return;
+    case 'tab': S.view = arg; S.confirm = null; if (arg === 'mine' && S.recMode === 'cal') S.scrollMonth = today().slice(0,7); if (arg === 'settings'){ S.staffEdit = null; S.setEdit = null; S.office = null; } render(); window.scrollTo(0,0); return;
     case 'menu': S.menu = true; render(); return;
     case 'menuclose': S.menu = false; S.pinChange = false; render(); return;
     case 'logout': run(async () => { try { await api('logout'); } catch(e){} S.menu = false; logoutLocal(); }); return;
     case 'bioOn': S.menu = false; if (await bioAvailable()) await bioRegister(); else toast('この端末では顔認証・指紋認証が使えません', true); render(); return;
     case 'bioOff': lsSet(LS.bio, null); S.menu = false; toast('この端末の顔認証・指紋認証をやめました'); render(); return;
     case 'bioYes': S.bioOffer = false; lsSet(LS.bioAsked, true); await bioRegister(); render(); return;
+    case 'awayDirect': {
+      const v = ($('#awaySite') && $('#awaySite').value.trim()) || '';
+      if (!v){ const e = $('#awayErr'); if (e) e.textContent = '直行する現場名を入れてください'; return; }
+      const r = S.awayAsk && S.awayAsk.resolve; if (r) r({ act:'direct', site:v }); return;
+    }
+    case 'awayRetry': { const r = S.awayAsk && S.awayAsk.resolve; if (r) r({ act:'retry' }); return; }
+    case 'awayCancel': { const r = S.awayAsk && S.awayAsk.resolve; if (r) r({ act:'cancel' }); return; }
     case 'bioLater': S.bioOffer = false; lsSet(LS.bioAsked, true); render(); return;
     case 'pinChange': S.pinChange = true; render(); return;
     case 'pinChangeGo': run(async () => { await api('changePin', { oldPin: $('#pc-old').value, pin: $('#pc-new').value }); S.pinChange = false; S.menu = false; toast('暗証番号を変えました'); }); return;
@@ -1358,6 +1427,16 @@ document.addEventListener('click', async e => {
     // 設定
     case 'staffAdd': S.staffEdit.push({ id:'', name:'', disp:'', freeeNo:'', setting:'', pay:'monthly', role:'staff', punch:true, join:'', active:true }); render(); return;
     case 'staffSave': run(async () => { const r = await api('staffSave', { staff: S.staffEdit }); S.staff = r.staff; S.staffEdit = null; toast('スタッフを保存しました'); }); return;
+    case 'ofHere': run(async () => {
+      S.office.msg = '位置を確かめています…'; render();
+      const p = await getPos(true);
+      if (!p){ S.office.msg = '位置がとれませんでした。位置情報を許可して、外か窓の近くでもう一度押してください'; return; }
+      Object.assign(S.office, { lat: String(p.lat), lng: String(p.lng), msg: `今いる場所を入れました（ずれ ${p.acc}m）。よければ「保存する」を押してください。${p.acc > 50 ? 'ずれが大きいので、外に出てもう一度押すとより正確です。' : ''}` });
+    }); return;
+    case 'ofSave': run(async () => {
+      const r = await api('officeSave', { office: { lat: $('#ofLat').value, lng: $('#ofLng').value, r: $('#ofR').value, check: $('#ofCheck').value === '1' } });
+      S.settings = r.settings; S.office = null; toast('事務所の位置を保存しました');
+    }); return;
     case 'setSave': run(async () => { const r = await api('settingsSave', { settings: { start: $('#setStart').value, end: $('#setEnd').value, break: $('#setBreak').value, useFrom: $('#setFrom').value } }); S.settings = r.settings; S.setEdit = null; toast('勤務時間を保存しました'); }); return;
     case 'code': S.code = { staffId: arg }; render(); return;
     case 'codeclose': S.code = null; render(); return;
@@ -1372,6 +1451,7 @@ document.addEventListener('click', async e => {
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset && t.dataset.sf !== undefined && S.staffEdit){ const i = Number(t.dataset.sf), k = t.dataset.k; S.staffEdit[i][k] = t.type === 'checkbox' ? t.checked : t.value; }
+  if (['ofLat','ofLng','ofR','ofCheck'].includes(t.id) && S.office){ Object.assign(S.office, { lat: $('#ofLat').value, lng: $('#ofLng').value, r: $('#ofR').value, check: $('#ofCheck').value === '1' }); }
   if (['setStart','setEnd','setBreak','setFrom'].includes(t.id)){ S.setEdit = { start: $('#setStart').value, end: $('#setEnd').value, break: $('#setBreak').value, useFrom: $('#setFrom').value }; }
   if (t.id === 'codeIn') S.login.code = t.value;
 });
