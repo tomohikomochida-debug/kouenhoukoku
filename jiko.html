@@ -460,16 +460,23 @@ async function sync() {
     for (const p of S.localPhotos.filter(x => !x.sent)) {
       if (!photoReady(p)) continue;
       const meta = { photoId: p.photoId, caseId: p.caseId, slot: p.slot, caption: p.caption || '', takenAt: p.takenAt, lat: p.lat, lng: p.lng };
-      const body = { photo: meta, data: await blobToB64(p.blob), mime: p.mime || 'image/jpeg' };
-      if (p.raw && p.raw.size <= 12 * 1024 * 1024) { body.raw = await blobToB64(p.raw); body.rawMime = p.rawMime || p.raw.type || 'image/jpeg'; }
-      const j = await api('photo', body, 180000);
+      const body = { photo: meta, data: await blobToB64(p.blob), mime: p.mime || 'image/jpeg' };   // まず軽い写真だけ送る（元データは後で別に送る）
+      const j = await api('photo', body, 120000);
       if (j.ok) {
-        p.sent = true; p.raw = null; await DB.pput(p); changed = true;
+        p.sent = true; p.rawPending = !!p.raw; if (!p.raw) p.raw = null; await DB.pput(p); changed = true;
         const c = caseById(p.caseId);
         if (c && c.photos && !c.photos.some(x => x.photoId === p.photoId)) c.photos.push({ photoId: p.photoId, slot: p.slot, caption: p.caption, takenAt: p.takenAt, by: S.me.disp, inPdf: !['sketch', 'doc'].includes(p.slot), share: ['scene', 'around'].includes(p.slot), mime: p.mime || 'image/jpeg' });
       } else { failed = j.error; break; }
     }
+    for (const p of S.localPhotos.filter(x => x.sent && x.rawPending && x.raw)) {   // 撮ったままの元データ（大きいので後から。だめでも報告には影響しない）
+      try {
+        const j = await api('photoRaw', { photoId: p.photoId, raw: await blobToB64(p.raw), rawMime: p.rawMime || p.raw.type || 'image/jpeg' }, 240000);
+        if (j.ok || (p.rawTries = (p.rawTries || 0) + 1) >= 3) { p.raw = null; p.rawPending = false; }
+      } catch (e) { if ((p.rawTries = (p.rawTries || 0) + 1) >= 3) { p.raw = null; p.rawPending = false; } }
+      await DB.pput(p);
+    }
   } catch (e) { failed = e.message; }
+  S.lastSyncErr = failed || '';
   syncing = false; updateNet();
   if (failed && navigator.onLine) showErr('送れなかったものがあります：' + failed);
   if (changed) { await refresh(false); }
@@ -479,7 +486,7 @@ function upsertCase(v) { if (!v) return; const i = S.cases.findIndex(c => c.id =
 function updateNet() {
   $('#netbar').hidden = navigator.onLine;
   const n = pendingCount(), el = document.getElementById('pendBox');
-  if (el) { el.hidden = !n; el.innerHTML = n ? `📤 まだ送れていないものが <b>${n}件</b> あります。${navigator.onLine ? '<button class="btn sm" onclick="sync()" style="margin-left:6px">今すぐ送る</button>' : '電波が戻ったら自動で送ります'}` : ''; }
+  if (el) { el.hidden = !n; el.innerHTML = n ? `📤 まだ送れていないもの（写真など）が <b>${n}件</b> あります。${navigator.onLine ? '<button class="btn sm" onclick="sync()" style="margin-left:6px">今すぐ送る</button>' : '電波が戻ったら自動で送ります'}${S.lastSyncErr ? `<div style="margin-top:4px;color:var(--danger)">送れなかった理由：${esc(S.lastSyncErr)}</div>` : ''}` : ''; }
 }
 window.addEventListener('online', () => { updateNet(); sync(); });
 window.addEventListener('offline', updateNet);
@@ -1537,8 +1544,8 @@ function openPdf(c) {
   openModal(`<h3>📄 保険会社に出す事故報告書</h3>
     <label class="lbl">宛先（保険会社）</label><input type="text" id="pdTo" value="${esc(ins.insurer || defaultInsurer(c))}">
     <div class="row2"><div><label class="lbl">事故受付番号</label><input type="text" id="pdNo" value="${esc(ins.receiptNo || '')}"></div><div><label class="lbl">証券番号</label><input type="text" id="pdPol" value="${esc(vIns.policy || '')}"></div></div>
-    <div class="row2"><div><label class="lbl">報告者</label><input type="text" id="pdBy" value="${esc(S.me.disp)}"></div><div><label class="lbl">電話</label><input type="tel" id="pdTel" value="${esc(comp.phone || '')}"></div></div>
-    <label class="lbl">載せる写真（タップで外す・戻す）</label>
+    <div class="row2"><div><label class="lbl">報告者</label><input type="text" id="pdBy" value="" placeholder="空欄なら載せません"></div><div><label class="lbl">電話</label><input type="tel" id="pdTel" value="${esc(comp.phone || '')}"></div></div>
+    <label class="lbl">載せる写真（タップで外す・戻す）</label>${ps.length ? '' : '<div class="note"><b>この事故には、まだ写真が届いていません</b>報告した人のスマホに写真が残っている場合は、その人がアプリを開くと送られます（ホームに「まだ送れていないもの」と出ます）。親方の手元の写真は、事故の画面の「写真を足す」から入れられます。</div>'}
     <div class="thumbs" id="pdThumbs">${ps.map(p => thumbHtml(Object.assign({}, p, { inPdf: sel[p.photoId] }), { pdf: 1, label: 1 })).join('') || '<span class="hint">写真がありません</span>'}</div>
     <p class="hint">載せない情報：親方メモ・経過記録・お金・再発防止・社内の共有設定</p>
     <div class="row2" style="margin-top:12px"><button class="btn" id="pdPrev">見本を見る</button><button class="btn primary" id="pdMake">PDFを作る</button></div>

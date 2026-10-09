@@ -2890,22 +2890,23 @@ function jkFolder_() {   // 社内アプリ ＞ 事故報告（ほかのアプ�
    Drive の「制限付きアクセスのフォルダ」（inheritedPermissionsDisabled）。うまくいかないときは1時間おきにやり直す */
 function jkRestrict_(folder) {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty('JIKO_LIMITED') === '1') return true;
-  var last = Number(props.getProperty('JIKO_LIMIT_TRY') || 0);
+  if (props.getProperty('JIKO_LIMITED') === folder.getId()) return true;   // 制限をかけたフォルダのIDを覚えておく（フォルダが変わったらかけ直す）
+  var last = Number(props.getProperty('JIKO_LIMIT_TRY_' + folder.getId()) || 0);
   if (Date.now() - last < 3600000) return false;
-  props.setProperty('JIKO_LIMIT_TRY', String(Date.now()));
+  props.setProperty('JIKO_LIMIT_TRY_' + folder.getId(), String(Date.now()));
   try {
     var res = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + folder.getId() + '?fields=inheritedPermissionsDisabled', {
       method: 'patch', contentType: 'application/json', muteHttpExceptions: true,
       headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, payload: JSON.stringify({ inheritedPermissionsDisabled: true }) });
     var ok = res.getResponseCode() === 200 && JSON.parse(res.getContentText()).inheritedPermissionsDisabled === true;
-    if (ok) props.setProperty('JIKO_LIMITED', '1');
+    if (ok) props.setProperty('JIKO_LIMITED', folder.getId());
+    else props.setProperty('JIKO_LIMIT_ERR', String(res.getResponseCode()) + ' ' + res.getContentText().slice(0, 200));
     return ok;
   } catch (e) { return false; }
 }
 function jkFolderInfo_() {
   var f = jkFolder_();
-  return { url: f.getUrl(), limited: prop_('JIKO_LIMITED', '') === '1' };
+  return { url: f.getUrl(), limited: prop_('JIKO_LIMITED', '') === f.getId() };
 }
 /* 事故ごとのフォルダ：社内アプリ ＞ 事故報告 ＞ 「2026-001_10月9日_車両事故_岩崎」
    写真（元データは中の「元データ」）と、保険会社に出した報告書PDFをまとめる。名前は内容が変われば付け直す */
@@ -2935,6 +2936,14 @@ function jkSs_() {
   }
   props.setProperty('JIKO_SHEET_ID', ss.getId());
   JK_SS_ = ss;
+  try {   // 事故報告データの入っているフォルダを「事故報告」フォルダの本物にする（最初に同時に開かれて2つできたときの対策）
+    var c = CacheService.getScriptCache();
+    if (!c.get('jk_fchk')) {
+      var pp = DriveApp.getFileById(ss.getId()).getParents();
+      if (pp.hasNext()) { var pf = pp.next(); if (pf.getName() === '事故報告' && pf.getId() !== prop_('JIKO_FOLDER_ID', '')) props.setProperty('JIKO_FOLDER_ID', pf.getId()); }
+      c.put('jk_fchk', '1', 21600);
+    }
+  } catch (e) {}
   Object.keys(JIKO_COLS).forEach(jkSh_);
   var first = ss.getSheetByName('シート1') || ss.getSheetByName('Sheet1');
   if (first && ss.getSheets().length > 1 && first.getLastRow() === 0) { try { ss.deleteSheet(first); } catch (e) {} }
@@ -3086,6 +3095,7 @@ function jikoPost_(b) {
       case 'delete':      return withLockRaw_(function () { return jkDelete_(b, me); });
       case 'photo':       return jkPhoto_(b, me);
       case 'photoData':   return jkPhotoData_(b, me);
+      case 'photoRaw':    return jkPhotoRaw_(b, me);
       case 'photoMeta':   return withLockRaw_(function () { return jkPhotoMeta_(b, me); });
       case 'pdf':         return jkSavePdf_(b, me);
       case 'hiyari':      return withLockRaw_(function () { return jkHiyari_(b, me); });
@@ -3245,6 +3255,20 @@ function jkPhoto_(b, me) {
       by: me.disp, at: now_(), inPdf: p.slot === 'sketch' || p.slot === 'doc' ? '×' : '○', share: JK_SHARE_SLOTS.indexOf(p.slot) >= 0, state: '', fileId: file.getId(), rawFileId: rawId, url: file.getUrl(), mime: mime });
     return { ok: true, fileId: file.getId() };
   });
+}
+/* 撮ったままの元データ（大きいので写真のあとに別に送られてくる）を、写真と同じフォルダの「元データ」に入れる */
+function jkPhotoRaw_(b, me) {
+  var hit = null; jkRows_('photos').forEach(function (r) { if (r.photoId === String(b.photoId)) hit = r; });
+  if (!hit) return { ok: false, error: '写真が見つかりません' };
+  if (hit.rawFileId) return { ok: true, dup: true };
+  if (!b.raw) return { ok: false, error: '元データがありません' };
+  var mime = String(b.rawMime || 'image/jpeg'), ext = /png/.test(mime) ? '.png' : (/heic|heif/.test(mime) ? '.heic' : '.jpg');
+  var parent = null; try { var ps = DriveApp.getFileById(hit.fileId).getParents(); if (ps.hasNext()) parent = ps.next(); } catch (e) {}
+  if (!parent) parent = jkPhotoFolder_(hit.caseId);
+  var name = (JK_SLOT_JA[hit.slot] || '写真') + '_' + String(hit.takenAt || '').replace(/[^\d]/g, '').slice(0, 12) + '_元データ' + ext;
+  var f = subFolder_(parent, '元データ').createFile(Utilities.newBlob(Utilities.base64Decode(b.raw), mime, name));
+  withLockRaw_(function () { jkUpsert_('photos', 'photoId', { photoId: hit.photoId, rawFileId: f.getId() }); });
+  return { ok: true };
 }
 function jkPhotoData_(b, me) {
   var hit = null; jkRows_('photos').forEach(function (r) { if (r.photoId === String(b.photoId)) hit = r; });
