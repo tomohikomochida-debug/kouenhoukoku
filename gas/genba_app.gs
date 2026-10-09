@@ -3288,7 +3288,7 @@ function jkPhotoFolder_(ownerId) {
   return f;
 }
 var JK_SLOT_JA = { scene: '全景', own_far: '自社の損傷（引き）', own_near: '自社の損傷（寄り）', their_far: '相手側（引き）', their_near: '相手側（寄り）', detail: '損傷の詳細', plate: '相手のナンバー',
-  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', police: '警察の名刺・メモ', doc: '書類', hiyari: 'ヒヤリハット' };
+  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', police: '警察の名刺・メモ', doc: '書類', map: '位置図', hiyari: 'ヒヤリハット' };
 function jkPhoto_(b, me) {
   var p = b.photo || {}, owner = String(p.caseId || '');
   if (!p.photoId || !b.data) return { ok: false, error: '写真がありません' };
@@ -3310,9 +3310,9 @@ function jkPhoto_(b, me) {
   return withLockRaw_(function () {
     var again = false; jkRows_('photos').forEach(function (r) { if (r.photoId === String(p.photoId)) again = true; });
     if (again) { try { file.setTrashed(true); } catch (e) {} return { ok: true, dup: true }; }
-    if (p.slot === 'sketch') jkRows_('photos').forEach(function (r) { if (r.caseId === owner && r.slot === 'sketch' && r.state !== '削除') jkUpsert_('photos', 'photoId', { photoId: r.photoId, state: '削除' }); });   // 略図は1枚だけ（描き直したら前のものは消す）
+    if (p.slot === 'sketch' || p.slot === 'map') jkRows_('photos').forEach(function (r) { if (r.caseId === owner && r.slot === p.slot && r.state !== '削除') jkUpsert_('photos', 'photoId', { photoId: r.photoId, state: '削除' }); });   // 略図・位置図は1枚だけ   // 略図は1枚だけ（描き直したら前のものは消す）
     jkUpsert_('photos', 'photoId', { photoId: String(p.photoId), caseId: owner, slot: p.slot || 'other', caption: String(p.caption || '').slice(0, 200), takenAt: p.takenAt || '', lat: p.lat == null ? '' : p.lat, lng: p.lng == null ? '' : p.lng,
-      by: me.disp, at: now_(), inPdf: p.slot === 'sketch' || p.slot === 'doc' ? '×' : '○', share: JK_SHARE_SLOTS.indexOf(p.slot) >= 0, state: '', fileId: file.getId(), rawFileId: rawId, url: file.getUrl(), mime: mime });
+      by: me.disp, at: now_(), inPdf: ['sketch', 'doc', 'map'].indexOf(p.slot) >= 0 ? '×' : '○', share: JK_SHARE_SLOTS.indexOf(p.slot) >= 0, state: '', fileId: file.getId(), rawFileId: rawId, url: file.getUrl(), mime: mime });
     return { ok: true, fileId: file.getId() };
   });
 }

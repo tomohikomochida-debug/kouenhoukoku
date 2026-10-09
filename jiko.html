@@ -188,6 +188,7 @@ nav.tabs .badge{position:absolute;top:3px;left:calc(50% + 8px);background:var(--
 <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
 <input type="file" id="fileLib" accept="image/*" multiple hidden>
 <input type="file" id="fileDoc" accept="image/*,application/pdf" multiple hidden>
+<input type="file" id="fileShot" accept="image/*" hidden>
 
 <script>
 /* =========================================================
@@ -253,7 +254,7 @@ const ROUSAI_STAGES = ['受診', '書類提出', '休業補償の申請', '職�
 const LICENSES = [['普通', 1], ['準中型（5t限定）', 2], ['準中型', 3], ['中型（8t限定）', 4], ['中型', 5], ['大型', 6]];
 const licRank = n => (LICENSES.find(l => l[0] === n) || [0, 0])[1];
 const SLOT_JA = { scene: '全景', own_far: '自社の損傷（引き）', own_near: '自社の損傷（寄り）', their_far: '相手側（引き）', their_near: '相手側（寄り）', detail: '損傷の詳細', plate: '相手のナンバー',
-  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', police: '警察の名刺・メモ', doc: '書類', hiyari: 'ヒヤリハット' };
+  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', police: '警察の名刺・メモ', doc: '書類', map: '位置図', hiyari: 'ヒヤリハット' };
 
 /* ---------------- 小道具 ---------------- */
 const $ = s => document.querySelector(s);
@@ -658,6 +659,9 @@ function renderForm() {
       ${lbl('場所', 1)}<div class="row2" style="margin-bottom:6px"><button type="button" class="btn sm" id="geoBtn">📍 今いる場所を入れる</button>${pl.lat ? `<a class="btn sm" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${pl.lat},${pl.lng}">🗺 地図で見る</a>` : ''}</div>
       ${inp('place.address', '例：川崎市高津区○○ ○○交差点の手前')}
       ${pl.lat ? `<p class="hint">位置を記録しました（誤差 約${Math.round(pl.acc || 0)}m）</p>` : ''}
+      ${lbl('位置図（地図に場所の印）')}<p class="hint" style="margin-top:0">地図を拡大・縮小して範囲を決め、事故の場所に📍を置いた図を残します（報告書PDFに載ります）</p>
+      <div class="row2"><button type="button" class="btn sm" id="mapBtn">🗺 地図で場所を示す</button><button type="button" class="btn sm" id="mapShotBtn">🖼 Googleマップのスクショから</button></div>
+      ${(() => { const m = photosOf(dr.id, 'map')[0]; return m ? `<div class="thumbs">${thumbHtml(m)}</div><p class="hint">位置図は1枚です。作り直すと入れ替わります</p>` : ''; })()}
       ${lbl('目印')}${inp('place.note', '交差点名・電柱の番号・お店の名前など')}
       ${car ? lbl('場所の種類') + chips('place.type', PLACE_TYPES, {}) : ''}
       ${car && (d.car || {}).purpose === ONSITE ? '<p class="hint">街路樹の現場など、道路の上で作業していたときは「公道」を選んでください（警察への届け出が必要です）</p>' : ''}
@@ -861,6 +865,8 @@ function bindForm() {
     if (t.dataset.mic) return toggleMic(t.dataset.mic, t);
     if (t.dataset.airevert) { const k = t.dataset.airevert, d = dr.data; if (d.aiRaw && d.aiRaw[k] != null) { setP(d, k, d.aiRaw[k]); delete d.aiRaw[k]; touchDraft(); renderForm(); } return; }
     if (t.id === 'sketchBtn') return openSketch();
+    if (t.id === 'mapBtn') return openMapPicker(dr.id);
+    if (t.id === 'mapShotBtn') return pickMapShot(dr.id);
     if (t.dataset.skcam || t.dataset.sklib) return pickPhoto('sketch', !!t.dataset.skcam, dr.id, async () => { await keepLatestSketch(dr.id); renderForm(); });
     if (t.id === 'discardBtn') return discardDraft();
     if (t.closest('.th')) return photoMenu(t.closest('.th').dataset.pid, dr.id);
@@ -938,6 +944,7 @@ function pickPhoto(slot, cam, caseId, cb) {
   const el = cam ? $('#fileCam') : (slot === 'doc' ? $('#fileDoc') : $('#fileLib')); el.value = ''; el.click();
   if (cam) getGeo(true);
 }
+$('#fileShot').addEventListener('change', e => { const f = (e.target.files || [])[0]; if (f && mapShotCase) openPinEditor(f, mapShotCase).catch(err => toast(err.message)); });
 ['#fileCam', '#fileLib', '#fileDoc'].forEach(sel => $(sel).addEventListener('change', async e => {
   const files = Array.from(e.target.files || []); if (!files.length || !pickCase) return;
   toast('写真を入れています…');
@@ -1085,14 +1092,125 @@ function toggleMic(path, btn, el) {
 
 /* --- 略図 --- */
 /* 略図は1枚だけ：新しく描いた・撮ったものを残し、前のものは消す（送ってあったものはサーバーでも消える） */
-async function keepLatestSketch(caseId) {
-  const loc = S.localPhotos.filter(p => p.caseId === caseId && p.slot === 'sketch' && !p.removed).sort((a, b) => a.photoId > b.photoId ? 1 : -1);
+async function keepLatestSketch(caseId) { return keepLatestSlot(caseId, 'sketch', '位置関係の略図（手書き）'); }
+async function keepLatestSlot(caseId, slot, defCaption) {
+  const loc = S.localPhotos.filter(p => p.caseId === caseId && p.slot === slot && !p.removed).sort((a, b) => a.photoId > b.photoId ? 1 : -1);
   const newest = loc[loc.length - 1]; if (!newest) return;
-  newest.caption = newest.caption || '位置関係の略図（手書き）'; await DB.pput(newest);
+  newest.caption = newest.caption || defCaption || ''; await DB.pput(newest);
   for (const p of loc.slice(0, -1)) { if (p.sent) api('photoMeta', { photoId: p.photoId, remove: true }).catch(() => {}); await DB.pdel(p.photoId); }
-  S.localPhotos = S.localPhotos.filter(p => !(p.caseId === caseId && p.slot === 'sketch' && p !== newest));
+  S.localPhotos = S.localPhotos.filter(p => !(p.caseId === caseId && p.slot === slot && p !== newest));
   const c = caseById(caseId);
-  if (c && c.photos) { c.photos.filter(p => p.slot === 'sketch' && p.photoId !== newest.photoId).forEach(p => api('photoMeta', { photoId: p.photoId, remove: true }).catch(() => {})); c.photos = c.photos.filter(p => p.slot !== 'sketch'); }
+  if (c && c.photos) { c.photos.filter(p => p.slot === slot && p.photoId !== newest.photoId).forEach(p => api('photoMeta', { photoId: p.photoId, remove: true }).catch(() => {})); c.photos = c.photos.filter(p => p.slot !== slot); }
+}
+
+/* --- 位置図：地図を拡大・縮小して範囲を決め、真ん中の📍を事故の場所に合わせて画像にする（国土地理院の地図）／Googleマップのスクショに📍を置く --- */
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'; document.head.appendChild(css);
+  return loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');
+}
+const GSI_TILES = { std: { url: 'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', name: '地図', max: 18 }, photo: { url: 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', name: '航空写真', max: 18 } };
+function drawPin(x, px, py, s) {   // 赤いピン＋「事故の場所」
+  x.save(); x.translate(px, py); x.scale(s, s);
+  x.fillStyle = '#D93025'; x.strokeStyle = '#fff'; x.lineWidth = 3;
+  x.beginPath(); x.moveTo(0, 0); x.bezierCurveTo(-6, -14, -18, -22, -18, -36); x.arc(0, -36, 18, Math.PI, 0); x.bezierCurveTo(18, -22, 6, -14, 0, 0); x.closePath(); x.fill(); x.stroke();
+  x.fillStyle = '#fff'; x.beginPath(); x.arc(0, -36, 7, 0, Math.PI * 2); x.fill();
+  x.font = `bold 15px ${FONT}`; const t = '事故の場所', tw = x.measureText(t).width;
+  x.fillStyle = 'rgba(217,48,37,.95)'; x.fillRect(22, -50, tw + 14, 24); x.fillStyle = '#fff'; x.textBaseline = 'middle'; x.fillText(t, 29, -38);
+  x.restore();
+}
+async function saveMapImage(caseId, canvas, caption, lat, lng) {
+  const blob = await new Promise(ok => canvas.toBlob(ok, 'image/jpeg', 0.9));
+  const p = { photoId: 'P' + Date.now().toString(36) + rid(), caseId, slot: 'map', caption, takenAt: nowStr(), lat: lat == null ? '' : lat, lng: lng == null ? '' : lng, blob, raw: null, sent: false, at: nowStr() };
+  await DB.pput(p); S.localPhotos.push(p); await keepLatestSlot(caseId, 'map', '位置図');
+}
+async function openMapPicker(caseId) {
+  const dr = S.drafts[caseId], pl = (dr && dr.data.place) || {};
+  if (!navigator.onLine) { toast('地図は電波があるときに使えます。あとで作り直せます', 3500); return; }
+  try { await loadLeaflet(); } catch (e) { toast(e.message); return; }
+  $('#modal').dataset.lock = '1';
+  openModal(`<h3>🗺 位置図をつくる</h3><p class="hint" style="margin-top:0">事故の場所が真ん中の📍に来るように地図を動かし、拡大・縮小して見せたい範囲を決めてください</p>
+    <div style="position:relative;aspect-ratio:4/3;max-height:62vh;border-radius:10px;overflow:hidden;border:1px solid var(--line)"><div id="pkMap" style="position:absolute;inset:0"></div>
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);font-size:40px;line-height:1;pointer-events:none;z-index:500;filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))">📍</div></div>
+    <div class="row2" style="margin-top:8px"><button type="button" class="btn sm" id="pkHere">📍 今いる場所へ</button><button type="button" class="btn sm" id="pkKind">🛰 航空写真にする</button></div>
+    <div class="row2" style="margin-top:10px"><button type="button" class="btn" id="pkCancel">やめる</button><button type="button" class="btn primary" id="pkTake">この範囲で位置図にする</button></div>
+    <p class="hint">地図：国土地理院</p>`);
+  let kind = 'std';
+  const start = pl.lat ? [pl.lat, pl.lng] : (lastGeo ? [lastGeo.lat, lastGeo.lng] : [35.5943, 139.596]);
+  const map = L.map('pkMap', { zoomControl: true, attributionControl: false }).setView(start, 17);
+  let layer = L.tileLayer(GSI_TILES[kind].url, { maxZoom: 19, maxNativeZoom: 18 }).addTo(map);
+  setTimeout(() => map.invalidateSize(), 200);
+  if (!pl.lat) navigator.geolocation && navigator.geolocation.getCurrentPosition(pos => map.setView([pos.coords.latitude, pos.coords.longitude], 17), () => {}, { enableHighAccuracy: true, timeout: 10000 });
+  const close = () => { delete $('#modal').dataset.lock; map.remove(); closeModal(); };
+  $('#pkCancel').onclick = close;
+  $('#pkHere').onclick = () => navigator.geolocation && navigator.geolocation.getCurrentPosition(pos => map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 17)), () => toast('位置がとれませんでした'), { enableHighAccuracy: true, timeout: 10000 });
+  $('#pkKind').onclick = () => { kind = kind === 'std' ? 'photo' : 'std'; map.removeLayer(layer); layer = L.tileLayer(GSI_TILES[kind].url, { maxZoom: 19, maxNativeZoom: 18 }).addTo(map); $('#pkKind').textContent = kind === 'std' ? '🛰 航空写真にする' : '🗺 地図にする'; };
+  $('#pkTake').onclick = async () => {
+    const btn = $('#pkTake'); btn.disabled = true; btn.innerHTML = '<span class="loading"></span> 位置図にしています';
+    try {
+      const cv = await mapToCanvas(map, kind);
+      const ctr = map.getCenter();
+      await saveMapImage(caseId, cv, '位置図（' + GSI_TILES[kind].name + '）', +ctr.lat.toFixed(6), +ctr.lng.toFixed(6));
+      if (dr) {   // 真ん中の位置を事故の場所として記録（住所が空なら調べて入れる）
+        const pl2 = dr.data.place || (dr.data.place = {});
+        pl2.lat = +ctr.lat.toFixed(6); pl2.lng = +ctr.lng.toFixed(6); pl2.acc = '';
+        if (!pl2.address) { try { const j = await api('address', { lat: pl2.lat, lng: pl2.lng }, 15000); if (j.ok && j.address) pl2.address = j.address; } catch (e) {} }
+        touchDraft();
+      }
+      close(); if (curDraft()) renderForm(); else if (S.view && S.view.name === 'case') renderCase(caseId); sync(); toast('位置図を入れました');
+    } catch (e) { btn.disabled = false; btn.textContent = 'この範囲で位置図にする'; toast(e.message, 4500); }
+  };
+}
+const wmPx = (lat, lng, z) => { const n = 256 * Math.pow(2, z), s = Math.sin(lat * Math.PI / 180); return { x: (lng + 180) / 360 * n, y: (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n }; };
+async function mapToCanvas(map, kind) {
+  const b = map.getBounds(), z = Math.min(GSI_TILES[kind].max, Math.round(map.getZoom()));
+  const p0 = wmPx(b.getNorth(), b.getWest(), z), p1 = wmPx(b.getSouth(), b.getEast(), z);
+  const x0 = Math.floor(p0.x), y0 = Math.floor(p0.y), W = Math.ceil(p1.x) - x0, H = Math.ceil(p1.y) - y0;
+  const f = Math.max(1, Math.min(3, 1400 / Math.max(W, H)));
+  const c = document.createElement('canvas'); c.width = Math.round(W * f); c.height = Math.round(H * f);
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.imageSmoothingQuality = 'high';
+  const tiles = []; for (let tx = Math.floor(x0 / 256); tx <= Math.floor((x0 + W) / 256); tx++) for (let ty = Math.floor(y0 / 256); ty <= Math.floor((y0 + H) / 256); ty++) tiles.push([tx, ty]);
+  let bad = 0;
+  await Promise.all(tiles.map(([tx, ty]) => new Promise(res => { const im = new Image(); im.crossOrigin = 'anonymous';
+    im.onload = () => { x.drawImage(im, (tx * 256 - x0) * f, (ty * 256 - y0) * f, 256 * f, 256 * f); res(); }; im.onerror = () => { bad++; res(); };
+    im.src = GSI_TILES[kind].url.replace('{z}', z).replace('{x}', tx).replace('{y}', ty); })));
+  if (bad >= tiles.length) throw new Error('地図を取れませんでした（電波を確かめてください）');
+  const ctr = map.getCenter(), cp = wmPx(ctr.lat, ctr.lng, z), s = Math.max(c.width, c.height) / 650;
+  drawPin(x, (cp.x - x0) * f, (cp.y - y0) * f, Math.max(1, s));
+  // 縮尺の目安（50m・100m・200m…からちょうどよい長さ）と方角・出典
+  const mpp = 156543.03392 * Math.cos(ctr.lat * Math.PI / 180) / Math.pow(2, z) / f;
+  const target = c.width * 0.22 * mpp, steps = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000], len = steps.find(v => v >= target) || 5000, px = len / mpp;
+  const fs = Math.round(14 * Math.max(1, s));
+  x.font = `bold ${fs}px ${FONT}`; x.fillStyle = 'rgba(255,255,255,.88)'; x.fillRect(10, c.height - fs * 2.6, px + 70 * Math.max(1, s), fs * 2.2);
+  x.fillStyle = '#222'; x.fillRect(18, c.height - fs * 1.3, px, Math.max(3, fs / 4)); x.fillText(len >= 1000 ? (len / 1000) + 'km' : len + 'm', 24 + px, c.height - fs * 1.0);
+  x.fillStyle = 'rgba(255,255,255,.88)'; x.fillRect(c.width - fs * 2.6, 10, fs * 2.2, fs * 2.6); x.fillStyle = '#222'; x.textAlign = 'center'; x.fillText('N', c.width - fs * 1.5, 10 + fs * 1.2); x.fillText('↑', c.width - fs * 1.5, 10 + fs * 2.3); x.textAlign = 'left';
+  const cr = '出典：国土地理院'; x.font = `${Math.round(fs * 0.8)}px ${FONT}`; const tw = x.measureText(cr).width;
+  x.fillStyle = 'rgba(255,255,255,.85)'; x.fillRect(c.width - tw - 16, c.height - fs * 1.6, tw + 12, fs * 1.4); x.fillStyle = '#333'; x.fillText(cr, c.width - tw - 10, c.height - fs * 0.5);
+  try { c.toDataURL('image/jpeg', 0.5); } catch (e) { throw new Error('この端末では地図を画像にできませんでした。「Googleマップのスクショから」を使ってください'); }
+  return c;
+}
+/* Googleマップなどのスクショを取り込み、事故の場所をタップして📍を置く */
+let mapShotCase = null;
+function pickMapShot(caseId) { mapShotCase = caseId; const el = $('#fileShot'); el.value = ''; el.click(); }
+async function openPinEditor(file, caseId) {
+  const url = URL.createObjectURL(file);
+  const img = await new Promise((ok, ng) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ng(new Error('画像を開けません')); i.src = url; });
+  const r = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight)), W = Math.round(img.naturalWidth * r), H = Math.round(img.naturalHeight * r);
+  let pin = null;
+  $('#modal').dataset.lock = '1';
+  openModal(`<h3>📍 事故の場所をタップ</h3><p class="hint" style="margin-top:0">取り込んだ地図の、事故が起きた所をタップしてください（もう一度タップすると動かせます）</p>
+    <div class="sketch-wrap"><canvas id="peC" width="${W}" height="${H}"></canvas></div>
+    <div class="row2" style="margin-top:10px"><button type="button" class="btn" id="peCancel">やめる</button><button type="button" class="btn primary" id="peSave" disabled>この位置図にする</button></div>`);
+  const cv = $('#peC'), x = cv.getContext('2d');
+  const draw = () => { x.drawImage(img, 0, 0, W, H); if (pin) drawPin(x, pin[0], pin[1], Math.max(1, Math.max(W, H) / 650)); };
+  draw();
+  cv.addEventListener('pointerdown', e => { const b = cv.getBoundingClientRect(); pin = [(e.clientX - b.left) * W / b.width, (e.clientY - b.top) * H / b.height]; draw(); $('#peSave').disabled = false; });
+  const close = () => { delete $('#modal').dataset.lock; URL.revokeObjectURL(url); closeModal(); };
+  $('#peCancel').onclick = close;
+  $('#peSave').onclick = async () => {
+    await saveMapImage(caseId, cv, '位置図（取り込んだ地図）');
+    close(); if (curDraft()) renderForm(); else if (S.view && S.view.name === 'case') renderCase(caseId); sync(); toast('位置図を入れました');
+  };
 }
 function openSketch() {
   const dr = curDraft();
@@ -1544,7 +1662,7 @@ function renderSettings() {
 const FONT = "'Hiragino Kaku Gothic ProN','Hiragino Sans','Noto Sans JP','Yu Gothic',Meiryo,sans-serif";
 function loadScript(src) { return new Promise((ok, ng) => { if (document.querySelector(`script[src="${src}"]`)) return ok(); const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ng(new Error('部品を読み込めませんでした（電波を確かめてください）')); document.head.appendChild(s); }); }
 function openPdf(c) {
-  const ps = photosOf(c.id).filter(p => p.slot !== 'sketch' && p.slot !== 'doc'), st = S.settings || {}, full = st.full || {}, comp = Object.assign({}, COMPANY_DEFAULT, full.company || st.company || {});
+  const ps = photosOf(c.id).filter(p => !['sketch', 'doc', 'map'].includes(p.slot)), st = S.settings || {}, full = st.full || {}, comp = Object.assign({}, COMPANY_DEFAULT, full.company || st.company || {});
   const d = c.data || {}, ins = (c.boss || {}).insurerCall || {};
   const vid = (d.car || {}).vehicleId, vSet = (full.vehicles || {})[vid] || {}, fl = (full.insurance || {}).auto || {};
   const vIns = d.kind === 'car' ? (vid && vid !== '__other' ? { policy: (vSet.policy || fl.policy || '') + (vSet.fleetNo ? '（明細 ' + vSet.fleetNo + '）' : '') } : {}) : ((full.insurance || {}).work || {});
@@ -1660,7 +1778,19 @@ async function buildPdfPages(c, o, prog) {
   y += 6;
   text('下記のとおり、事故の状況をご報告いたします。', MG, y + 34, 22); y += 50;
 
-  reportRows(d).forEach(([t, rows]) => { section(t); rows.forEach(([k, v]) => row(k, v)); });
+  const mapPh = photosOf(c.id, 'map')[0];
+  for (const [t, rows] of reportRows(d)) {
+    section(t); rows.forEach(([k, v]) => row(k, v));
+    if (t === '発生日時・場所' && mapPh) {
+      try {
+        prog && prog('位置図を読み込んでいます…');
+        const img = await blobToImg(await photoBlob(mapPh.photoId));
+        const bh = Math.min(640, W * img.naturalHeight / img.naturalWidth);
+        ensure(bh + 60); text('位置図', MG, y + 30, 21, { bold: true, color: '#333' }); y += 40;
+        x.strokeStyle = '#9AA59C'; x.lineWidth = 1.5; x.strokeRect(MG, y, W, bh + 16); fit(x, img, MG + 8, y + 8, W - 16, bh); y += bh + 16;
+      } catch (e) {}
+    }
+  }
   if (d.story) { section('事故の経緯'); row('経緯', d.story); }
 
   /* 略図 */
