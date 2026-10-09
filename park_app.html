@@ -76,6 +76,7 @@
   .pkMatch.ok{background:#163428;color:#3ecf8e;border:1px solid #2b6b4c}.pkMatch.ng{background:#4a2a12;color:#ffb547;border:1px solid #8a5a20}
   .pkMatchNu{font-size:12px;margin-top:4px;font-weight:700}.pkMatchNu.ok{color:#3ecf8e}.pkMatchNu.ng{color:#ffb547;text-decoration:underline}
 input.kpIn{cursor:pointer;caret-color:transparent}
+.rcMark{color:#3ecf8e;font-weight:700}
 .slTop{margin-bottom:8px;font-size:15px}.slTop small{display:block;color:var(--mut);font-size:11px;margin-top:3px;font-weight:400}
   .ngT{color:#ff9f7a}.okT{color:#3ecf8e}
   .rlTbl{width:100%;border-collapse:collapse;font-size:13px}.rlTbl th{font-size:11px;color:var(--mut);font-weight:400;text-align:left;padding:4px}
@@ -2446,7 +2447,8 @@ async function cloudSaveQuiet(){
   const d=await cloudPost({mode:'save',id:state.cloudId||null,ver:state.cloudId?state.cloudVer:null,park:payload.park,contract:payload.contract,
       order:payload.order,date:payload.date,figures:state.features.length,json:JSON.stringify(payload)});
   if(!d.ok) throw new Error(d.error||'保存できませんでした');
-  state.cloudId=d.id; state.cloudVer=d.ver; return d;
+  state.cloudId=d.id; state.cloudVer=d.ver; recPut(d.id,d.ver,JSON.stringify(Object.assign({},payload,{cloudId:d.id,cloudVer:d.ver})));
+  return d;
 }
 function pickUnsent(){ return pickFeats().filter(f=>(!!f.shoot)!==(!!f.shootSent)).length; }
 /* 撮る木を工事写真へ送る本体（図面の保存もする）。うまくいけば GAS の返事、だめなら例外 */
@@ -3423,6 +3425,7 @@ $('cloudSave').onclick=async()=>{
         order:payload.order,date:payload.date,figures:state.features.length,json:JSON.stringify(payload)});
     if(!d.ok) throw new Error(/unknown/.test(d.error||'')?'共通GASの更新がまだです（数分で反映されます）':(d.error||'保存できませんでした'));
     state.cloudId=d.id; state.cloudVer=d.ver; setTimeout(loadShots,500);
+    { const pj=Object.assign({},payload,{cloudId:d.id,cloudVer:d.ver}); recPut(d.id,d.ver,JSON.stringify(pj)); }
     let sendNote='';
     if(pickUnsent()>0){ try{ const j=await sendPickedCore(); sendNote='\n\n📤 撮る木も工事写真へ送りました（新しく '+j.added+' 本・か所'+(j.removed?'・外した '+j.removed:'')+'）'; }
       catch(err){ sendNote='\n\n⚠ 撮る木を工事写真へ送れませんでした：'+(err&&err.message||err); } renderPickBar(); draw(); }
@@ -3433,6 +3436,15 @@ $('cloudSave').onclick=async()=>{
   }finally{ b.firstChild.textContent=label; b.disabled=false; }
 };
 let cloudItems=[], cloudQ='';
+/* 開いた記録・保存した記録の控え（端末の中）。版が同じなら、クラウドから読み直さずにすぐ開く。新しい12件まで */
+function recDB(){ return new Promise((res,rej)=>{ const r=indexedDB.open('park_rec_cache',1); r.onupgradeneeded=()=>r.result.createObjectStore('r'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function recGet(id){ try{ const db=await recDB(); return await new Promise(res=>{ const q=db.transaction('r','readonly').objectStore('r').get(id); q.onsuccess=()=>res(q.result||null); q.onerror=()=>res(null); }); }catch(e){ return null; } }
+async function recPut(id,ver,data){
+  try{ const db=await recDB(); await new Promise(res=>{ const t=db.transaction('r','readwrite'); t.objectStore('r').put({ver:Number(ver)||1,data,t:Date.now()},id); t.oncomplete=res; t.onerror=res; });
+    // 古い控えを消す（新しい12件だけ残す）
+    const all=await new Promise(res=>{ const out=[]; const q=db.transaction('r','readonly').objectStore('r').openCursor(); q.onsuccess=()=>{ const c=q.result; if(c){ out.push([c.key,c.value.t]); c.continue(); } else res(out); }; q.onerror=()=>res(out); });
+    if(all.length>12){ all.sort((a,b)=>b[1]-a[1]); const t=db.transaction('r','readwrite'); all.slice(12).forEach(([k])=>t.objectStore('r').delete(k)); }
+  }catch(e){} }
 function drawCloudList(){
   const q=cloudQ.trim().toLowerCase();
   const list=cloudItems.filter(it=>!q||[it.park,it.contract,it.order,it.date,it.by].join(' ').toLowerCase().includes(q));
@@ -3440,9 +3452,10 @@ function drawCloudList(){
       '<div class="item" data-id="'+esc(it.id)+'"><div><div class="nm">'+esc(it.park||'（名前なし）')
       +(it.date?('　<span style="color:var(--acc)">'+esc(it.date)+'</span>'):'')+(it.id===state.cloudId?'　<span style="color:var(--acc)">（開いている）</span>':'')+'</div>'
       +'<div class="sb">更新 '+esc(it.updated||'')+(it.by?('　'+esc(it.by)):'')+(it.figures?('　図形 '+it.figures+'件'):'')
-      +(it.order?('　指示 '+esc(it.order)):'')+'</div></div>'
+      +(it.order?('　指示 '+esc(it.order)):'')+(it.size?('　'+esc(it.size)):'')+'<span class="rcMark" data-rc="'+esc(it.id)+'"></span></div></div>'
       +'<div class="go">開く →</div><button class="del" data-del="'+esc(it.id)+'" title="消す">🗑</button></div>').join('')
     :'<div class="legend">'+(cloudItems.length?'見つかりません。':'まだ保存された公園がありません。')+'</div>';
+  markCached(list);
   Array.prototype.forEach.call($('cloudList').querySelectorAll('[data-del]'),b=>{
     b.onclick=async e=>{
       e.stopPropagation();
@@ -3459,27 +3472,43 @@ function drawCloudList(){
   Array.prototype.forEach.call($('cloudList').querySelectorAll('.item'),el=>{
     el.onclick=async()=>{
       if(state.features.length && !confirm('いま記録している内容を置きかえます。よろしいですか。')) return;
-      $('cloudBody').innerHTML='<div class="legend">開いています…</div>';
+      const id=el.getAttribute('data-id'), it=cloudItems.find(x=>x.id===id)||{};
+      const c=await recGet(id);
+      if(c&&c.data&&Number(c.ver)===Number(it.ver||1)){   // 端末の控えと同じ版 → ダウンロードせずに開く
+        applyParkJson(c.data); state.cloudId=id; state.cloudVer=Number(c.ver); cloudBox(false); recPut(id,c.ver,c.data); return;
+      }
+      $('cloudBody').innerHTML='<div class="legend">開いています…（はじめて開く記録・更新された記録はダウンロードします）</div>';
       try{
-        const g=await cloudGet('get','&id='+encodeURIComponent(el.getAttribute('data-id')));
+        const g=await cloudGet('get','&id='+encodeURIComponent(id));
         if(!g.ok) throw new Error(g.error||'読み込めませんでした');
         applyParkJson(g.data);
-        state.cloudId=el.getAttribute('data-id'); state.cloudVer=g.item?g.item.ver:state.cloudVer;
+        state.cloudId=id; state.cloudVer=g.item?g.item.ver:state.cloudVer;
+        recPut(id,state.cloudVer||1,g.data);
         cloudBox(false);
       }catch(e){ $('cloudBody').innerHTML='<div class="legend">'+esc(String(e&&e.message||e))+'</div>'; }
     };
   });
 }
+async function markCached(list){   // 端末に同じ版の控えがある記録に「⚡すぐ開く」
+  for(const it of list.slice(0,60)){ const c=await recGet(it.id), el=document.querySelector('[data-rc="'+it.id+'"]'); if(el&&c&&Number(c.ver)===Number(it.ver||1)) el.textContent='　⚡すぐ開く'; }
+}
+function cloudListShow(note){
+  $('cloudBody').innerHTML=(note?`<div class="legend" style="margin-bottom:6px">${note}</div>`:'')+(cloudItems.length>6?'<input id="cloudQ" placeholder="🔍 公園名・日付・名前でさがす" style="width:100%;margin-bottom:8px">':'')+'<div id="cloudList"></div>';
+  const qi=$('cloudQ'); if(qi){ qi.value=cloudQ; qi.oninput=()=>{ cloudQ=qi.value; drawCloudList(); }; }
+  drawCloudList();
+}
 $('cloudOpen').onclick=async()=>{
-  cloudBox(true,'みんなの公園（共有）'); $('cloudBody').innerHTML='<div class="legend">読み込み中…</div>';
+  cloudBox(true,'みんなの公園（共有）');
+  let old=null; try{ old=JSON.parse(localStorage.getItem('park_cloud_list')||'null'); }catch(e){}
+  if(old&&old.length){ cloudItems=old; cloudListShow('🔄 最新の一覧を読み込んでいます…（前回の一覧を出しています）'); }
+  else $('cloudBody').innerHTML='<div class="legend">読み込み中…</div>';
   try{
     const d=await cloudGet('list');
     if(!d.ok) throw new Error(/unknown/.test(d.error||'')?'共通GASの更新がまだです（数分で反映されます）':(d.error||'一覧を取れませんでした'));
-    cloudItems=d.items||[];
-    $('cloudBody').innerHTML=(cloudItems.length>6?'<input id="cloudQ" placeholder="🔍 公園名・日付・名前でさがす" style="width:100%;margin-bottom:8px">':'')+'<div id="cloudList"></div>';
-    const qi=$('cloudQ'); if(qi){ qi.value=cloudQ; qi.oninput=()=>{ cloudQ=qi.value; drawCloudList(); }; }
-    drawCloudList();
-  }catch(e){ $('cloudBody').innerHTML='<div class="legend">一覧を取れませんでした。'+esc(String(e&&e.message||e))+'</div>'; }
+    cloudItems=d.items||[]; try{ localStorage.setItem('park_cloud_list',JSON.stringify(cloudItems.slice(0,200))); }catch(e){}
+    if(!$('cloudBox').classList.contains('on')) return;
+    cloudListShow('');
+  }catch(e){ if(old&&old.length) cloudListShow('⚠ 最新の一覧を取れませんでした（前回の一覧です）。'+esc(String(e&&e.message||e))); else $('cloudBody').innerHTML='<div class="legend">一覧を取れませんでした。'+esc(String(e&&e.message||e))+'</div>'; }
 };
 /* ---------- ファイルをドラッグ＆ドロップで開く ---------- */
 (function setupDrop(){

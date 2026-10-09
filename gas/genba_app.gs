@@ -1954,7 +1954,7 @@ function parkFolder_() {
   return folder;
 }
 function parkRow_(id) { var list = rows_('parks'); for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i]; return null; }
-function parkItem_(r) { return { id: r.id, park: r.park, contract: r.contract, order: r.order, date: r.date, figures: Number(r.figures) || 0, updated: r.updatedAt, by: r.updatedBy || r.by, ver: Number(r.ver) || 1, genzai: parkGenzaiList_(r.genzai) }; }
+function parkItem_(r) { return { id: r.id, park: r.park, contract: r.contract, order: r.order, date: r.date, figures: Number(r.figures) || 0, updated: r.updatedAt, by: r.updatedBy || r.by, ver: Number(r.ver) || 1, size: r.size || '', genzai: parkGenzaiList_(r.genzai) }; }
 /* 発生材に使った残材処分の記録。[{k:伝票のキー, kg, full:全量か, date}]。報告書に入れない設定なら空 */
 function parkGenzaiOf_(json) {
   try {
