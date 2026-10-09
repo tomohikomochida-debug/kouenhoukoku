@@ -402,6 +402,7 @@ function applyInit(j) {
 async function boot() {
   S.drafts = (await DB.get('drafts')) || {}; S.hyOut = (await DB.get('hyOut')) || [];
   S.localPhotos = await DB.pall();
+  for (const p of S.localPhotos) if (p.raw) { p.raw = null; p.rawPending = false; await DB.pput(p); }   // 以前の元データは送らない（重いため）
   const cache = lsGet('jiko_cache', null);
   if (cache && cache.me) { applyInit(cache); S.loaded = true; route(); }
   await refresh(!S.loaded);
@@ -963,7 +964,9 @@ $('#fileShot').addEventListener('change', e => { const f = (e.target.files || []
   if (pickCb) pickCb(); else if (curDraft()) renderForm();
   sync();
 }));
-async function resizeImage(file, max = 1600, q = 0.85) {
+/* 保存する写真の大きさ：長い辺1600px・JPEG（1枚300〜600KBほど）。へこみ・傷・ナンバーが読める十分な大きさ */
+const PHOTO_MAX = 1600, PHOTO_Q = 0.8;
+async function resizeImage(file, max = PHOTO_MAX, q = PHOTO_Q) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((ok, ng) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ng(new Error('画像を開けません')); i.src = url; });
@@ -981,7 +984,7 @@ async function addPhoto(file, slot, caseId, fromCam) {
   const blob = await resizeImage(file);
   const takenAt = fromCam ? nowStr() : (() => { const d = new Date(file.lastModified || Date.now()); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); })();
   const p = { photoId: 'P' + Date.now().toString(36) + rid(), caseId, slot, caption: slot === 'doc' ? (pickCaption || '') : '', takenAt, lat: fromCam && lastGeo ? lastGeo.lat : '', lng: fromCam && lastGeo ? lastGeo.lng : '',
-    blob, raw: file.size <= 12 * 1024 * 1024 ? file : null, rawMime: file.type || 'image/jpeg', sent: false, at: nowStr() };
+    blob, raw: null, sent: false, at: nowStr() };   // iPhoneの元の大きさの写真は重いので残さない（縮めた写真だけ保存・送信）
   await DB.pput(p); S.localPhotos.push(p);
   return p;
 }
@@ -1847,22 +1850,27 @@ async function buildPdfPages(c, o, prog) {
     } catch (e) {}
   }
 
-  /* 写真台帳（1ページに2枚） */
+  /* 写真台帳：A4 1枚に6枚（2列×3段）か9枚（3列×3段）。写真が6枚までなら大きめの2列 */
   const ph = o.photos || [];
-  for (let i = 0; i < ph.length; i += 2) {
+  const cols = ph.length <= 6 ? 2 : 3, rows = 3, per = cols * rows, gap = 18;
+  for (let i = 0; i < ph.length; i += per) {
     newPage();
-    text('写真台帳　報告番号 ' + (c.no || '') + '　（' + jaDate(d.date) + '）', MG, y + 26, 24, { bold: true }); y += 52;
-    const slotH = (bottom - y) / 2;
-    for (let k = 0; k < 2 && i + k < ph.length; k++) {
-      const p = ph[i + k], top = y + slotH * k, imgH = slotH - 110;
+    text('写真台帳　報告番号 ' + (c.no || '') + '　（' + jaDate(d.date) + '）', MG, y + 26, 24, { bold: true }); y += 50;
+    const cw = (W - gap * (cols - 1)) / cols, ch = (bottom - y - gap * (rows - 1)) / rows, capH = cols === 2 ? 86 : 76;
+    for (let k = 0; k < per && i + k < ph.length; k++) {
+      const p = ph[i + k], cx = MG + (k % cols) * (cw + gap), cy = y + Math.floor(k / cols) * (ch + gap), imgH = ch - capH - 12;
       prog && prog(`写真を読み込んでいます… ${i + k + 1} / ${ph.length}`);
-      x.strokeStyle = '#9AA59C'; x.lineWidth = 1.5; x.strokeRect(MG, top, W, slotH - 20);
-      try { const img = await blobToImg(await photoBlob(p.photoId)); fit(x, img, MG + 10, top + 10, W - 20, imgH); }
-      catch (e) { text('写真を読み込めませんでした', PW / 2, top + imgH / 2, 22, { align: 'center', color: '#999' }); }
-      const ty = top + imgH + 30;
-      text('No.' + (i + k + 1) + '　' + (SLOT_JA[p.slot] || '写真'), MG + 14, ty + 14, 23, { bold: true });
-      text('撮影 ' + (p.takenAt || ''), PW - MG - 14, ty + 14, 20, { align: 'right', color: '#444' });
-      if (p.caption) { font(21); text(wrapText(x, p.caption, W - 30)[0], MG + 14, ty + 50, 21, { color: '#222' }); }
+      x.strokeStyle = '#9AA59C'; x.lineWidth = 1.5; x.strokeRect(cx, cy, cw, ch);
+      x.fillStyle = '#F4F4F2'; x.fillRect(cx + 6, cy + 6, cw - 12, imgH);
+      try { const img = await blobToImg(await photoBlob(p.photoId)); fit(x, img, cx + 6, cy + 6, cw - 12, imgH); }
+      catch (e) { text('読み込めませんでした', cx + cw / 2, cy + imgH / 2, 18, { align: 'center', color: '#999' }); }
+      const ty = cy + imgH + 12, fs = cols === 2 ? 19 : 17;
+      font(fs, true); x.fillStyle = '#111'; x.textAlign = 'left';
+      x.fillText(wrapText(x, 'No.' + (i + k + 1) + ' ' + (SLOT_JA[p.slot] || '写真'), cw - 16)[0], cx + 8, ty + fs + 2);
+      font(fs - 2); x.fillStyle = '#333';
+      const capLine = wrapText(x, p.caption || '', cw - 16)[0] || '';
+      if (capLine) x.fillText(capLine, cx + 8, ty + fs * 2 + 6);
+      font(fs - 3); x.fillStyle = '#666'; x.fillText(p.takenAt ? '撮影 ' + p.takenAt : '', cx + 8, ty + fs * 3 + 8);
     }
   }
   /* ページ番号 */
