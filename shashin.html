@@ -354,6 +354,8 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
 #snack button{background:#f5b400;color:#222;border-radius:8px;padding:8px 12px;font-weight:700}
 #camMode{position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--safe-t) + 10px);background:#f5b400;color:#222;font-size:12px;font-weight:700;border-radius:99px;padding:6px 12px;display:none;white-space:nowrap}
 #camMode.on{display:block}
+.camRmt{position:absolute;right:62px;top:calc(var(--safe-t) + 10px);background:#1f7a46;color:#fff;font-size:12px;font-weight:700;border-radius:99px;padding:6px 10px}
+.camRmt.ng{background:#a05a00}
 @media (min-width:900px){
   .tcards{grid-template-columns:repeat(auto-fill,minmax(440px,1fr))}
   #selBar{left:50%;transform:translateX(-50%);width:560px;bottom:16px;border-radius:16px}
@@ -528,6 +530,7 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
   <div class="camTop">
     <button class="cbtn rot txt" id="camClose">一覧</button>
     <div id="camMode"></div>
+    <button id="camRmt" class="camRmt" style="display:none"></button>
     <button class="cbtn ham" id="camMenuBtn" aria-label="メニュー">≡</button>
   </div>
   <div class="camBottom">
@@ -550,6 +553,7 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
     <div class="seg2" id="cmAfter"><button data-a="list">一覧にもどる</button><button data-a="stay">続けて撮る</button></div>
     <button class="mi" id="cmInfo">位置・方位を画面に出す <small id="cmInfoV">出さない</small></button>
     <button class="mi" id="cmImport">撮った写真を取り込む <small>黒板を合成</small></button>
+    <button class="mi" id="cmRmt">📡 iPadとつなぐ（遠隔で撮る） <small id="cmRmtV">つないでいない</small></button>
     <button class="mi" id="cmNative">iPhoneのカメラで撮る <small>うまく写らないとき</small></button>
   </div>
   <!-- 黒板をタップしたとき -->
@@ -1616,7 +1620,8 @@ function itemForTree(siteId,rec,f){
 function nextStageOfItem(it){ const t=targets().find(x=>x.key==='I|'+it.id), st=curStages(); return st.find(s=>!(t&&t.done[s]>0)&&!shotLog[it.id]?.[s]) || st[0]; }
 
 /* 公園報告アプリから来たとき（shashin.html?from=park&park=…&fid=…） */
-async function handleParkLink(P){
+async function handleParkLink(P,opt){
+  opt=opt||{};
   const norm=s=>String(s||'').replace(/[\s　]/g,'');
   const name=P.get('park')||'', con=P.get('contract')||'';
   let c=sites.filter(s=>norm(s.name)===norm(name));
@@ -1624,11 +1629,10 @@ async function handleParkLink(P){
   if(c.length>1&&con){ const c2=c.filter(s=>norm(s.contract).includes(norm(con))||norm(con).includes(norm(s.contract))); if(c2.length) c=c2; }
   const s=c[0];
   if(!s){ toast(`「${name}」が現場マスタに見つかりません。現場をえらんでください`,4500); $('#btnPick').click(); return; }
-  openAlbum(s.id,infoKey(s,fyOf()),{camera:false});
+  if(!(opt.remote&&cur&&cur.id===s.id)) openAlbum(s.id,infoKey(s,fyOf()),{camera:false});
   const rec=P.get('rec')||'';
   if(rec) setParkRec(s.id,rec);
-  try{ sessionStorage.setItem('shashin_from_park','1'); }catch(e){}
-  drawParkBanner();
+  if(!opt.remote){ try{ sessionStorage.setItem('shashin_from_park','1'); }catch(e){} drawParkBanner(); }
   const f={ id:P.get('fid')||'', cat:P.get('cat')||'', kind:P.get('kind')||'', rank:P.get('rank')||'', C:Number(P.get('C'))||null, pt:{x:Number(P.get('x'))||0,y:Number(P.get('y'))||0} };
   const it=itemForTree(s.id,rec,f);
   shootItem(it.id,nextStageOfItem(it));
@@ -1782,6 +1786,62 @@ $('#mtView').onclick=()=>showZumen(!ZV.on);
 $('#mtArrows').onclick=()=>{ S.arrowAll=!S.arrowAll; saveAll(); updateMapTools(); if(ZV.on) drawZumen(); else renderMap(); toast(S.arrowAll?'撮った写真ぜんぶの矢印を出します':'矢印は工種・規格・測点ごとに1本です',1800); };
 $('#mtAlign').onclick=()=>{ if(geoOf(cur.id)&&!confirm('いまの合わせ方をやり直しますか？')) return; alignStart(); };
 window.addEventListener('resize',()=>{ if(ZV.on) drawZumen(); });
+
+/* =========================================================
+   📡 iPadとつなぐ（遠隔撮影）：iPadの公園報告で木をタップ → このiPhoneのカメラにその木の黒板
+   ・部屋番号（iPadに出る4けた）を1回入れれば、次からは自動でつながる
+   ・3秒ごとに共通GASを見に行く。電波が切れても、つながったときに「いちばん新しい指示」だけ開く（10分以内）
+   ========================================================= */
+let rmtTimer=null, rmtBusy=false, rmtJob=null;
+function rmtOn(){ return !!(S.remote&&S.remote.on&&S.remote.code); }
+function rmtStart(){ clearInterval(rmtTimer); if(!rmtOn()) return; rmtTimer=setInterval(rmtTick,3000); rmtTick(); updateRmtUI(); }
+function rmtStop(){ clearInterval(rmtTimer); rmtTimer=null; if(S.remote) S.remote.on=false; saveAll(); updateRmtUI(); }
+async function rmtTick(){
+  if(!rmtOn()||rmtBusy||document.hidden||!canSync()) return;
+  rmtBusy=true;
+  try{
+    const j=await gasGet({action:'remotePoll',code:S.remote.code,since:S.remote.last||''},8000);
+    S.remote.seenOk=Date.now(); updateRmtUI();
+    if(j.ok&&j.list&&j.list.length){
+      const l=j.list.sort((a,b)=>Number(a.id)-Number(b.id)), x=l[l.length-1];
+      S.remote.last=x.id; saveAll();
+      if(Date.now()-x.at<3*60*1000) await rmtOpen(x);      // 3分より前の指示は開かない（あとから急にカメラが変わらないように）
+    }
+  }catch(e){ S.remote.seenOk=0; updateRmtUI(); }
+  finally{ rmtBusy=false; }
+}
+async function rmtOpen(x){
+  const P=new URLSearchParams(x.req||{});
+  rmtJob={id:x.id,code:S.remote.code};
+  gasPost({mode:'remoteAck',code:S.remote.code,id:x.id,state:'got'}).catch(()=>{});
+  await handleParkLink(P,{remote:true});
+  if(navigator.vibrate) navigator.vibrate([60,40,60]);
+  toast(`📡 iPadから：${P.get('cat')||''}${P.get('rank')?' '+P.get('rank'):''}`,2500);
+}
+function rmtShot(p){
+  if(!rmtJob) return false;
+  const j=rmtJob; rmtJob=null;
+  gasPost({mode:'remoteAck',code:j.code,id:j.id,state:'shot',stage:p.stage||''}).catch(()=>{});
+  toast(`${p.stage||''}を撮りました。iPadでつぎの木をタップしてください`,3000);
+  return true;
+}
+function updateRmtUI(){
+  const on=rmtOn(), ok=on&&S.remote.seenOk&&Date.now()-S.remote.seenOk<15000;
+  const c=$('#camRmt'); if(c){ c.style.display=on?'':'none'; c.textContent=on?(ok?`📡 iPad ${S.remote.code}`:`📡 つながり待ち ${S.remote.code}`):''; c.classList.toggle('ng',on&&!ok); }
+  const v=$('#cmRmtV'); if(v) v.textContent=on?`つないでいる（${S.remote.code}）`:'つないでいない';
+}
+function rmtPair(){
+  if(rmtOn()){ if(confirm(`iPad（部屋番号 ${S.remote.code}）との つながりを切りますか？`)) rmtStop(); return; }
+  const c=prompt('iPadの公園報告に出ている「部屋番号」（4けた）を入れてください', (S.remote&&S.remote.code)||'');
+  if(c==null) return;
+  const code=String(c).replace(/\D/g,'');
+  if(!/^\d{4,6}$/.test(code)){ toast('4けたの数字を入れてください',2500); return; }
+  S.remote={code,on:true,last:String(Date.now()*100)}; saveAll();   // つないだ時より前の指示は開かない
+  rmtStart(); toast(`📡 iPad（${code}）とつなぎました。工事写真アプリを開いたままにしてください`,3500);
+}
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&rmtOn()) rmtTick(); });
+window.addEventListener('online',()=>{ if(rmtOn()) rmtTick(); });
+setInterval(updateRmtUI,5000);
 
 /* 点をタップしたとき：前・中・後（案件の撮り方）を選んで撮影 */
 let sheetItemId=null;
@@ -2723,6 +2783,7 @@ async function startStream(deviceId){
   video.srcObject=stream; await video.play().catch(()=>{});
 }
 async function openCamera(){
+  const keep = stream && stream.active && $('#camera').classList.contains('active');   // カメラを開いたまま黒板だけ変えるとき
   go('camera'); boardOn = boardOn ?? true;
   requestCompass();                       // iPhoneはボタン操作の直後でないと許可が出せない
   startGeo(); closeCamSheets();
@@ -2732,9 +2793,11 @@ async function openCamera(){
   if(hintUntil){ LS.set('shashin_hint',LS.get('shashin_hint',0)+1); setTimeout(drawOverlay,3600); }
   updateCamUI();
   try{
-    const saved=LS.get('shashin_lens',null);
-    await startStream(saved&&saved.deviceId);
-    await detectLenses();
+    if(!keep){
+      const saved=LS.get('shashin_lens',null);
+      await startStream(saved&&saved.deviceId);
+      await detectLenses();
+    }
   }catch(e){
     const why = !window.isSecureContext
       ? 'このページは「https://」のURLで開いていないため、画面内のカメラが使えません。'
@@ -2844,6 +2907,7 @@ function updateCamInfo(){
   el.innerHTML=parts.join('<br>');
 }
 function updateCamUI(){
+  if(typeof updateRmtUI==='function') updateRmtUI();
   if(cur&&$('#camStage')){ const s=curStage||boards[cur.id].stage||''; $('#camStage').textContent=`${s||'状況'} ▸`; }
   $('#cmBoardV').textContent=boardOn?'ON':'OFF';
   $('#cmInfoV').textContent=S.showInfo?'出す':'出さない';
@@ -2951,6 +3015,8 @@ $$('#cmOri [data-o]').forEach(b=>b.onclick=()=>{ S.oriMode=b.dataset.o; saveAll(
 $$('#cmAfter [data-a]').forEach(b=>b.onclick=()=>{ S.afterShot=b.dataset.a; saveAll(); updateCamUI(); });
 $('#cmInfo').onclick=()=>{ S.showInfo=!S.showInfo; saveAll(); updateCamUI(); };
 $('#cmImport').onclick=()=>{ closeCamSheets(); $('#fileIn').click(); };
+$('#cmRmt').onclick=()=>{ closeCamSheets(); rmtPair(); };
+$('#camRmt').onclick=()=>rmtPair();
 $('#cmNative').onclick=()=>{ closeCamSheets(); $('#capIn').click(); };
 
 $('#camClose').onclick=()=>{ camJob=null; updateCamMode(); go('album'); renderItems(); renderPhotos(); updateCheckBadge(); if($('#mapPane').classList.contains('on')) setTimeout(renderMap,50); if($('#check').classList.contains('on')) renderCheck(); };
@@ -2999,6 +3065,7 @@ $('#shutter').onclick=async()=>{
 function afterShot(p){
   const wasRetake=!!camJob; camJob=null; updateCamMode();
   if(!p) return;
+  if(rmtShot(p)&&!wasRetake) return;     // iPadから撮っているときは、カメラのまま次の指示を待つ
   if(S.afterShot!=='stay'||wasRetake){ selId=p.id; showList(); }
 }
 function updateCamMode(){ const m=$('#camMode'); m.textContent=camJob?`撮り直し：${camJob.stage||''}（前の写真と入れ替え）`:''; m.classList.toggle('on',!!camJob); }
@@ -3170,6 +3237,7 @@ $('#setCleanup').onclick=async()=>{
   loadStaff().then(()=>{ if(!me()) openSettings(); });
   loadParkMaster();
   const ready=pushInfos().then(()=>syncAll(true)); processQueue();
+  if(rmtOn()) ready.then(rmtStart);
   const P=new URLSearchParams(location.search);
   if(P.get('from')==='park'){ history.replaceState(null,'',location.pathname); ready.then(()=>handleParkLink(P)); }
 })();

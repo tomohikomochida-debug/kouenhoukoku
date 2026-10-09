@@ -48,6 +48,20 @@
   .mini button:hover{border-color:var(--blue)}
   canvas{display:block;background:#0b0e13;cursor:crosshair;touch-action:none}
   .stage{position:relative;overflow:hidden}
+.sdModal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px}
+  .sdModal.on{display:flex}
+  .sdCard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;width:min(460px,100%);max-height:92vh;overflow:auto;color:var(--ink)}
+  .sdCard h3{margin:0 0 12px;font-size:17px}.sdCard h3 small{display:block;font-size:12px;color:var(--mut);font-weight:400;margin-top:3px}
+  .sdBtn{display:block;width:100%;text-align:left;background:var(--panel2);border:2px solid var(--line);color:var(--ink);border-radius:10px;padding:12px;margin-bottom:8px;font-size:15px;font-weight:700;cursor:pointer}
+  .sdBtn small{display:block;color:var(--mut);font-size:12px;font-weight:400;margin-top:3px}
+  .sdBtn.on{border-color:#3ecf8e;background:#163428}
+  .sdBtn.sm{font-size:13px;padding:9px;text-align:center}.sdBtn.ok{background:#2f6b3f;border-color:#2f6b3f;text-align:center}
+  .sdCodeWrap{text-align:center;font-size:14px;color:var(--mut);margin:6px 0}.sdCodeWrap b{display:block;font-size:44px;letter-spacing:10px;color:#fff}
+  .sdHow{font-size:13px;line-height:1.7;color:var(--ink);background:var(--panel2);border-radius:8px;padding:10px;margin-bottom:10px}
+  .rmtStat{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:7;background:rgba(14,18,24,.92);color:#fff;border-radius:12px;padding:10px 14px;font-size:14px;font-weight:700;box-shadow:0 3px 12px #0008;max-width:92%;text-align:center}
+  .rmtStat small{display:block;font-weight:400;font-size:12px;color:#cfd8cf;margin-top:2px}
+  .rmtStat.ok{background:rgba(31,90,52,.95)}.rmtStat.ng{background:rgba(120,40,30,.95)}
+  .rmtBtns{display:flex;gap:6px;margin-top:8px;justify-content:center;flex-wrap:wrap}.rmtBtns button{background:#fff;color:#222;border:none;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:700}
   .subopts{margin:0 0 6px 12px;padding-left:8px;border-left:2px solid var(--line)}
   .gsiModal{position:fixed;inset:0;z-index:60;background:var(--bg);display:none;flex-direction:column}
   .gsiModal.on{display:flex}
@@ -664,6 +678,17 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
   </div>
 </div>
 
+<div class="sdModal" id="shootDevModal"><div class="sdCard">
+  <h3>撮影に使うカメラ<small>最初に1回えらべば、毎回は聞きません（あとから変えられます）</small></h3>
+  <button class="sdBtn" id="sdSelf">📷 この端末のカメラで撮る<small>木をタップすると、この端末で工事写真アプリのカメラが開きます</small></button>
+  <button class="sdBtn" id="sdPhone">📱 iPhoneで撮る（遠隔）<small>iPadは図面のまま。木をタップすると、iPhoneのカメラにその木の黒板が出ます</small></button>
+  <div id="sdPhoneBox" style="display:none">
+    <div class="sdCodeWrap">部屋番号 <b id="sdCode">0000</b></div>
+    <div class="sdHow">iPhoneで：工事写真アプリ → 撮影画面の <b>≡</b> →「<b>📡 iPadとつなぐ</b>」→ この番号を入れる。<br>つないだ後は、iPhoneは工事写真アプリを開いたまま（画面を消さない）にしておいてください。</div>
+    <div style="display:flex;gap:8px"><button class="sdBtn sm" id="sdNewCode">番号を作り直す</button><button class="sdBtn ok" id="sdPhoneOk">これで決める</button></div>
+  </div>
+  <button class="sdBtn sm" id="sdClose">閉じる</button>
+</div></div>
 <div class="gsiModal" id="gsiModal">
   <div class="gsiBar"><b id="gsiTitle">国土地理院の地図から図面を作る</b><button id="gsiClose">✕</button></div>
   <div class="gsiBar"><input id="gsiQ" placeholder="公園名・住所でさがす"><button id="gsiGo">さがす</button><button id="gsiHereBtn">📍現在地</button></div>
@@ -944,7 +969,7 @@ function updateHint(){
   if(tool==='cal')h.innerHTML='既知の長さの<b>一端を押して、もう一端までドラッグ</b>（タップ2回でもOK）。置いた点は<b>離さず動かせば微調整</b>できます。先に左の「実距離(m)」を合わせて。';
   else if(tool==='strip')h.innerHTML='＜幅刈り＞道や法面に沿って<b>端から順にタップ</b>→<b>「✓ 確定」</b>。左の「長さ」欄の数字を最初の幅に使います（あとから区間ごとに変えられます）。';
   else if(tool==='rect')h.innerHTML='＜寸法で置く＞左の<b>長さ×奥行</b>の四角を、<b>タップした場所</b>に置きます。置いたあとは普通の面積として頂点を動かしたり回したりできます。';
-  else if(tool==='shoot')h.innerHTML='＜写真＞<b>撮りたい木をタップ</b>すると、工事写真のカメラが開きます（黒板に工種・規格・No.・幹周が入ります）。指でなぞると地図が動きます。';
+  else if(tool==='shoot')h.innerHTML='＜写真＞<b>撮りたい木をタップ</b>すると、カメラが開きます（黒板に工種・規格・No.・幹周）。撮るカメラ：<b>'+shootDevLabel()+'</b>　<a href="#" onclick="openShootDev();return false" style="color:#7fd1a3">変える</a>';
   else if(tool==='pan')h.innerHTML='<b>地図移動モード</b>：ドラッグ（iPadは指1本）で<b>表示位置だけ</b>を動かします。記録に戻るには上で別のモードを選択。';
   else if(tool==='area'){
     if(curGeom()==='line')h.innerHTML='＜つる：管理柵＞フェンスに沿って<b>端から端へタップ</b>→<b>「✓ 確定」</b>。左の<b>高さ(m)</b>を掛けて面積にします。';
@@ -2178,7 +2203,9 @@ function renderTreeEdit(el){
      +`<div class="legend" style="margin:4px 0 8px">入れると規格（幹周）を自動で直します</div>`
      +(f.chk?`<button class="btn ghost" id="teOk">この値のまま確認済みにする</button>`:'')
      +`<button class="btn ghost" id="teWork"${w?'':' disabled style="opacity:.5"'}>工種を②の工種に変える<small>${wtxt}</small></button>`
-     +`<button class="btn" id="teShoot" style="margin-top:8px">📷 この木の写真を撮る<small>工事写真アプリ（黒板に工種・規格・No.が入ります）</small></button>`;
+     +`<button class="btn" id="teShoot" style="margin-top:8px">📷 この木の写真を撮る<small>撮るカメラ：${shootDevLabel()}</small></button>`
+     +`<button class="btn ghost" id="teShootDev" style="padding:6px 10px;font-size:12px">撮るカメラを変える（この端末／iPhone）</button>`;
+    $('teShootDev').onclick=()=>openShootDev();
     $('teShoot').onclick=()=>shootTree(f);
     $('teC').onchange=()=>{const raw=$('teC').value.trim(); pushHistory(); if(raw===''){delete f.C;} else {const v=Math.round(parseFloat(raw)); if(!(v>0))return; f.C=v; delete f.chk; if(kindRanks(f.cat,f.kind)){const r=bandFromC(f.cat,v); if(r)f.rank=r;}}
       recalcAll(); renderAgg(); renderScanInfo(); renderSansha(); draw();};
@@ -2194,20 +2221,71 @@ function renderTreeEdit(el){
 /* ---------- 木をタップ →「この木の写真を撮る」→ 工事写真アプリ（黒板つきカメラ）へ ----------
    木の目印は、木に付けたid（無ければ図面上の位置）。工事写真アプリでも同じ決め方で、どの木を撮ったかをつなぐ */
 /* 木を1本選んでいるときだけ、地図の下に「📷 この木の写真を撮る」（iPad・スマホどちらでも押しやすい所） */
-function syncShootFab(){ const b=$('shootFab'); if(!b) return; const one=selected&&selected.type==='tree'&&selected.cat&&selected.cat!=='巣撤去'&&multiSel.length<=1&&tool!=='shoot'; b.style.display=one?'':'none'; }
+function syncShootFab(){ const b=$('shootFab'); if(!b) return; b.textContent=lsGet('park_shoot_dev')==='phone'?'📱 この木をiPhoneで撮る':'📷 この木の写真を撮る'; const one=selected&&selected.type==='tree'&&selected.cat&&selected.cat!=='巣撤去'&&multiSel.length<=1&&tool!=='shoot'; b.style.display=one?'':'none'; }
 function treeFid(f){ return f.id || ('p'+Math.round(f.pt.x)+'_'+Math.round(f.pt.y)); }
-async function shootTree(f){
+/* 撮影に使うカメラ（最初に1回えらぶ）：self＝この端末のカメラ（工事写真アプリへ移る）／phone＝iPhoneで撮る（遠隔。iPadは図面のまま） */
+var SHOOT_DEV_KEY='park_shoot_dev', RMT_CODE_KEY='park_remote_code';   // draw() から先に呼ばれても困らないように var と function
+function lsGet(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+function rmtCode(){ let c=lsGet(RMT_CODE_KEY); if(!/^\d{4}$/.test(c)){ c=String(Math.floor(1000+Math.random()*9000)); lsSet(RMT_CODE_KEY,c); } return c; }
+function shootDevLabel(){ const d=lsGet(SHOOT_DEV_KEY); return d==='phone'?`iPhone（部屋番号 ${rmtCode()}）`:d==='self'?'この端末のカメラ':'まだ決めていません'; }
+function openShootDev(after){
+  const m=$('shootDevModal'); m.classList.add('on'); m._after=after||null;
+  const d=lsGet(SHOOT_DEV_KEY); $('sdSelf').classList.toggle('on',d==='self'); $('sdPhone').classList.toggle('on',d==='phone');
+  $('sdPhoneBox').style.display=d==='phone'?'':'none'; $('sdCode').textContent=rmtCode();
+}
+function closeShootDev(go){ const m=$('shootDevModal'); m.classList.remove('on'); const a=m._after; m._after=null; updateHint(); syncShootFab(); if(go&&a) a(); }
+async function treeQuery(f){
   const park=($('parkName').value||'').trim();
-  if(!park){ alert('公園名を入れてください（工事写真アプリで現場をさがすのに使います）'); return; }
-  if(!state.cloudId){
+  if(!park){ alert('公園名を入れてください（工事写真アプリで現場をさがすのに使います）'); return null; }
+  if(!state.cloudId&&!shootTree._asked){ shootTree._asked=true;
     if(confirm('この図面はまだ「みんなの共有」に保存されていません。\n保存すると、工事写真アプリの「図面」でも木と撮った写真が見られます。\n\n保存してから撮影に進みますか？（キャンセルでも撮影はできます）')){
       try{ await $('cloudSave').onclick(); }catch(e){}
     }
   }
-  const q=new URLSearchParams({ from:'park', park, contract:($('contractName').value||'').trim(), rec:state.cloudId||'', fid:treeFid(f),
-    cat:f.cat||'', kind:f.kind||'', rank:f.rank||'', C:f.C||'', x:Math.round(f.pt.x*10)/10, y:Math.round(f.pt.y*10)/10 });
-  location.href='shashin.html?'+q.toString();
+  return { park, contract:($('contractName').value||'').trim(), rec:state.cloudId||'', fid:treeFid(f),
+    cat:f.cat||'', kind:f.kind||'', rank:f.rank||'', C:f.C||'', x:Math.round(f.pt.x*10)/10, y:Math.round(f.pt.y*10)/10 };
 }
+async function shootTree(f){
+  const dev=lsGet(SHOOT_DEV_KEY);
+  if(!dev){ openShootDev(()=>shootTree(f)); return; }
+  const q=await treeQuery(f); if(!q) return;
+  if(dev==='phone') return sendToPhone(f,q);
+  location.href='shashin.html?'+new URLSearchParams(Object.assign({from:'park'},q)).toString();
+}
+/* iPhoneへ送る：共通GASに置いて、iPhoneの工事写真アプリ（📡つなぎ中）が受け取る。届いた・撮ったを下に出す */
+let rmtWatch=null;
+function rmtStat(html,cls){ let el=$('rmtStat'); if(!el){ el=document.createElement('div'); el.id='rmtStat'; document.querySelector('.stage').appendChild(el); } el.className='rmtStat '+(cls||''); el.innerHTML=html; el.style.display=html?'':'none'; return el; }
+async function sendToPhone(f,q){
+  const code=rmtCode(), name=`${f.cat||''}${f.rank?' '+f.rank:''}`;
+  rmtStat(`📱 iPhoneに送っています…<small>${name}</small>`,'wait');
+  let j; try{ j=await fetch(PARK_GAS,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({app:'shashin',mode:'remoteSend',by:myName(),code,req:q})}).then(r=>r.json()); }
+  catch(e){ j=null; }
+  if(!j||!j.ok){ rmtFail(f,q,'送れませんでした（電波を確認してください）'); return; }
+  const warn = j.phoneSeen==null||j.phoneSeen>30 ? `<small>⚠ iPhoneの工事写真アプリが待ち受けていないかもしれません${j.phoneSeen!=null?`（最後の接続 ${Math.round(j.phoneSeen/60)}分前）`:''}</small>` : '';
+  rmtStat(`📱 iPhoneに送りました<small>${name}　部屋番号 ${code}</small>${warn}`,'wait');
+  clearInterval(rmtWatch); const t0=Date.now();
+  rmtWatch=setInterval(async()=>{
+    let s=null; try{ s=await fetch(PARK_GAS+'?app=shashin&action=remoteStatus&code='+code+'&id='+j.id,{cache:'no-store'}).then(r=>r.json()); }catch(e){}
+    const sec=(Date.now()-t0)/1000;
+    if(s&&s.state==='shot'){ clearInterval(rmtWatch); rmtStat(`📸 撮りました（${s.stage||''}）<small>${name}　つぎの木をタップしてください</small>`,'ok'); setTimeout(()=>{ const el=$('rmtStat'); if(el&&el.classList.contains('ok')) el.style.display='none'; },6000); return; }
+    if(s&&s.state==='got'){ rmtStat(`📱 iPhoneでカメラが開きました<small>${name}　iPhoneで撮ってください</small>`,'wait'); }
+    if(sec>12&&(!s||s.state==='sent')){ clearInterval(rmtWatch); rmtFail(f,q,'iPhoneが応答しません'); return; }
+    if(sec>180) clearInterval(rmtWatch);
+  },2000);
+}
+function rmtFail(f,q,why){
+  const el=rmtStat(`⚠ ${why}<small>iPhoneの工事写真アプリで「📡 iPadとつなぐ」（部屋番号 ${rmtCode()}）になっているか確認してください。指示は10分間残るので、つながれば届きます。</small><div class="rmtBtns"><button id="rmtRetry">もう一度送る</button><button id="rmtSelf">この端末のカメラで撮る</button><button id="rmtX">✕</button></div>`,'ng');
+  $('rmtRetry').onclick=()=>sendToPhone(f,q);
+  $('rmtSelf').onclick=()=>{ location.href='shashin.html?'+new URLSearchParams(Object.assign({from:'park'},q)).toString(); };
+  $('rmtX').onclick=()=>{ el.style.display='none'; };
+}
+$('sdSelf').onclick=()=>{ lsSet(SHOOT_DEV_KEY,'self'); closeShootDev(true); };
+$('sdPhone').onclick=()=>{ lsSet(SHOOT_DEV_KEY,'phone'); $('sdPhone').classList.add('on'); $('sdSelf').classList.remove('on'); $('sdPhoneBox').style.display=''; $('sdCode').textContent=rmtCode(); };
+$('sdPhoneOk').onclick=()=>closeShootDev(true);
+$('sdNewCode').onclick=()=>{ lsSet(RMT_CODE_KEY,''); $('sdCode').textContent=rmtCode(); };
+$('sdClose').onclick=()=>closeShootDev(false);
+window.openShootDev=openShootDev;
 $('shootFab').onclick=e=>{ e.stopPropagation(); if(selected&&selected.type==='tree') shootTree(selected); };
 function alignTap(ip){
   const A=alignScan; if(!A)return;

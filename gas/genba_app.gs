@@ -401,6 +401,8 @@ function doPost(e) {
       case 'shashin:updatePhoto': return withLock_(function () { return shashinUpdatePhoto_(b); });
       case 'shashin:updatePhotos': return withLock_(function () { (b.list || []).forEach(function (x) { shashinUpdatePhoto_(Object.assign({ by: b.by }, x)); }); return { ok: true }; });
       case 'shashin:readBoard':   return out_(shashinReadBoard_(b.data, b.mime));
+      case 'shashin:remoteSend':  return withLock_(function () { return shashinRemoteSend_(b); });
+      case 'shashin:remoteAck':   return withLock_(function () { return shashinRemoteAck_(b); });
       case 'shashin:addSite':     return withLock_(function () { return addSitesFromNippou_([b.site], b.by); });
       /* 公園報告 */
       case 'park:save':        return withLock_(function () { return parkSave_(b); });
@@ -1363,6 +1365,34 @@ function shashinSite_(siteId) {
   for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(siteId)) return list[i];
   return null;
 }
+/* ---- 遠隔撮影：iPadの公園報告で木をタップ → iPhoneの工事写真のカメラが開く ----
+   部屋番号（4〜6けた）ごとに、最近の指示を CacheService に置く（6時間）。電波が切れても、つながった時に最新の指示を受け取れる */
+function rmtKey_(code) { return 'rmt_' + String(code || '').replace(/\D/g, '').slice(0, 6); }
+function rmtList_(code) { var v = CacheService.getScriptCache().get(rmtKey_(code)); try { return v ? JSON.parse(v) : []; } catch (e) { return []; } }
+function rmtSave_(code, l) { CacheService.getScriptCache().put(rmtKey_(code), JSON.stringify(l.slice(-20)), 21600); }
+function rmtSeen_(code) { return Number(CacheService.getScriptCache().get(rmtKey_(code) + '_seen') || 0); }
+function shashinRemoteSend_(b) {
+  if (!/^\d{4,6}$/.test(String(b.code || ''))) return { ok: false, error: '部屋番号が正しくありません' };
+  var l = rmtList_(b.code), id = String(Date.now()) + String(Math.floor(Math.random() * 90 + 10));
+  l.push({ id: id, at: Date.now(), req: b.req || {}, state: 'sent', by: b.by || '' });
+  rmtSave_(b.code, l);
+  var seen = rmtSeen_(b.code);
+  return { ok: true, id: id, phoneSeen: seen ? Math.round((Date.now() - seen) / 1000) : null };
+}
+function shashinRemoteAck_(b) {
+  var l = rmtList_(b.code);
+  l.forEach(function (x) { if (x.id === String(b.id)) { x.state = b.state || 'got'; if (b.stage) x.stage = b.stage; x.ackAt = Date.now(); } });
+  rmtSave_(b.code, l); return { ok: true };
+}
+function shashinRemotePoll_(p) {
+  CacheService.getScriptCache().put(rmtKey_(p.code) + '_seen', String(Date.now()), 21600);   // iPhoneが待ち受けている印
+  var since = String(p.since || ''), lim = Date.now() - 10 * 60 * 1000;
+  return { ok: true, now: Date.now(), list: rmtList_(p.code).filter(function (x) { return x.at > lim && (!since || Number(x.id) > Number(since)); }) };
+}
+function shashinRemoteStatus_(p) {
+  var x = rmtList_(p.code).filter(function (r) { return r.id === String(p.id); })[0], seen = rmtSeen_(p.code);
+  return { ok: true, state: x ? x.state : 'none', stage: x ? (x.stage || '') : '', phoneSeen: seen ? Math.round((Date.now() - seen) / 1000) : null };
+}
 function shashinNum_(v) { return v === '' || v == null || isNaN(Number(v)) ? null : Number(v); }
 function shashinItemOut_(r) {
   return { id: r.itemId, siteId: r.siteId, cat: r.cat, kind: r.kind || '', no: r.no === '' || r.no == null ? '' : String(r.no), name: r.name, jushu: r.jushu, kikaku: r.kikaku, memo: r.memo,
@@ -1388,6 +1418,8 @@ function shashinGet_(a, p) {
       shot: shot, counts: counts, last: last, admins: admins_() };
   }
   if (a === 'photoData') return shashinPhotoData_(p.fileId);
+  if (a === 'remotePoll') return shashinRemotePoll_(p);
+  if (a === 'remoteStatus') return shashinRemoteStatus_(p);
   if (a === 'photos') {   // その現場で、みんなが撮った写真の記録
     return { ok: true, photos: rows_('shashinPhotos').filter(function (r) { return !p.siteId || String(r.siteId) === String(p.siteId); }).map(function (r) {
       return { photoId: r.photoId, itemId: r.itemId, stage: r.stage, koshu: r.koshu, kikaku: r.kikaku, sokuten: r.sokuten, takenAt: r.takenAt, by: r.by,
