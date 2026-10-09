@@ -151,6 +151,34 @@ nav.tabs button.on{color:var(--leaf);font-weight:700}
 .loading{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty{color:var(--bark);text-align:center;padding:18px 10px;font-size:14px}
+/* やること */
+.todo{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 10px 10px 12px;margin-bottom:8px;box-shadow:var(--shadow);cursor:pointer}
+.todo .t-ic{font-size:22px;line-height:1.3;flex:none}
+.todo .grow{flex:1;min-width:0}
+.todo .t-ttl{font-weight:700;font-size:15.5px;line-height:1.45}
+.todo .t-meta{font-size:12.5px;color:var(--bark)}
+.todo .t-note{font-size:13px;color:var(--bark);margin-top:2px}
+.todo.done{opacity:.55}.todo.done .t-ttl{text-decoration:line-through}
+.t-chk{flex:none;width:44px;height:44px;border-radius:50%;border:2px solid var(--line);background:var(--field);font-size:18px;color:var(--ok);cursor:pointer;font-family:inherit}
+.todo.done .t-chk{border-color:var(--ok);background:var(--leaf-soft)}
+.due{display:inline-block;font-size:12.5px;font-weight:700;border-radius:6px;padding:1px 8px;margin-top:4px}
+.due.ok{background:var(--leaf-soft);color:var(--leaf)}.due.soon{background:#FFF3D6;color:#7A5B12}.due.over{background:var(--danger);color:#fff}.due.none{background:#EEE;color:var(--bark)}
+.dcard{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;background:var(--field)}
+.dcard.off{opacity:.45}
+.dc-top{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.dc-top select,select.sel{font:inherit;font-size:15px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.dc-top .dc-ic{font-size:20px;flex:1}
+.dc-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;margin:6px 0}
+.dc-grid label{font-size:12px;color:var(--bark);display:flex;flex-direction:column;gap:2px}
+.dc-grid input{width:100%;font:inherit;font-size:15px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);min-width:0}
+.ask{background:#FFF7E6;border:1px solid #F0DDB0;border-radius:8px;padding:6px 9px;font-size:13.5px;color:#6B5212;margin-bottom:6px}
+.chg{display:flex;gap:8px;align-items:flex-start;background:var(--field);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:14px;cursor:pointer}
+.chg input{width:22px;height:22px;flex:none;margin-top:1px}
+.file{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);margin-bottom:6px;color:var(--ink);text-decoration:none;font-size:14px}
+.file small{color:var(--bark)}
+ul.hist{margin:4px 0;padding-left:18px;font-size:12.5px;color:var(--bark)}
+.minutes{display:flex;gap:6px;align-items:center;font-size:13.5px;color:var(--bark);margin-top:8px}
+.minutes input{width:20px;height:20px}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -195,11 +223,36 @@ nav.tabs button.on{color:var(--leaf);font-weight:700}
     </div>
     <div id="memoList"></div>
   </section>
+  <section id="tab-todo" hidden>
+    <div class="card">
+      <h2>✅ やること <span class="hint" id="todoCount"></span></h2>
+      <div class="mic-wrap">
+        <button class="mic" id="todoMic" type="button" aria-label="話す"><span>🎤</span><small id="todoMicLabel">話す</small></button>
+        <div class="mic-status" id="todoMicStatus">打合せのあと、忘れないうちに思いついた順で話してください。AIがカードに分けます</div>
+      </div>
+      <textarea id="todoRaw"></textarea>
+      <label class="minutes"><input type="checkbox" id="todoMinutes">PLAUDなどの議事録を貼り付けた（拾い漏れだけ出す）</label>
+      <div class="row2" style="margin-top:10px">
+        <button class="btn" id="todoClear" type="button">消す</button>
+        <button class="btn primary" id="todoGoBtn" type="button" style="flex:2">✨ カードに分ける</button>
+      </div>
+    </div>
+    <div id="todoDraft"></div>
+    <div class="seg" id="todoSeg">
+      <button type="button" data-tseg="due" class="on">期限の近い順</button>
+      <button type="button" data-tseg="cat">種類ごと</button>
+      <button type="button" data-tseg="done">済んだもの</button>
+    </div>
+    <div id="todoList"></div>
+    <datalist id="todoSites"></datalist>
+    <input type="file" id="todoFileIn" multiple hidden>
+  </section>
 </main>
 
 <nav class="tabs"><div class="in">
   <button type="button" data-tab="speak" class="on"><span class="ic">🎤</span>話してまとめる</button>
   <button type="button" data-tab="list"><span class="ic">📋</span>まとめた記録<span id="unreadBadge"></span></button>
+  <button type="button" data-tab="todo" id="todoTabBtn" hidden><span class="ic">✅</span>やること<span id="todoBadge"></span></button>
 </div></nav>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -253,6 +306,7 @@ const syncing = on => document.documentElement.classList.toggle('syncing', !!on)
 async function load() {
   const c0 = lsGet(LS.cache, {}) || {};
   const had = !!c0.WORDS;
+  if (c0.ADMINS) ADMINS = c0.ADMINS;
   if (had) { WORDS = c0.WORDS; TOOLS = c0.TOOLS || []; VEH = c0.VEH || []; SUP = c0.SUP || []; NICK = c0.NICK || []; STAFF = staffList(); SITES = lsGet('dandori_me_sites', []) || []; }
   syncing(true);
   const memos = loadMemos();
@@ -264,7 +318,7 @@ async function loadFresh() {
   const ok = r => r.status === 'fulfilled' && r.value && r.value.ok;
   const c = lsGet(LS.cache, {}) || {};
   if (ok(w)) { WORDS = { terms: w.value.terms || [], aliases: w.value.aliases || [] }; c.WORDS = WORDS; } else if (c.WORDS) WORDS = c.WORDS;
-  if (ok(t)) { TOOLS = t.value.tools || []; c.TOOLS = TOOLS; if (t.value.admins) ADMINS = t.value.admins; } else if (c.TOOLS) TOOLS = c.TOOLS;
+  if (ok(t)) { TOOLS = t.value.tools || []; c.TOOLS = TOOLS; if (t.value.admins) { ADMINS = t.value.admins; c.ADMINS = ADMINS; showTodoTab(); } } else if (c.TOOLS) TOOLS = c.TOOLS;
   if (ok(d)) { VEH = d.value.vehicles || []; SUP = d.value.suppliers || []; NICK = d.value.nicknames || []; Object.assign(c, { VEH, SUP, NICK }); } else { VEH = c.VEH || []; SUP = c.SUP || []; NICK = c.NICK || []; }
   lsSet(LS.cache, c);
   if (!ok(w) || !ok(t) || !ok(d)) { if (c.WORDS) toast('前回のデータで動いています（' + NET_ERR + '）'); else showError('用語集・道具・車両のデータを読み込めませんでした。' + NET_ERR); }
@@ -1043,7 +1097,7 @@ function drawName() {
       if (b.dataset.act === 'later') { AFTER_NAME = null; closeModal(); return; }
       const v = b.dataset.nm || (b.dataset.act === 'ok' ? $('nmIn').value.trim() : '');
       if (!v) { if (b.dataset.act === 'ok') toast('名前を選ぶか入力してください'); return; }
-      lsSet(LS.me, v); $('meBtn').textContent = '👤 ' + v; closeModal(); renderList();
+      lsSet(LS.me, v); $('meBtn').textContent = '👤 ' + v; closeModal(); renderList(); showTodoTab();
       const t = AFTER_NAME; AFTER_NAME = null; if (t) t();
     });
 }
@@ -1057,8 +1111,10 @@ $('modalBg').addEventListener('click', e => { if (e.target === $('modalBg')) clo
 function switchTab(tab) {
   if (LISTENING) stopListen();
   document.querySelectorAll('nav.tabs button').forEach(x => x.classList.toggle('on', x.dataset.tab === tab));
-  $('tab-speak').hidden = tab !== 'speak'; $('tab-list').hidden = tab !== 'list';
+  $('tab-speak').hidden = tab !== 'speak'; $('tab-list').hidden = tab !== 'list'; $('tab-todo').hidden = tab !== 'todo';
   window.scrollTo(0, 0); if (tab === 'list') { renderList(); loadMemos(); }
+  if (tab === 'todo') { $('todoSites').innerHTML = SITES.map(x => '<option value="' + esc(x) + '">').join(''); renderDraft(); renderTodos(); loadTodos(); }
+  try { history.replaceState(null, '', location.pathname + (tab === 'speak' ? '' : '?tab=' + tab)); } catch (e) { }
 }
 document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 $('toChips').addEventListener('click', e => {
@@ -1101,14 +1157,250 @@ $('memoList').addEventListener('click', e => {
 });
 $('meBtn').addEventListener('click', () => chooseName(true));
 
+/* ============ やること（親方用：話した内容をカードに分ける） ============ */
+const TODO_CATS = ['見積', '現地調査', '打合せ', '工事予定', '連絡', '修理・備品', 'お金', '人の声', 'クレーム', '事故', '雑務'];
+const TODO_IC = { '見積': '🧾', '現地調査': '🔍', '打合せ': '🤝', '工事予定': '🌳', '連絡': '📞', '修理・備品': '🔧', 'お金': '💴', '人の声': '🗣', 'クレーム': '⚠️', '事故': '🚑', '雑務': '📌' };
+const LS_TODO = { list: 'yoten_todos', raw: 'yoten_todo_raw', draft: 'yoten_todo_draft' };
+let TODOS = lsGet(LS_TODO.list, []) || [], TDRAFT = lsGet(LS_TODO.draft, null), TSEG = 'due', TBUSY = false;
+const isBoss = () => ADMINS.indexOf(me()) >= 0;
+function showTodoTab() { $('todoTabBtn').hidden = !isBoss(); }
+async function loadTodos() {
+  if (!me()) return;
+  try {
+    const r = await getJSON(GAS_URL + '?app=yoten&action=todos&me=' + encodeURIComponent(me()), 20000);
+    if (!r.ok) throw new Error(r.error || '');
+    if (r.admins) { ADMINS = r.admins; showTodoTab(); }
+    TODOS = r.todos || []; lsSet(LS_TODO.list, TODOS); renderTodos();
+  } catch (e) { if (!$('tab-todo').hidden) toast('やることを読み込めませんでした（' + NET_ERR + '）'); }
+}
+function daysLeft(due) { if (!/^\d{4}-\d{2}-\d{2}$/.test(due || '')) return null; return Math.round((parseYmd(due) - parseYmd(TODAY)) / 86400000); }
+function dueChip(t) {
+  const n = daysLeft(t.due);
+  if (n == null) return t.dueText ? '<span class="due none">' + esc(t.dueText) + '</span>' : '';
+  const cls = t.state === '済' ? 'none' : n < 0 ? 'over' : n <= 2 ? 'soon' : 'ok';
+  const left = t.state === '済' ? '' : n < 0 ? '（' + (-n) + '日過ぎ）' : n === 0 ? '（今日）' : n === 1 ? '（明日）' : n <= 14 ? '（あと' + n + '日）' : '';
+  return '<span class="due ' + cls + '">' + md(t.due) + (t.time ? ' ' + esc(t.time) : '') + left + (t.dueText && !/^\d/.test(t.dueText) ? '・' + esc(t.dueText) : '') + '</span>';
+}
+function todoRow(t) {
+  const done = t.state === '済';
+  return '<div class="todo' + (done ? ' done' : '') + '" data-topen="' + esc(t.todoId) + '">' +
+    '<div class="t-ic">' + (TODO_IC[t.cat] || '📌') + '</div><div class="grow">' +
+    '<div class="t-ttl">' + esc(t.title) + '</div>' +
+    '<div class="t-meta">' + [t.site ? '<b>' + esc(t.site) + '</b>' : '', esc(t.cat), t.who ? '👤' + esc(t.who) : '', t.amount ? Number(t.amount).toLocaleString() + '円' : '', t.eventId ? '📅入れた' : '', (t.files || []).length ? '📎' + t.files.length : ''].filter(Boolean).join('・') + '</div>' +
+    (t.note ? '<div class="t-note">' + esc(t.note) + '</div>' : '') + dueChip(t) + '</div>' +
+    '<button type="button" class="t-chk" data-tdone="' + esc(t.todoId) + '" aria-label="' + (done ? '済みを戻す' : '済みにする') + '">' + (done ? '↩' : '✓') + '</button></div>';
+}
+function renderTodos() {
+  const box = $('todoList'); if (!box) return;
+  const open = TODOS.filter(t => t.state !== '済'), done = TODOS.filter(t => t.state === '済');
+  $('todoCount').textContent = open.length ? open.length + '件' : '';
+  const over = open.filter(t => (daysLeft(t.due) ?? 99) <= 1).length;
+  $('todoBadge').innerHTML = over ? '<span class="badge">' + over + '</span>' : '';
+  let html = '';
+  if (TSEG === 'done') html = done.sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt))).map(todoRow).join('') || '<div class="empty">済んだものはまだありません</div>';
+  else if (TSEG === 'cat') html = TODO_CATS.map(c => { const l = open.filter(t => t.cat === c).sort(byDue); return l.length ? '<div class="sec">' + TODO_IC[c] + ' ' + c + '（' + l.length + '）</div>' + l.map(todoRow).join('') : ''; }).join('') || '<div class="empty">やることはありません</div>';
+  else {
+    const withDue = open.filter(t => t.due).sort(byDue), noDue = open.filter(t => !t.due).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    html = (withDue.length ? withDue.map(todoRow).join('') : '') + (noDue.length ? '<div class="sec">日付なし</div>' + noDue.map(todoRow).join('') : '') || '<div class="empty">やることはありません。上のマイクで話してください</div>';
+  }
+  box.innerHTML = html;
+}
+const byDue = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || String(a.time || '').localeCompare(String(b.time || ''));
+
+/* 話す → カードの案 */
+function todoSplitReq(text, minutes) {
+  const reqId = 'T' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+  const body = { app: 'yoten', mode: 'todoSplit', reqId, text, minutes, by: me(), spokenAt: nowStr(), masterSites: SITES, roster: rosterText(), suppliers: supText() };
+  return postJSON(GAS_URL, body).then(r => { if (r.ok && r.result) return r.result; throw new Error(r.error || 'カードに分けられませんでした'); })
+    .catch(async e => {
+      if (e && e.message && !/fetch|network|Load failed/i.test(e.message)) throw e;
+      const got = await pollResult(reqId, 120000);   // 通信が切れた → 預かってもらった結果を取りに行く
+      if (got && got.result) return got.result;
+      throw new Error(got && got.error ? got.error : 'カードに分けられませんでした。' + NET_ERR);
+    });
+}
+async function todoGo() {
+  const text = $('todoRaw').value.trim();
+  if (!text) return toast('話すか、書いてください');
+  if (LISTENING) stopListen();
+  if (TBUSY) return; TBUSY = true;
+  const btn = $('todoGoBtn'), t0 = Date.now(); btn.disabled = true;
+  const tick = setInterval(() => { btn.innerHTML = '<span class="loading"></span> 分けています… ' + Math.round((Date.now() - t0) / 1000) + '秒'; }, 500);
+  try {
+    const r = await todoSplitReq(text, $('todoMinutes').checked);
+    TDRAFT = { cards: r.cards.map(c => Object.assign({ keep: true }, c)), updates: r.updates.map(u => Object.assign({ keep: true }, u)), done: r.done.map(d => Object.assign({ keep: true }, d)), text, minutes: $('todoMinutes').checked };
+    lsSet(LS_TODO.draft, TDRAFT); renderDraft();
+    if (!TDRAFT.cards.length && !TDRAFT.updates.length && !TDRAFT.done.length) toast('やることは見つかりませんでした');
+    else $('todoDraft').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) { showError(e.message); }
+  finally { clearInterval(tick); TBUSY = false; btn.disabled = false; btn.textContent = '✨ カードに分ける'; }
+}
+function draftCard(c, i) {
+  return '<div class="dcard' + (c.keep ? '' : ' off') + '" data-di="' + i + '">' +
+    '<div class="dc-top"><select data-df="cat">' + TODO_CATS.map(k => '<option' + (k === c.cat ? ' selected' : '') + '>' + k + '</option>').join('') + '</select>' +
+    '<span class="dc-ic">' + (TODO_IC[c.cat] || '') + '</span><button type="button" class="btn sm" data-dkeep="' + i + '">' + (c.keep ? '✕ 入れない' : '↩ 入れる') + '</button></div>' +
+    (c.ask ? '<div class="ask">？ ' + esc(c.ask) + '</div>' : '') +
+    '<input type="text" data-df="title" value="' + esc(c.title) + '" placeholder="何をする？">' +
+    '<div class="dc-grid">' +
+    '<label>現場<input type="text" data-df="site" list="todoSites" value="' + esc(c.site) + '" placeholder="なし"></label>' +
+    '<label>日付<input type="date" data-df="due" value="' + esc(c.due) + '"></label>' +
+    '<label>言い方<input type="text" data-df="dueText" value="' + esc(c.dueText) + '" placeholder="11月頃 など"></label>' +
+    '<label>時刻<input type="text" data-df="time" value="' + esc(c.time) + '" placeholder="10:00" inputmode="numeric"></label>' +
+    '<label>相手<input type="text" data-df="who" value="' + esc(c.who) + '" placeholder="理事長・管理会社 など"></label>' +
+    '<label>金額<input type="text" data-df="amount" value="' + esc(c.amount) + '" placeholder="円" inputmode="numeric"></label>' +
+    '</div><input type="text" data-df="note" value="' + esc(c.note) + '" placeholder="条件・メモ"></div>';
+}
+function renderDraft() {
+  const box = $('todoDraft'); if (!TDRAFT) { box.innerHTML = ''; return; }
+  const d = TDRAFT, n = d.cards.filter(c => c.keep).length + d.updates.filter(u => u.keep).length + d.done.filter(x => x.keep).length;
+  box.innerHTML = '<div class="card"><h2>この内容で入れますか？</h2><p class="hint">直したい所はそのまま書き換えられます。いらないカードは「入れない」</p>' +
+    (d.updates.length ? '<div class="sec">📅 今あるカードの日付を変える</div>' + d.updates.map((u, i) => '<label class="chg"><input type="checkbox" data-dup="' + i + '"' + (u.keep ? ' checked' : '') + '><span><b>' + esc((u.site ? u.site + ' ' : '') + u.title) + '</b><br>' + esc(u.oldDue ? md(u.oldDue) : (u.oldDueText || '日付なし')) + ' → <b>' + esc(u.due ? md(u.due) : (u.dueText || '日付なし')) + '</b>' + (u.dueText && u.due ? '（' + esc(u.dueText) + '）' : '') + (u.why ? '<br><small>' + esc(u.why) + '</small>' : '') + '</span></label>').join('') : '') +
+    (d.done.length ? '<div class="sec">✓ 済みにする</div>' + d.done.map((x, i) => '<label class="chg"><input type="checkbox" data-ddn="' + i + '"' + (x.keep ? ' checked' : '') + '><span><b>' + esc((x.site ? x.site + ' ' : '') + x.title) + '</b>' + (x.why ? '<br><small>' + esc(x.why) + '</small>' : '') + '</span></label>').join('') : '') +
+    (d.cards.length ? '<div class="sec">＋ 新しいカード（' + d.cards.length + '枚）</div>' + d.cards.map(draftCard).join('') : '') +
+    '<div class="row2" style="margin-top:12px"><button type="button" class="btn" id="todoDiscard">やめる</button><button type="button" class="btn ok" id="todoSaveBtn" style="flex:2"' + (n ? '' : ' disabled') + '>✅ ' + n + '件を入れる</button></div></div>';
+}
+function readDraftInputs() {
+  if (!TDRAFT) return;
+  document.querySelectorAll('#todoDraft [data-di]').forEach(el => {
+    const c = TDRAFT.cards[Number(el.dataset.di)];
+    el.querySelectorAll('[data-df]').forEach(f => { c[f.dataset.df] = f.value.trim(); });
+    c.amount = String(c.amount || '').replace(/[^\d]/g, '');
+    if (c.time && !/^\d{1,2}:\d{2}$/.test(c.time)) c.time = c.time.replace(/^(\d{1,2})$/, '$1:00');
+  });
+  lsSet(LS_TODO.draft, TDRAFT);
+}
+async function todoSave() {
+  readDraftInputs();
+  const d = TDRAFT, body = { app: 'yoten', mode: 'todoSave', by: me(), text: d.text, minutes: d.minutes,
+    cards: d.cards.filter(c => c.keep && c.title), updates: d.updates.filter(u => u.keep), done: d.done.filter(x => x.keep) };
+  const btn = $('todoSaveBtn'); btn.disabled = true; btn.innerHTML = '<span class="loading"></span> 入れています…';
+  try {
+    const r = await postJSON(GAS_URL, body);
+    if (!r.ok) throw new Error(r.error || '入れられませんでした');
+    TODOS = r.todos || TODOS; lsSet(LS_TODO.list, TODOS);
+    TDRAFT = null; lsSet(LS_TODO.draft, null); $('todoRaw').value = ''; lsSet(LS_TODO.raw, ''); $('todoMinutes').checked = false;
+    renderDraft(); renderTodos(); toast((body.cards.length ? body.cards.length + '枚のカードを入れました' : '反映しました'));
+    $('todoList').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) { showError(e.message + '（' + NET_ERR + '）'); btn.disabled = false; btn.textContent = 'もう一度入れる'; }
+}
+
+/* カードの操作 */
+const todoOf = id => TODOS.find(t => t.todoId === id);
+function putTodo(t) { if (!t) return; const i = TODOS.findIndex(x => x.todoId === t.todoId); if (i >= 0) TODOS[i] = t; else TODOS.push(t); lsSet(LS_TODO.list, TODOS); renderTodos(); }
+async function todoPatch(id, patch, what) {
+  const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'todoPatch', todoId: id, patch, by: me(), what });
+  if (!r.ok) throw new Error(r.error || '直せませんでした');
+  if (patch.state === '削除') { TODOS = TODOS.filter(t => t.todoId !== id); lsSet(LS_TODO.list, TODOS); renderTodos(); } else putTodo(r.todo);
+  return r.todo;
+}
+async function toggleDone(id) {
+  const t = todoOf(id); if (!t) return;
+  const v = t.state === '済' ? '未' : '済';
+  t.state = v; renderTodos();   // 先に見た目を変える
+  try { await todoPatch(id, { state: v }, v === '済' ? '済み' : '済みを戻す'); toast(v === '済' ? '済みにしました' : '戻しました'); }
+  catch (e) { t.state = v === '済' ? '未' : '済'; renderTodos(); showError(e.message); }
+}
+function openTodo(id) {
+  const t = todoOf(id); if (!t) return;
+  const hist = (t.history || []).slice().reverse().map(h => '<li>' + esc(h.at) + '　' + esc(h.what) + '</li>').join('');
+  openModal('<h3>' + (TODO_IC[t.cat] || '') + ' やることを直す</h3>' +
+    '<label class="fl">内容</label><input type="text" id="tdTitle" value="' + esc(t.title) + '">' +
+    '<label class="fl">種類</label><select id="tdCat" class="sel">' + TODO_CATS.map(k => '<option' + (k === t.cat ? ' selected' : '') + '>' + k + '</option>').join('') + '</select>' +
+    '<div class="dc-grid">' +
+    '<label>現場<input type="text" id="tdSite" list="todoSites" value="' + esc(t.site) + '"></label>' +
+    '<label>日付<input type="date" id="tdDue" value="' + esc(t.due) + '"></label>' +
+    '<label>言い方<input type="text" id="tdDueText" value="' + esc(t.dueText) + '"></label>' +
+    '<label>時刻<input type="text" id="tdTime" value="' + esc(t.time) + '" placeholder="10:00"></label>' +
+    '<label>相手<input type="text" id="tdWho" value="' + esc(t.who) + '"></label>' +
+    '<label>金額<input type="text" id="tdAmount" value="' + esc(t.amount) + '" inputmode="numeric"></label></div>' +
+    '<label class="fl">条件・メモ</label><textarea id="tdNote" class="sm">' + esc(t.note) + '</textarea>' +
+    '<label class="fl">資料' + ((t.files || []).length ? '（' + t.files.length + '）' : '') + '</label>' +
+    ((t.files || []).map(f => '<a class="file" href="' + esc(f.url) + '" target="_blank" rel="noopener">📎 ' + esc(f.name) + '<small>' + esc(f.folder || '') + '</small></a>').join('') || '<p class="hint" style="margin:0">まだありません</p>') +
+    '<div class="row2" style="margin-top:8px"><button type="button" class="btn" data-ta="file">📎 資料を付ける</button><button type="button" class="btn" data-ta="cal">' + (t.eventId ? '📅 予定を入れ直す' : '📅 カレンダーに入れる') + '</button></div>' +
+    '<div class="row2" style="margin-top:8px"><button type="button" class="btn" data-ta="dandori">🗂 段取りカードにする</button><button type="button" class="btn danger" data-ta="del">消す</button></div>' +
+    '<div class="row2" style="margin-top:12px"><button type="button" class="btn" data-ta="close">閉じる</button><button type="button" class="btn primary" data-ta="save" style="flex:2">直した内容で保存</button></div>' +
+    (t.srcText ? '<details style="margin-top:12px"><summary class="hint">話した元の内容</summary><div class="raw">' + esc(t.srcText) + '</div></details>' : '') +
+    (hist ? '<details style="margin-top:8px"><summary class="hint">記録</summary><ul class="hist">' + hist + '</ul></details>' : ''),
+    async e => {
+      const b = e.target.closest('[data-ta]'); if (!b) return;
+      const a = b.dataset.ta;
+      if (a === 'close') return closeModal();
+      if (a === 'file') { $('todoFileIn').dataset.id = id; return $('todoFileIn').click(); }
+      if (a === 'del') { if (!confirm('このカードを消しますか？' + (t.eventId ? '\nカレンダーの予定も消えます。' : ''))) return; try { await todoPatch(id, { state: '削除' }, '削除'); closeModal(); toast('消しました'); } catch (er) { showError(er.message); } return; }
+      if (a === 'dandori') return todoToDandori(t, b);
+      const patch = { title: $('tdTitle').value.trim(), cat: $('tdCat').value, site: $('tdSite').value.trim(), due: $('tdDue').value, dueText: $('tdDueText').value.trim(), time: $('tdTime').value.trim(), who: $('tdWho').value.trim(), amount: $('tdAmount').value.replace(/[^\d]/g, ''), note: $('tdNote').value.trim() };
+      if (a === 'save' || a === 'cal') {
+        b.disabled = true;
+        try {
+          const changed = Object.keys(patch).some(k => String(patch[k] || '') !== String(t[k] || ''));
+          if (changed) await todoPatch(id, patch, '内容を直した');
+          if (a === 'cal') await todoCal(id);
+          closeModal(); if (a === 'save') toast(changed ? '保存しました' : '変わっていません');
+        } catch (er) { b.disabled = false; showError(er.message); }
+      }
+    });
+}
+async function todoCal(id) {
+  const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'todoCal', todoId: id, by: me() });
+  if (!r.ok) throw new Error(r.error || 'カレンダーに入れられませんでした');
+  putTodo(r.todo); toast('📅 ' + (r.calendar || 'カレンダー') + 'に入れました');
+}
+async function todoToDandori(t, btn) {
+  btn.disabled = true;
+  try {
+    const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'route', route: { type: 'plan', date: t.due, dateNote: t.dueText, site: t.site, title: t.site ? '' : t.title, steps: [t.title], notes: [t.note].filter(Boolean), members: [], items: [] }, by: me(), memoBy: me() });
+    if (!r.ok) throw new Error(r.error || '段取りに入れられませんでした');
+    toast('🗂 段取りカードにしました' + (r.date ? '（' + md(r.date) + '）' : '（日にち未定）'));
+  } catch (e) { showError(e.message); } finally { btn.disabled = false; }
+}
+function readB64(file) { return new Promise((ok, ng) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result)); fr.onerror = ng; fr.readAsDataURL(file); }); }
+async function todoUpload(id, files) {
+  for (const f of files) {
+    if (f.size > 20 * 1024 * 1024) { toast(f.name + '：大きすぎます（20MBまで）'); continue; }
+    toast('📎 ' + f.name + ' を入れています…');
+    try {
+      const r = await postJSON(GAS_URL, { app: 'yoten', mode: 'todoFile', todoId: id, name: f.name, mime: f.type || 'application/octet-stream', data: await readB64(f), by: me() });
+      if (!r.ok) throw new Error(r.error || '入れられませんでした');
+      putTodo(r.todo); toast('📎 ' + r.file.folder + ' に入れました' + (r.todo.eventId ? '（予定にも付けました）' : ''));
+    } catch (e) { showError(f.name + '：' + e.message); }
+  }
+  if ($('modalBg').classList.contains('show')) openTodo(id);
+}
+$('todoMic').addEventListener('click', () => startListen($('todoRaw'), $('todoMic'), $('todoMicLabel'), $('todoMicStatus')));
+$('todoRaw').addEventListener('input', () => lsSet(LS_TODO.raw, $('todoRaw').value));
+$('todoGoBtn').addEventListener('click', todoGo);
+$('todoClear').addEventListener('click', () => { if ($('todoRaw').value && !confirm('話した内容を消しますか？')) return; if (LISTENING) stopListen(); $('todoRaw').value = ''; lsSet(LS_TODO.raw, ''); });
+$('todoMinutes').addEventListener('change', () => { $('todoRaw').placeholder = $('todoMinutes').checked ? 'PLAUDなどの議事録（要約）をここに貼り付けてください。今あるカードと照らして、拾い漏れだけ出します' : TODO_PH; });
+$('todoDraft').addEventListener('click', e => {
+  const k = e.target.closest('[data-dkeep]'); if (k) { readDraftInputs(); const c = TDRAFT.cards[Number(k.dataset.dkeep)]; c.keep = !c.keep; lsSet(LS_TODO.draft, TDRAFT); return renderDraft(); }
+  if (e.target.closest('#todoDiscard')) { if (!confirm('この案を捨てますか？（話した内容は残ります）')) return; TDRAFT = null; lsSet(LS_TODO.draft, null); return renderDraft(); }
+  if (e.target.closest('#todoSaveBtn')) return todoSave();
+});
+$('todoDraft').addEventListener('change', e => {
+  const u = e.target.closest('[data-dup]'); if (u) { TDRAFT.updates[Number(u.dataset.dup)].keep = u.checked; readDraftInputs(); return renderDraft(); }
+  const d = e.target.closest('[data-ddn]'); if (d) { TDRAFT.done[Number(d.dataset.ddn)].keep = d.checked; readDraftInputs(); return renderDraft(); }
+  const c = e.target.closest('[data-df="cat"]'); if (c) { readDraftInputs(); return renderDraft(); }
+  readDraftInputs();
+});
+$('todoSeg').addEventListener('click', e => { const b = e.target.closest('[data-tseg]'); if (!b) return; TSEG = b.dataset.tseg; document.querySelectorAll('#todoSeg button').forEach(x => x.classList.toggle('on', x === b)); renderTodos(); });
+$('todoList').addEventListener('click', e => {
+  const d = e.target.closest('[data-tdone]'); if (d) { e.stopPropagation(); return toggleDone(d.dataset.tdone); }
+  const o = e.target.closest('[data-topen]'); if (o) return openTodo(o.dataset.topen);
+});
+$('todoFileIn').addEventListener('change', e => { const id = e.target.dataset.id, files = Array.from(e.target.files || []); e.target.value = ''; if (id && files.length) todoUpload(id, files); });
+const TODO_PH = '例：〇〇団地の理事と打合せ。高木の剪定は大修正が終わったら11月で、その前に管理会社に話を通す。見積は来週中。駐車場の件はクレームっぽかった。それとチェーンソーの刃を買う';
+
 (function init() {
   if (me()) $('meBtn').textContent = '👤 ' + me();
   drawTo();
   $('raw').value = lsGet(LS.draft, '') || '';
+  $('todoRaw').value = lsGet(LS_TODO.raw, '') || ''; $('todoRaw').placeholder = TODO_PH; showTodoTab();
+  if (!LIVE) $('todoMicStatus').textContent = '🎤を押して、キーボードのマイクで話してください。AIがカードに分けます';
   if (!LIVE) $('micStatus').textContent = 'まとまらなくて大丈夫。🎤を押して、キーボードのマイクで話してください';
   const q = new URLSearchParams(location.search);
   const fromDandori = q.get('from') === 'dandori' && !!$('raw').value.trim();
   if (fromDandori) { TO = '親方へ'; drawTo(); }
+  if (q.get('tab') === 'todo') switchTab('todo');
   if (q.get('tab') === 'list' || q.get('memo')) { if (q.get('memo')) OPEN_ID = q.get('memo'); if (q.get('seg')) { SEG = q.get('seg'); document.querySelectorAll('#listSeg button').forEach(x => x.classList.toggle('on', x.dataset.seg === SEG)); } switchTab('list'); }
   load().then(() => {
     if (fromDandori) return go();
