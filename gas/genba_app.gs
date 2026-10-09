@@ -1382,8 +1382,10 @@ function shashinFy_(when) { var d = when ? new Date(String(when).replace(' ', 'T
 /* 保存先：工事写真 ＞ 2026年度 ＞ 委託名 ＞ 現場名（when＝撮影日。年度ごとに分ける） */
 function shashinFolder_(site, when, kaiName) {
   var top = subFolder_(subFolder_(shashinRoot_(), shashinFy_(when) + '年度'), shashinClean_(site.contract) || shashinClean_(site.kind) || 'その他');
-  if (kaiName) top = subFolder_(top, shashinClean_(kaiName));   // 回（指示番号・作業開始日）
-  return subFolder_(top, shashinClean_(site.name) || '現場名なし');
+  // 回：委託は 委託名 ＞ 指示番号 ＞ 公園名、マンション・民間は 種類 ＞ 物件名 ＞ 作業開始日
+  if (kaiName && site.contract) return subFolder_(subFolder_(top, shashinClean_(kaiName)), shashinClean_(site.name) || '現場名なし');
+  var sf = subFolder_(top, shashinClean_(site.name) || '現場名なし');
+  return kaiName ? subFolder_(sf, shashinClean_(kaiName)) : sf;
 }
 /* 回（指示・作業期間）：委託は委託ごと・年度ごと（1つの指示に複数の公園が入る）。そのほかは現場ごと */
 function shashinKaiName_(kaiId) { if (!kaiId) return ''; var r = rows_('shashinKai').filter(function (x) { return String(x.kaiId) === String(kaiId); })[0]; return r ? String(r.name || '') : ''; }
@@ -1879,8 +1881,9 @@ function msPut_(folderId, name, blob) {
 function msPartsOf_(r, kind) {
   var site = shashinSite_(r.siteId) || { kind: '', contract: r.contract, name: r.site };
   var kn = shashinKaiName_(r.kai), parts = ['工事写真', shashinFy_(r.takenAt) + '年度', shashinClean_(site.contract) || shashinClean_(site.kind) || 'その他'];
-  if (kn) parts.push(shashinClean_(kn));
-  return parts.concat([shashinClean_(site.name) || '現場名なし', kind === 'raw' ? '黒板なし' : '黒板あり']);
+  var nm = shashinClean_(site.name) || '現場名なし';
+  if (kn && site.contract) parts.push(shashinClean_(kn), nm); else { parts.push(nm); if (kn) parts.push(shashinClean_(kn)); }
+  return parts.concat([kind === 'raw' ? '黒板なし' : '黒板あり']);
 }
 /* 1枚分（黒板あり・黒板なし）を送る。送れたら記録に msId / msRawId */
 function msCopyRow_(r) {
