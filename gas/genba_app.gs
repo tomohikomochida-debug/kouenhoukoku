@@ -2630,7 +2630,7 @@ var JIKO_SHEET_NAME = '事故報告データ（社外秘）';
 var JIKO_COLS = {
   cases: { name: '事故報告', cols: [['id', '管理ID'], ['no', '報告番号'], ['state', '状態'], ['stage', '進み具合'], ['kind', '事故の種類'], ['party', '相手'], ['who', 'どちらが'], ['damage', '被害'],
     ['date', '発生日'], ['time', '時刻'], ['place', '場所'], ['driver', '当事者'], ['members', '同乗者・作業班'], ['reporter', '報告者'], ['vehicle', '車両'], ['site', '現場'], ['route', '移動（目的・出発→目的地）'],
-    ['other', '相手・持ち主'], ['police', '警察'], ['insurer', '保険会社'], ['insReceipt', '事故受付番号'], ['insUse', '保険の使い方'], ['cost', '修理費・支払い'], ['rousai', '労災'], ['shared', 'みんなに共有'],
+    ['other', '相手・持ち主'], ['police', '警察'], ['insurer', '保険会社'], ['insReceipt', '事故受付番号'], ['insUse', '保険の使い方'], ['cost', '修理費・支払い'], ['rousai', '労災'], ['lso', '労働基準監督署'], ['shared', 'みんなに共有'],
     ['createdAt', '報告日時'], ['updatedBy', '更新者'], ['updatedAt', '更新日時'], ['folderUrl', 'フォルダ'], ['folderId', 'フォルダID'], ['data', '（アプリ用：報告の中身）'], ['boss', '（アプリ用：親方の記録）']] },
   logs: { name: '経過記録', cols: [['logId', '記録ID'], ['caseId', '管理ID'], ['no', '報告番号'], ['at', '日時'], ['by', '書いた人'], ['text', '内容'], ['showParty', '当事者にも見せる'], ['kind', '種類'], ['state', '状態']] },
   photos: { name: '事故の写真', cols: [['photoId', '写真ID'], ['caseId', '管理ID'], ['slot', '枠'], ['caption', '説明'], ['takenAt', '撮影日時'], ['lat', '緯度'], ['lng', '経度'], ['by', '撮った人'], ['at', '送った日時'],
@@ -2834,6 +2834,7 @@ function jkFlat_(c) {
     insurer: ic.insurer || '', insReceipt: ic.receiptNo || '', insUse: b.insUse || '',
     cost: [rp.estimate ? '見積' + rp.estimate + '円' : '', rp.paid ? '支払' + rp.paid + '円' : '', rp.payout ? '保険金' + rp.payout + '円' : ''].filter(Boolean).join('・'),
     rousai: dm.ownPerson ? [rs.staff, rs.type, b.rousaiStage].filter(Boolean).join('・') : '',
+    lso: [d.lso || '', (b.checks || {}).lso ? '報告済 ' + b.checks.lso : ''].filter(Boolean).join('・'),
     shared: b.shared === true
   };
 }

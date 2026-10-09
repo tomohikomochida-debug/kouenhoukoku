@@ -209,7 +209,34 @@ const PLACE_TYPES = ['公道', '私有地（処分場・駐車場の中など）
 const WEATHERS = ['晴れ', 'くもり', '雨', '雪', '強風'];
 const ROADS = ['乾いている', 'ぬれている', '凍結', '未舗装'];
 const TASKS = ['剪定', '伐採', '草刈り', '刈込', '植栽', '運搬・積込', '清掃', 'その他'];
-const MACHINES = ['チェーンソー', '刈払機', 'ブロワー', 'ヘッジトリマー', '高所作業車', 'ユンボ', 'ユニック', 'はしご・脚立', '手道具だけ'];
+const MACHINES = ['チェーンソー', '刈払機', 'ブロワー', 'ヘッジトリマー', '高所作業車', 'ユンボ', 'ユニック（クレーン）', 'はしご・脚立', '手道具だけ'];
+/* 機械・設備の事故（労働基準監督署への「事故報告」に関わるもの。安衛則96条など） */
+const MACH_ACC = [
+  ['craneDown', 'クレーン・ユニックが倒れた（転倒・倒壊）'], ['craneJib', 'クレーンのブーム（ジブ）が折れた・壊れた'], ['craneWire', 'クレーンのワイヤー・吊りチェーンが切れた'],
+  ['backhoeDown', 'ユンボ・重機が倒れた'], ['awpDown', '高所作業車が倒れた'], ['building', '建物・煙突などが倒れた'], ['fire', '火事・爆発'], ['none', '機械の事故ではない']];
+const CRANE_KEYS = ['craneDown', 'craneJib', 'craneWire'];
+/* 労働基準監督署への報告が要るかを、入力から判断する（最後は親方が監督署に確かめる前提の目安） */
+function lsoJudge(d) {
+  const m = (d.mach || {}), acc = m.acc || [], out = [], dm = d.damage || {}, r = d.rousai || {};
+  const crane = acc.filter(k => CRANE_KEYS.includes(k));
+  if (crane.length && m.crane05 !== '0.5t未満') out.push({ level: 'must', title: '事故報告（けががなくても必要）', text: 'クレーン・ユニック（つり上げ荷重0.5t以上）の転倒・ブームの破損・ワイヤーの切断は、けが人がいなくても労働基準監督署に「事故報告」を出す決まりです。' + (m.crane05 ? '' : '（0.5t以上かわからないときは、出す前提で親方が確かめます）') });
+  if (acc.includes('building') || acc.includes('fire')) out.push({ level: 'must', title: '事故報告（けががなくても必要）', text: '現場での火事・爆発、建物や煙突などの倒壊も「事故報告」の対象です。' });
+  if (dm.ownPerson && (r.degree === '入院' || r.serious)) out.push({ level: 'now', title: 'すぐに電話', text: '重いけが（入院・意識がないなど）のときは、親方からすぐに労働基準監督署と警察へ連絡します。' });
+  if (dm.ownPerson && r.leave === '休みあり') out.push({ level: 'must', title: '労働者死傷病報告', text: Number(r.leaveDays) >= 4 ? '休みが4日以上なので、できるだけ早く出します（電子申請）。' : '休みが1〜3日なら、3か月ごとにまとめて出します。4日以上になったらすぐに出します。' });
+  if ((acc.includes('backhoeDown') || acc.includes('awpDown')) && !crane.length) out.push({ level: 'check', title: '監督署に確かめる', text: 'ユンボ・高所作業車が倒れただけ（けが人なし）なら、事故報告の決まった一覧には入っていません。ただしクレーン機能付きのユンボで吊っていたときは移動式クレーンの扱いになることがあるので、親方が監督署に確かめます。' });
+  return out;
+}
+function lsoBox(d) {
+  const list = lsoJudge(d); if (!list.length) return '';
+  const red = list.some(x => x.level !== 'check');
+  return `<div class="note ${red ? 'red' : ''}"><b>🏛 労働基準監督署への報告${red ? 'が必要です（親方が連絡します）' : 'について'}</b>${list.map(x => `<div style="margin-top:4px"><b style="display:inline">${esc(x.title)}：</b>${esc(x.text)}</div>`).join('')}</div>`;
+}
+function machQuestion(d) {
+  const m = d.mach || {}, acc = m.acc || [];
+  return `${lbl('機械・設備の事故（あれば・いくつでも）')}<div class="chips">${MACH_ACC.map(([k, t]) => chip('mach.acc', k, esc(t), { multi: true })).join('')}</div>
+    ${acc.some(k => CRANE_KEYS.includes(k)) ? lbl('クレーンのつり上げ荷重') + chips('mach.crane05', ['0.5t以上', '0.5t未満', 'わからない']) + '<p class="hint">ふつうのユニック（2.9t吊りなど）は0.5t以上です</p>' : ''}
+    ${lsoBox(d)}`;
+}
 const SAFETY = ['カラーコーン', '誘導員', '飛散防止ネット', '声かけ・合図', '立入禁止の表示', '特になし'];
 const OWNER_TYPES = ['市・道路管理者', '電力会社', '電話会社', 'お客さん（現場）', '近所の家・会社', 'その他'];
 const ROUSAI_TYPES = ['切り傷', '転落・転倒', '飛来・落下物', '挟まれ', '蜂刺され', '熱中症', '腰痛', '打撲・骨折', 'その他'];
@@ -519,6 +546,7 @@ function renderSteps() {
       ${li('other', '相手と連絡先を交換', '名前・電話・車のナンバー・保険会社。下の言い方で伝える',
         '<div class="script">「会社の保険会社から連絡させていただきます。お名前とご連絡先を教えていただけますか」</div>')}
       ${li('promise', 'その場で約束しない', '「全部こちらが悪い」「全額払います」など、過失や支払いの約束はしない。謝るのは「ご迷惑をおかけしました」まで')}
+      ${li('lso', 'クレーン・ユニックが倒れた／けがで休む人が出た', 'けががなくても労働基準監督署への報告が必要なことがあります。親方が連絡します。報告の画面で「機械・設備の事故」を選ぶと、必要かどうかが出ます')}
       ${li('photo', '写真を撮って報告を書く', '全景（引き）→ 損傷（寄り）→ ナンバー → 周りの様子。下のボタンから')}
     </ul></div>
     ${vs.length ? `<div class="card"><h2>🚛 車が動かないとき（ロードサービス）</h2>${vs.map(v => { const x = st.vehicles[v.id]; const tel = (x.road || x.insurerPhone || '').replace(/[^\d+]/g, ''); return `<div class="row2" style="align-items:center;margin-bottom:6px"><span>${esc(v.name)} <small class="hint">${esc(v.plate || '')}</small></span><a class="btn sm" style="flex:0 0 auto" href="tel:${esc(tel)}">📞 ${x.road ? 'ロードサービス' : '保険会社'}</a></div>`; }).join('')}</div>` : ''}
@@ -627,7 +655,8 @@ function renderForm() {
       h += `<div class="card"><h2>🚗 移動と車</h2>
         ${lbl('移動の目的', 1)}${chips('car.purpose', PURPOSES)}
         ${c.purpose === ONSITE ? `${lbl('現場名', 1)}${inp('car.site', '現場の一覧から選ぶか、手で入れる', 'text', { list: 'dlSites' })}
-        ${lbl('現場でしていたこと')}${chips('car.onsite', ONSITE_MOVES)}`
+        ${lbl('現場でしていたこと')}${chips('car.onsite', ONSITE_MOVES)}
+        ${machQuestion(d)}`
         : `<div class="row2"><div>${lbl('出発地')}${inp('car.from', '例：○○公園（作業帰り）', 'text', { list: 'dlPlaces' })}</div><div>${lbl('目的地')}${inp('car.to', '例：○○処分場', 'text', { list: 'dlPlaces' })}</div></div>
         ${lbl('関連する現場（あれば）')}${inp('car.relSite', '現場の名前（一覧から選べます）', 'text', { list: 'dlSites' })}`}
         ${lbl('車', 1)}<select data-k="car.vehicleId" data-re="1"><option value="">選ぶ</option>${S.vehicles.map(x => `<option value="${esc(x.id)}"${String(c.vehicleId) === String(x.id) ? ' selected' : ''}>${esc(x.name)}${x.plate ? '（' + esc(x.plate) + '）' : ''}</option>`).join('')}<option value="__other"${c.vehicleId === '__other' ? ' selected' : ''}>その他（会社に登録していない車）</option></select>
@@ -667,6 +696,7 @@ function renderForm() {
         ${lbl('作業内容')}${chips('work.task', TASKS)}
         ${lbl('使っていた機械・道具')}${chips('work.machines', MACHINES, { multi: true })}
         ${lbl('安全対策（していたもの）')}${chips('work.safety', SAFETY, { multi: true })}
+        ${machQuestion(d)}
       </div>`;
     }
 
@@ -734,6 +764,8 @@ function renderForm() {
         ${lbl('休み')}${chips('rousai.leave', ['休みなし', '休みあり'])}
         ${r.leave === '休みあり' ? lbl('休んだ日数（見込みでも）') + inp('rousai.leaveDays', '例：3', 'number', { mode: 'numeric', re: 1 }) : ''}
         ${Number(r.leaveDays) >= 4 ? '<div class="note red"><b>休みが4日以上</b>労働基準監督署への報告が必要です。親方に伝えてください。</div>' : ''}
+        ${lbl('重いけが')}${chip('rousai.serious', '1', '意識がない・救急で運ばれた・命にかかわる', { bool: true })}
+        ${r.serious ? '<div class="note red"><b>すぐ親方へ</b>親方から労働基準監督署と警察へすぐに連絡します。</div>' : ''}
       </div>`;
     }
     /* ⑨ 警察・救急 */
@@ -781,7 +813,7 @@ function bindForm() {
     const c = e.target.closest('[data-chip]');
     if (c) {
       const d = dr.data, p = c.dataset.chip, v = c.dataset.v;
-      if (c.dataset.multi) { const a = Array.isArray(getP(d, p)) ? getP(d, p).slice() : []; const i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); setP(d, p, a); if (p === 'memberIds') d.members = a.map(staffName); }
+      if (c.dataset.multi) { let a = Array.isArray(getP(d, p)) ? getP(d, p).slice() : []; const i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); if (p === 'mach.acc' && i < 0) a = v === 'none' ? ['none'] : a.filter(x => x !== 'none'); setP(d, p, a); if (p === 'memberIds') d.members = a.map(staffName); }
       else if (c.dataset.bool) {
         const nv = !getP(d, p); setP(d, p, nv);
         if (nv && c.dataset.excl === 'none') d.damage.none = false;
@@ -841,6 +873,7 @@ async function sendDraft() {
   if (miss.length) { toast('まだ入っていません：' + miss.join('・'), 4000); return; }
   const noPh = slotsFor(d).filter(s => s.need && !photosOf(dr.id, s.slot).length).map(s => SLOT_JA[s.slot]);
   if (noPh.length && !confirm('撮っていない写真があります：' + noPh.join('・') + '\nこのまま送りますか？（あとから足せます）')) return;
+  d.lso = lsoJudge(d).map(x => x.title).filter((x, i, a) => a.indexOf(x) === i).join('・');
   dr.submitted = true; dr.updated = nowStr(); await saveDrafts();
   const wasNew = !dr.base;
   toast(navigator.onLine ? '送っています…' : '電波が戻ったら送ります');
@@ -1093,6 +1126,8 @@ function reportRows(d) {
   if (dm.theirThing) S6.push(['相手の物の損傷', d.theirDamage]);
   if (dm.theirPerson) S6.push(['相手のけが', v2((d.theirInjury || {}).text, (d.theirInjury || {}).hospital ? '病院：' + d.theirInjury.hospital : '')]);
   if (dm.ownPerson) S6.push(['自社の人のけが', [r.staff, r.commute, r.type, r.part, r.degree, r.hospital ? '病院：' + r.hospital : '', r.visitDate ? '受診：' + r.visitDate : '', r.leave === '休みあり' ? '休み：' + (r.leaveDays || '?') + '日' : r.leave].filter(Boolean).join('　')]);
+  const mach = (d.mach || {}).acc || [];
+  if (mach.length && !mach.includes('none')) S6.push(['機械・設備の事故', mach.map(k => (MACH_ACC.find(x => x[0] === k) || [0, k])[1]).join('・') + ((d.mach || {}).crane05 ? '（つり上げ荷重：' + d.mach.crane05 + '）' : '')]);
   const S7 = [['警察', [po.status, po.station, po.officer ? '担当：' + po.officer : '', po.receiptNo ? '受理番号：' + po.receiptNo : '', po.date ? jaDate(po.date) : '', po.reason ? '（' + po.reason + '）' : ''].filter(Boolean).join('　')], ['救急車', d.ambulance]];
   return [['事故の区分', S1], ['発生日時・場所', S2], [car ? '車両・移動' : '現場・作業', S3], ['関わった人', S4], ['相手の情報', S5], ['損害・けが', S6], ['警察・救急', S7]].map(([t, rows]) => [t, rows.filter(x => x[1])]).filter(x => x[1].length);
 }
@@ -1105,6 +1140,7 @@ function checkItems(c) {
   if ((d.car || {}).recorder === 'あり・まだ保存していない') out.push(['recorder', 'ドラレコの映像を保存', false]);
   if (dm.ownThing || dm.theirThing) out.push(['repair', '修理の見積', !!(b.repair || {}).estimate]);
   if (dm.ownPerson) out.push(['rousai', '労災の書類', ['書類提出', '休業補償の申請', '職場復帰'].includes(b.rousaiStage)]);
+  if (lsoJudge(d).some(x => x.level !== 'check')) out.push(['lso', '労働基準監督署へ報告', false]);
   out.push(['share', 'みんなに共有（再発防止）', b.shared === true]);
   return out.map(([k, t, auto]) => ({ k, t, done: auto || !!(b.checks || {})[k], at: (b.checks || {})[k] || '', auto }));
 }
@@ -1126,6 +1162,7 @@ function renderCase(id) {
   if (role === 'boss') {
     h += `<div class="row2" style="margin-bottom:${c.folderUrl ? 6 : 12}px"><button class="btn tape" id="callBtn">📞 第一報の要点</button><button class="btn primary" id="pdfBtn">📄 報告書PDF</button></div>`;
     if (c.folderUrl) h += `<div style="text-align:center;margin-bottom:12px"><a class="btn sm" href="${esc(c.folderUrl)}" target="_blank" rel="noopener">📁 この事故のフォルダ（写真・PDF）</a></div>`;
+    if (lsoJudge(d).length) h += lsoBox(d);
     h += `<div class="card"><h2>✅ やること</h2><div class="checklist">${checkItems(c).map(x => `<div class="ci${x.done ? ' done' : ''}"><button type="button" data-ck="${x.k}"${x.auto ? ' data-auto="1"' : ''}>✓</button><span>${esc(x.t)}</span><small>${x.at ? esc(mdDate(x.at)) : ''}</small></div>`).join('')}</div></div>`;
     h += bossPanel(c);
   } else if (role === 'party' || role === 'office') {
