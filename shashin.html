@@ -444,6 +444,7 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
       <button id="mtHere" style="display:none">📍 現在地に置く</button>
       <button id="mtTap" style="display:none">👆 地図に置く</button>
       <span class="sp"></span>
+      <button id="mtArrows">矢印：測点ごと</button>
       <button id="mtLayer">航空写真</button>
     </div>
     <div class="legend">➤ 撮った場所と向き（GPS）。<b>矢印を指で動かすと場所を直せます</b>。タップで向きも直せます<br><span style="color:#d35400">■</span>前　<span style="color:#2471a3">■</span>中　<span style="color:#1e8449">■</span>後</div>
@@ -1488,25 +1489,19 @@ function renderMap(){
     mapLayer=L.layerGroup().addTo(map);
     map.on('click',onMapClick);
   }
-  updateMapTools();
+  updateMapTools(); if(!ZV.on) $('.legend').innerHTML=mapLegend();
   map.invalidateSize(); mapLayer.clearLayers();
   const pts=[];
-  photosCache.filter(p=>p.siteId===cur.id&&p.lat).forEach(p=>{
-    const col = stageColor(p.stage);
-    L.marker([p.lat,p.lng],{icon:arrowIcon(p.heading,col),draggable:true})
-      .bindPopup(`<img src="${p.thumb}" style="width:150px;border-radius:6px"><br>${esc([p.board.koshu,p.board.sokuten,p.stage].filter(Boolean).join(' '))}${(()=>{ const it=p.itemId&&items.find(i=>i.id===p.itemId); return it?`<br>→ 撮った木：${esc(koshuLabel(it))} No.${esc(it.no||'')}`:''; })()}${turnBtns(p.id)}`)
+  // 撮った場所の矢印：ふつうは工種・規格・測点ごとに1本（前・中・後の代表）。≡で全部の写真にもできる
+  mapPhotos().forEach(({p,col,all})=>{
+    const lp=photosCache.find(x=>x.id===p.id);
+    const thumbs=all.map(q=>{ const l=photosCache.find(x=>x.id===q.id); return l?`<img src="${l.thumb}" style="width:64px;height:48px;object-fit:cover;border-radius:4px;margin:1px">`:''; }).join('');
+    const it=p.itemId&&items.find(i=>i.id===p.itemId);
+    L.marker([+p.lat,+p.lng],{icon:arrowIcon(p.heading,col),draggable:true,opacity:lp?1:.85})
+      .bindPopup(`${thumbs?`<div>${thumbs}</div>`:''}<b>${esc([p.board?.koshu,p.board?.kikaku,p.board?.sokuten].filter(Boolean).join(' '))}</b><br>${all.map(q=>esc(q.stage||'')).filter(Boolean).join('・')}${it?`<br>→ 撮った木：${esc(koshuLabel(it))} No.${esc(it.no||'')}`:''}${turnBtns(p.id)}`)
       .on('dragend',e=>fixPhotoPos(p.id,e.target.getLatLng(),null))
       .addTo(mapLayer);
-    pts.push([p.lat,p.lng]);
-  });
-  const mine=new Set(photosCache.map(p=>p.id));
-  teamPhotos.filter(p=>p.lat&&!mine.has(p.photoId)).forEach(p=>{
-    const col = stageColor(p.stage);
-    L.marker([p.lat,p.lng],{icon:arrowIcon(p.heading,col),opacity:.8,draggable:true})
-      .bindPopup(`${esc([p.koshu,p.sokuten,p.stage].filter(Boolean).join(' '))}<br>${esc(p.by||'')}　${esc(String(p.takenAt||'').slice(0,10))}<br><a href="${esc(p.url)}" target="_blank">写真を開く</a>${turnBtns(p.photoId)}`)
-      .on('dragend',e=>fixPhotoPos(p.photoId,e.target.getLatLng(),null))
-      .addTo(mapLayer);
-    pts.push([p.lat,p.lng]);
+    pts.push([+p.lat,+p.lng]);
   });
   items.filter(i=>i.siteId===cur.id).forEach(i=>{ const ll=itemLL(i); if(!ll) return;
     L.marker([ll.lat,ll.lng],{icon:pinIcon(i),zIndexOffset:1000}).on('click',()=>{ if(placing) return; openPointSheet(i.id); }).addTo(mapLayer);
@@ -1519,9 +1514,9 @@ function renderMap(){
     else if(g) R.trees.filter(f=>!treeItem(f)).forEach(f=>{ const ll=g.px2ll(f.pt.x,f.pt.y);
       L.circleMarker([ll.lat,ll.lng],{radius:7,color:'#2f6b3f',weight:2,fillColor:'#fff',fillOpacity:1}).on('click',()=>{ if(placing) return; const it=itemForTree(cur.id,rec,f); openPointSheet(it.id); renderMap(); }).addTo(mapLayer); }); }
   // 撮った場所 → 撮った木 の点線と矢印（どの木を撮ったか分かるように）
-  allPhotosHere().filter(p=>p.itemId&&p.lat!=null&&p.lat!=='').forEach(p=>{
+  mapPhotos().filter(x=>x.p.itemId).forEach(({p,col})=>{
     const it=items.find(i=>i.id===p.itemId), ll=it&&itemLL(it); if(!ll) return;
-    const col=stageColor(p.stage), a=[+p.lat,+p.lng], b=[ll.lat,ll.lng];
+    const a=[+p.lat,+p.lng], b=[ll.lat,ll.lng];
     L.polyline([a,b],{color:col,weight:3,dashArray:'6 6',opacity:.9}).addTo(mapLayer);
     const r=Math.PI/180, brg=Math.atan2(Math.sin((b[1]-a[1])*r)*Math.cos(b[0]*r), Math.cos(a[0]*r)*Math.sin(b[0]*r)-Math.sin(a[0]*r)*Math.cos(b[0]*r)*Math.cos((b[1]-a[1])*r))/r;
     const mid=[a[0]+(b[0]-a[0])*0.62, a[1]+(b[1]-a[1])*0.62];
@@ -1533,6 +1528,16 @@ function renderMap(){
     else if(cur.lat&&cur.lng) map.setView([cur.lat,cur.lng],18);
     else getPositionOnce().then(g=>{ if(g) map.setView([g.lat,g.lng],18); });
   }
+}
+/* 地図・図面に出す写真：測点ごとに1枚（いちばん前の状況の写真）。色は その測点の進み具合（橙＝途中・緑＝そろった） */
+function mapLegend(){ return `➤ 撮った場所と向き（GPS）。<b>矢印を指で動かすと場所を直せます</b><br>${S.arrowAll?'<span style="color:#d35400">■</span>前　<span style="color:#2471a3">■</span>中　<span style="color:#1e8449">■</span>後':'矢印は測点ごとに1本（橙＝途中・緑＝そろった）'}　● 木（白＝まだ・橙＝途中・緑＝そろった）`; }
+function mapPhotos(){
+  const st=curStages(), si=s=>{ const i=st.indexOf(s); return i<0?99:i; };
+  const ph=allPhotosHere().filter(p=>p.lat!=null&&p.lat!==''), ts=targets();
+  const prog=k=>{ const t=ts.find(x=>x.key===k); if(!t) return PROG_COLOR.part; const n=st.filter(s=>t.done[s]>0).length; return n>=st.length?PROG_COLOR.all:PROG_COLOR.part; };
+  if(S.arrowAll) return ph.map(p=>({p,col:stageColor(p.stage),all:[p]}));
+  const g=new Map(); ph.forEach(p=>{ const k=targetKeyOf(p); (g.get(k)||g.set(k,[]).get(k)).push(p); });
+  return [...g.entries()].map(([k,l])=>{ l.sort((a,b)=>si(a.stage)-si(b.stage)||a.takenAt-b.takenAt); return {p:l[0],col:prog(k),all:l}; });
 }
 function turnBtns(id){ return `<div style="margin-top:6px;display:flex;gap:4px;align-items:center;font-size:12px">向き <button onclick="turnPhoto('${id}',-15)">↺15°</button><button onclick="turnPhoto('${id}',15)">↻15°</button><button onclick="turnPhoto('${id}',180)">反対</button></div>`; }
 window.turnPhoto=(id,d)=>{ const lp=photosCache.find(p=>p.id===id), tp=teamPhotos.find(p=>p.photoId===id), h0=Number((lp||tp||{}).heading)||0; fixPhotoPos(id,null,(h0+d+360)%360); };
@@ -1552,6 +1557,7 @@ function updateMapTools(){
   $('#mtTap').textContent = placing ? (placing==='new'?'✕ 置くのをやめる':placing==='align'?'✕ 合わせるのをやめる':'✕ 移動をやめる') : '👆 地図に置く';
   $('#mtTap').style.display = placing ? '' : 'none';
   $('#mtLayer').textContent = S.mapPhoto ? '地図' : '航空写真';
+  $('#mtArrows').textContent = S.arrowAll ? '矢印：全部の写真' : '矢印：測点ごと';
 }
 function onMapClick(e){
   if(!placing) return;
@@ -1679,7 +1685,7 @@ async function showZumen(on){
   $('#mtView').textContent=on?'🗺 地図':'📐 図面'; $('#mtAlign').style.display='none';
   $('.legend').innerHTML = on
     ? `○ 図面の木：<i style="background:#fff"></i>まだ <i style="background:${PROG_COLOR.part}"></i>途中 <i style="background:${PROG_COLOR.all}"></i>そろった<br><b>木をタップ</b>で撮影・写真を見る${geoOf(cur.id)?'。矢印＝撮った場所→木':''}`
-    : `➤ 撮った場所と向き（GPS）。<b>矢印を指で動かすと場所を直せます</b><br><span style="color:#d35400">■</span>前　<span style="color:#2471a3">■</span>中　<span style="color:#1e8449">■</span>後　● 木（白＝まだ・橙＝途中・緑＝そろった）`;
+    : mapLegend();
   if(!on){ setTimeout(renderMap,30); return; }
   const rec=parkRecOf(cur.id);
   if(!rec){ drawZumenMsg('公園報告の図面がまだつながっていません。<br>公園報告アプリで木をタップ →「📷 この木の写真を撮る」、または 情報 → ③ 読み込む →「公園報告の図面から」でつながります。'); return; }
@@ -1704,8 +1710,8 @@ function drawZumen(){
   const g=geoOf(cur.id);
   // 撮った場所 → 木 の矢印（地図と合わせてあるとき）
   if(g){
-    allPhotosHere().filter(p=>p.lat!=null&&p.lat!=='').forEach(p=>{
-      const a=g.ll2px(+p.lat,+p.lng), A=S(a.x,a.y), it=p.itemId&&items.find(i=>i.id===p.itemId), col=stageColor(p.stage);
+    mapPhotos().forEach(({p,col})=>{
+      const a=g.ll2px(+p.lat,+p.lng), A=S(a.x,a.y), it=p.itemId&&items.find(i=>i.id===p.itemId);
       if(it&&it.px!=null&&it.px!==''){ const B=S(+it.px,+it.py); drawArrow(ctx,A,B,col,true); }
       else if(p.heading!=null){ const ang=g.north+(+p.heading)*Math.PI/180; drawArrow(ctx,A,{x:A.x+Math.sin(ang)*26,y:A.y-Math.cos(ang)*26},col,false); }
       ctx.fillStyle=col; ctx.beginPath(); ctx.arc(A.x,A.y,5,0,7); ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
@@ -1773,6 +1779,7 @@ $('#alHere').onclick=async()=>{ $('#alignModal').classList.remove('on'); toast('
 $('#alMap').onclick=()=>{ $('#alignModal').classList.remove('on'); showZumen(false); placing='align'; updateMapTools(); toast('その木の場所を地図でタップしてください（航空写真が見やすいです）',4000); };
 $('#alCancel').onclick=()=>{ $('#alignModal').classList.remove('on'); ALN=null; drawZumen(); toast('合わせるのをやめました'); };
 $('#mtView').onclick=()=>showZumen(!ZV.on);
+$('#mtArrows').onclick=()=>{ S.arrowAll=!S.arrowAll; saveAll(); updateMapTools(); if(ZV.on) drawZumen(); else renderMap(); toast(S.arrowAll?'撮った写真ぜんぶの矢印を出します':'矢印は工種・規格・測点ごとに1本です',1800); };
 $('#mtAlign').onclick=()=>{ if(geoOf(cur.id)&&!confirm('いまの合わせ方をやり直しますか？')) return; alignStart(); };
 window.addEventListener('resize',()=>{ if(ZV.on) drawZumen(); });
 
