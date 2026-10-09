@@ -247,7 +247,7 @@ const ROUSAI_STAGES = ['受診', '書類提出', '休業補償の申請', '職�
 const LICENSES = [['普通', 1], ['準中型（5t限定）', 2], ['準中型', 3], ['中型（8t限定）', 4], ['中型', 5], ['大型', 6]];
 const licRank = n => (LICENSES.find(l => l[0] === n) || [0, 0])[1];
 const SLOT_JA = { scene: '全景', own_far: '自社の損傷（引き）', own_near: '自社の損傷（寄り）', their_far: '相手側（引き）', their_near: '相手側（寄り）', detail: '損傷の詳細', plate: '相手のナンバー',
-  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', hiyari: 'ヒヤリハット' };
+  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', police: '警察の名刺・メモ', hiyari: 'ヒヤリハット' };
 
 /* ---------------- 小道具 ---------------- */
 const $ = s => document.querySelector(s);
@@ -773,8 +773,17 @@ function renderForm() {
     h += `<div class="card"><h2>🚓 警察・救急</h2>
       ${lbl('警察への届け出', car)}${chips('police.status', ['届け出た', 'これから・後日届け出る', '届けていない', car ? '' : 'いらない（作業事故）'].filter(Boolean))}
       ${po.status === '届けていない' && needPolice ? '<div class="note red"><b>交通事故は、物損だけでも届け出が必要です</b>今からでも、事故の場所の警察署に連絡してください。届けないと交通事故証明書が出ず、保険が使えないことがあります。</div>' : ''}
-      ${po.status === '届け出た' || po.status === 'これから・後日届け出る' ? `<div class="row2"><div>${lbl('警察署')}${inp('police.station', '例：高津警察署')}</div><div>${lbl(po.status === '届け出た' ? '届け出た日' : '届け出る予定日')}${inp('police.date', '', 'date')}</div></div>
-        <div class="row2"><div>${lbl('担当の警察官')}${inp('police.officer', '')}</div><div>${lbl('受理番号（わかれば）')}${inp('police.receiptNo', '')}</div></div>` : ''}
+      ${po.status === '届け出た' || po.status === 'これから・後日届け出る' ? `
+        ${car ? '<div class="note green"><b>交通事故証明書のために控えておくこと</b>保険会社は、届け出た警察署・担当の警察官・届け出た日時・人身事故か物件事故かを聞いてきます。警察官の名刺やメモは写真で残しておくと確実です。<br>証明書は自動車安全運転センターで出してもらえます（物件事故は3年・人身事故は5年まで）。保険会社が代わりに取ることも多いので、親方に任せて大丈夫です。</div>' : ''}
+        <div class="row2"><div>${lbl('警察署（事故の場所の管轄）')}${inp('police.station', '例：高津警察署')}</div><div>${lbl('警察署の電話')}${inp('police.stationTel', '', 'tel')}</div></div>
+        <div class="row2"><div>${lbl(po.status === '届け出た' ? '届け出た日' : '届け出る予定日')}${inp('police.date', '', 'date')}</div><div>${lbl('時刻')}${inp('police.time', '', 'time')}</div></div>
+        <div class="row2"><div>${lbl('担当の係')}${inp('police.section', '例：交通課')}</div><div>${lbl('担当の警察官の名前')}${inp('police.officer', '例：○○巡査部長')}</div></div>
+        ${car ? lbl('事故の扱い') + chips('police.type', ['物件事故（物損）', '人身事故', 'わからない']) : ''}
+        ${lbl('受理番号・事故番号（言われたら）')}${inp('police.receiptNo', '')}
+        ${car && po.type === '人身事故' ? lbl('実況見分（現場での確認）') + chips('police.inspection', ['した', 'まだ（後日）', 'していない']) : ''}
+        ${lbl('警察官の名刺・メモの写真')}<p class="hint" style="margin-top:0">名刺・言われたことのメモ・受理番号の紙など</p>
+        ${(() => { const ps = photosOf(curDraft().id, 'police'); return ps.length ? `<div class="thumbs">${ps.map(p => thumbHtml(p)).join('')}</div>` : ''; })()}
+        <div class="row2"><button type="button" class="btn sm" data-cam="police">📷 撮る</button><button type="button" class="btn sm" data-lib="police">🖼 写真から選ぶ</button></div>` : ''}
       ${po.status === '届けていない' ? lbl('届けていない理由') + inp('police.reason', '例：私有地の中だった') : ''}
       ${lbl('救急車')}${chips('ambulance', ['呼んでいない', '呼んだ'])}
     </div>`;
@@ -918,6 +927,7 @@ function pickPhoto(slot, cam, caseId, cb) {
   for (const f of files) {
     try { await addPhoto(f, pickSlot, pickCase, sel === '#fileCam'); } catch (err) { toast('写真を読み込めませんでした：' + err.message, 4000); }
   }
+  toast(files.length + '枚入れました', 1500);
   if (pickCb) pickCb(); else if (curDraft()) renderForm();
   sync();
 }));
@@ -1128,7 +1138,8 @@ function reportRows(d) {
   if (dm.ownPerson) S6.push(['自社の人のけが', [r.staff, r.commute, r.type, r.part, r.degree, r.hospital ? '病院：' + r.hospital : '', r.visitDate ? '受診：' + r.visitDate : '', r.leave === '休みあり' ? '休み：' + (r.leaveDays || '?') + '日' : r.leave].filter(Boolean).join('　')]);
   const mach = (d.mach || {}).acc || [];
   if (mach.length && !mach.includes('none')) S6.push(['機械・設備の事故', mach.map(k => (MACH_ACC.find(x => x[0] === k) || [0, k])[1]).join('・') + ((d.mach || {}).crane05 ? '（つり上げ荷重：' + d.mach.crane05 + '）' : '')]);
-  const S7 = [['警察', [po.status, po.station, po.officer ? '担当：' + po.officer : '', po.receiptNo ? '受理番号：' + po.receiptNo : '', po.date ? jaDate(po.date) : '', po.reason ? '（' + po.reason + '）' : ''].filter(Boolean).join('　')], ['救急車', d.ambulance]];
+  const S7 = [['警察への届け出', [po.status, po.reason ? '（' + po.reason + '）' : ''].filter(Boolean).join('　')], ['届け出た警察署', [po.station, po.stationTel].filter(Boolean).join('　')], ['届け出た日時', [po.date ? jaDate(po.date) : '', po.time].filter(Boolean).join('　')],
+    ['担当', [po.section, po.officer].filter(Boolean).join('　')], ['事故の扱い', [po.type, po.inspection ? '実況見分：' + po.inspection : ''].filter(Boolean).join('　')], ['受理番号', po.receiptNo], ['救急車', d.ambulance]];
   return [['事故の区分', S1], ['発生日時・場所', S2], [car ? '車両・移動' : '現場・作業', S3], ['関わった人', S4], ['相手の情報', S5], ['損害・けが', S6], ['警察・救急', S7]].map(([t, rows]) => [t, rows.filter(x => x[1])]).filter(x => x[1].length);
 }
 function checkItems(c) {
@@ -1284,7 +1295,7 @@ function firstCall(c) {
     ${car && cr.vehicleId === '__other' ? row('借りた車', [cr.otherType, cr.lender, cr.lenderTel, cr.lenderIns ? '保険：' + cr.lenderIns : ''].filter(Boolean).join('　')) : ''}
     ${row(car ? '運転者・車' : '作業者・現場', car ? [d.driver, cr.vehicle, cr.plate, cr.purpose === ONSITE ? '（現場の中：' + [cr.site, cr.onsite].filter(Boolean).join('・') + '）' : ''].filter(Boolean).join('　') : [d.driver, (d.work || {}).site].filter(Boolean).join('　'))}
     ${row('何が起きた', whatHappened)}${row('経緯', String(d.story || '').slice(0, 160) + (String(d.story || '').length > 160 ? '…' : ''))}
-    ${row('けが', injury)}${row('警察', [(d.police || {}).status, (d.police || {}).station].filter(Boolean).join('　'))}
+    ${row('けが', injury)}${row('警察', [(d.police || {}).status, (d.police || {}).station, (d.police || {}).officer ? '担当：' + [(d.police || {}).section, d.police.officer].filter(Boolean).join(' ') : '', (d.police || {}).type, (d.police || {}).receiptNo ? '受理番号：' + d.police.receiptNo : ''].filter(Boolean).join('　'))}
     ${car ? row('車', cr.drivable) + row('積荷', cr.loadOn === '荷物あり' ? ((cr.load || {}).kinds || []).join('・') + ' ' + ((cr.load || {}).spill || '') : cr.loadOn) : ''}
     ${row('相手', d.party === 'other' ? [o.name, o.phone, o.plate, o.insurer ? '保険：' + o.insurer : ''].filter(Boolean).join('　') : (dm.theirThing ? [o.thing, o.ownerType, o.ownerName].filter(Boolean).join('　') : ''))}
   </dl>

@@ -2830,7 +2830,7 @@ function jkFlat_(c) {
     vehicle: [car.vehicle, car.plate, car.vehicleId === '__other' ? '（' + ['登録外', car.otherType, car.lender].filter(Boolean).join('・') + '）' : ''].filter(Boolean).join(' '), site: wk.site || car.site || car.relSite || '',
     route: d.kind === 'car' ? (car.purpose === '現場の中' ? ['現場の中', car.onsite].filter(Boolean).join('：') : [car.purpose, [car.from, car.to].filter(Boolean).join('→')].filter(Boolean).join('：')) : '',
     other: [o.name, [o.thing, o.ownerType, o.ownerName].filter(Boolean).join(' ')].filter(Boolean).join('／'),
-    police: [pol.status, pol.station, pol.receiptNo].filter(Boolean).join(' '),
+    police: [pol.status, pol.station, pol.officer ? '担当：' + [pol.section, pol.officer].filter(Boolean).join(' ') : '', pol.type, pol.receiptNo ? '受理番号：' + pol.receiptNo : ''].filter(Boolean).join(' '),
     insurer: ic.insurer || '', insReceipt: ic.receiptNo || '', insUse: b.insUse || '',
     cost: [rp.estimate ? '見積' + rp.estimate + '円' : '', rp.paid ? '支払' + rp.paid + '円' : '', rp.payout ? '保険金' + rp.payout + '円' : ''].filter(Boolean).join('・'),
     rousai: dm.ownPerson ? [rs.staff, rs.type, b.rousaiStage].filter(Boolean).join('・') : '',
@@ -2977,7 +2977,7 @@ function jkPhotoFolder_(ownerId) {
   return f;
 }
 var JK_SLOT_JA = { scene: '全景', own_far: '自社の損傷（引き）', own_near: '自社の損傷（寄り）', their_far: '相手側（引き）', their_near: '相手側（寄り）', detail: '損傷の詳細', plate: '相手のナンバー',
-  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', hiyari: 'ヒヤリハット' };
+  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', police: '警察の名刺・メモ', hiyari: 'ヒヤリハット' };
 function jkPhoto_(b, me) {
   var p = b.photo || {}, owner = String(p.caseId || '');
   if (!p.photoId || !b.data) return { ok: false, error: '写真がありません' };
