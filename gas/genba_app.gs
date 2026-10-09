@@ -1365,6 +1365,25 @@ function shashinSite_(siteId) {
   for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(siteId)) return list[i];
   return null;
 }
+/* 公園報告の図面（記録id）ごとに、どの木・範囲を どの状況まで撮ったか（公園報告の図面に枠を付ける・撮影の状況リスト用）
+   あわせて、その案件の撮り方（前・中・後）と「何本に1本撮るか」の決まり */
+function shashinParkShots_(p) {
+  var rec = String(p.rec || ''); if (!rec) return { ok: false, error: '記録がありません' };
+  var its = rows_('shashinItems').filter(function (r) { return String(r.parkRec) === rec && r.state !== '削除' && r.parkFid; });
+  var byItem = {}; its.forEach(function (r) { byItem[r.itemId] = r; });
+  var shots = {};
+  rows_('shashinPhotos').forEach(function (r) {
+    if (r.state) return; var it = byItem[r.itemId]; if (!it || !r.stage) return;
+    var l = shots[it.parkFid] = shots[it.parkFid] || []; if (l.indexOf(r.stage) < 0) l.push(r.stage);
+  });
+  var siteId = its.length ? its[0].siteId : '', stages = [], rule = null, s = siteId ? siteList_().filter(function (x) { return String(x.id) === String(siteId); })[0] : null;
+  if (s) {
+    var d = new Date(), fy = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1, key = s.contract ? 'C|' + s.contract + '|' + fy : 'S|' + s.id;
+    var inf = rows_('shashinInfo').filter(function (r) { return r.key === key; })[0];
+    if (inf) { stages = shashinJson_(inf.stages, []); var o = shashinJson_(inf.opts, {}); rule = o.photoRule || null; }
+  }
+  return { ok: true, siteId: siteId, stages: stages.length ? stages : ['作業前', '作業中', '作業後'], rule: rule, shots: shots };
+}
 /* ---- 遠隔撮影：iPadの公園報告で木をタップ → iPhoneの工事写真のカメラが開く ----
    部屋番号（4〜6けた）ごとに、最近の指示を CacheService に置く（6時間）。電波が切れても、つながった時に最新の指示を受け取れる */
 function rmtKey_(code) { return 'rmt_' + String(code || '').replace(/\D/g, '').slice(0, 6); }
@@ -1419,6 +1438,7 @@ function shashinGet_(a, p) {
   }
   if (a === 'photoData') return shashinPhotoData_(p.fileId);
   if (a === 'remotePoll') return shashinRemotePoll_(p);
+  if (a === 'parkShots') return shashinParkShots_(p);
   if (a === 'remoteStatus') return shashinRemoteStatus_(p);
   if (a === 'photos') {   // その現場で、みんなが撮った写真の記録
     return { ok: true, photos: rows_('shashinPhotos').filter(function (r) { return !p.siteId || String(r.siteId) === String(p.siteId); }).map(function (r) {

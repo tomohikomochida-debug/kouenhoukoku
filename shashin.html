@@ -194,6 +194,15 @@ header .back{font-size:22px;padding:4px 12px}
 .tabs2 button.on{background:var(--main-d);color:#fff}
 .addrow{display:flex;gap:6px;margin-top:6px}.addrow input{flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:15px}.addrow button{background:#fff;border:1px solid var(--main);color:var(--main);border-radius:10px;padding:0 14px;font-weight:700}
 .recent .when{font-size:12px;color:var(--sub)}
+.ruleRow{display:flex;gap:4px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px;margin-bottom:6px}
+.ruleRow select{flex:1 1 140px;min-width:0;padding:8px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:#fff}
+.ruleRow input{width:56px;padding:8px;border:1px solid var(--line);border-radius:8px;font-size:15px;text-align:center}
+.ruleRow span{font-size:12px;color:var(--sub)}.ruleRow button{background:#eef1ed;border-radius:8px;padding:8px 10px}
+.needTbl{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;background:#fff;border-radius:10px;overflow:hidden}
+.needTbl th{background:#eef3ee;color:var(--main-d);padding:7px 6px;text-align:right;font-size:12px}.needTbl th:first-child{text-align:left}
+.needTbl td{padding:8px 6px;border-top:1px solid var(--line);text-align:right;white-space:nowrap}.needTbl td:first-child{text-align:left;white-space:normal}
+.needTbl td small{display:block;color:var(--sub);font-size:11px}
+.needTbl tr.ng td:last-child{color:#b03a2e;font-weight:800;font-size:15px}.needTbl tr.ok td:last-child{color:#1e8449}
 .mapBox{display:flex;gap:10px;align-items:flex-start}
 #fMap{flex:1;min-width:0}
 .mapPrev{flex:0 0 38%;position:sticky;top:8px}
@@ -423,6 +432,11 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
       <div class="field"><label>⑥ 写真をまとめて渡すとき</label><div class="quick" id="fZip"></div></div>
       <div class="field"><label>⑦ 黒板への入れ方（細目・規格・状況をどの欄に入れるか）</label>
         <div class="mapBox"><div id="fMap"></div><div class="mapPrev"><canvas id="fMapPrev"></canvas><div class="s" style="font-size:11px;color:var(--sub);text-align:center">見本</div></div></div></div>
+      <div class="field"><label>⑧ 写真を撮る本数の決まり（工種・規格ごと）</label>
+        <div class="s" style="font-size:12px;color:var(--sub);margin-bottom:6px">公園報告の図面の本数から、撮る本数を出して「残り」を数えます。決まりが無い工種・規格は全数です。</div>
+        <div id="fRule"></div>
+        <div class="row2" style="margin-top:6px"><button class="btn sub" id="fRuleAdd" style="margin:0">＋ 決まりを足す</button><button class="btn sub" id="fRulePaste" style="margin:0">まとめて貼り付け</button></div>
+        <textarea id="fRuleText" style="display:none;margin-top:6px" placeholder="1行に「工種,規格,何本に1本,最低本数」&#10;例）基本剪定（落葉木）,60〜90cm,10,2&#10;すべて,すべて,5,1"></textarea></div>
       <div class="field"><label>メモ</label><input id="fMemo" autocomplete="off" autocorrect="off" name="x-memo" placeholder="例）写真は着手前・完了を必ず"></div>
       <button class="btn" id="infoSave">保存して撮影へ</button>
     </div>
@@ -1107,11 +1121,34 @@ function drawMapUI(){
     const c=$('#fMapPrev'), w=600; c.width=w; c.height=Math.ceil(boardHeight(w,F.tpl)); drawBoard(c.getContext('2d'),0,0,w,F.tpl,b);
   } finally { cur=keepCur; MAP_OVERRIDE=null; }
 }
+/* 写真を撮る本数の決まり：rows=[{cat,rank,per,min}]（'*'＝すべて）。いちばん細かく当てはまる行を使う。決まりが無ければ全数 */
+function ruleNeed(rule,cat,rank,count){
+  const rows=(rule&&rule.rows)||[], m=(r,c,k)=>(r.cat==='*'||r.cat===c)&&(r.rank==='*'||r.rank===k);
+  const hit=rows.filter(r=>m(r,cat,rank)).sort((a,b)=>((b.cat!=='*')*2+(b.rank!=='*'))-((a.cat!=='*')*2+(a.rank!=='*')))[0];
+  const per=hit?Math.max(1,Number(hit.per)||1):1, min=hit?Number(hit.min)||0:0;
+  return count<=0?0:Math.min(count,Math.max(Math.ceil(count/per),min));
+}
+function drawRuleUI(){
+  const R=F.opts.photoRule=F.opts.photoRule||{rows:[]};
+  const cats=[...new Set([...F.koshu.map(x=>x.cat),...Object.keys(parkWorks())])];
+  const ranks=[...new Set([...BANDS,...F.koshu.map(x=>String(x.kikaku||'').replace(/^C=/,'')).filter(Boolean)])];
+  const opt=(list,v)=>['*',...list].map(x=>`<option value="${esc(x)}" ${x===v?'selected':''}>${x==='*'?'すべて':esc(x)}</option>`).join('');
+  $('#fRule').innerHTML=R.rows.length?R.rows.map((r,i)=>`<div class="ruleRow"><select data-rk="cat" data-i="${i}">${opt(cats,r.cat)}</select><select data-rk="rank" data-i="${i}">${opt(ranks,r.rank)}</select>
+    <input type="number" min="1" data-rk="per" data-i="${i}" value="${esc(r.per||1)}"><span>本に1本</span><span>最低</span><input type="number" min="0" data-rk="min" data-i="${i}" value="${esc(r.min||0)}"><span>本</span><button data-rx="${i}">✕</button></div>`).join('')
+    :'<div class="s" style="font-size:12px;color:var(--sub)">まだありません（全数撮る扱い）</div>';
+  $('#fRule').querySelectorAll('[data-rk]').forEach(el=>el.onchange=()=>{ const r=R.rows[Number(el.dataset.i)], k=el.dataset.rk; r[k]=(k==='per'||k==='min')?Math.max(k==='per'?1:0,Number(el.value)||0):el.value; });
+  $('#fRule').querySelectorAll('[data-rx]').forEach(b=>b.onclick=()=>{ R.rows.splice(Number(b.dataset.rx),1); drawRuleUI(); });
+}
+$('#fRuleAdd').onclick=()=>{ F.opts.photoRule=F.opts.photoRule||{rows:[]}; F.opts.photoRule.rows.push({cat:'*',rank:'*',per:1,min:0}); drawRuleUI(); };
+$('#fRulePaste').onclick=()=>{ const t=$('#fRuleText');
+  if(t.style.display==='none'){ t.style.display=''; t.focus(); $('#fRulePaste').textContent='貼り付けを読み取る'; return; }
+  const add=t.value.split(/\n/).map(l=>l.split(/[,\t、，]/).map(x=>x.trim())).filter(a=>a[0]).map(a=>({cat:/^(すべて|全て|全部|\*)$/.test(a[0])?'*':a[0], rank:/^(すべて|全て|全部|\*|)$/.test(a[1]||'')?'*':String(a[1]).replace(/^C=/,''), per:Math.max(1,Number(a[2])||1), min:Number(a[3])||0}));
+  F.opts.photoRule=F.opts.photoRule||{rows:[]}; F.opts.photoRule.rows.push(...add); t.value=''; t.style.display='none'; $('#fRulePaste').textContent='まとめて貼り付け'; drawRuleUI(); toast(`${add.length}件の決まりを足しました`); };
 function drawOptChips(){
   const chip=(id,list,key)=>{ $(id).innerHTML=list.map(([v,l])=>`<button data-v="${v}" class="${F.opts[key]===v?'on':''}">${l}</button>`).join(''); $(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{ F.opts[key]=b.dataset.v; drawOptChips(); }); };
   chip('#fNoStyle',NO_STYLES,'noStyle'); chip('#fLayout',LAYOUTS,'layout'); chip('#fZip',ZIPS,'zip');
   const l=LAYOUTS.find(x=>x[0]===F.opts.layout); $('#fLayoutNote').textContent=l?l[2]:'';
-  drawMapUI();
+  drawMapUI(); drawRuleUI();
 }
 $('#fStageAdd').onclick=()=>{ const v=$('#fStageNew').value.trim(); if(!v) return; F.stages.push(v); $('#fStageNew').value=''; drawInfoExtras(); };
 $('#fTplCard').onclick=()=>openBoardLib('info');
@@ -1595,7 +1632,19 @@ $('#mtLayer').onclick=()=>{
    ・2本の木で地図と合わせると、地図にも木が出て、撮った場所から木へ矢印が引ける
    木の目印は 公園報告と同じ決め方（木のid、無ければ図面上の位置）
    ========================================================= */
-const treeFid = f => f.id || ('p'+Math.round(f.pt.x)+'_'+Math.round(f.pt.y));
+const featPos = f => f.pt ? f.pt : (Array.isArray(f.pts)&&f.pts.length ? {x:f.pts.reduce((a,q)=>a+q.x,0)/f.pts.length, y:f.pts.reduce((a,q)=>a+q.y,0)/f.pts.length} : {x:0,y:0});
+const treeFid = f => { if(f.id) return f.id; const p=featPos(f); return (f.pt?'p':'a')+Math.round(p.x)+'_'+Math.round(p.y); };   // 公園報告と同じ決め方
+/* 図面の木・範囲ごとに、撮った状況（この端末＋みんなの写真から） */
+function fidShots(){ const m={}; allPhotosHere().forEach(p=>{ const it=p.itemId&&items.find(i=>i.id===p.itemId); if(!it||!it.parkFid||!p.stage) return; (m[it.parkFid]=m[it.parkFid]||new Set()).add(p.stage); }); return m; }
+/* 撮影の印：前・中・後の数だけ区切った細い枠。撮った分が緑、そろうと緑の輪 */
+function drawShotRing(ctx,x,y,r,got){
+  if(!got||!got.size) return; const st=curStages(), n=st.length, done=st.filter(s=>got.has(s)).length, R=r+4;
+  ctx.save(); ctx.lineWidth=3; ctx.lineCap='round';
+  if(done>=n){ ctx.beginPath(); ctx.arc(x,y,R,0,7); ctx.strokeStyle='#1e8449'; ctx.stroke(); ctx.restore(); return; }
+  const gap=.32, seg=Math.PI*2/n;
+  st.forEach((s,i)=>{ const a0=-Math.PI/2+i*seg+gap/2; ctx.beginPath(); ctx.arc(x,y,R,a0,a0+seg-gap); ctx.strokeStyle=got.has(s)?'#1e8449':'rgba(0,0,0,.18)'; ctx.stroke(); });
+  ctx.restore();
+}
 /* 案件の設定（opts）を直して保存（みんなに共有） */
 function setCaseOpt(fn){
   let inf=infos[cur.infoKey];
@@ -1610,10 +1659,12 @@ function setParkRec(siteId,rec){ if(!rec||parkRecOf(siteId)===rec) return; setCa
 function itemForTree(siteId,rec,f){
   const fid=treeFid(f); let it=items.find(i=>i.siteId===siteId&&i.parkFid===fid&&(!rec||!i.parkRec||i.parkRec===rec));
   if(it) return it;
-  const kikaku=f.rank?'C='+f.rank:'';
-  const no=items.filter(i=>i.siteId===siteId&&i.cat===f.cat&&(i.kind||'')===(f.kind||'')&&(i.kikaku||'')===kikaku).reduce((m,i)=>Math.max(m,Number(i.no)||0),0)+1;
+  const tree=!f.type||f.type==='tree', ar=Number(f.area)||0;
+  const kikaku = tree ? (f.rank?'C='+f.rank:'') : (ar?`${Math.round(ar*10)/10}㎡`:'');
+  const no=items.filter(i=>i.siteId===siteId&&i.cat===f.cat&&(i.kind||'')===(f.kind||'')&&(tree?(i.kikaku||'')===kikaku:i.src==='park-area')).reduce((m,i)=>Math.max(m,Number(i.no)||0),0)+1;
+  const pos=featPos(f);
   it={ id:uid(), siteId, cat:f.cat||'', kind:f.kind||'', kikaku, no:String(no), name:'', jushu:'', memo:f.C?`幹周 C=${f.C}cm`:'', lat:null, lng:null,
-       src:'park-tree', parkRec:rec||'', parkFid:fid, px:f.pt.x, py:f.pt.y, synced:false };
+       src:tree?'park-tree':'park-area', parkRec:rec||'', parkFid:fid, px:pos.x, py:pos.y, synced:false };
   items.push(it); saveAll(); pushItem(it); return it;
 }
 /* その項目でまだ撮っていない最初の状況 */
@@ -1633,7 +1684,11 @@ async function handleParkLink(P,opt){
   const rec=P.get('rec')||'';
   if(rec) setParkRec(s.id,rec);
   if(!opt.remote){ try{ sessionStorage.setItem('shashin_from_park','1'); }catch(e){} drawParkBanner(); }
-  const f={ id:P.get('fid')||'', cat:P.get('cat')||'', kind:P.get('kind')||'', rank:P.get('rank')||'', C:Number(P.get('C'))||null, pt:{x:Number(P.get('x'))||0,y:Number(P.get('y'))||0} };
+  if(!P.get('fid')){ switchTab(P.get('view')==='check'?'check':'photos'); return; }   // 撮影の状況リストから来たとき
+  const tp=P.get('type')||'tree';
+  const f={ id:P.get('fid')||'', type:tp, cat:P.get('cat')||'', kind:P.get('kind')||'', rank:P.get('rank')||'', C:Number(P.get('C'))||null, area:Number(P.get('area'))||0,
+            pt:{x:Number(P.get('x'))||0,y:Number(P.get('y'))||0} };
+  if(tp!=='tree'){ f.pts=[f.pt]; }
   const it=itemForTree(s.id,rec,f);
   shootItem(it.id,nextStageOfItem(it));
 }
@@ -1671,7 +1726,8 @@ function mkGeo(g){
   };
 }
 /* 項目の地図上の位置：手で置いた位置 → 図面の位置を地図に合わせた位置 */
-function itemLL(i){ if(i.lat!=null&&i.lng!=null&&i.lat!=='') return {lat:+i.lat,lng:+i.lng}; if(i.px==null||i.px==='') return null; const g=geoOf(i.siteId); return g?g.px2ll(+i.px,+i.py):null; }
+function itemPx(i){ const R=i.parkRec&&parkCache[i.parkRec], f=R&&R.byFid[i.parkFid]; if(f) return featPos(f); return (i.px==null||i.px==='')?null:{x:+i.px,y:+i.py}; }   // 公園報告で動かした木にもついていく
+function itemLL(i){ if(i.lat!=null&&i.lng!=null&&i.lat!=='') return {lat:+i.lat,lng:+i.lng}; const p=itemPx(i); if(!p) return null; const g=geoOf(i.siteId); return g?g.px2ll(p.x,p.y):null; }
 
 /* ---- 図面の表示 ---- */
 const parkCache={};
@@ -1679,7 +1735,8 @@ async function loadParkRec(id){
   if(parkCache[id]) return parkCache[id];
   const j=await gasGetApp('park',{action:'get',id}); if(!j.ok) throw new Error(j.error||'読み込めませんでした');
   const d=JSON.parse(j.data), img=d.imgData?await new Promise(res=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>res(null); i.src=d.imgData; }):null;
-  return parkCache[id]={ d, img, trees:(d.features||[]).filter(f=>f.type==='tree'&&f.pt), areas:(d.features||[]).filter(f=>f.type!=='tree'&&Array.isArray(f.pts)) };
+  const F=(d.features||[]).filter(f=>f.pt||Array.isArray(f.pts)), byFid={}; F.forEach(f=>{ byFid[treeFid(f)]=f; });
+  return parkCache[id]={ d, img, byFid, trees:F.filter(f=>f.type==='tree'&&f.pt), areas:F.filter(f=>f.type!=='tree'&&Array.isArray(f.pts)), feats:F.filter(f=>f.cat) };
 }
 const ZV={ on:false, rec:null, k:1, ox:0, oy:0, fitted:null };
 let ALN=null;   // 地図と合わせている途中 {pairs:[], pick:{f}}
@@ -1688,7 +1745,7 @@ async function showZumen(on){
   ZV.on=on; $('#zumen').style.display=on?'block':'none'; $('#map').style.visibility=on?'hidden':'';
   $('#mtView').textContent=on?'🗺 地図':'📐 図面'; $('#mtAlign').style.display='none';
   $('.legend').innerHTML = on
-    ? `○ 図面の木：<i style="background:#fff"></i>まだ <i style="background:${PROG_COLOR.part}"></i>途中 <i style="background:${PROG_COLOR.all}"></i>そろった<br><b>木をタップ</b>で撮影・写真を見る${geoOf(cur.id)?'。矢印＝撮った場所→木':''}`
+    ? `○ 木　<span style="color:#2471a3">●</span> 範囲。撮ったものは細い枠（${curStages().join('・')}の数だけ区切り、撮った分が緑・そろうと緑の輪）<br><b>タップ</b>で撮影・写真を見る${geoOf(cur.id)?'。矢印＝撮った場所→木':''}`
     : mapLegend();
   if(!on){ setTimeout(renderMap,30); return; }
   const rec=parkRecOf(cur.id);
@@ -1716,18 +1773,24 @@ function drawZumen(){
   if(g){
     mapPhotos().forEach(({p,col})=>{
       const a=g.ll2px(+p.lat,+p.lng), A=S(a.x,a.y), it=p.itemId&&items.find(i=>i.id===p.itemId);
-      if(it&&it.px!=null&&it.px!==''){ const B=S(+it.px,+it.py); drawArrow(ctx,A,B,col,true); }
+      const ip=it&&itemPx(it); if(ip){ const B=S(ip.x,ip.y); drawArrow(ctx,A,B,col,true); }
       else if(p.heading!=null){ const ang=g.north+(+p.heading)*Math.PI/180; drawArrow(ctx,A,{x:A.x+Math.sin(ang)*26,y:A.y-Math.cos(ang)*26},col,false); }
       ctx.fillStyle=col; ctx.beginPath(); ctx.arc(A.x,A.y,5,0,7); ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
     });
   }
-  // 木
+  // 木と範囲：白い丸＋撮影の印（前・中・後の区切りの細い枠）
+  const FS=fidShots();
+  R.areas.filter(f=>f.cat).forEach(f=>{ const c=featPos(f), P=S(c.x,c.y), got=FS[treeFid(f)], it=treeItem(f);
+    ctx.beginPath(); ctx.arc(P.x,P.y,7,0,7); ctx.fillStyle='rgba(36,113,163,.85)'; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke();
+    drawShotRing(ctx,P.x,P.y,7,got);
+    if(it){ ctx.fillStyle='#1b4f72'; ctx.font=`700 11px ${FONT}`; ctx.textAlign='center'; ctx.fillText((f.kind||f.cat||'').slice(0,6)+(it.no?' '+it.no:''),P.x,P.y+22); ctx.textAlign='left'; } });
   R.trees.forEach(f=>{
-    const P=S(f.pt.x,f.pt.y), it=treeItem(f), pr=it?itemProgress(it):'none', r=Math.max(9,Math.min(16,6*ZV.k+6));
+    const P=S(f.pt.x,f.pt.y), it=treeItem(f), r=Math.max(9,Math.min(16,6*ZV.k+6));
     const sel=ALN&&ALN.pairs.some(q=>q.fid===treeFid(f));
-    ctx.beginPath(); ctx.arc(P.x,P.y,r,0,7); ctx.fillStyle=pr==='all'?PROG_COLOR.all:pr==='part'?PROG_COLOR.part:'#fff'; ctx.fill();
-    ctx.lineWidth=sel?4:2.5; ctx.strokeStyle=sel?'#f5b400':(pr==='none'?'#2f6b3f':'#fff'); ctx.stroke();
-    if(it){ ctx.fillStyle=pr==='none'?'#2f6b3f':'#fff'; ctx.font=`800 ${Math.round(r*1.05)}px ${FONT}`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(String(it.no||''),P.x,P.y+1); ctx.textAlign='left'; }
+    ctx.beginPath(); ctx.arc(P.x,P.y,r,0,7); ctx.fillStyle='#fff'; ctx.fill();
+    ctx.lineWidth=sel?4:2; ctx.strokeStyle=sel?'#f5b400':'#2f6b3f'; ctx.stroke();
+    drawShotRing(ctx,P.x,P.y,r,FS[treeFid(f)]);
+    if(it){ ctx.fillStyle='#2f6b3f'; ctx.font=`800 ${Math.round(r*1.05)}px ${FONT}`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(String(it.no||''),P.x,P.y+1); ctx.textAlign='left'; }
   });
 }
 function drawArrow(ctx,A,B,col,toTarget){
@@ -1739,7 +1802,10 @@ function drawArrow(ctx,A,B,col,toTarget){
 }
 function zumenTreeAt(x,y){
   const R=parkCache[ZV.rec]; if(!R) return null; let best=null,bd=26;
-  R.trees.forEach(f=>{ const d=Math.hypot(f.pt.x*ZV.k+ZV.ox-x, f.pt.y*ZV.k+ZV.oy-y); if(d<bd){ bd=d; best=f; } }); return best;
+  R.trees.concat(R.areas.filter(f=>f.cat)).forEach(f=>{ const c=featPos(f), d=Math.hypot(c.x*ZV.k+ZV.ox-x, c.y*ZV.k+ZV.oy-y); if(d<bd){ bd=d; best=f; } });
+  if(best) return best;
+  const ix=(x-ZV.ox)/ZV.k, iy=(y-ZV.oy)/ZV.k, inP=(pts)=>{ let c=false; for(let i=0,j=pts.length-1;i<pts.length;j=i++){ if(((pts[i].y>iy)!=(pts[j].y>iy))&&(ix<(pts[j].x-pts[i].x)*(iy-pts[i].y)/(pts[j].y-pts[i].y)+pts[i].x)) c=!c; } return c; };
+  return R.areas.find(f=>f.cat&&f.pts.length>2&&inP(f.pts))||null;
 }
 /* 指で動かす・2本指で拡大・タップで木 */
 (function(){
@@ -2476,20 +2542,36 @@ function missingBefore(key,stage){
   const t=targets().find(x=>x.key===key); if(!t) return [];
   return st.slice(0,i).filter(s=>!(t.done[s]>0));
 }
+/* 公園報告の図面の本数 × 決まり → 撮る本数・そろった本数・残り */
+function needTableHTML(){
+  const rec=parkRecOf(cur.id); if(!rec) return '';
+  const R=parkCache[rec];
+  if(!R){ if(canSync()&&!needTableHTML.loading){ needTableHTML.loading=true; loadParkRec(rec).then(()=>{ needTableHTML.loading=false; if($('#check').classList.contains('on')) renderCheck(); }).catch(()=>{ needTableHTML.loading=false; }); } return '<div class="s" style="margin-bottom:10px;color:var(--sub)">公園報告の図面から本数を読み込んでいます…</div>'; }
+  const st=curStages(), FS=fidShots(), rule=curOpts().photoRule, G={};
+  R.feats.forEach(f=>{ const sub=f.rank||f.kind||'', k=f.cat+'|'+sub, g=G[k]=G[k]||{cat:f.cat,sub,unit:f.type==='tree'?'本':'か所',cnt:0,all:0,part:0};
+    const got=FS[treeFid(f)], n=got?st.filter(s=>got.has(s)).length:0; g.cnt++; if(n>=st.length) g.all++; else if(n>0) g.part++; });
+  const L=Object.values(G).sort((a,b)=>COLL.compare(a.cat,b.cat)||COLL.compare(a.sub,b.sub)); let rest=0;
+  const rows=L.map(g=>{ const need=ruleNeed(rule,g.cat,g.sub,g.cnt), left=Math.max(0,need-g.all); rest+=left;
+    return `<tr class="${left?'ng':'ok'}"><td>${esc(g.cat)}<small>${esc(g.sub)}</small></td><td>${g.cnt}${g.unit}</td><td>${need}</td><td>${g.all}${g.part?`<small>途中${g.part}</small>`:''}</td><td>${left||'✓'}</td></tr>`; }).join('');
+  return `<div class="${rest?'alertBox':'banner info'}" style="margin:0 0 8px">${rest?`<b>決まりの数まで、あと ${rest} 本・か所</b>`:'決まりの数はすべて撮れています'}（公園報告の図面の本数から）</div>
+    <table class="needTbl"><tr><th>工種・規格</th><th>図面</th><th>撮る</th><th>そろった</th><th>残り</th></tr>${rows}</table>
+    <div class="s" style="font-size:11px;color:var(--sub);margin:-6px 0 12px">撮る＝決まり（${rule&&rule.rows&&rule.rows.length?'案件の情報 ⑧':'未設定のため全数'}）　そろった＝${st.join('・')}が全部撮れた数　<a href="#" id="needZumen">📐 図面で見る</a></div>`;
+}
 function renderCheck(){
   if(!cur) return;
   const st=curStages(), ts=targets().filter(t=>t.photos.length||t.item);
-  const box=$('#checkBody');
-  if(!ts.length){ box.innerHTML='<div class="empty">撮影項目や写真がまだありません</div>'; return; }
+  const box=$('#checkBody'), nt=needTableHTML();
+  const bindNeed=()=>{ const a=$('#needZumen'); if(a) a.onclick=e=>{ e.preventDefault(); switchTab('mapPane'); setTimeout(()=>showZumen(true),80); }; };
+  if(!ts.length){ box.innerHTML=nt+'<div class="empty">撮影項目や写真がまだありません</div>'; bindNeed(); return; }
   let ng=0, wait=0; const J=ts.map(t=>{ const j=judge(t); st.forEach(s=>{ if(j[s]==='ng') ng++; if(j[s]==='wait') wait++; }); return j; });
-  box.innerHTML=(ng?`<div class="alertBox">✕ <b>抜けが ${ng} か所</b> あります（あとの写真があるのに、前の写真がありません）</div>`:'')
+  box.innerHTML=nt+(ng?`<div class="alertBox">✕ <b>抜けが ${ng} か所</b> あります（あとの写真があるのに、前の写真がありません）</div>`:'')
     +(wait?`<div class="alertBox" style="background:#fff1d6;color:#8a5200">まだ撮っていない状況が ${wait} か所あります（「まだ」）</div>`:'')
-    +(!ng&&!wait?`<div class="banner info" style="margin:0 0 10px">すべての対象で ${st.join('・')} がそろっています</div>`:'')
+    +(!ng&&!wait?`<div class="banner info" style="margin:0 0 10px">撮り始めた対象では ${st.join("・")} がそろっています</div>`:'')
     +`<table class="chk"><thead><tr><th style="text-align:left">対象（工種・規格・測点）</th>${st.map(s=>`<th>${esc(s)}</th>`).join('')}</tr></thead><tbody>`
     +ts.map((t,i)=>`<tr data-k="${esc(t.key)}"><td class="lb">${esc(t.label)}<small>${esc(t.sub)}</small></td>${st.map(s=>{ const r=J[i][s], n=t.done[s];
         return `<td>${r==='ok'?`<span class="mk ok">○${n>1?n:''}</span>`:r==='ng'?'<span class="mk ng">✕</span>':r==='wait'?'<span class="mk wait">まだ</span>':'<span class="mk no">－</span>'}${t.item&&r!=='ok'?`<br><button class="stg" style="min-width:0;padding:4px 6px;margin-top:4px;font-size:11px" data-shoot="${esc(t.item.id)}" data-s="${esc(s)}">撮る</button>`:''}</td>`; }).join('')}</tr>`).join('')
     +'</tbody></table><div class="s" style="font-size:11px;color:var(--sub);margin-top:8px">○＝撮影済み（数字は枚数）　✕＝抜け　まだ＝これから　－＝まだ手をつけていない</div>';
-  box.querySelectorAll('[data-shoot]').forEach(b=>b.onclick=()=>shootItem(b.dataset.shoot,b.dataset.s));
+  box.querySelectorAll('[data-shoot]').forEach(b=>b.onclick=()=>shootItem(b.dataset.shoot,b.dataset.s)); bindNeed();
   const badge=$('.tabs button[data-tab="check"]'); if(badge) badge.textContent = ng ? `チェック ✕${ng}` : 'チェック';
 }
 let photoView=LS.get('shashin_view','card');   // card＝1対象1枚のカード、list＝1枚ずつ写真と黒板の中身

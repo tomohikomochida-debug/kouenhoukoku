@@ -58,6 +58,13 @@
   .sdBtn.sm{font-size:13px;padding:9px;text-align:center}.sdBtn.ok{background:#2f6b3f;border-color:#2f6b3f;text-align:center}
   .sdCodeWrap{text-align:center;font-size:14px;color:var(--mut);margin:6px 0}.sdCodeWrap b{display:block;font-size:44px;letter-spacing:10px;color:#fff}
   .sdHow{font-size:13px;line-height:1.7;color:var(--ink);background:var(--panel2);border-radius:8px;padding:10px;margin-bottom:10px}
+.slTop{margin-bottom:8px;font-size:15px}.slTop small{display:block;color:var(--mut);font-size:11px;margin-top:3px;font-weight:400}
+  .ngT{color:#ff9f7a}.okT{color:#3ecf8e}
+  .slTbl{width:100%;border-collapse:collapse;font-size:13px}
+  .slTbl th{color:var(--mut);font-weight:600;text-align:right;padding:5px 4px;border-bottom:1px solid var(--line)}.slTbl th:first-child{text-align:left}
+  .slTbl td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}.slTbl td:first-child{text-align:left;white-space:normal}
+  .slTbl td small{display:block;color:var(--mut);font-size:11px}
+  .slTbl tr.ng td:last-child b{color:#ff9f7a;font-size:15px}.slTbl tr.ok td:last-child{color:#3ecf8e}
   .rmtStat{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:7;background:rgba(14,18,24,.92);color:#fff;border-radius:12px;padding:10px 14px;font-size:14px;font-weight:700;box-shadow:0 3px 12px #0008;max-width:92%;text-align:center}
   .rmtStat small{display:block;font-weight:400;font-size:12px;color:#cfd8cf;margin-top:2px}
   .rmtStat.ok{background:rgba(31,90,52,.95)}.rmtStat.ng{background:rgba(120,40,30,.95)}
@@ -566,6 +573,8 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
 
     <div class="sec">
       <h3>凡例（地図上）</h3>
+      <button class="btn" id="shotListBtn">📋 撮影の状況リスト<small>工種・規格ごとに 撮る数・そろった数・残り（写真は工事写真アプリで）</small></button>
+      <button class="btn" id="shotMarkToggle">撮影の印：表示<small>工事写真で撮った木・範囲に細い枠（前・中・後の数だけ区切り、撮った分が緑）</small><span id="shotSum" style="display:block;font-size:11px;color:#7fd1a3;margin-top:2px"></span></button>
       <button class="btn on" id="legendToggle">凡例を表示<small>記号＋工種＋集計数を地図に表示・ドラッグで移動</small></button>
       <button class="btn ghost" id="legendReset">位置を右下に戻す</button>
       <button class="btn ghost" id="labelReset">工種の数字の位置を戻す<small>手で動かした数字を自動配置にもどす</small></button>
@@ -678,6 +687,11 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
   </div>
 </div>
 
+<div class="sdModal" id="shotListModal"><div class="sdCard">
+  <h3>撮影の状況<small>工事写真アプリで撮った写真から数えています</small></h3>
+  <div id="slBody"></div>
+  <div style="display:flex;gap:8px;margin-top:10px"><button class="sdBtn sm" id="slClose">閉じる</button><button class="sdBtn ok" id="slGo">📷 工事写真アプリで見る</button></div>
+</div></div>
 <div class="sdModal" id="shootDevModal"><div class="sdCard">
   <h3>撮影に使うカメラ<small>最初に1回えらべば、毎回は聞きません（あとから変えられます）</small></h3>
   <button class="sdBtn" id="sdSelf">📷 この端末のカメラで撮る<small>木をタップすると、この端末で工事写真アプリのカメラが開きます</small></button>
@@ -969,7 +983,7 @@ function updateHint(){
   if(tool==='cal')h.innerHTML='既知の長さの<b>一端を押して、もう一端までドラッグ</b>（タップ2回でもOK）。置いた点は<b>離さず動かせば微調整</b>できます。先に左の「実距離(m)」を合わせて。';
   else if(tool==='strip')h.innerHTML='＜幅刈り＞道や法面に沿って<b>端から順にタップ</b>→<b>「✓ 確定」</b>。左の「長さ」欄の数字を最初の幅に使います（あとから区間ごとに変えられます）。';
   else if(tool==='rect')h.innerHTML='＜寸法で置く＞左の<b>長さ×奥行</b>の四角を、<b>タップした場所</b>に置きます。置いたあとは普通の面積として頂点を動かしたり回したりできます。';
-  else if(tool==='shoot')h.innerHTML='＜写真＞<b>撮りたい木をタップ</b>すると、カメラが開きます（黒板に工種・規格・No.・幹周）。撮るカメラ：<b>'+shootDevLabel()+'</b>　<a href="#" onclick="openShootDev();return false" style="color:#7fd1a3">変える</a>';
+  else if(tool==='shoot')h.innerHTML='＜写真＞<b>撮りたい木をタップ</b>すると、カメラが開きます（黒板に工種・規格・No.・幹周）。撮るカメラ：<b>'+shootDevLabel()+'</b>　<a href="#" onclick="openShootDev();return false" style="color:#7fd1a3">変える</a>　<a href="#" onclick="openShotList();return false" style="color:#7fd1a3">📋 撮影の状況</a>';
   else if(tool==='pan')h.innerHTML='<b>地図移動モード</b>：ドラッグ（iPadは指1本）で<b>表示位置だけ</b>を動かします。記録に戻るには上で別のモードを選択。';
   else if(tool==='area'){
     if(curGeom()==='line')h.innerHTML='＜つる：管理柵＞フェンスに沿って<b>端から端へタップ</b>→<b>「✓ 確定」</b>。左の<b>高さ(m)</b>を掛けて面積にします。';
@@ -1563,7 +1577,7 @@ function computeGroups(){
   return {clusters,memberSet};
 }
 function draw(){
-  syncDelBtn(); refreshFigNos(); syncShootFab();
+  ensureIds(false); syncDelBtn(); refreshFigNos(); syncShootFab();
   ctx.clearRect(0,0,cv.width,cv.height);
   ctx.save();ctx.translate(view.ox,view.oy);ctx.scale(view.zoom,view.zoom);
   if(state.img)ctx.drawImage(state.img,0,0);
@@ -1628,6 +1642,7 @@ function draw(){
       }
       if(!exporting&&f===selected)drawHandles(f);
       if(!exporting&&f===selected)drawEdgeLengths(f);
+      if(!exporting&&SHOTS&&(SHOTS.shots[featFid(f)]||[]).length){ const c=centroid(f.pts), r=6/view.zoom; ctx.beginPath(); ctx.arc(c.x,c.y,r,0,7); ctx.fillStyle='rgba(20,30,25,.75)'; ctx.fill(); drawShotMark(f,c.x,c.y,r); }
       if(labelVisible(f)){
         const c=centroid(f.pts);const _maxY=f.pts.reduce((a,p)=>Math.max(a,p.y),-Infinity);
         const tag=(f.calc==='trim')?'（投影＋側面）':'';
@@ -1642,6 +1657,7 @@ function draw(){
       ctx.lineWidth=(isSel(f)?3:2)/view.zoom;ctx.strokeStyle=isSel(f)?SEL:(isNest?'#fff':'#0008');ctx.stroke();
       if(f.chk&&!exporting){ctx.save();ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad+4/view.zoom,0,7);ctx.setLineDash([4/view.zoom,3/view.zoom]);ctx.lineWidth=2/view.zoom;ctx.strokeStyle='#e67e22';ctx.stroke();ctx.restore();}
       if(isNest){ctx.beginPath();ctx.arc(f.pt.x,f.pt.y,rad+3/view.zoom,0,7);ctx.lineWidth=1.8/view.zoom;ctx.strokeStyle=col;ctx.stroke();}
+      if(!exporting) drawShotMark(f,f.pt.x,f.pt.y,rad+(isNest?3/view.zoom:0));
       if(isNest) label(f.pt.x,f.pt.y+rad+2/view.zoom,f.kind,col,f);   // 巣は位置が重要：出力でも常に表示
       else if(!exporting && (isSel(f) || (disp.mode==='full'&&view.zoom>1.4)) && !(_grouped&&_grouped.has(f)) && labelVisible(f)) label(f.pt.x,f.pt.y+rad+2/view.zoom,(f.rank?f.rank:f.kind)+(f.C?'\nC='+f.C+'cm':''),col,f);
     }
@@ -1894,7 +1910,7 @@ function downCommon(p,ip){
   if(alignScan) return null;                     // 目印合わせ中：指を離したときに alignTap
   selScan=null;
   if(tool==='tree'&&nearestScan(ip)) return null;   // 仮置きの木：指を離したとき（placeTree）に工種を決める
-  if(tool==='shoot'){ const t=nearestTree(ip); if(t&&t.cat){ setSingle(t); renderSansha(); draw(); setTimeout(()=>shootTree(t),150); return 'sel'; }
+  if(tool==='shoot'){ let t=nearestTree(ip); if(!t){ const h=pickHit(ip); if(h&&h.cat) t=h; } if(t&&t.cat){ setSingle(t); renderSansha(); draw(); setTimeout(()=>shootTree(t),150); return 'sel'; }
     panning=true; panStart={x:p.x-view.ox,y:p.y-view.oy}; return 'pan'; }
   if(tool==='select'){ const st=nearestScan(ip); if(st){ hlHole=null; multiSel=[]; selected=null; selScan=st; renderSansha(); draw(); return 'sel'; } }
   let f=(tool==='tree')?nearestTree(ip):pickHit(ip); if(!f){const lf=labelHitFeature(ip); if(lf&&state.features.indexOf(lf)>=0)f=lf;}   // 図形が外れたらラベルでも選択
@@ -2221,8 +2237,65 @@ function renderTreeEdit(el){
 /* ---------- 木をタップ →「この木の写真を撮る」→ 工事写真アプリ（黒板つきカメラ）へ ----------
    木の目印は、木に付けたid（無ければ図面上の位置）。工事写真アプリでも同じ決め方で、どの木を撮ったかをつなぐ */
 /* 木を1本選んでいるときだけ、地図の下に「📷 この木の写真を撮る」（iPad・スマホどちらでも押しやすい所） */
-function syncShootFab(){ const b=$('shootFab'); if(!b) return; b.textContent=lsGet('park_shoot_dev')==='phone'?'📱 この木をiPhoneで撮る':'📷 この木の写真を撮る'; const one=selected&&selected.type==='tree'&&selected.cat&&selected.cat!=='巣撤去'&&multiSel.length<=1&&tool!=='shoot'; b.style.display=one?'':'none'; }
-function treeFid(f){ return f.id || ('p'+Math.round(f.pt.x)+'_'+Math.round(f.pt.y)); }
+/* ---------- 撮影の印：工事写真で撮った木・範囲に、前・中・後の数だけ区切った細い枠（撮った分が緑。そろうと緑の輪） ---------- */
+let SHOTS=null, shotMarks=lsGet('park_shot_marks')!=='off';
+async function loadShots(){
+  if(!state.cloudId||!navigator.onLine) return;
+  try{ const j=await fetch(PARK_GAS+'?app=shashin&action=parkShots&rec='+encodeURIComponent(state.cloudId),{cache:'no-store'}).then(r=>r.json());
+    if(j&&j.ok){ SHOTS={stages:j.stages||[],shots:j.shots||{},rule:j.rule||null}; draw(); renderShotSum(); } }catch(e){}
+}
+function drawShotMark(f,x,y,r){
+  if(!SHOTS||!shotMarks) return; const got=SHOTS.shots[featFid(f)]; if(!got||!got.length) return;
+  const st=SHOTS.stages.length?SHOTS.stages:['作業前','作業中','作業後'], n=st.length, done=st.filter(s=>got.includes(s)).length;
+  const R=r+3.5/view.zoom; ctx.save(); ctx.lineWidth=2.4/view.zoom; ctx.lineCap='round';
+  if(done>=n){ ctx.beginPath(); ctx.arc(x,y,R,0,7); ctx.strokeStyle='#3ecf8e'; ctx.stroke(); ctx.restore(); return; }
+  const gap=0.32, seg=Math.PI*2/n;
+  st.forEach((s,i)=>{ const a0=-Math.PI/2+i*seg+gap/2, a1=a0+seg-gap; ctx.beginPath(); ctx.arc(x,y,R,a0,a1); ctx.strokeStyle=got.includes(s)?'#3ecf8e':'rgba(255,255,255,.28)'; ctx.stroke(); });
+  ctx.restore();
+}
+function renderShotSum(){ const el=$('shotSum'); if(!el) return;
+  if(!SHOTS){ el.textContent=''; return; }
+  const n=SHOTS.stages.length||3, F=(state.features||[]).filter(f=>f.cat);
+  const all=F.filter(f=>(SHOTS.shots[featFid(f)]||[]).length>=n).length, part=F.filter(f=>{ const k=(SHOTS.shots[featFid(f)]||[]).length; return k>0&&k<n; }).length;
+  el.textContent=`撮影：そろった ${all}・途中 ${part}・まだ ${F.length-all-part}（全${F.length}）`; }
+setInterval(()=>{ if(!document.hidden&&tool==='shoot') loadShots(); },45000);
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) loadShots(); });
+/* ---------- 撮影の状況リスト（写真は出さない・軽い）：工種・規格ごとに 図面の数／撮る数（決まり）／そろった／残り。くわしくは工事写真アプリへ ---------- */
+function ruleNeed(rule,cat,rank,count){
+  const rows=(rule&&rule.rows)||[], m=(r,c,k)=>(r.cat==='*'||r.cat===c)&&(r.rank==='*'||r.rank===k);
+  const hit=rows.filter(r=>m(r,cat,rank)).sort((a,b)=>((b.cat!=='*')*2+(b.rank!=='*'))-((a.cat!=='*')*2+(a.rank!=='*')))[0];
+  const per=hit?Math.max(1,Number(hit.per)||1):1, min=hit?Number(hit.min)||0:0;
+  return count<=0?0:Math.min(count,Math.max(Math.ceil(count/per),min));
+}
+async function openShotList(){
+  const m=$('shotListModal'); m.classList.add('on'); const box=$('slBody');
+  if(!state.cloudId){ box.innerHTML='<div class="sdHow">この図面はまだ「みんなの共有」に保存されていません。☁️ 保存すると、工事写真で撮った状況が見られます。</div>'; return; }
+  box.innerHTML='<div class="sdHow">読み込んでいます…</div>';
+  await loadShots();
+  if(!SHOTS){ box.innerHTML='<div class="sdHow">撮影の状況を読み込めませんでした（電波を確認してください）</div>'; return; }
+  const n=SHOTS.stages.length||3, G={};
+  (state.features||[]).filter(f=>f.cat).forEach(f=>{
+    const sub=f.rank||f.kind||'', k=f.cat+'|'+sub, g=G[k]=G[k]||{cat:f.cat,kind:f.kind||'',rank:f.rank||'',sub,unit:f.type==='tree'?'本':'か所',cnt:0,all:0,part:0};
+    const got=(SHOTS.shots[featFid(f)]||[]).filter(s=>!SHOTS.stages.length||SHOTS.stages.includes(s)).length;
+    g.cnt++; if(got>=n) g.all++; else if(got>0) g.part++;
+  });
+  const L=Object.values(G).sort((a,b)=>a.cat.localeCompare(b.cat,'ja')||a.sub.localeCompare(b.sub,'ja',{numeric:true}));
+  let rest=0;
+  const rows=L.map(g=>{ const need=ruleNeed(SHOTS.rule,g.cat,g.rank||g.kind,g.cnt), left=Math.max(0,need-g.all); rest+=left;
+    return `<tr class="${left?'ng':'ok'}"><td>${g.cat}<small>${g.sub}</small></td><td>${g.cnt}${g.unit}</td><td>${need}</td><td>${g.all}${g.part?`<small>途中${g.part}</small>`:''}</td><td>${left?`<b>${left}</b>`:'✓'}</td></tr>`; }).join('');
+  box.innerHTML=`<div class="slTop">${rest?`<b class="ngT">まだ ${rest} 本・か所 撮る必要があります</b>`:'<b class="okT">決まりの数はすべて撮れています</b>'}<small>撮り方：${(SHOTS.stages||[]).join('・')}（そろった＝全部撮れた数）${SHOTS.rule?'':'　※撮る本数の決まりが未設定なので全数で数えています（工事写真の「案件の情報」で設定）'}</small></div>
+    <table class="slTbl"><tr><th>工種・規格</th><th>図面</th><th>撮る</th><th>そろった</th><th>残り</th></tr>${rows||'<tr><td colspan="5">図面に工種の図形がありません</td></tr>'}</table>`;
+}
+$('shotListBtn').onclick=openShotList;
+$('slClose').onclick=()=>$('shotListModal').classList.remove('on');
+$('slGo').onclick=()=>{ const q=new URLSearchParams({from:'park',view:'check',park:($('parkName').value||'').trim(),contract:($('contractName').value||'').trim(),rec:state.cloudId||''}); location.href='shashin.html?'+q.toString(); };
+window.openShotList=openShotList;
+function syncShootFab(){ const b=$('shootFab'); if(!b) return; const tr=selected&&selected.type==='tree', ph=lsGet('park_shoot_dev')==='phone'; b.textContent=ph?(tr?'📱 この木をiPhoneで撮る':'📱 ここをiPhoneで撮る'):(tr?'📷 この木の写真を撮る':'📷 ここの写真を撮る'); const one=selected&&selected.cat&&multiSel.length<=1&&tool!=='shoot'; b.style.display=one?'':'none'; }
+/* 図形の目印：はじめて読み込んだときに、それまでの位置から目印を付けて固定（あとで動かしても工事写真の写真とつながったまま）。新しい図形はその場で付ける */
+function featPos(f){ return f.pt ? f.pt : (Array.isArray(f.pts)&&f.pts.length ? centroid(f.pts) : {x:0,y:0}); }
+function featFid(f){ if(f.id) return f.id; const p=featPos(f); return (f.pt?'p':'a')+Math.round(p.x)+'_'+Math.round(p.y); }
+function ensureIds(fixOld){ (state.features||[]).forEach(f=>{ if(!f.id) f.id = fixOld ? featFid(f) : ('f'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)); }); }
+const treeFid=featFid;
 /* 撮影に使うカメラ（最初に1回えらぶ）：self＝この端末のカメラ（工事写真アプリへ移る）／phone＝iPhoneで撮る（遠隔。iPadは図面のまま） */
 var SHOOT_DEV_KEY='park_shoot_dev', RMT_CODE_KEY='park_remote_code';   // draw() から先に呼ばれても困らないように var と function
 function lsGet(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
@@ -2244,7 +2317,8 @@ async function treeQuery(f){
     }
   }
   return { park, contract:($('contractName').value||'').trim(), rec:state.cloudId||'', fid:treeFid(f),
-    cat:f.cat||'', kind:f.kind||'', rank:f.rank||'', C:f.C||'', x:Math.round(f.pt.x*10)/10, y:Math.round(f.pt.y*10)/10 };
+    cat:f.cat||'', kind:f.kind||'', rank:f.rank||'', C:f.C||'', type:f.type||'tree', area:f.area?Math.round(f.area*10)/10:'',
+    x:Math.round(featPos(f).x*10)/10, y:Math.round(featPos(f).y*10)/10 };
 }
 async function shootTree(f){
   const dev=lsGet(SHOOT_DEV_KEY);
@@ -2257,7 +2331,7 @@ async function shootTree(f){
 let rmtWatch=null;
 function rmtStat(html,cls){ let el=$('rmtStat'); if(!el){ el=document.createElement('div'); el.id='rmtStat'; document.querySelector('.stage').appendChild(el); } el.className='rmtStat '+(cls||''); el.innerHTML=html; el.style.display=html?'':'none'; return el; }
 async function sendToPhone(f,q){
-  const code=rmtCode(), name=`${f.cat||''}${f.rank?' '+f.rank:''}`;
+  const code=rmtCode(), name=`${f.cat||''}${f.rank?' '+f.rank:(f.kind?' '+f.kind:'')}`;
   rmtStat(`📱 iPhoneに送っています…<small>${name}</small>`,'wait');
   let j; try{ j=await fetch(PARK_GAS,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({app:'shashin',mode:'remoteSend',by:myName(),code,req:q})}).then(r=>r.json()); }
   catch(e){ j=null; }
@@ -2268,7 +2342,7 @@ async function sendToPhone(f,q){
   rmtWatch=setInterval(async()=>{
     let s=null; try{ s=await fetch(PARK_GAS+'?app=shashin&action=remoteStatus&code='+code+'&id='+j.id,{cache:'no-store'}).then(r=>r.json()); }catch(e){}
     const sec=(Date.now()-t0)/1000;
-    if(s&&s.state==='shot'){ clearInterval(rmtWatch); rmtStat(`📸 撮りました（${s.stage||''}）<small>${name}　つぎの木をタップしてください</small>`,'ok'); setTimeout(()=>{ const el=$('rmtStat'); if(el&&el.classList.contains('ok')) el.style.display='none'; },6000); return; }
+    if(s&&s.state==='shot'){ clearInterval(rmtWatch); setTimeout(loadShots,4000); setTimeout(loadShots,20000); rmtStat(`📸 撮りました（${s.stage||''}）<small>${name}　つぎの木をタップしてください</small>`,'ok'); setTimeout(()=>{ const el=$('rmtStat'); if(el&&el.classList.contains('ok')) el.style.display='none'; },6000); return; }
     if(s&&s.state==='got'){ rmtStat(`📱 iPhoneでカメラが開きました<small>${name}　iPhoneで撮ってください</small>`,'wait'); }
     if(sec>12&&(!s||s.state==='sent')){ clearInterval(rmtWatch); rmtFail(f,q,'iPhoneが応答しません'); return; }
     if(sec>180) clearInterval(rmtWatch);
@@ -2286,7 +2360,7 @@ $('sdPhoneOk').onclick=()=>closeShootDev(true);
 $('sdNewCode').onclick=()=>{ lsSet(RMT_CODE_KEY,''); $('sdCode').textContent=rmtCode(); };
 $('sdClose').onclick=()=>closeShootDev(false);
 window.openShootDev=openShootDev;
-$('shootFab').onclick=e=>{ e.stopPropagation(); if(selected&&selected.type==='tree') shootTree(selected); };
+$('shootFab').onclick=e=>{ e.stopPropagation(); if(selected&&selected.cat) shootTree(selected); };
 function alignTap(ip){
   const A=alignScan; if(!A)return;
   if(A.step===0||A.step===2){
@@ -2740,7 +2814,7 @@ function setSingle(f){multiSel=[];selected=f;}
 function toggleSel(f){ if(multiSel.length===0&&selected)multiSel=[selected]; const i=multiSel.indexOf(f); if(i>=0)multiSel.splice(i,1); else multiSel.push(f); selected=multiSel[multiSel.length-1]||null;}
 function removeSelected(){ if(multiSel.length>1){pushHistory();const set=multiSel.slice();state.features=state.features.filter(x=>set.indexOf(x)<0);multiSel=[];selected=null;recalcAll();renderSansha();renderAgg();draw();} else if(selected){removeFeature(selected);} }
 function cloneFeature(f){
-  const g=JSON.parse(JSON.stringify(f));
+  const g=JSON.parse(JSON.stringify(f)); delete g.id;
   const off=16/(view.zoom||1);
   if(g.pt){g.pt.x+=off;g.pt.y+=off;}
   if(g.pts){g.pts=g.pts.map(p=>({x:p.x+off,y:p.y+off}));}
@@ -2832,6 +2906,8 @@ $('zoomIn').onclick=()=>zoomAt(cv.width/2,cv.height/2,1.2);
 $('zoomOut').onclick=()=>zoomAt(cv.width/2,cv.height/2,1/1.2);
 $('clearAll').onclick=()=>{if(confirm('注記をすべて消去しますか？')){pushHistory();state.features=[];state.manual=[];state.scan=[];selScan=null;renderScanInfo();selected=null;renderAgg();renderSansha();draw();}};
 $('undoBtn').onclick=undo; $('redoBtn').onclick=redo;
+$('shotMarkToggle').onclick=()=>{ shotMarks=!shotMarks; lsSet('park_shot_marks',shotMarks?'on':'off'); $('shotMarkToggle').firstChild.textContent='撮影の印：'+(shotMarks?'表示':'かくす'); if(shotMarks) loadShots(); draw(); };
+$('shotMarkToggle').firstChild.textContent='撮影の印：'+(lsGet('park_shot_marks')!=='off'?'表示':'かくす');
 $('legendToggle').onclick=()=>{legend.show=!legend.show;$('legendToggle').classList.toggle('on',legend.show);$('legendToggle').firstChild.textContent=legend.show?'凡例を表示':'凡例は非表示';draw();};
 $('legendReset').onclick=()=>{legend.x=null;legend.y=null;draw();};
 
@@ -2978,7 +3054,7 @@ function applyParkData(d,kb){
   if(d.customWorks){ importCustomWorks(d.customWorks); buildTreeColors(); fillCats(); }
   state.cloudId=d.cloudId||state.cloudId||null; state.cloudVer=d.cloudId?(d.cloudVer||null):(state.cloudVer||null);
   if(d.mapImg){state.mapImg=d.mapImg;const b=$('rpMapBtn');if(b)b.firstChild.textContent='🖼 履行場所の図：読み込みました（変えるならもう一度）';}
-  state.features=d.features||[];state.manual=d.manual||[];state.scan=Array.isArray(d.scan)?d.scan:[];selScan=null;renderScanInfo();recalcAll();
+  state.features=d.features||[];ensureIds(true);SHOTS=null;setTimeout(loadShots,800);state.manual=d.manual||[];state.scan=Array.isArray(d.scan)?d.scan:[];selScan=null;renderScanInfo();recalcAll();
   undoStack=[];redoStack=[];updateUndoButtons();updateScaleBadge();renderAgg();renderSansha();
   if(d.imgData){const im=new Image();im.onload=()=>{state.img=im;state.imgData=d.imgData;fit();requestAnimationFrame(fit);};im.src=d.imgData;}else draw();
   if(!state.features.length&&!(state.scan&&state.scan.length)) alert('読み込みは成功しましたが、記録が0件でした（大きさ '+kb+' KB）。\n保存したときに図形が入っていたか確認してください。');
@@ -3072,7 +3148,7 @@ $('cloudSave').onclick=async()=>{
     const d=await cloudPost({mode:'save',id:state.cloudId||null,ver:state.cloudId?state.cloudVer:null,park:payload.park,contract:payload.contract,
         order:payload.order,date:payload.date,figures:state.features.length,json:JSON.stringify(payload)});
     if(!d.ok) throw new Error(/unknown/.test(d.error||'')?'共通GASの更新がまだです（数分で反映されます）':(d.error||'保存できませんでした'));
-    state.cloudId=d.id; state.cloudVer=d.ver;
+    state.cloudId=d.id; state.cloudVer=d.ver; setTimeout(loadShots,500);
     alert((d.forked?'ほかの人が先にこの記録を保存し直していたので、上書きせず「別の記録」として保存しました。\n一覧で2つを見くらべてください。\n\n':'みんなの共有に保存しました。\n')
       +'公園：'+payload.park+(payload.date?('（'+payload.date+'）'):'')+'\n更新：'+d.updated+'\n\nほかの端末・事務所では「クラウドから開く」で読み込めます。');
   }catch(e){
