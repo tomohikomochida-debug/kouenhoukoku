@@ -643,6 +643,32 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
       <button class="btn danger" id="setCleanup">送信済みの写真を端末から削除</button>
       <div class="s">※ ドライブには残ります。削除後も撮影項目の✓は残ります。</div>
     </div>
+    <div class="card" id="msCard">
+      <div class="t" style="font-size:15px">会社のSharePointへ写真をコピー</div>
+      <div class="s" id="msState" style="line-height:1.7">確認中…</div>
+      <div id="msAdmin" style="display:none">
+        <details id="msHow" style="margin:10px 0"><summary style="font-weight:700;color:var(--main)">はじめての設定の手順（パソコンで・1回だけ）</summary>
+          <ol style="font-size:13px;line-height:1.75;padding-left:20px;margin:8px 0">
+            <li><b>entra.microsoft.com</b> を開き、会社のMicrosoft 365の<b>管理者</b>でサインイン</li>
+            <li>左のメニュー「アプリケーション」＞「<b>アプリの登録</b>」→「<b>新規登録</b>」
+              <ul style="padding-left:16px"><li>名前：社内アプリ（写真コピー）</li><li>アカウントの種類：「この組織ディレクトリのみ」</li><li>リダイレクト URI：種類は「<b>Web</b>」、URLに下のアドレスを貼る →「登録」</li></ul>
+              <div style="display:flex;gap:6px;margin:6px 0"><input id="msRedirect" readonly style="flex:1;font-size:11px"><button class="btn sub" id="msCopyRedirect" style="width:auto;margin:0;padding:8px 10px;font-size:13px">コピー</button></div></li>
+            <li>出てきた画面の「<b>アプリケーション (クライアント) ID</b>」と「<b>ディレクトリ (テナント) ID</b>」を、下の①に貼る</li>
+            <li>左の「<b>証明書とシークレット</b>」→「新しいクライアント シークレット」→ 有効期限「24か月」→ 追加。出てきた「<b>値</b>」を①に貼る（1回しか表示されません）</li>
+            <li>左の「<b>API のアクセス許可</b>」→「アクセス許可の追加」→「Microsoft Graph」→「委任されたアクセス許可」→ <b>Files.ReadWrite.All</b> と <b>Sites.ReadWrite.All</b> にチェック → 追加 →「<b>管理者の同意を与えます</b>」</li>
+          </ol>
+          <div class="s">2年たってシークレットの期限が切れたら、4 をやり直して ① の「シークレット」だけ入れ直してください。</div>
+        </details>
+        <div class="field"><label>① アプリケーション（クライアント）ID</label><input id="msClient" autocomplete="off" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>
+        <div class="field"><label>ディレクトリ（テナント）ID</label><input id="msTenant" autocomplete="off" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>
+        <div class="field"><label>クライアント シークレット（値）</label><input id="msSecret" type="password" autocomplete="off" placeholder="（保存済みなら空のままでOK）"></div>
+        <button class="btn sub" id="msSave">① を保存</button>
+        <button class="btn" id="msLogin">② Microsoftでログイン</button>
+        <div class="field" style="margin-top:12px"><label>③ 写真を入れるSharePointのフォルダ（ブラウザでそのフォルダを開いて、上のアドレスをコピーして貼る）</label><input id="msFolderUrl" autocomplete="off" placeholder="https://○○.sharepoint.com/sites/…"></div>
+        <button class="btn sub" id="msFolderSet">③ このフォルダの中に「社内アプリ」を作って入れる</button>
+        <div class="row2" style="margin-top:10px"><button class="btn sub" id="msFlush" style="margin:0">今すぐ送る</button><button class="btn danger" id="msOff" style="margin:0">コピーを止める</button></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -926,7 +952,7 @@ async function syncAll(silent){
     if(unsynced.length){ const js=await gasPost({mode:'saveItems',items:unsynced}); if(js.ok) unsynced.forEach(i=>i.synced=true); }
     const j=await gasGet({action:'data'});
     if(!j.ok) throw new Error(/unknown action/.test(j.error||'')?'共通GASの更新がまだです（数分で反映されます）':j.error);
-    sites=j.sites||[]; counts=j.counts||{}; lastAt=j.last||{};
+    sites=j.sites||[]; counts=j.counts||{}; lastAt=j.last||{}; if(Array.isArray(j.admins)) LS.set('shashin_admins',j.admins);
     if(Array.isArray(j.boards)){ customBoards=j.boards.map(x=>({...x,custom:true})); LS.set('shashin_boards_custom',customBoards); rebuildTemplates(); }
     if(j.defaultBoard){ defaultBoard=j.defaultBoard; LS.set('shashin_default_board',defaultBoard); }
     infos={}; (j.infos||[]).forEach(x=>{ infos[x.key]=x; }); Object.assign(infos, LS.get('shashin_infos_pending',{}));
@@ -3693,11 +3719,53 @@ function openSettings(){
   $('#setStaff').value=me();
   $('#staffQuick').innerHTML=staffList.map(n=>`<button data-n="${esc(n)}" class="${n===me()?'on':''}">${esc(n)}</button>`).join('');
   $('#staffQuick').onclick=e=>{ const n=e.target.dataset.n; if(!n) return; $('#setStaff').value=n; $$('#staffQuick button').forEach(b=>b.classList.toggle('on',b.dataset.n===n)); };
-  go('settings');
+  go('settings'); renderMsCard();
   if(navigator.storage&&navigator.storage.estimate) navigator.storage.estimate().then(e=>{
     $('#storageInfo').textContent=`アプリ使用量 約${Math.round((e.usage||0)/1048576)}MB ／ この端末の写真 ${photosCache.length}枚（送信待ち ${photosCache.filter(p=>p.status!=='done').length}枚）`;
   }); else $('#storageInfo').textContent=`この端末の写真 ${photosCache.length}枚`;
 }
+/* ---- 会社のSharePointへ写真をコピー（設定は親方だけ。Googleドライブが元、SharePointへは一方通行） ---- */
+function isAdminMe(){ return (LS.get('shashin_admins',['親方'])||[]).includes(me()); }
+async function renderMsCard(){
+  const st=$('#msState'), ad=isAdminMe(); $('#msAdmin').style.display=ad?'':'none'; $('#msRedirect').value=GAS_URL;
+  if(!canSync()){ st.textContent='電波のある所で確認できます'; return; }
+  let j=null; try{ j=await gasGet({action:'msStatus'},15000); }catch(e){}
+  if(!j||!j.ok){ st.textContent=j&&/unknown/.test(j.error||'')?'共通GASが まだ古いままです（数分で反映されます）':'状況を読み込めませんでした'; return; }
+  const line=[];
+  if(j.ready){ line.push(`✅ <b>コピーしています</b>：${esc(j.folder)}${j.folderUrl?`　<a href="${esc(j.folderUrl)}" target="_blank" rel="noopener">開く</a>`:''}`); line.push(`送った写真 ${j.sent} / ${j.total} 枚${j.left?`（残り ${j.left} 枚は順に送ります）`:''}`); }
+  else { line.push('まだコピーしていません'+(ad?'（下の ①→②→③ で設定）':'（設定は親方がします）'));
+    line.push(`① ID：${j.configured?'✓':'まだ'}　② ログイン：${j.loggedIn?'✓ '+esc(j.user||''):'まだ'}　③ フォルダ：${j.folder?'✓ '+esc(j.folder):'まだ'}`); }
+  if(j.last) line.push(`<span style="color:var(--sub)">最後：${esc(j.last)}</span>`);
+  st.innerHTML=line.join('<br>');
+  if(ad){ if(j.clientId&&!$('#msClient').value) $('#msClient').value=j.clientId; if(j.tenant&&j.tenant!=='organizations'&&!$('#msTenant').value) $('#msTenant').value=j.tenant;
+    $('#msHow').open=!j.configured; $('#msLogin').textContent=j.loggedIn?'② Microsoftでログインし直す':'② Microsoftでログイン'; }
+}
+$('#msCopyRedirect').onclick=()=>{ const i=$('#msRedirect'); i.select(); try{ navigator.clipboard.writeText(i.value).then(()=>toast('コピーしました')); }catch(e){ document.execCommand('copy'); toast('コピーしました'); } };
+$('#msSave').onclick=async()=>{
+  const clientId=$('#msClient').value.trim(), tenant=$('#msTenant').value.trim(), secret=$('#msSecret').value.trim();
+  if(!clientId){ toast('アプリケーション（クライアント）IDを入れてください',2500); return; }
+  try{ const j=await gasPost({mode:'msSetup',clientId,tenant,secret,redirect:GAS_URL}); if(!j.ok) throw new Error(j.error); $('#msSecret').value=''; toast('保存しました。次は ② Microsoftでログイン',3000); renderMsCard(); }
+  catch(e){ toast('保存できませんでした：'+(e.message||e),4000); }
+};
+$('#msLogin').onclick=async()=>{
+  const w=window.open('','_blank');
+  try{ const j=await gasGet({action:'msLogin',by:me()}); if(!j.ok) throw new Error(j.error);
+    if(w) w.location.href=j.url; else location.href=j.url;
+    toast('Microsoftの画面でサインインしてください。終わったらこの画面に戻ります',5000); }
+  catch(e){ if(w) w.close(); toast('ログインを始められませんでした：'+(e.message||e),4000); }
+};
+$('#msFolderSet').onclick=async()=>{
+  const url=$('#msFolderUrl').value.trim(); if(!url){ toast('フォルダのアドレスを貼ってください',2500); return; }
+  toast('SharePointを確認しています…',8000);
+  try{ const j=await gasPost({mode:'msFolder',url}); if(!j.ok) throw new Error(j.error); toast('設定しました：'+j.folder,4000); renderMsCard(); }
+  catch(e){ toast('設定できませんでした：'+(e.message||e),5000); }
+};
+$('#msFlush').onclick=async()=>{ toast('送っています…（数分かかることがあります）',8000);
+  try{ const j=await gasPost({mode:'msFlush'}); if(!j.ok) throw new Error(j.error); toast(j.busy?'いま別のところで送っています。少し待ってください':`${j.sent} 枚送りました${j.left?`（残り ${j.left} 枚）`:''}${j.error?'　⚠ '+j.error:''}`,4500); renderMsCard(); }
+  catch(e){ toast('送れませんでした：'+(e.message||e),4500); } };
+$('#msOff').onclick=async()=>{ if(!confirm('SharePointへのコピーを止めますか？（SharePointにある写真は消えません。②のログインからやり直せば再開します）')) return;
+  try{ const j=await gasPost({mode:'msOff'}); if(!j.ok) throw new Error(j.error); toast('止めました'); renderMsCard(); }catch(e){ toast('止められませんでした：'+(e.message||e),4000); } };
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&$('#settings').classList.contains('active')) renderMsCard(); });
 $('#setSave').onclick=()=>{
   const n=$('#setStaff').value.trim();
   if(!n){ toast('名前を入れてください'); return; }

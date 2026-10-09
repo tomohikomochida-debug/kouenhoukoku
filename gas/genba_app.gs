@@ -54,7 +54,7 @@ var SHEETS = {
   shashinItems:  { name: '工事写真の撮影項目', head: ['itemId', 'siteId', 'cat', 'name', 'jushu', 'kikaku', 'memo', 'lat', 'lng', 'src', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'kind', 'no', 'parkRec', 'parkFid', 'px', 'py'] },   // 地図に置いた点（公園報告の図面の木なら、その記録と木の目印・図面上の位置も）。（樹木・除草・補修など）。現場マスタの現場IDでつなぐ
   shashinInfo:   { name: '工事写真の案件情報', head: ['key', 'type', 'contract', 'fy', 'siteId', 'koji', 'orderer', 'sekosha', 'start', 'end', 'tpl', 'memo', 'by', 'at', 'updatedBy', 'updatedAt', 'stages', 'koshuList', 'opts'] },
   shashinBoards:  { name: '工事写真の黒板', head: ['boardId', 'name', 'rows', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // みんなで作った黒板のひな型（rows は項目の並び・JSON）   // 委託は「委託名＋年度」、そのほかは現場ごと。一度入れたら全員が入力なしで撮影へ
-  shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId', 'kanshu'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
+  shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId', 'kanshu', 'msId', 'msRawId', 'msGone'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
 
@@ -299,6 +299,7 @@ function tcBackup_(t) {
  * ================================================================ */
 function doGet(e) {
   var p = (e && e.parameter) || {}, app = p.app || '', a = p.action || '';
+  if (p.state && String(p.state).indexOf('ms_') === 0 && (p.code || p.error)) { try { return msCallback_(p); } catch (err) { return msPage_('つなげませんでした', '<p>' + String(err.message || err).replace(/</g, '&lt;') + '</p>'); } }   // Microsoftのログインから戻ってきた
   keepFresh_();
   try {
     if (app === 'timecard') { if (a === 'reload') tcClear_(); return tcMod_().doGet(e); }
@@ -409,6 +410,11 @@ function doPost(e) {
       case 'shashin:remoteSend':  return withLock_(function () { return shashinRemoteSend_(b); });
       case 'shashin:remoteAck':   return withLock_(function () { return shashinRemoteAck_(b); });
       case 'shashin:addSite':     return withLock_(function () { return addSitesFromNippou_([b.site], b.by); });
+      /* SharePoint（会社のデータ）へ工事写真をコピー：設定は親方だけ */
+      case 'shashin:msSetup':     if (!isAdmin_(b.by)) return out_({ ok: false, error: '設定は' + admins_().join('・') + 'だけができます' }); return out_(msSetup_(b));
+      case 'shashin:msFolder':    if (!isAdmin_(b.by)) return out_({ ok: false, error: '設定は' + admins_().join('・') + 'だけができます' }); return out_(msSetFolder_(b.url));
+      case 'shashin:msOff':       if (!isAdmin_(b.by)) return out_({ ok: false, error: '設定は' + admins_().join('・') + 'だけができます' }); PropertiesService.getScriptProperties().deleteProperty('MS_REFRESH'); CacheService.getScriptCache().remove('ms_at'); return out_({ ok: true });
+      case 'shashin:msFlush':     return out_(msFlush_(240000));
       /* 公園報告 */
       case 'park:save':        return withLock_(function () { return parkSave_(b); });
       case 'park:delete':      return withLock_(function () { return parkDelete_(b.id, b.by); });
@@ -1452,6 +1458,8 @@ function shashinItemOut_(r) {
     parkRec: r.parkRec || '', parkFid: r.parkFid || '', px: shashinNum_(r.px), py: shashinNum_(r.py) };
 }
 function shashinGet_(a, p) {
+  if (a === 'msStatus') return msStatus_();
+  if (a === 'msLogin') { if (!isAdmin_(p.by)) return { ok: false, error: '設定は' + admins_().join('・') + 'だけができます' }; return msLoginUrl_(); }
   if (a === 'data') {
     var photos = rows_('shashinPhotos'), counts = {}, shot = [], last = {};
     photos.forEach(function (r) {
@@ -1603,7 +1611,9 @@ function shashinUpdatePhoto_(b) {
   if (o.state !== undefined && String(o.state) !== String(had.state || '') && had.fileId) {
     try { DriveApp.getFileById(had.fileId).setTrashed(o.state === '削除'); } catch (e) {}
   }
-  return upsert_('shashinPhotos', 'photoId', 'F', o, b.by);
+  var r = upsert_('shashinPhotos', 'photoId', 'F', o, b.by);
+  if (o.state !== undefined) { try { if (msReady_()) msSyncGone_(String(b.photoId)); } catch (e) {} }   // 削除・元に戻す を SharePoint にも
+  return r;
 }
 /* 写真の中身（報告書のPDF・まとめて渡すときに使う）。工事写真の記録にある写真だけ */
 /* 黒板なしの元写真（画像で出すときに「黒板なし」「両方」を選べるように）。写真と同じフォルダの「黒板なし」に、同じファイル名で置く */
@@ -1618,6 +1628,7 @@ function shashinUploadRaw_(b) {
   var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), 'image/jpeg', shashinClean_(row.fileName) || (b.photoId + '.jpg')));
   lock.waitLock(25000);
   try { upsert_('shashinPhotos', 'photoId', 'F', { photoId: String(b.photoId), rawFileId: file.getId() }, b.by); } finally { lock.releaseLock(); }
+  msAfter_(b.photoId);
   return { ok: true, fileId: file.getId() };
 }
 function shashinPhotoData_(fileId) {
@@ -1678,7 +1689,192 @@ function shashinUpload_(b) {
     if (ph.replaces && rows_('shashinPhotos').some(function (r) { return String(r.photoId) === String(ph.replaces); }))
       upsert_('shashinPhotos', 'photoId', 'F', { photoId: String(ph.replaces), state: '差し替え済' }, by);
   } finally { lock.releaseLock(); }
+  msAfter_(ph.photoId);   // SharePointへのコピー（設定してあるときだけ。失敗してもあとで送り直す）
   return { ok: true, url: file.getUrl(), fileId: file.getId(), folderUrl: folder.getUrl() };
+}
+
+/* ================================================================
+ *  工事写真 → SharePoint（会社のデータ）へコピー
+ *  ・Googleドライブが元。SharePointへは一方通行のコピー（黒板あり・黒板なし）
+ *  ・場所：指定したフォルダ ＞ 社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名 ＞ 黒板あり／黒板なし
+ *  ・Microsoftのログインは親方が最初に1回だけ（更新用の鍵をスクリプト プロパティに置く）
+ *  ・写真を受け取ったときにコピー。送れなかった分は、次に写真が来たとき・「今すぐ送る」で送り直す
+ *  ・アプリで削除・撮り直しで入れ替わった写真は「_削除済み」へ移す（元に戻したら戻す）
+ * ================================================================ */
+var MS_SCOPE = 'offline_access User.Read Files.ReadWrite.All Sites.ReadWrite.All';
+function msP_(k) { return PropertiesService.getScriptProperties().getProperty(k) || ''; }
+function msReady_() { return !!(msP_('MS_CLIENT_ID') && msP_('MS_REFRESH') && msP_('MS_DRIVE') && msP_('MS_ROOT')); }
+function msSetup_(b) {
+  var P = PropertiesService.getScriptProperties(), id = String(b.clientId || '').trim(), tn = String(b.tenant || '').trim() || 'organizations';
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return { ok: false, error: 'アプリケーション（クライアント）IDの形がちがいます' };
+  if (msP_('MS_CLIENT_ID') && msP_('MS_CLIENT_ID') !== id) { P.deleteProperty('MS_REFRESH'); }
+  P.setProperty('MS_CLIENT_ID', id); P.setProperty('MS_TENANT', tn);
+  if (b.secret) P.setProperty('MS_SECRET', String(b.secret).trim());
+  if (b.redirect) P.setProperty('MS_REDIRECT', String(b.redirect).trim());
+  if (!msP_('MS_SECRET')) return { ok: false, error: 'クライアント シークレット（値）を入れてください' };
+  CacheService.getScriptCache().remove('ms_at');
+  return { ok: true };
+}
+function msLoginUrl_() {
+  if (!msP_('MS_CLIENT_ID') || !msP_('MS_SECRET') || !msP_('MS_REDIRECT')) return { ok: false, error: '先にIDとシークレットを保存してください' };
+  var st = 'ms_' + Utilities.getUuid().replace(/-/g, '');
+  CacheService.getScriptCache().put(st, '1', 900);
+  var q = { client_id: msP_('MS_CLIENT_ID'), response_type: 'code', redirect_uri: msP_('MS_REDIRECT'), response_mode: 'query', scope: MS_SCOPE, state: st, prompt: 'select_account' };
+  return { ok: true, url: 'https://login.microsoftonline.com/' + encodeURIComponent(msP_('MS_TENANT') || 'organizations') + '/oauth2/v2.0/authorize?' + Object.keys(q).map(function (k) { return k + '=' + encodeURIComponent(q[k]); }).join('&') };
+}
+function msPage_(title, body) {
+  return HtmlService.createHtmlOutput('<meta name="viewport" content="width=device-width,initial-scale=1"><div style="font-family:sans-serif;max-width:520px;margin:40px auto;padding:20px;line-height:1.7"><h2>' + title + '</h2>' + body + '</div>').setTitle(title);
+}
+function msTokenPost_(payload) {
+  payload.client_id = msP_('MS_CLIENT_ID'); payload.client_secret = msP_('MS_SECRET'); payload.scope = MS_SCOPE; payload.redirect_uri = msP_('MS_REDIRECT');
+  var res = UrlFetchApp.fetch('https://login.microsoftonline.com/' + encodeURIComponent(msP_('MS_TENANT') || 'organizations') + '/oauth2/v2.0/token', { method: 'post', payload: payload, muteHttpExceptions: true });
+  var j = {}; try { j = JSON.parse(res.getContentText()); } catch (e) {}
+  return j;
+}
+function msCallback_(p) {
+  var c = CacheService.getScriptCache();
+  if (!c.get(String(p.state))) return msPage_('つなげませんでした', '<p>ログインの時間が切れました。工事写真の設定画面から、もう一度「Microsoftでログイン」を押してください。</p>');
+  c.remove(String(p.state));
+  if (p.error) return msPage_('つなげませんでした', '<p>' + String(p.error_description || p.error).replace(/</g, '&lt;') + '</p>');
+  var j = msTokenPost_({ grant_type: 'authorization_code', code: String(p.code) });
+  if (!j.refresh_token) return msPage_('つなげませんでした', '<p>' + String(j.error_description || j.error || '鍵を受け取れませんでした').replace(/</g, '&lt;') + '</p>');
+  PropertiesService.getScriptProperties().setProperty('MS_REFRESH', j.refresh_token);
+  c.put('ms_at', j.access_token, Math.max(60, (Number(j.expires_in) || 3600) - 300));
+  var me = msApi_('get', '/me?$select=displayName,mail,userPrincipalName');
+  if (me.code === 200) PropertiesService.getScriptProperties().setProperty('MS_USER', (me.json.displayName || '') + '（' + (me.json.mail || me.json.userPrincipalName || '') + '）');
+  return msPage_('Microsoftとつながりました ✅', '<p>' + String(msP_('MS_USER')).replace(/</g, '&lt;') + '</p><p>この画面を閉じて、工事写真の設定画面に戻ってください。<br>次は「写真を入れるSharePointのフォルダ」を設定します。</p>');
+}
+function msToken_() {
+  var c = CacheService.getScriptCache(), t = c.get('ms_at'); if (t) return t;
+  if (!msP_('MS_REFRESH')) throw new Error('Microsoftにログインしていません');
+  var j = msTokenPost_({ grant_type: 'refresh_token', refresh_token: msP_('MS_REFRESH') });
+  if (!j.access_token) throw new Error('Microsoftのログインが切れました。設定画面でログインし直してください（' + (j.error || '') + '）');
+  if (j.refresh_token) PropertiesService.getScriptProperties().setProperty('MS_REFRESH', j.refresh_token);
+  c.put('ms_at', j.access_token, Math.max(60, (Number(j.expires_in) || 3600) - 300));
+  return j.access_token;
+}
+function msApi_(method, path, body, raw) {
+  var o = { method: method, muteHttpExceptions: true, headers: { Authorization: 'Bearer ' + msToken_() } };
+  if (raw) { o.payload = raw.bytes; o.contentType = raw.type || 'application/octet-stream'; }
+  else if (body) { o.payload = JSON.stringify(body); o.contentType = 'application/json'; }
+  var res = UrlFetchApp.fetch(/^https:/.test(path) ? path : 'https://graph.microsoft.com/v1.0' + path, o), j = {};
+  try { j = JSON.parse(res.getContentText() || '{}'); } catch (e) {}
+  return { code: res.getResponseCode(), json: j };
+}
+function msClean_(s) { return String(s || '').replace(/["*:<>?\/\\|#%~&{}]/g, '').replace(/[\s　]+/g, ' ').replace(/^[\s.]+|[\s.]+$/g, '').slice(0, 80) || '名前なし'; }
+function msEnc_(parts) { return parts.map(function (x) { return encodeURIComponent(msClean_(x)); }).join('/'); }
+/* SharePointのフォルダのURL（ブラウザのアドレス・「リンクのコピー」どちらでも）→ その中に「社内アプリ」を作って、そこを入れ先にする */
+function msSetFolder_(url) {
+  url = String(url || '').trim(); if (!/^https:\/\/[^/]+\.sharepoint\.com\//i.test(url)) return { ok: false, error: 'SharePointのフォルダのURL（https://○○.sharepoint.com/…）を貼ってください' };
+  var item = null, sh = msApi_('get', '/shares/u!' + Utilities.base64EncodeWebSafe(url).replace(/=+$/, '') + '/driveItem');
+  if (sh.code === 200 && sh.json.folder) item = sh.json;
+  if (!item) {   // ブラウザのアドレス（…/Forms/AllItems.aspx?id=/sites/会社/Shared Documents/会社データ など）
+    var host = url.match(/^https:\/\/([^/]+)/)[1], idp = url.match(/[?&]id=([^&]+)/), path = idp ? decodeURIComponent(idp[1]) : decodeURIComponent(url.replace(/^https:\/\/[^/]+/, '').split('?')[0]);
+    path = path.replace(/\/Forms\/[^/]*\.aspx$/i, '').replace(/\/$/, '');
+    var sp = (path.match(/^\/(sites|teams)\/[^/]+/) || [''])[0];
+    var site = msApi_('get', '/sites/' + host + (sp ? ':' + encodeURI(sp) : ''));
+    if (site.code !== 200) return { ok: false, error: 'SharePointのサイトが見つかりません（' + site.code + '）' };
+    var drives = msApi_('get', '/sites/' + site.json.id + '/drives'), best = null;
+    ((drives.json && drives.json.value) || []).forEach(function (d) { var dp = decodeURIComponent(String(d.webUrl || '').replace(/^https:\/\/[^/]+/, '')); if (path.indexOf(dp) === 0 && (!best || dp.length > best.dp.length)) best = { d: d, dp: dp }; });
+    if (!best) return { ok: false, error: 'そのフォルダのライブラリが見つかりません。フォルダを開いた状態のアドレスを貼ってください' };
+    var rel = path.slice(best.dp.length).replace(/^\//, '');
+    var it = msApi_('get', '/drives/' + best.d.id + (rel ? '/root:/' + rel.split('/').map(encodeURIComponent).join('/') : '/root'));
+    if (it.code !== 200) return { ok: false, error: 'フォルダが見つかりません（' + it.code + '）' };
+    item = it.json;
+  }
+  var driveId = item.parentReference.driveId, base = item.id;
+  var c = msApi_('get', '/drives/' + driveId + '/items/' + base + ':/' + encodeURIComponent('社内アプリ'));
+  if (c.code !== 200) c = msApi_('post', '/drives/' + driveId + '/items/' + base + '/children', { name: '社内アプリ', folder: {}, '@microsoft.graph.conflictBehavior': 'fail' });
+  if (!c.json || !c.json.id) return { ok: false, error: '「社内アプリ」フォルダを作れませんでした（' + c.code + '）。書き込みの許可があるフォルダか確認してください' };
+  var P = PropertiesService.getScriptProperties();
+  P.setProperty('MS_DRIVE', driveId); P.setProperty('MS_ROOT', c.json.id); P.setProperty('MS_ROOT_URL', c.json.webUrl || ''); P.setProperty('MS_ROOT_NAME', (item.name || '') + ' ＞ 社内アプリ');
+  return { ok: true, folder: msP_('MS_ROOT_NAME'), url: msP_('MS_ROOT_URL') };
+}
+/* フォルダ（社内アプリの下の道のり）を用意して、そのidを返す（途中のフォルダも作る） */
+function msFolderId_(parts) {
+  var c = CacheService.getScriptCache(), key = 'msf_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, parts.join('/'), Utilities.Charset.UTF_8));
+  var hit = c.get(key); if (hit) return hit;
+  var d = msP_('MS_DRIVE'), id = msP_('MS_ROOT');
+  var g = msApi_('get', '/drives/' + d + '/items/' + id + ':/' + msEnc_(parts));
+  if (g.code === 200) { c.put(key, g.json.id, 21600); return g.json.id; }
+  parts.forEach(function (name) {
+    var n = msClean_(name), h = msApi_('get', '/drives/' + d + '/items/' + id + ':/' + encodeURIComponent(n));
+    if (h.code !== 200) h = msApi_('post', '/drives/' + d + '/items/' + id + '/children', { name: n, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' });
+    if (!h.json || !h.json.id) h = msApi_('get', '/drives/' + d + '/items/' + id + ':/' + encodeURIComponent(n));   // 同時に作られたとき
+    if (!h.json || !h.json.id) throw new Error('フォルダを作れませんでした：' + n);
+    id = h.json.id;
+  });
+  c.put(key, id, 21600); return id;
+}
+/* 1つのファイルを送る（4MBまでは1回で、それより大きいものは分けて） */
+function msPut_(folderId, name, blob) {
+  var d = msP_('MS_DRIVE'), bytes = blob.getBytes(), path = '/drives/' + d + '/items/' + folderId + ':/' + encodeURIComponent(msClean_(name));
+  if (bytes.length <= 3800000) { var r = msApi_('put', path + ':/content', null, { bytes: bytes, type: blob.getContentType() || 'image/jpeg' }); if (r.code >= 300) throw new Error('SharePointに送れませんでした（' + r.code + '）'); return r.json.id; }
+  var s = msApi_('post', path + ':/createUploadSession', { item: { '@microsoft.graph.conflictBehavior': 'replace' } });
+  if (!s.json || !s.json.uploadUrl) throw new Error('SharePointに送れませんでした（' + s.code + '）');
+  var CH = 327680 * 10, last = null;
+  for (var i = 0; i < bytes.length; i += CH) {
+    var part = bytes.slice(i, Math.min(bytes.length, i + CH));
+    var res = UrlFetchApp.fetch(s.json.uploadUrl, { method: 'put', payload: part, contentType: 'application/octet-stream', muteHttpExceptions: true, headers: { 'Content-Range': 'bytes ' + i + '-' + (i + part.length - 1) + '/' + bytes.length } });
+    if (res.getResponseCode() >= 300) throw new Error('SharePointに送れませんでした（' + res.getResponseCode() + '）');
+    try { last = JSON.parse(res.getContentText() || '{}'); } catch (e) {}
+  }
+  return last && last.id || '';
+}
+function msPartsOf_(r, kind) {
+  var site = shashinSite_(r.siteId) || { kind: '', contract: r.contract, name: r.site };
+  return ['工事写真', shashinClean_(site.contract) || shashinClean_(site.kind) || 'その他', shashinClean_(site.name) || '現場名なし', kind === 'raw' ? '黒板なし' : '黒板あり'];
+}
+/* 1枚分（黒板あり・黒板なし）を送る。送れたら記録に msId / msRawId */
+function msCopyRow_(r) {
+  var o = { photoId: String(r.photoId) }, done = false;
+  if (!r.msId && r.fileId) { o.msId = msPut_(msFolderId_(msPartsOf_(r, 'on')), r.fileName || (r.photoId + '.jpg'), DriveApp.getFileById(r.fileId).getBlob()) || 'ok'; done = true; }
+  if (!r.msRawId && r.rawFileId) { o.msRawId = msPut_(msFolderId_(msPartsOf_(r, 'raw')), r.fileName || (r.photoId + '.jpg'), DriveApp.getFileById(r.rawFileId).getBlob()) || 'ok'; done = true; }
+  if (done) { var l = LockService.getScriptLock(); l.waitLock(25000); try { upsert_('shashinPhotos', 'photoId', 'F', o, 'SharePointコピー'); } finally { l.releaseLock(); } }
+  return done;
+}
+/* 削除・撮り直しで入れ替わった写真は「_削除済み」へ、元に戻したら元の場所へ */
+function msSyncGone_(photoId) {
+  var r = null; rows_('shashinPhotos').forEach(function (x) { if (String(x.photoId) === photoId) r = x; }); if (!r) return;
+  var gone = r.state === '削除' || r.state === '差し替え済', d = msP_('MS_DRIVE');
+  if (gone === !!r.msGone) return;
+  [['msId', 'on'], ['msRawId', 'raw']].forEach(function (k) {
+    var id = r[k[0]]; if (!id || id === 'ok') return;
+    var to = gone ? msFolderId_(['工事写真', '_削除済み']) : msFolderId_(msPartsOf_(r, k[1]));
+    msApi_('patch', '/drives/' + d + '/items/' + id, { parentReference: { id: to }, '@microsoft.graph.conflictBehavior': 'rename' });
+  });
+  var l = LockService.getScriptLock(); l.waitLock(25000); try { upsert_('shashinPhotos', 'photoId', 'F', { photoId: photoId, msGone: gone ? '削除済み' : '' }, 'SharePointコピー'); } finally { l.releaseLock(); }
+}
+/* まだ送っていない写真をまとめて送る（時間を区切って。同時に2つ動かない） */
+function msFlush_(budgetMs, pre) {
+  if (!msReady_()) return { ok: false, error: 'SharePointへのコピーは まだ設定されていません' };
+  var c = CacheService.getScriptCache(); if (c.get('ms_busy')) return { ok: true, busy: true, sent: 0, left: msPending_().length };
+  c.put('ms_busy', '1', Math.ceil(budgetMs / 1000) + 30);
+  var t0 = Date.now(), sent = pre || 0, err = '';
+  try {
+    var rows = rows_('shashinPhotos');
+    rows.filter(function (r) { return r.msId && r.msId !== 'ok' && ((r.state === '削除' || r.state === '差し替え済') !== !!r.msGone); }).forEach(function (r) { if (Date.now() - t0 < budgetMs) { try { msSyncGone_(String(r.photoId)); } catch (e) {} } });
+    var todo = msPending_(rows);
+    for (var i = 0; i < todo.length && Date.now() - t0 < budgetMs; i++) { try { if (msCopyRow_(todo[i])) sent++; } catch (e) { err = String(e.message || e); if (/ログイン/.test(err)) break; } }
+  } finally { c.remove('ms_busy'); }
+  var left = msPending_().length;
+  PropertiesService.getScriptProperties().setProperty('MS_LAST', now_() + '　送った ' + sent + ' 枚' + (left ? '・残り ' + left + ' 枚' : '') + (err ? '　⚠ ' + err : ''));
+  return { ok: true, sent: sent, left: left, error: err };
+}
+function msPending_(rows) { return (rows || rows_('shashinPhotos')).filter(function (r) { return !r.state && ((r.fileId && !r.msId) || (r.rawFileId && !r.msRawId)); }); }
+/* 写真を受け取ったあと：その写真と、送り残しを少し（全部で15秒まで） */
+function msAfter_(photoId) {
+  try {
+    if (!msReady_()) return;
+    var r = null; rows_('shashinPhotos').forEach(function (x) { if (String(x.photoId) === String(photoId)) r = x; });
+    var one = r && msCopyRow_(r) ? 1 : 0;
+    msFlush_(15000, one);
+  } catch (e) { PropertiesService.getScriptProperties().setProperty('MS_LAST', now_() + '　⚠ ' + (e.message || e)); }
+}
+function msStatus_() {
+  var rows = rows_('shashinPhotos'), live = rows.filter(function (r) { return !r.state && r.fileId; });
+  return { ok: true, configured: !!(msP_('MS_CLIENT_ID') && msP_('MS_SECRET')), clientId: msP_('MS_CLIENT_ID'), tenant: msP_('MS_TENANT'), loggedIn: !!msP_('MS_REFRESH'), user: msP_('MS_USER'),
+    folder: msP_('MS_ROOT_NAME'), folderUrl: msP_('MS_ROOT_URL'), ready: msReady_(), total: live.length, sent: live.filter(function (r) { return r.msId; }).length, left: msPending_(rows).length, last: msP_('MS_LAST') };
 }
 
 /* ================================================================
