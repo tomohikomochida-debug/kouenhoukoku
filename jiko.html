@@ -858,6 +858,7 @@ function bindForm() {
       if (p === 'kind' && v === 'work' && (d.police || {}).status === '') d.police.status = '';
       touchDraft(); renderForm(); return;
     }
+    const th = e.target.closest('.th[data-pid]'); if (th && !e.target.closest('.pm-arrow')) return photoMenu(th.dataset.pid, dr.id);   // 写真をタップ → 大きく見る・説明
     const t = e.target.closest('button'); if (!t) return;
     if (t.id === 'geoBtn') return openMapPicker(dr.id, { fromGps: true });
     if (t.id === 'witAdd') { (dr.data.witnesses = dr.data.witnesses || []).push({ name: '', contact: '' }); touchDraft(); renderForm(); return; }
@@ -872,7 +873,6 @@ function bindForm() {
     if (t.id === 'mapShotBtn') return pickMapShot(dr.id);
     if (t.dataset.skcam || t.dataset.sklib) return pickPhoto('sketch', !!t.dataset.skcam, dr.id, async () => { await keepLatestSketch(dr.id); renderForm(); });
     if (t.id === 'discardBtn') return discardDraft();
-    if (t.closest('.th')) return photoMenu(t.closest('.th').dataset.pid, dr.id);
   };
   m.oninput = e => {
     const el = e.target; if (!el.dataset || !el.dataset.k) return;
@@ -1014,7 +1014,11 @@ function photoMenu(pid, caseId, after) {
   if (!p) return;
   const canDel = lp ? true : (c && (isBoss() || p.by === S.me.disp));
   const isPdf = p.mime === 'application/pdf';
-  openModal(`<h3>${esc(SLOT_JA[p.slot] || '写真')}</h3>${isPdf ? '<button class="btn block" id="pmOpen">📄 PDFを開く</button>' : '<img id="pmImg" style="width:100%;border-radius:10px;background:var(--leaf-soft);min-height:120px" alt="">'}
+  // 前・次の写真（同じ事故の写真を、画面に並んでいる順に。書類は書類どうし）
+  const list = photosOf(caseId).filter(x => (x.slot === 'doc') === (p.slot === 'doc') && x.mime !== 'application/pdf').map(x => x.photoId);
+  const idx = list.indexOf(pid), prevId = idx > 0 ? list[idx - 1] : null, nextId = idx >= 0 && idx < list.length - 1 ? list[idx + 1] : null;
+  const arrow = (id, dir) => `<button type="button" class="pm-arrow" data-go="${esc(id || '')}" aria-label="${dir < 0 ? '前の写真' : '次の写真'}" style="position:absolute;top:50%;${dir < 0 ? 'left:6px' : 'right:6px'};transform:translateY(-50%);width:46px;height:46px;border-radius:50%;border:0;background:rgba(0,0,0,.5);color:#fff;font-size:26px;line-height:46px;cursor:pointer${id ? '' : ';visibility:hidden'}">${dir < 0 ? '‹' : '›'}</button>`;
+  openModal(`<h3>${esc(SLOT_JA[p.slot] || '写真')}${list.length > 1 && idx >= 0 ? `<span class="hint" style="font-weight:400;margin-left:8px">${idx + 1} / ${list.length}</span>` : ''}</h3>${isPdf ? '<button class="btn block" id="pmOpen">📄 PDFを開く</button>' : `<div style="position:relative" id="pmWrap"><img id="pmImg" style="width:100%;border-radius:10px;background:var(--leaf-soft);min-height:120px;display:block" alt="">${list.length > 1 ? arrow(prevId, -1) + arrow(nextId, 1) : ''}</div>${list.length > 1 ? '<p class="hint" style="text-align:center;margin:4px 0 0">‹ › か、写真を左右にスワイプで前後の写真へ</p>' : ''}`}
     ${p.slot === 'doc' ? `<label class="lbl">書類の種類</label><div class="chips">${DOC_KINDS.map(k => `<button type="button" class="chip" data-dk="${esc(k)}">${esc(k)}</button>`).join('')}</div>` : ''}
     <label class="lbl">${p.slot === 'doc' ? '説明' : '説明（PDFに載ります）'}</label><input type="text" id="pmCap" value="${esc(p.caption || '')}" placeholder="例：自社車両 左後方">
     <label class="lbl"${isPdf ? ' hidden' : ''}>枠を変える</label><select id="pmSlot"${isPdf ? ' hidden' : ''}>${Object.keys(SLOT_JA).filter(k => !['sketch', 'hiyari'].includes(k)).map(k => `<option value="${k}"${k === p.slot ? ' selected' : ''}>${esc(SLOT_JA[k])}</option>`).join('')}</select>
@@ -1023,13 +1027,27 @@ function photoMenu(pid, caseId, after) {
   if (isPdf) $('#pmOpen').onclick = async () => { try { const u = await photoUrl(pid); window.open(u, '_blank'); } catch (e) { toast(e.message); } };
   else photoUrl(pid).then(u => { const i = $('#pmImg'); if (i) i.src = u; }).catch(() => {});
   document.querySelectorAll('[data-dk]').forEach(b => b.onclick = () => { $('#pmCap').value = b.dataset.dk; });
-  $('#pmOk').onclick = async () => {
+  const applyEdits = async () => {   // 説明・枠を直していたら保存（閉じるとき・前後に動くとき）
     const cap = $('#pmCap').value.trim(), slot = $('#pmSlot').value;
     if (cap !== (p.caption || '') || slot !== p.slot) {
       p.caption = cap; p.slot = slot;
       if (lp) { await DB.pput(lp); if (lp.sent) api('photoMeta', { photoId: pid, caption: cap, slot }).catch(() => {}); if (sp) { sp.caption = cap; sp.slot = slot; } }
-      else { try { const j = await api('photoMeta', { photoId: pid, caption: cap, slot }); if (!j.ok) toast(j.error); } catch (e) { toast(e.message); } }
+      else { api('photoMeta', { photoId: pid, caption: cap, slot }).then(j => { if (!j.ok) toast(j.error); }).catch(e => toast(e.message)); }
     }
+  };
+  const goTo = async id => { if (!id) return; await applyEdits(); photoMenu(id, caseId, after); };
+  document.querySelectorAll('.pm-arrow').forEach(b => b.onclick = e => { e.stopPropagation(); goTo(b.dataset.go); });
+  const wrap = $('#pmWrap');
+  if (wrap && list.length > 1) {   // 左右にスワイプ
+    let sx = null, sy = 0;
+    wrap.addEventListener('touchstart', e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+    wrap.addEventListener('touchend', e => { if (sx == null) return; const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy; sx = null; if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) goTo(dx < 0 ? nextId : prevId); });
+  }
+  if (window._pmKey) document.removeEventListener('keydown', window._pmKey);   // パソコンでは ← → キーでも
+  window._pmKey = e => { if (!$('#pmImg')) return; if (e.key === 'ArrowLeft') goTo(prevId); if (e.key === 'ArrowRight') goTo(nextId); };
+  document.addEventListener('keydown', window._pmKey);
+  $('#pmOk').onclick = async () => {
+    await applyEdits();
     closeModal(); after ? after() : (curDraft() ? renderForm() : render());
   };
   const del = $('#pmDel');
