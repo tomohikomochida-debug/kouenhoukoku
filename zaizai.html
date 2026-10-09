@@ -394,7 +394,7 @@
   <div class="card">
     <div class="nums">
       <div class="field fld-private" id="qtyTotalWrap"><label>処分量（合計・<span id="qtyUnitLbl">kg</span>）</label><input type="text" inputmode="numeric" id="f_qty" placeholder="例：805"></div>
-      <div class="field fld-private" id="amountWrap"><label>民間処分費（円）</label><input type="text" inputmode="numeric" id="f_amount" placeholder="例：10868"><span class="hlp">民間：種類で変わるので手入力</span></div>
+      <div class="field fld-private" id="amountWrap"><label>民間処分費（円）</label><input type="text" inputmode="numeric" id="f_amount" placeholder="例：10868"><span class="hlp">民間：種類で変わるので手入力。0円・わからないときは空のままで記録できます</span></div>
       <div class="field fld-public" id="govqtyWrap"><label>処分量（<span id="qtyUnitLbl2">kg</span>）</label><input type="text" inputmode="numeric" id="f_govqty" placeholder="例：540"><span class="hlp">公共焼却場：kg×15円で自動</span></div>
     </div>
     <div class="calc">
@@ -1414,7 +1414,8 @@ function openPreview(){
   const arr=siteList();
   if(!arr.length || !arr.some(s=>s.site)){ toast('現場を選んでください',true); return; }
   const t=totals();
-  if(!t.amount && !t.govfee){ toast('処分金額か役所処分量を入れてください',true); $('#f_amount').focus(); return; }
+  // 金額が0円・わからないときも記録できる（あとで「直す」から入れられる）。量も金額も無いときだけ確かめる
+  if(!t.total && !t.qtyKg && !confirm('処分量も金額も入っていません。\nこのまま記録しますか？（あとで一覧から直せます）')) return;
   const rows=buildRows();
   let html=`<div class="pv-row"><span class="k">日付</span><span class="v">${$('#f_date').value}</span></div>`;
   rows.forEach(r=>{ html+=`<div class="pv-site"><span class="nm">${r.site||'(現場未選択)'}</span><span class="tnum">¥${yen(r.total)}</span></div>`; });
@@ -1426,7 +1427,7 @@ function openPreview(){
   html+=`<div class="pv-row"><span class="k">民間処分費 / 公共ぶん</span><span class="v">¥${yen(t.amount)} / ¥${yen(t.govfee)}</span></div>`;
   html+=`<div class="pv-row"><span class="k">処分量 / 単価</span><span class="v">${fmtKg(t.qtyKg)} / ${fmtUp(unitPrice(t.total,t.qtyKg))}</span></div>`;
   if(slipReady()) html+=`<div class="pv-row"><span class="k">処分伝票</span><span class="v">${liveSlipCount()?liveSlipCount()+'枚':'なし'}</span></div>`;
-  html+=`<div class="pv-row big"><span class="k">集計用金額（合計）</span><span class="v">¥${yen(t.total)}</span></div>`;
+  html+=`<div class="pv-row big"><span class="k">集計用金額（合計）</span><span class="v">${t.total?'¥'+yen(t.total):'¥0（金額なし・あとで入れられます）'}</span></div>`;
   $('#pvBody').innerHTML=html;
   $('#pvTitle').textContent=editDenpyo?'この内容に更新します':'この内容で記録します';
   $('#pvDelete').style.display=editDenpyo?'':'none';
@@ -1566,7 +1567,7 @@ $('#listSite').onclick=()=>{ drilledFromSite=false; setListMode('site'); };
 $('#btnListBack').onclick=()=>{ drilledFromSite=false; $('#flKeyword').value=''; setListMode('site'); };
 /* 処分量（kg）と単価（円/kg）。単価は 金額÷量 で、民間＝合計金額÷量、公共＝自動で15円/kgになる */
 function fmtKg(kg){ const v=num(kg); return v>0 ? yen(v)+'kg' : '—'; }
-function unitPrice(total,qty){ const q=num(qty); return q>0 ? num(total)/q : null; }
+function unitPrice(total,qty){ const q=num(qty), t=num(total); return q>0 && t>0 ? t/q : null; }   // 金額なし（0円・わからない）は単価を出さない
 function fmtUp(up){ if(up==null) return '¥—/kg'; const v = up>=100 ? yen(up) : String(Math.round(up*10)/10); return '¥'+v+'/kg'; }
 function renderList(){
   renderCatBar();
