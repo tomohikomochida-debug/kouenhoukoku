@@ -1697,6 +1697,17 @@ function draw(){
       else if(!exporting && (isSel(f) || (disp.mode==='full'&&view.zoom>1.4)) && !(_grouped&&_grouped.has(f)) && labelVisible(f)) label(f.pt.x,f.pt.y+rad+2/view.zoom,(f.rank?f.rank:f.kind)+(f.C?'\nC='+f.C+'cm':''),col,f);
     }
   });
+  if(!exporting){   // 選んでいる木（赤い二重の輪）と、マウス・指が乗っている木（青い輪）をはっきり見せる
+    const z=view.zoom, ring=(f,kind)=>{
+      if(f.type==='tree'&&f.pt){ const r=treeRadius(f)/z+(kind==='sel'?7:6)/z; ctx.save(); ctx.beginPath(); ctx.arc(f.pt.x,f.pt.y,r,0,7);
+        if(kind==='hov'){ ctx.fillStyle='rgba(0,183,255,.22)'; ctx.fill(); }
+        ctx.lineWidth=(kind==='sel'?5:4)/z; ctx.strokeStyle='#fff'; ctx.stroke(); ctx.lineWidth=(kind==='sel'?2.8:2.2)/z; ctx.strokeStyle=kind==='sel'?SEL:'#00a8f0'; ctx.stroke(); ctx.restore(); }
+      else if(Array.isArray(f.pts)&&f.pts.length>1&&kind==='hov'){ ctx.save(); ctx.beginPath(); f.pts.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)); if(f.type!=='line') ctx.closePath();
+        ctx.lineWidth=7/z; ctx.strokeStyle='rgba(0,168,240,.5)'; ctx.stroke(); ctx.restore(); }
+    };
+    (multiSel.length?multiSel:(selected?[selected]:[])).forEach(f=>ring(f,'sel'));
+    if(hoverF&&!isSel(hoverF)&&state.features.indexOf(hoverF)>=0) ring(hoverF,'hov');
+  }
   if(!exporting&&state.scan&&state.scan.length){ state.scan.forEach(t=>{
     const r=scanRad(t)/view.zoom, on=(t===selScan);
     ctx.save(); ctx.beginPath(); ctx.arc(t.x,t.y,r,0,7); ctx.fillStyle='rgba(255,255,255,.8)'; ctx.fill();
@@ -1864,6 +1875,7 @@ function drawLegend(){
 function legendHit(p){const b=legend._box;return !!(legend.show&&b&&p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h);}
 
 /* ---------- 入力 ---------- */
+var hoverF=null;   // マウス・指が乗っている図形（選べることが分かるように青い輪）
 let panning=false,panStart=null,dragging=null,dragLast=null,calDragIdx=null,hover=null,draggingLegend=false,legDragOff=null,spaceDown=false,dragSnap=null;
 let lblDrag=null;   // 工種の数字（ラベル）を手で動かしている最中
 
@@ -2081,7 +2093,18 @@ cv.addEventListener('mousemove',e=>{
   if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(function(){const _p=ringPts(editV.f,editV.ring),_pv=_p.length>1?_p[(editV.idx-1+_p.length)%_p.length]:null,_s=snapLen(ip,_pv);_p[editV.idx]={x:_s.x,y:_s.y};})();recalcAreaFeature(editV.f);draw();return;}
   if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(dragGroup?multiSel.forEach(g=>moveFeature(g,ip.x-dragLast.x,ip.y-dragLast.y)):moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y));dragLast=ip;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;draw();}
+  if(!dragging&&!panning&&!editV&&!draft) hoverAt(evtPos(e));
 });
+/* 選べる図形の上に来たら、青い輪とポインタの形で知らせる（樹木・選ぶ・撮るのとき） */
+function hoverAt(p){
+  let f=null;
+  if(p&&['select','tree','shoot'].indexOf(tool)>=0&&state.img){ const ip=toImg(p.x,p.y); f=nearestTree(ip); if(!f&&tool!=='tree'){ const h=pickHit(ip); if(h) f=h; } }
+  if(f!==hoverF){ hoverF=f; cv.style.cursor=f?'pointer':(tool==='select'||tool==='pan'?'grab':tool==='shoot'?'pointer':'crosshair'); draw(); }
+}
+cv.addEventListener('mouseleave',()=>{ if(hoverF){ hoverF=null; draw(); } });
+// 指：押したところの図形に青い輪（離すと消える）
+cv.addEventListener('touchstart',e=>{ if(e.touches.length!==1) return; const t=e.touches[0], r=cv.getBoundingClientRect(); hoverAt({x:t.clientX-r.left,y:t.clientY-r.top}); },{passive:true});
+cv.addEventListener('touchend',()=>{ setTimeout(()=>{ if(hoverF){ hoverF=null; draw(); } },400); },{passive:true});
 window.addEventListener('mouseup',()=>{
   if(lblDrag){const d=lblDrag;lblDrag=null;if(!d.moved){selectFeature(d.f);}renderAgg();draw();return;}
   if(draggingLegend){draggingLegend=false;cv.style.cursor=tool==='select'?'grab':'crosshair';return;}
