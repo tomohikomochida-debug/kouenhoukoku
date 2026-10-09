@@ -360,7 +360,7 @@ async function logout() { try { await post({ app: 'timecard', action: 'logout', 
    ========================================================= */
 function applyInit(j) {
   S.me = j.me; S.staff = j.staff || []; S.sites = j.sites || []; S.suppliers = j.suppliers || []; S.vehicles = j.vehicles || [];
-  S.settings = j.settings || S.settings; S.cases = j.cases || []; S.hiyari = j.hiyari || [];
+  S.settings = j.settings || S.settings; S.cases = j.cases || []; S.hiyari = j.hiyari || []; S.folder = j.folder || null;
 }
 async function boot() {
   S.drafts = (await DB.get('drafts')) || {}; S.hyOut = (await DB.get('hyOut')) || [];
@@ -1093,7 +1093,8 @@ function renderCase(id) {
     $('#main').innerHTML = h; loadThumbs(); bindCasePhotos(c); return;
   }
   if (role === 'boss') {
-    h += `<div class="row2" style="margin-bottom:12px"><button class="btn tape" id="callBtn">📞 第一報の要点</button><button class="btn primary" id="pdfBtn">📄 報告書PDF</button></div>`;
+    h += `<div class="row2" style="margin-bottom:${c.folderUrl ? 6 : 12}px"><button class="btn tape" id="callBtn">📞 第一報の要点</button><button class="btn primary" id="pdfBtn">📄 報告書PDF</button></div>`;
+    if (c.folderUrl) h += `<div style="text-align:center;margin-bottom:12px"><a class="btn sm" href="${esc(c.folderUrl)}" target="_blank" rel="noopener">📁 この事故のフォルダ（写真・PDF）</a></div>`;
     h += `<div class="card"><h2>✅ やること</h2><div class="checklist">${checkItems(c).map(x => `<div class="ci${x.done ? ' done' : ''}"><button type="button" data-ck="${x.k}"${x.auto ? ' data-auto="1"' : ''}>✓</button><span>${esc(x.t)}</span><small>${x.at ? esc(mdDate(x.at)) : ''}</small></div>`).join('')}</div></div>`;
     h += bossPanel(c);
   } else if (role === 'party' || role === 'office') {
@@ -1387,7 +1388,10 @@ function renderSettings() {
         <div class="row2" style="margin-top:6px"><div><select data-s="${p}.carCov"><option value="">車両保険</option><option${x.carCov === 'あり' ? ' selected' : ''}>あり</option><option${x.carCov === 'なし' ? ' selected' : ''}>なし</option></select></div><div>${licSel(p + '.license', x.license, true)}</div></div>`; }).join('') || '<p class="hint">車両アプリに車が登録されていません</p>'}</div>
     <div class="card"><h2>🪪 スタッフの免許の種類</h2><p class="hint" style="margin-top:0">車の「必要な免許」と合わないとき、報告の画面に注意を出します</p>
       ${S.staff.map(s => `<div class="row2" style="align-items:center;margin-bottom:6px"><span>${esc(s.disp)}</span><div>${licSel('licenses.' + s.id, st.licenses[s.id], false)}</div></div>`).join('')}</div>
-    <p class="hint">保存先：Googleドライブ「社内アプリ ＞ 事故報告 ＞ 事故報告データ（社外秘）」。共有はしないでください。</p>`;
+    <div class="card"><h2>📁 保存先</h2><p class="hint" style="margin-top:0">Googleドライブ「社内アプリ ＞ 事故報告」。履歴のスプレッドシート「事故報告データ（社外秘）」と、事故ごとのフォルダ（写真・報告書PDF）、ヒヤリハットの写真が入ります。</p>
+      ${S.folder ? `<a class="btn sm" href="${esc(S.folder.url)}" target="_blank" rel="noopener">📁 事故報告のフォルダを開く</a>
+      ${S.folder.limited ? '<div class="note green"><b>✓ スタッフはドライブから開けない設定です</b>社内アプリのフォルダは共有していますが、事故報告のフォルダだけは親方しか開けません（アプリからはふだん通り使えます）。</div>'
+        : '<div class="note red"><b>スタッフがドライブから開ける状態です</b>社内アプリのフォルダを共有しているため、相手の個人情報やけがの写真が見えてしまいます。ドライブで「事故報告」フォルダを右クリック →「共有」→「アクセスを制限」にしてください（自動で設定できなかったときの手順です）。</div>'}` : ''}</div>`;
   setBottom(`<div class="st">親方だけが変えられます</div><button class="btn primary" id="setSave">保存</button>`);
   $('#main').oninput = e => { const el = e.target; if (el.dataset && el.dataset.s) setP(st, el.dataset.s, el.value.trim()); };
   $('#main').onchange = $('#main').oninput;
@@ -1440,8 +1444,10 @@ function openPdf(c) {
       const pdf = new window.jspdf.jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
       pages.forEach((cv, i) => { prog(`PDFにしています… ${i + 1} / ${pages.length}`); if (i) pdf.addPage(); pdf.addImage(cv.toDataURL('image/jpeg', 0.88), 'JPEG', 0, 0, 210, 297, undefined, 'FAST'); });
       const name = `事故報告書_${c.no || ''}_${String(d.date || '').replace(/-/g, '')}.pdf`;
-      const file = new File([pdf.output('blob')], name, { type: 'application/pdf' });
-      prog('できました。送り先を選んでください');
+      const blob = pdf.output('blob'), file = new File([blob], name, { type: 'application/pdf' });
+      prog('事故のフォルダにも保存しています…');
+      try { const j = await api('pdf', { caseId: c.id, name, data: await blobToB64(blob) }, 120000); if (!j.ok) throw new Error(j.error); if (j.folderUrl) c.folderUrl = j.folderUrl; prog('ドライブの事故のフォルダにも保存しました。送り先を選んでください'); }
+      catch (e) { prog('ドライブには保存できませんでした（' + e.message + '）。送り先を選んでください'); }
       await shareFile(file);
       if (!(c.boss || {}).pdfSentAt) {
         if (confirm('保険会社に提出しましたか？\n「OK」で「詳細報告書を提出」に進めます')) {

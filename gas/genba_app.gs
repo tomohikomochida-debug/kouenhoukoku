@@ -2631,7 +2631,7 @@ var JIKO_COLS = {
   cases: { name: '事故報告', cols: [['id', '管理ID'], ['no', '報告番号'], ['state', '状態'], ['stage', '進み具合'], ['kind', '事故の種類'], ['party', '相手'], ['who', 'どちらが'], ['damage', '被害'],
     ['date', '発生日'], ['time', '時刻'], ['place', '場所'], ['driver', '当事者'], ['members', '同乗者・作業班'], ['reporter', '報告者'], ['vehicle', '車両'], ['site', '現場'], ['route', '移動（目的・出発→目的地）'],
     ['other', '相手・持ち主'], ['police', '警察'], ['insurer', '保険会社'], ['insReceipt', '事故受付番号'], ['insUse', '保険の使い方'], ['cost', '修理費・支払い'], ['rousai', '労災'], ['shared', 'みんなに共有'],
-    ['createdAt', '報告日時'], ['updatedBy', '更新者'], ['updatedAt', '更新日時'], ['data', '（アプリ用：報告の中身）'], ['boss', '（アプリ用：親方の記録）']] },
+    ['createdAt', '報告日時'], ['updatedBy', '更新者'], ['updatedAt', '更新日時'], ['folderUrl', 'フォルダ'], ['folderId', 'フォルダID'], ['data', '（アプリ用：報告の中身）'], ['boss', '（アプリ用：親方の記録）']] },
   logs: { name: '経過記録', cols: [['logId', '記録ID'], ['caseId', '管理ID'], ['no', '報告番号'], ['at', '日時'], ['by', '書いた人'], ['text', '内容'], ['showParty', '当事者にも見せる'], ['kind', '種類'], ['state', '状態']] },
   photos: { name: '事故の写真', cols: [['photoId', '写真ID'], ['caseId', '管理ID'], ['slot', '枠'], ['caption', '説明'], ['takenAt', '撮影日時'], ['lat', '緯度'], ['lng', '経度'], ['by', '撮った人'], ['at', '送った日時'],
     ['inPdf', 'PDFに入れる'], ['share', 'みんなに見せる'], ['state', '状態'], ['fileId', 'ファイルID'], ['rawFileId', '元データのファイルID'], ['url', 'リンク']] },
@@ -2644,13 +2644,54 @@ var JK_PRIVATE_SLOTS = ['docs', 'injury', 'plate'];   // 相手の書類・け�
 var JK_SHARE_SLOTS = ['scene', 'around'];             // みんなに共有するときに最初から見せる写真（全景・周辺）
 
 /* ---------- 置き場所 ---------- */
-function jkFolder_() {
-  var id = prop_('JIKO_FOLDER_ID', '');
-  if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) return f; } catch (e) {} }
-  var p = docsFolder_().getParents(), parent = p.hasNext() ? p.next() : DriveApp.getRootFolder();
-  var folder = subFolder_(parent, '事故報告');
-  PropertiesService.getScriptProperties().setProperty('JIKO_FOLDER_ID', folder.getId());
+function jkFolder_() {   // 社内アプリ ＞ 事故報告（ほかのアプリと同じ階層）
+  var id = prop_('JIKO_FOLDER_ID', ''), folder = null;
+  if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) folder = f; } catch (e) {} }
+  if (!folder) {
+    var p = docsFolder_().getParents(), parent = p.hasNext() ? p.next() : DriveApp.getRootFolder();
+    folder = subFolder_(parent, '事故報告');
+    PropertiesService.getScriptProperties().setProperty('JIKO_FOLDER_ID', folder.getId());
+  }
+  jkRestrict_(folder);
   return folder;
+}
+/* 社内アプリのフォルダはスタッフと共有しているので、事故報告のフォルダだけは「アクセスを制限」にする
+   （相手の個人情報・けがの写真が入るため。親方〔持ち主〕だけが開ける。アプリからはふだん通り使える）
+   Drive の「制限付きアクセスのフォルダ」（inheritedPermissionsDisabled）。うまくいかないときは1時間おきにやり直す */
+function jkRestrict_(folder) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('JIKO_LIMITED') === '1') return true;
+  var last = Number(props.getProperty('JIKO_LIMIT_TRY') || 0);
+  if (Date.now() - last < 3600000) return false;
+  props.setProperty('JIKO_LIMIT_TRY', String(Date.now()));
+  try {
+    var res = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + folder.getId() + '?fields=inheritedPermissionsDisabled', {
+      method: 'patch', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, payload: JSON.stringify({ inheritedPermissionsDisabled: true }) });
+    var ok = res.getResponseCode() === 200 && JSON.parse(res.getContentText()).inheritedPermissionsDisabled === true;
+    if (ok) props.setProperty('JIKO_LIMITED', '1');
+    return ok;
+  } catch (e) { return false; }
+}
+function jkFolderInfo_() {
+  var f = jkFolder_();
+  return { url: f.getUrl(), limited: prop_('JIKO_LIMITED', '') === '1' };
+}
+/* 事故ごとのフォルダ：社内アプリ ＞ 事故報告 ＞ 「2026-001_10月9日_車両事故_岩崎」
+   写真（元データは中の「元データ」）と、保険会社に出した報告書PDFをまとめる。名前は内容が変われば付け直す */
+function jkCaseFolderName_(c) {
+  var d = c.data || {}, m = String(d.date || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  var kind = d.kind === 'car' ? '車両事故' : (d.kind === 'work' ? '作業事故' : '');
+  return shashinClean_([c.no, m ? (+m[2]) + '月' + (+m[3]) + '日' : '', kind, d.driver].filter(Boolean).join('_')) || c.id;
+}
+function jkCaseFolder_(c) {
+  var root = jkFolder_(), f = null;
+  if (c.folderId) { try { f = DriveApp.getFolderById(c.folderId); if (f.isTrashed()) f = null; } catch (e) { f = null; } }
+  if (!f) { var it = root.getFoldersByName(c.id); if (it.hasNext()) f = it.next(); }   // 報告より先に写真が届いていたとき
+  var name = jkCaseFolderName_(c);
+  if (!f) f = root.createFolder(name);
+  else if (f.getName() !== name) { try { f.setName(name); } catch (e) {} }
+  return f;
 }
 var JK_SS_ = null;
 function jkSs_() {
@@ -2732,7 +2773,7 @@ function jkStaff_() {
 }
 
 /* ---------- 誰に何を見せるか ---------- */
-function jkCase_(r) { var o = { id: r.id, no: r.no, state: r.state, stage: r.stage, createdAt: r.createdAt, updatedAt: r.updatedAt, updatedBy: r.updatedBy }; o.data = jkJson_(r.data, {}); o.boss = jkJson_(r.boss, {}); return o; }
+function jkCase_(r) { var o = { id: r.id, no: r.no, state: r.state, stage: r.stage, createdAt: r.createdAt, updatedAt: r.updatedAt, updatedBy: r.updatedBy, folderId: r.folderId, folderUrl: r.folderUrl }; o.data = jkJson_(r.data, {}); o.boss = jkJson_(r.boss, {}); return o; }
 function jkPartyIds_(d) {
   var ids = [d.reporterId, d.driverId].concat(d.memberIds || []);
   if (d.rousai && d.rousai.staffId) ids.push(d.rousai.staffId);
@@ -2753,7 +2794,7 @@ function jkView_(c, me, photos, logs) {
   var lg = logs.filter(function (l) { return l.caseId === c.id && l.state !== '削除'; }).map(function (l) { return { logId: l.logId, at: l.at, by: l.by, text: l.text, showParty: l.showParty === '○', kind: l.kind }; });
   var v = { id: c.id, no: c.no, state: c.state, stage: c.stage, createdAt: c.createdAt, updatedAt: c.updatedAt, updatedBy: c.updatedBy, role: role };
   var pub = jkPick_(b, ['stage', 'checks', 'cause', 'prevention', 'shared', 'rousaiStage']);
-  if (role === 'boss') { v.data = d; v.boss = b; v.photos = ph; v.logs = lg; return v; }
+  if (role === 'boss') { v.data = d; v.boss = b; v.photos = ph; v.logs = lg; v.folderUrl = c.folderUrl || ''; return v; }
   if (role === 'party') {
     v.data = d; v.boss = pub; v.photos = ph;
     v.logs = lg.filter(function (l) { return l.showParty; });
@@ -2815,6 +2856,7 @@ function jikoPost_(b) {
       case 'photo':       return jkPhoto_(b, me);
       case 'photoData':   return jkPhotoData_(b, me);
       case 'photoMeta':   return withLockRaw_(function () { return jkPhotoMeta_(b, me); });
+      case 'pdf':         return jkSavePdf_(b, me);
       case 'hiyari':      return withLockRaw_(function () { return jkHiyari_(b, me); });
       case 'hiyariBoss':  return withLockRaw_(function () { return jkHiyariBoss_(b, me); });
       case 'settings':    return withLockRaw_(function () { return jkSaveSettings_(b, me); });
@@ -2847,7 +2889,8 @@ function jkInit_(me) {
   var sites = []; try { sites = siteList_().filter(function (s) { return !s.state || !/終了|削除|休止/.test(s.state); }).map(function (s) { return { id: String(s.id || ''), name: s.name, contract: s.contract || '', kind: s.kind || '' }; }); } catch (e) {}
   var sup = rows_('suppliers').map(function (s) { return { id: s.id, name: s.name, kind: s.kind, address: s.address }; });
   var veh = rows_('vehicles').filter(function (v) { return !v.status || v.status === '使用中'; }).map(function (v) { return { id: v.id, name: v.name, plate: v.plate, category: v.category || '車・トラック', ownership: v.ownership || '自社', model: v.model }; });
-  return { ok: true, me: me, staff: jkStaff_(), sites: sites, suppliers: sup, vehicles: veh, settings: jkPublicSettings_(st, me), cases: views, hiyari: hy, stages: JK_STAGES, now: now_() };
+  var folder = null; if (me.role === 'boss') { try { folder = jkFolderInfo_(); } catch (e) {} }
+  return { ok: true, folder: folder, me: me, staff: jkStaff_(), sites: sites, suppliers: sup, vehicles: veh, settings: jkPublicSettings_(st, me), cases: views, hiyari: hy, stages: JK_STAGES, now: now_() };
 }
 function jkBadge_(me) {
   if (me.role !== 'boss' && me.role !== 'office') return { ok: true, n: 0 };
@@ -2891,7 +2934,8 @@ function jkSave_(b, me) {
   c.state = c.stage === '完了' ? '完了' : '対応中';
   var dataStr = JSON.stringify(c.data), bossStr = JSON.stringify(c.boss);
   if (dataStr.length > 48000 || bossStr.length > 48000) return { ok: false, error: '文章が長すぎて保存できません。経緯などを短くしてください' };
-  var rec = Object.assign({ id: c.id, no: c.no, state: c.state, stage: c.stage, createdAt: c.createdAt, updatedBy: me.disp, updatedAt: now, data: dataStr, boss: bossStr }, jkFlat_(c));
+  try { var fo = jkCaseFolder_(c); c.folderId = fo.getId(); c.folderUrl = fo.getUrl(); } catch (e) {}
+  var rec = Object.assign({ id: c.id, no: c.no, state: c.state, stage: c.stage, createdAt: c.createdAt, updatedBy: me.disp, updatedAt: now, data: dataStr, boss: bossStr, folderId: c.folderId || '', folderUrl: c.folderUrl || '' }, jkFlat_(c));
   jkUpsert_('cases', 'id', rec);
   if (isNew) {
     jkUpsert_('logs', 'logId', { logId: 'G' + Date.now().toString(36), caseId: c.id, no: c.no, at: now, by: me.disp, text: '報告を受け付けました', showParty: true, kind: '自動' });
@@ -2923,7 +2967,14 @@ function jkDelete_(b, me) {
 }
 
 /* ---------- 写真（事故：J- ／ ヒヤリハット：H-） ---------- */
-function jkPhotoFolder_(ownerId) { return subFolder_(jkFolder_(), shashinClean_(ownerId)); }
+function jkPhotoFolder_(ownerId) {
+  if (ownerId.charAt(0) === 'H') return subFolder_(jkFolder_(), 'ヒヤリハット');
+  var c = jkFind_(ownerId);
+  if (!c) return subFolder_(jkFolder_(), shashinClean_(ownerId));   // まだ報告が届いていない：あとで報告のフォルダになる
+  var f = jkCaseFolder_(c);
+  if (c.folderId !== f.getId()) jkUpsert_('cases', 'id', { id: c.id, folderId: f.getId(), folderUrl: f.getUrl() });
+  return f;
+}
 var JK_SLOT_JA = { scene: '全景', own_far: '自社の損傷（引き）', own_near: '自社の損傷（寄り）', their_far: '相手側（引き）', their_near: '相手側（寄り）', detail: '損傷の詳細', plate: '相手のナンバー',
   around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', hiyari: 'ヒヤリハット' };
 function jkPhoto_(b, me) {
@@ -2975,6 +3026,19 @@ function jkPhotoMeta_(b, me) {
   if (b.remove) patch.state = '削除';
   jkUpsert_('photos', 'photoId', patch);
   return { ok: true };
+}
+
+/* 保険会社に出した報告書PDFを、事故のフォルダに残す（いつも最新の1つだけ。前のものはゴミ箱へ） */
+function jkSavePdf_(b, me) {
+  if (me.role !== 'boss') return { ok: false, error: '報告書は親方だけが作れます' };
+  if (!b.data) return { ok: false, error: 'PDFがありません' };
+  var c = jkFind_(b.caseId); if (!c) return { ok: false, error: '報告が見つかりません' };
+  var f; withLockRaw_(function () { f = jkCaseFolder_(c); if (c.folderId !== f.getId()) jkUpsert_('cases', 'id', { id: c.id, folderId: f.getId(), folderUrl: f.getUrl() }); });
+  var it = f.getFiles();
+  while (it.hasNext()) { var x = it.next(); if (/^事故報告書_/.test(x.getName()) && x.getMimeType() === 'application/pdf') { try { x.setTrashed(true); } catch (e) {} } }
+  var name = shashinClean_(b.name || ('事故報告書_' + c.no + '.pdf'));
+  var file = f.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), 'application/pdf', name));
+  return { ok: true, url: file.getUrl(), folderUrl: f.getUrl() };
 }
 
 /* ---------- ヒヤリハット ---------- */
