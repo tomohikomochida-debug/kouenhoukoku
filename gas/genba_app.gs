@@ -1504,7 +1504,7 @@ function shashinUpdatePhoto_(b) {
   var had = null; rows_('shashinPhotos').forEach(function (r) { if (String(r.photoId) === String(b.photoId)) had = r; });
   if (!had) return { ok: false, error: 'その写真の記録がありません' };
   var o = { photoId: String(b.photoId) };
-  ['lat', 'lng', 'heading', 'stage', 'koshu', 'kikaku', 'sokuten', 'biko', 'excluded', 'state'].forEach(function (k) { if (b[k] !== undefined && b[k] !== null) o[k] = b[k]; });
+  ['lat', 'lng', 'heading', 'stage', 'koshu', 'kikaku', 'sokuten', 'biko', 'excluded', 'state', 'itemId'].forEach(function (k) { if (b[k] !== undefined && b[k] !== null) o[k] = b[k]; });
   if (o.state !== undefined && String(o.state) !== String(had.state || '') && had.fileId) {
     try { DriveApp.getFileById(had.fileId).setTrashed(o.state === '削除'); } catch (e) {}
   }

@@ -166,6 +166,16 @@ header .back{font-size:22px;padding:4px 12px}
 #mapPane .leaflet-top.leaflet-right{top:58px}
 #map{flex:1;min-height:300px}
 #zumen{position:absolute;inset:0;width:100%;height:100%;display:none;z-index:450;touch-action:none;background:#e9ece8}
+.parkBack+#albumBanner{}
+#linkBar{position:absolute;left:0;right:0;bottom:0;z-index:520;background:rgba(255,255,255,.97);border-radius:14px 14px 0 0;box-shadow:0 -3px 14px rgba(0,0,0,.2);padding:8px 10px calc(var(--safe-b) + 10px);display:none}
+.lbHead{display:flex;align-items:center;gap:8px;margin-bottom:6px}.lbHead b{font-size:14px}.lbHead span{flex:1;font-size:12px;color:var(--sub)}
+.lbHead button{background:#eef1ed;border-radius:8px;padding:7px 10px;font-weight:700}
+.lbAuto{display:block;width:100%;background:#f5b400;color:#222;border-radius:10px;padding:10px;font-weight:800;margin-bottom:6px}
+.lbList{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.lbItem{flex:0 0 112px;background:#f4f7f3;border:2px solid transparent;border-radius:10px;padding:5px;text-align:left;font-size:12px;line-height:1.3}
+.lbItem.on{border-color:#f5b400;background:#fff8dc}
+.lbItem img,.lbItem .ph0{display:block;width:100%;height:56px;object-fit:cover;border-radius:6px;background:#ddd;margin-bottom:3px;text-align:center;line-height:56px}
+.lbItem b{display:block;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.lbItem small{display:block;color:var(--sub);font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #zumenMsg{position:absolute;left:20px;right:20px;top:90px;z-index:460;display:none;background:#fff;border-radius:12px;padding:14px;font-size:14px;line-height:1.7;color:var(--sub);box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .parkBack{display:block;width:100%;background:#eef3ee;color:var(--main);font-weight:700;padding:9px;font-size:14px;border-bottom:1px solid var(--line)}
 .arrowIcon,.pinIcon{background:none;border:none}
@@ -453,10 +463,11 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
   </div>
   <div class="pane" id="mapPane">
     <div id="map"></div>
-    <canvas id="zumen"></canvas><div id="zumenMsg"></div>
+    <canvas id="zumen"></canvas><div id="zumenMsg"></div><div id="linkBar"></div>
     <div class="mapTools">
       <button id="mtView">📐 図面</button>
       <button id="mtAlign" style="display:none">📍 地図と合わせる</button>
+      <button id="mtLink" style="display:none">🔗 写真をつなぐ</button>
       <button id="mtHere" style="display:none">📍 現在地に置く</button>
       <button id="mtTap" style="display:none">👆 地図に置く</button>
       <span class="sp"></span>
@@ -1755,6 +1766,7 @@ const ZV={ on:false, rec:null, k:1, ox:0, oy:0, fitted:null };
 let ALN=null;   // 地図と合わせている途中 {pairs:[], pick:{f}}
 function zumenCanvas(){ return $('#zumen'); }
 async function showZumen(on){
+  if(!on&&LINK){ LINK=null; drawLinkBar(); } $('#mtLink').style.display='none';
   ZV.on=on; $('#zumen').style.display=on?'block':'none'; $('#map').style.visibility=on?'hidden':'';
   $('#mtView').textContent=on?'🗺 地図':'📐 図面'; $('#mtAlign').style.display='none';
   $('.legend').innerHTML = on
@@ -1765,7 +1777,7 @@ async function showZumen(on){
   if(!rec){ drawZumenMsg('この現場の公園報告の図面が見つかりません。<br>公園報告アプリで、公園名を現場マスタと同じにして「☁️ クラウドに保存」すると、だれが作った図面でも自動でここに出ます。'); discoverParkRec(siteOf(cur.id)).then(()=>{ if(parkRecOf(cur.id)&&ZV.on) showZumen(true); }); return; }
   if(!canSync()&&!parkCache[rec]){ drawZumenMsg('電波のある所で開いてください'); return; }
   try{ drawZumenMsg('図面を読み込んでいます…'); const R=await loadParkRec(rec); ZV.rec=rec; $('#zumenMsg').style.display='none'; if(ZV.fitted!==rec) fitZumen(R); drawZumen();
-    const auto=R.d.geo&&R.d.geo.kind==='wm'; $('#mtAlign').style.display=auto?'none':''; $('#mtAlign').textContent=geoOf(cur.id)?'📍 地図と合わせ直す':'📍 地図と合わせる'; }
+    const auto=R.d.geo&&R.d.geo.kind==='wm'; $('#mtAlign').style.display=auto?'none':''; const nU=unlinkedTargets().length; $('#mtLink').style.display=nU||LINK?'':'none'; $('#mtLink').textContent=`🔗 写真をつなぐ${nU?'（'+nU+'）':''}`; drawLinkBar(); $('#mtAlign').textContent=geoOf(cur.id)?'📍 地図と合わせ直す':'📍 地図と合わせる'; }
   catch(e){ drawZumenMsg('図面を読み込めませんでした：'+esc(e.message||e)); }
 }
 function drawZumenMsg(h){ const m=$('#zumenMsg'); m.innerHTML=h; m.style.display='block'; const c=zumenCanvas(); c.getContext('2d').clearRect(0,0,c.width,c.height); }
@@ -1791,6 +1803,11 @@ function drawZumen(){
       ctx.fillStyle=col; ctx.beginPath(); ctx.arc(A.x,A.y,5,0,7); ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
     });
   }
+  // つなぐ途中：えらんだ写真と同じ工種・規格の木を黄色の輪、撮った場所にいちばん近い木に ◎
+  if(LINK&&LINK.sel){ const t=unlinkedTargets().find(x=>x.key===LINK.sel);
+    if(t){ const near=nearestCand(t); linkCands(t).forEach(f=>{ const c=featPos(f), P=S(c.x,c.y); ctx.beginPath(); ctx.arc(P.x,P.y,f===near?24:19,0,7); ctx.fillStyle=f===near?'rgba(245,180,0,.45)':'rgba(245,180,0,.22)'; ctx.fill(); });
+      const ll=targetPos(t); if(g&&ll){ const a=g.ll2px(ll.lat,ll.lng), A=S(a.x,a.y); ctx.fillStyle='#f5b400'; ctx.beginPath(); ctx.arc(A.x,A.y,6,0,7); ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+        if(near){ const c=featPos(near); drawArrow(ctx,A,S(c.x,c.y),'#f5b400',true); } } } }
   // 木と範囲：白い丸＋撮影の印（前・中・後の区切りの細い枠）
   const FS=fidShots();
   R.areas.filter(f=>f.cat).forEach(f=>{ const c=featPos(f), P=S(c.x,c.y), got=FS[treeFid(f)], it=treeItem(f);
@@ -1834,8 +1851,74 @@ function zumenTreeAt(x,y){
   c.addEventListener('pointerup',up); c.addEventListener('pointercancel',e=>{ pts.delete(e.pointerId); pinch=null; start=null; });
   c.addEventListener('wheel',e=>{ e.preventDefault(); const k=Math.max(0.05,Math.min(40,ZV.k*(e.deltaY<0?1.15:1/1.15))); ZV.ox=e.offsetX-(e.offsetX-ZV.ox)*k/ZV.k; ZV.oy=e.offsetY-(e.offsetY-ZV.oy)*k/ZV.k; ZV.k=k; drawZumen(); },{passive:false});
 })();
+/* =========================================================
+   🔗 先に撮った写真を、あとから作った図面の木につなぐ
+   ・図面の「🔗 写真をつなぐ」：下に まだ木とつながっていない写真（工種・規格・測点ごと）が並ぶ → えらんで木をタップ
+   ・同じ工種・規格の木が黄色の輪で光る。図面と地図が合っていれば、撮った場所にいちばん近い木に「◎」
+   ・「位置で自動でつなぐ」：撮った場所のいちばん近い同じ工種・規格の木に、まとめてつなぐ（30m以内）
+   ========================================================= */
+let LINK=null;   // {sel:targetKey}
+function unlinkedTargets(){ return targets().filter(t=>t.photos.length&&!(t.item&&t.item.parkFid)); }
+function targetMatch(t,f){
+  const b=(t.photos[0]||{}).board||{}, ko=String(b.koshu||t.label||''), ki=String(b.kikaku||t.item?.kikaku||'').replace(/^C=/,'');
+  const catOk = ko.indexOf(f.cat)===0 || String(f.cat).indexOf(ko.split(/[\s　]/)[0])===0;
+  if(!catOk) return 0;
+  return (ki&&(ki===f.rank||ki===f.kind||ko.includes(f.kind||'@@')))?2:1;
+}
+function linkCands(t){ const R=parkCache[ZV.rec]; if(!R) return []; const L=R.feats.map(f=>({f,m:targetMatch(t,f)})).filter(x=>x.m>0); const top=Math.max(0,...L.map(x=>x.m)); return L.filter(x=>x.m===top).map(x=>x.f); }
+function targetPos(t){ const p=t.photos.find(p=>p.lat!=null&&p.lat!==''); return p?{lat:+p.lat,lng:+p.lng}:null; }
+function nearestCand(t,used){
+  const g=geoOf(cur.id), ll=targetPos(t); if(!g||!ll) return null;
+  const a=g.ll2px(ll.lat,ll.lng); let best=null, bd=30/Math.max(0.01,g.mpp);   // 30m以内
+  linkCands(t).forEach(f=>{ if(used&&used.has(treeFid(f))) return; const c=featPos(f), d=Math.hypot(c.x-a.x,c.y-a.y); if(d<bd){ bd=d; best=f; } });
+  return best;
+}
+async function setPhotoItem(id,itemId){
+  const lp=photosCache.find(x=>x.id===id), tp=teamPhotos.find(x=>x.photoId===id);
+  if(lp){ lp.itemId=itemId; await idbPut(lp); } if(tp) tp.itemId=itemId;
+  if((tp||(lp&&lp.status==='done'))&&canSync()){ try{ await gasPost({mode:'updatePhoto',photoId:id,itemId}); }catch(e){} }
+}
+async function linkTarget(t,f){
+  const rec=parkRecOf(cur.id), fid=treeFid(f), pos=featPos(f);
+  let it=items.find(i=>i.siteId===cur.id&&i.parkFid===fid);
+  if(!it&&t.item){ it=t.item; Object.assign(it,{parkFid:fid,parkRec:rec,px:pos.x,py:pos.y,synced:false}); pushItem(it); }
+  if(!it){ const b=(t.photos[0]||{}).board||{}, n=parseNo(b.sokuten), tree=f.type==='tree';
+    it={ id:uid(), siteId:cur.id, cat:f.cat||'', kind:f.kind||'', kikaku:b.kikaku||(tree&&f.rank?'C='+f.rank:''), no:n?String(n.tok).replace(/^No\.?\s*/i,''):'', name:'', jushu:b.jushu||'', memo:'', lat:null, lng:null,
+         src:tree?'park-tree':'park-area', parkRec:rec, parkFid:fid, px:pos.x, py:pos.y, synced:false };
+    items.push(it); pushItem(it); }
+  for(const p of t.photos){ if(p.itemId!==it.id) await setPhotoItem(p.id,it.id); }
+  t.photos.forEach(p=>{ if(p.stage) markShot(it.id,p.stage); });
+  saveAll(); await refreshPhotos();
+}
+function drawLinkBar(){
+  const bar=$('#linkBar'); if(!LINK){ bar.style.display='none'; $('.legend').style.display=''; return; }
+  const L=unlinkedTargets(); bar.style.display='block'; $('.legend').style.display='none';
+  $('#mtLink').textContent=`🔗 写真をつなぐ${L.length?'（'+L.length+'）':''}`;
+  if(!L.find(t=>t.key===LINK.sel)) LINK.sel=L[0]?.key||null;
+  const g=geoOf(cur.id), auto=g?L.filter(t=>nearestCand(t)).length:0;
+  bar.innerHTML=`<div class="lbHead"><b>🔗 写真を図面につなぐ</b><span>${L.length?`まだ ${L.length} 件。えらんで、図面の木・範囲をタップ`:'すべてつながっています'}</span><button id="lbX">終わる</button></div>
+    ${auto?`<button class="lbAuto" id="lbAuto">📍 撮った場所で自動でつなぐ（${auto}件）</button>`:''}
+    <div class="lbList">${L.map(t=>{ const lp=t.photos.map(p=>photosCache.find(x=>x.id===p.id)).find(Boolean), st=curStages().filter(s=>t.done[s]>0);
+      return `<button class="lbItem ${t.key===LINK.sel?'on':''}" data-k="${esc(t.key)}">${lp?`<img src="${lp.thumb}">`:'<span class="ph0">📷</span>'}<b>${esc(t.label)}</b><small>${esc(t.sub||'')}</small><small>${esc(st.join('・'))}</small></button>`; }).join('')}</div>`;
+  bar.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{ LINK.sel=b.dataset.k; drawLinkBar(); drawZumen(); });
+  $('#lbX').onclick=()=>{ LINK=null; drawLinkBar(); drawZumen(); };
+  if(auto) $('#lbAuto').onclick=async()=>{
+    const used=new Set(items.filter(i=>i.siteId===cur.id&&i.parkFid).map(i=>i.parkFid)), plan=[];
+    unlinkedTargets().forEach(t=>{ const f=nearestCand(t,used); if(f){ used.add(treeFid(f)); plan.push([t,f]); } });
+    if(!plan.length) return;
+    if(!confirm(`${plan.length}件を、撮った場所にいちばん近い同じ工種・規格の木・範囲につなぎます。\nあとで図面で確かめて、ちがうものは「🔗 写真をつなぐ」でつなぎ直せます。よろしいですか？`)) return;
+    for(const [t,f] of plan) await linkTarget(t,f);
+    toast(`${plan.length}件つなぎました`,2500); drawLinkBar(); drawZumen();
+  };
+}
+$('#mtLink').onclick=()=>{ LINK=LINK?null:{sel:null}; drawLinkBar(); drawZumen(); };
+
 function onZumenTree(f){
   if(ALN){ alignPickTree(f); return; }
+  if(LINK){ const t=unlinkedTargets().find(x=>x.key===LINK.sel); if(!t){ toast('下から、つなぐ写真をえらんでください'); return; }
+    const old=items.find(i=>i.siteId===cur.id&&i.parkFid===treeFid(f));
+    if(old&&targets().find(x=>x.key==='I|'+old.id&&x.photos.length)&&!confirm('この木にはもう写真がつながっています。いっしょにつなぎますか？')) return;
+    linkTarget(t,f).then(()=>{ toast(`${t.label} ${t.sub||''} をつなぎました`,1800); LINK.sel=null; drawLinkBar(); drawZumen(); }); return; }
   const it=itemForTree(cur.id,ZV.rec,f); openPointSheet(it.id); drawZumen();
 }
 /* 地図と合わせる：①木をタップ → その木の場所を「いまここ」か「地図でさす」 ×2本 */
@@ -2572,13 +2655,13 @@ function needTableHTML(){
     return `<tr class="${left?'ng':'ok'}"><td>${esc(g.cat)}<small>${esc(g.sub)}</small></td><td>${g.cnt}${g.unit}</td><td>${need}</td><td>${g.all}${g.part?`<small>途中${g.part}</small>`:''}</td><td>${left||'✓'}</td></tr>`; }).join('');
   return `<div class="${rest?'alertBox':'banner info'}" style="margin:0 0 8px">${rest?`<b>決まりの数まで、あと ${rest} 本・か所</b>`:'決まりの数はすべて撮れています'}（公園報告の図面の本数から）</div>
     <table class="needTbl"><tr><th>工種・規格</th><th>図面</th><th>撮る</th><th>そろった</th><th>残り</th></tr>${rows}</table>
-    <div class="s" style="font-size:11px;color:var(--sub);margin:-6px 0 12px">撮る＝決まり（${rule&&rule.rows&&rule.rows.length?'案件の情報 ⑧':'未設定のため全数'}）　そろった＝${st.join('・')}が全部撮れた数　<a href="#" id="needZumen">📐 図面で見る</a></div>`;
+    <div class="s" style="font-size:11px;color:var(--sub);margin:-6px 0 12px">撮る＝決まり（${rule&&rule.rows&&rule.rows.length?'案件の情報 ⑧':'未設定のため全数'}）　そろった＝${st.join('・')}が全部撮れた数　<a href="#" id="needZumen">📐 図面で見る</a></div>${(()=>{ const n=unlinkedTargets().length; return n?`<div class="banner info" style="margin:-4px 0 12px">図面の木とつながっていない写真が ${n} 件あります（先に撮った写真など）。<a href="#" id="needLink">🔗 図面でつなぐ</a></div>`:''; })()}`;
 }
 function renderCheck(){
   if(!cur) return;
   const st=curStages(), ts=targets().filter(t=>t.photos.length||t.item);
   const box=$('#checkBody'), nt=needTableHTML();
-  const bindNeed=()=>{ const a=$('#needZumen'); if(a) a.onclick=e=>{ e.preventDefault(); switchTab('mapPane'); setTimeout(()=>showZumen(true),80); }; };
+  const bindNeed=()=>{ const a=$('#needZumen'); if(a) a.onclick=e=>{ e.preventDefault(); switchTab('mapPane'); setTimeout(()=>showZumen(true),80); }; const l=$('#needLink'); if(l) l.onclick=e=>{ e.preventDefault(); LINK={sel:null}; switchTab('mapPane'); setTimeout(()=>showZumen(true),80); }; };
   if(!ts.length){ box.innerHTML=nt+'<div class="empty">撮影項目や写真がまだありません</div>'; bindNeed(); return; }
   let ng=0, wait=0; const J=ts.map(t=>{ const j=judge(t); st.forEach(s=>{ if(j[s]==='ng') ng++; if(j[s]==='wait') wait++; }); return j; });
   box.innerHTML=nt+(ng?`<div class="alertBox">✕ <b>抜けが ${ng} か所</b> あります（あとの写真があるのに、前の写真がありません）</div>`:'')
