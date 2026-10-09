@@ -51,10 +51,11 @@ var SHEETS = {
   chosa:     { name: '現場調査の案件', head: ['id', 'name', 'date', 'mode', 'n', 'photos', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 中身は Drive の「現場調査データ」、写真は1枚1ファイルで「現場調査データ ＞ 写真」
   chosaPhotos:{ name: '現場調査の写真', head: ['hash', 'fileId', 'mime', 'size', 'at'] },
   parks:     { name: '公園報告',     head: ['id', 'park', 'contract', 'order', 'date', 'figures', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'genzai'] },   // 中身（図面・図形）は Drive の「公園報告データ」に1件1ファイルで置く。genzai＝発生材に使った残材処分の記録（JSON）
-  shashinItems:  { name: '工事写真の撮影項目', head: ['itemId', 'siteId', 'cat', 'name', 'jushu', 'kikaku', 'memo', 'lat', 'lng', 'src', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'kind', 'no', 'parkRec', 'parkFid', 'px', 'py'] },   // 地図に置いた点（公園報告の図面の木なら、その記録と木の目印・図面上の位置も）。（樹木・除草・補修など）。現場マスタの現場IDでつなぐ
+  shashinItems:  { name: '工事写真の撮影項目', head: ['itemId', 'siteId', 'cat', 'name', 'jushu', 'kikaku', 'memo', 'lat', 'lng', 'src', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'kind', 'no', 'parkRec', 'parkFid', 'px', 'py', 'kai'] },   // 地図に置いた点（公園報告の図面の木なら、その記録と木の目印・図面上の位置も）。（樹木・除草・補修など）。現場マスタの現場IDでつなぐ
   shashinInfo:   { name: '工事写真の案件情報', head: ['key', 'type', 'contract', 'fy', 'siteId', 'koji', 'orderer', 'sekosha', 'start', 'end', 'tpl', 'memo', 'by', 'at', 'updatedBy', 'updatedAt', 'stages', 'koshuList', 'opts'] },
+  shashinKai:     { name: '工事写真の回', head: ['kaiId', 'scope', 'fy', 'name', 'order', 'start', 'rec', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 回（指示・作業期間）。委託は委託ごと（C|委託名）、そのほかは現場ごと（S|現場ID）。年度ごと
   shashinBoards:  { name: '工事写真の黒板', head: ['boardId', 'name', 'rows', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // みんなで作った黒板のひな型（rows は項目の並び・JSON）   // 委託は「委託名＋年度」、そのほかは現場ごと。一度入れたら全員が入力なしで撮影へ
-  shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId', 'kanshu', 'msId', 'msRawId', 'msGone'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
+  shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId', 'kanshu', 'msId', 'msRawId', 'msGone', 'kai'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
 
@@ -398,6 +399,7 @@ function doPost(e) {
       case 'shashin:deleteItems': return withLock_(function () { return shashinDeleteItems_(b.ids, b.by); });
       case 'shashin:parkTargets': return withLock_(function () { return shashinParkTargets_(b); });
       case 'shashin:parkRule':    return withLock_(function () { return shashinParkRule_(b); });
+      case 'shashin:saveKai':     return withLock_(function () { return shashinSaveKai_(b.kai, b.by); });
       case 'shashin:upload':      return out_(shashinUpload_(b));
       case 'shashin:uploadRaw':   return out_(shashinUploadRaw_(b));
       case 'shashin:saveInfo':    return withLock_(function () { return shashinSaveInfo_(b.infos, b.by); });
@@ -1378,9 +1380,33 @@ function shashinClean_(s) { return String(s || '').replace(/[\\\/:*?"<>|]/g, '')
 /* 年度（4月〜翌3月）。撮影日から決める */
 function shashinFy_(when) { var d = when ? new Date(String(when).replace(' ', 'T')) : new Date(); if (isNaN(d.getTime())) d = new Date(); return d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1; }
 /* 保存先：工事写真 ＞ 2026年度 ＞ 委託名 ＞ 現場名（when＝撮影日。年度ごとに分ける） */
-function shashinFolder_(site, when) {
+function shashinFolder_(site, when, kaiName) {
   var top = subFolder_(subFolder_(shashinRoot_(), shashinFy_(when) + '年度'), shashinClean_(site.contract) || shashinClean_(site.kind) || 'その他');
+  if (kaiName) top = subFolder_(top, shashinClean_(kaiName));   // 回（指示番号・作業開始日）
   return subFolder_(top, shashinClean_(site.name) || '現場名なし');
+}
+/* 回（指示・作業期間）：委託は委託ごと・年度ごと（1つの指示に複数の公園が入る）。そのほかは現場ごと */
+function shashinKaiName_(kaiId) { if (!kaiId) return ''; var r = rows_('shashinKai').filter(function (x) { return String(x.kaiId) === String(kaiId); })[0]; return r ? String(r.name || '') : ''; }
+function shashinSaveKai_(k, by) {
+  if (!k || !k.id || !k.scope || !k.name) return { ok: false, error: '回の名前がありません' };
+  var had = rows_('shashinKai').some(function (r) { return String(r.kaiId) === String(k.id); });
+  var o = { kaiId: String(k.id), scope: String(k.scope), fy: k.fy || '', name: String(k.name), order: k.order || '', start: k.start || '', rec: k.rec || '', state: k.state || '' };
+  if (!had) { o.by = by || ''; o.at = now_(); }
+  upsert_('shashinKai', 'kaiId', 'K', o, by);
+  return { ok: true };
+}
+/* 公園報告から送られた指示番号・作業日の回をさがす（無ければ作る） */
+function shashinKaiFor_(site, order, date, rec, by) {
+  var scope = site.contract ? 'C|' + site.contract : 'S|' + site.id, fy = shashinFy_(date || null);
+  order = String(order || '').replace(/^'/, '').trim();
+  var list = rows_('shashinKai').filter(function (r) { return r.state !== '削除' && r.scope === scope && Number(r.fy) === fy; });
+  var hit = order ? list.filter(function (r) { return String(r.order).replace(/^'/, '') === order; })[0] : list.filter(function (r) { return rec && r.rec === rec; })[0];
+  if (hit) { if (rec && !hit.rec) upsert_('shashinKai', 'kaiId', 'K', { kaiId: String(hit.kaiId), rec: rec }, by); return { id: String(hit.kaiId), name: String(hit.name) }; }
+  if (!order && !date) return null;
+  var d = date ? String(date).slice(0, 10) : Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+  var k = { id: 'K' + Utilities.getUuid().replace(/-/g, '').slice(0, 10), scope: scope, fy: fy, name: order ? '指示' + order.replace(/^指示/, '') : d + '〜', order: order, start: d, rec: rec || '' };
+  shashinSaveKai_(k, by);
+  return { id: k.id, name: k.name };
 }
 function shashinSite_(siteId) {
   var list = siteList_();
@@ -1402,13 +1428,22 @@ function shashinParkShots_(p) {
   var allItems = rows_('shashinItems').filter(function (r) { return r.state !== '削除'; });
   if (!s) { var it0 = allItems.filter(function (r) { return String(r.parkRec) === rec; })[0]; if (it0) s = sites.filter(function (x) { return String(x.id) === String(it0.siteId); })[0] || null; }
   var siteId = s ? String(s.id) : '';
+  // 回（指示）：公園報告の指示番号（なければ記録）でさがす。見つかれば、その回の写真・撮るものだけで数える
+  var kaiIds = {}, kaiName = '';
+  if (s) {
+    var scope = s.contract ? 'C|' + s.contract : 'S|' + s.id, fyK = shashinFy_(null), ord = String(p.order || '').trim();
+    rows_('shashinKai').forEach(function (k) { if (k.state === '削除' || k.scope !== scope || Number(k.fy) !== fyK) return;
+      if (ord ? String(k.order).replace(/^'/, '') === ord : (k.rec && String(k.rec) === rec)) { kaiIds[String(k.kaiId)] = true; kaiName = String(k.name); } });
+  }
+  var useKai = Object.keys(kaiIds).length > 0;
   // 木・範囲の目印（parkFid）ごとに撮った状況。記録を保存し直して別の記録になっても、同じ現場・同じ目印ならつながる（撮る人と図面を作る人がちがっても同じ）
   var its = allItems.filter(function (r) { return r.parkFid && (siteId ? String(r.siteId) === siteId : String(r.parkRec) === rec); });
   var byItem = {}; its.forEach(function (r) { byItem[r.itemId] = r; });
   var shots = {}, free = {}, meas = {}, fyNow = shashinFy_(null);
   rows_('shashinPhotos').forEach(function (r) {
     if (r.state) return;
-    if (r.takenAt && shashinFy_(r.takenAt) !== fyNow) return;   // 年度ごと：今の年度に撮った写真だけ
+    if (useKai) { if (!kaiIds[String(r.kai || '')]) return; }   // 回ごと：その回の写真だけ
+    else if (r.takenAt && shashinFy_(r.takenAt) !== fyNow) return;   // 年度ごと：今の年度に撮った写真だけ
     var it0 = byItem[r.itemId], c = it0 ? shashinMeasC_(r) : null;   // 黒板に書いた実際の幹周（範囲ではなく1つの数字）
     if (c && (!meas[it0.parkFid] || String(r.takenAt) > String(meas[it0.parkFid].at))) meas[it0.parkFid] = { C: c, at: String(r.takenAt || ''), by: r.by || '' };
     if (!r.stage) return;
@@ -1425,8 +1460,8 @@ function shashinParkShots_(p) {
     var inf = rows_('shashinInfo').filter(function (r) { return r.key === key; })[0];
     if (inf) { stages = shashinJson_(inf.stages, []); var o = shashinJson_(inf.opts, {}); rule = o.photoRule || null; }
   }
-  var planned = its.map(function (r) { return String(r.parkFid); });   // 工事写真の撮影項目になっている木（撮る予定）
-  return { ok: true, siteId: siteId, site: s ? s.name : '', stages: stages.length ? stages : ['作業前', '作業中', '作業後'], rule: rule, shots: shots, free: free, planned: planned, meas: meas };
+  var planned = its.filter(function (r) { return !useKai || String(r.kai || '').split(',').some(function (x) { return kaiIds[x]; }); }).map(function (r) { return String(r.parkFid); });   // 工事写真の撮影項目になっている木（撮る予定。回があればその回の分）
+  return { ok: true, siteId: siteId, site: s ? s.name : '', stages: stages.length ? stages : ['作業前', '作業中', '作業後'], rule: rule, shots: shots, free: free, planned: planned, meas: meas, kai: kaiName };
 }
 /* 黒板の「幹周」欄（なければ備考の「幹周 C=○cm」）から、測った幹周を1つの数字で取り出す。60〜90cm のような範囲は測った値ではないので取らない */
 function shashinMeasC_(r) {
@@ -1467,7 +1502,7 @@ function shashinNum_(v) { return v === '' || v == null || isNaN(Number(v)) ? nul
 function shashinItemOut_(r) {
   return { id: r.itemId, siteId: r.siteId, cat: r.cat, kind: r.kind || '', no: r.no === '' || r.no == null ? '' : String(r.no), name: r.name, jushu: r.jushu, kikaku: r.kikaku, memo: r.memo,
     lat: shashinNum_(r.lat), lng: shashinNum_(r.lng), src: r.src, by: r.by,
-    parkRec: r.parkRec || '', parkFid: r.parkFid || '', px: shashinNum_(r.px), py: shashinNum_(r.py) };
+    parkRec: r.parkRec || '', parkFid: r.parkFid || '', px: shashinNum_(r.px), py: shashinNum_(r.py), kai: r.kai || '' };
 }
 function shashinGet_(a, p) {
   if (a === 'msStatus') return msStatus_();
@@ -1487,6 +1522,7 @@ function shashinGet_(a, p) {
       infos: rows_('shashinInfo').map(function (r) { r.fy = r.fy === '' ? '' : Number(r.fy); r.stages = shashinJson_(r.stages, []); r.koshuList = shashinJson_(r.koshuList, []); r.opts = shashinJson_(r.opts, {}); return r; }),
       boards: rows_('shashinBoards').filter(function (r) { return r.state !== '削除'; }).map(function (r) { return { id: r.boardId, name: r.name, rows: shashinJson_(r.rows, []), by: r.by }; }),
       defaultBoard: prop_('SHASHIN_DEFAULT_BOARD', 'std'),
+      kais: rows_('shashinKai').filter(function (r) { return r.state !== '削除'; }).map(function (r) { return { id: String(r.kaiId), scope: r.scope, fy: Number(r.fy) || '', name: String(r.name || ''), order: String(r.order || '').replace(/^'/, ''), start: String(r.start || '').replace(/^'/, ''), rec: r.rec || '' }; }),
       shot: shot, counts: counts, last: last, admins: admins_() };
   }
   if (a === 'photoData') return shashinPhotoData_(p.fileId);
@@ -1497,13 +1533,13 @@ function shashinGet_(a, p) {
     return { ok: true, photos: rows_('shashinPhotos').filter(function (r) { return !p.siteId || String(r.siteId) === String(p.siteId); }).map(function (r) {
       return { photoId: r.photoId, itemId: r.itemId, stage: r.stage, koshu: r.koshu, kikaku: r.kikaku, sokuten: r.sokuten, takenAt: r.takenAt, by: r.by,
         lat: shashinNum_(r.lat), lng: shashinNum_(r.lng), heading: shashinNum_(r.heading), fileName: r.fileName, fileId: r.fileId, url: r.url, excluded: r.excluded === true || String(r.excluded) === 'true' || String(r.excluded) === '1',
-        state: r.state || '', replaces: r.replaces || '', biko: r.biko || '', rawFileId: r.rawFileId || '' }; }) };
+        state: r.state || '', replaces: r.replaces || '', biko: r.biko || '', rawFileId: r.rawFileId || '', kai: r.kai || '' }; }) };
   }
   if (a === 'folder') {   // ドライブのフォルダを開く（無ければ作る）
     var s = shashinSite_(p.siteId);
     if (!s) return { ok: false, error: 'この現場は現場マスタにありません' };
     var l = LockService.getScriptLock(); l.waitLock(25000);
-    try { return { ok: true, url: shashinFolder_(s, p.fy ? (Number(p.fy) + '-10-01') : null).getUrl() }; } finally { l.releaseLock(); }
+    try { return { ok: true, url: shashinFolder_(s, p.fy ? (Number(p.fy) + '-10-01') : null, shashinKaiName_(p.kai)).getUrl() }; } finally { l.releaseLock(); }
   }
   return { ok: false, error: 'unknown action' };
 }
@@ -1543,6 +1579,8 @@ function shashinParkTargets_(b) {
   var site = shashinSiteByPark_(b.park, b.contract);
   if (!site) return { ok: false, error: '「' + b.park + '」が現場マスタに見つかりません。公園名を現場マスタ（日報）と同じにしてください' };
   var siteId = String(site.id), by = String(b.by || ''), rec = String(b.rec || '');
+  var kai = shashinKaiFor_(site, b.order, b.date, rec, by), kid = kai ? kai.id : '';   // 指示番号・作業日の回（項目はその回の撮るものになる）
+  var kaiList = function (v) { return String(v || '').split(',').filter(String); };
   var sh = sh_('shashinItems'), head = SHEETS.shashinItems.head, vals = sh.getDataRange().getValues(), H = vals[0];
   var col = {}; H.forEach(function (h, i) { col[h] = i; });
   var mine = [];   // この現場の項目（行番号つき）
@@ -1556,7 +1594,11 @@ function shashinParkTargets_(b) {
     var shot = {}; rows_('shashinPhotos').forEach(function (r) { if (!r.state) shot[r.itemId] = true; });
     b.remove.forEach(function (fid) {
       var r = byFid[String(fid)]; if (!r || !r._row) return;
-      if (shot[r.itemId]) { kept++; return; }
+      if (kid) {   // この回の撮るものから外す。ほかの回でも使っていなくて、写真もなければ消す
+        var kl = kaiList(r.kai).filter(function (x) { return x !== kid; });
+        sh.getRange(r._row, col.kai + 1).setValue(kl.join(',')); r.kai = kl.join(',');
+        if (kl.length || shot[r.itemId]) { if (shot[r.itemId]) kept++; else removed++; return; }
+      } else if (shot[r.itemId]) { kept++; return; }
       sh.getRange(r._row, col.state + 1).setValue('削除'); removed++; r._gone = true; delete byFid[String(fid)];
     });
   }
@@ -1565,7 +1607,8 @@ function shashinParkTargets_(b) {
   (b.targets || []).forEach(function (t) {
     if (!t || !t.fid) return;
     var had = byFid[String(t.fid)];
-    if (had) {   // 位置・記録だけ直す（木を動かしたとき）
+    if (had) {   // 位置・記録だけ直す（木を動かしたとき）。この回の撮るものに入れる
+      if (kid && kaiList(had.kai).indexOf(kid) < 0 && had._row) { var nk = kaiList(had.kai).concat([kid]).join(','); sh.getRange(had._row, col.kai + 1).setValue(nk); had.kai = nk; }
       if (t.x != null && (Number(had.px) !== Number(t.x) || Number(had.py) !== Number(t.y) || (rec && String(had.parkRec) !== rec))) {
         sh.getRange(had._row, col.px + 1).setValue(t.x); sh.getRange(had._row, col.py + 1).setValue(t.y); if (rec) sh.getRange(had._row, col.parkRec + 1).setValue(rec); moved++;
       }
@@ -1577,14 +1620,14 @@ function shashinParkTargets_(b) {
     var no = same.reduce(function (m, r) { return Math.max(m, Number(String(r.no).replace(/^'/, '')) || 0); }, 0) + 1;
     var o = { itemId: 'I' + Utilities.getUuid().replace(/-/g, '').slice(0, 12), siteId: siteId, cat: t.cat || 'その他', name: '', jushu: '', kikaku: kikaku,
       memo: t.C ? '幹周 C=' + t.C + 'cm' : '', lat: '', lng: '', src: tree ? 'park-tree' : 'park-area', state: '有効', by: by, at: now_(), updatedBy: by, updatedAt: now_(),
-      kind: t.kind || '', no: String(no), parkRec: rec, parkFid: String(t.fid), px: t.x == null ? '' : t.x, py: t.y == null ? '' : t.y };
+      kind: t.kind || '', no: String(no), parkRec: rec, parkFid: String(t.fid), px: t.x == null ? '' : t.x, py: t.y == null ? '' : t.y, kai: kid };
     mine.push(o); byFid[o.parkFid] = o; add.push(o);
   });
   if (add.length) {
     var rows = add.map(function (o) { return H.map(function (h) { return cell_(o.hasOwnProperty(h) ? o[h] : ''); }); });
     sh.getRange(sh.getLastRow() + 1, 1, rows.length, H.length).setValues(rows);
   }
-  return { ok: true, siteId: siteId, site: site.name, added: add.length, already: n0, moved: moved, removed: removed, kept: kept };
+  return { ok: true, siteId: siteId, site: site.name, added: add.length, already: n0, moved: moved, removed: removed, kept: kept, kai: kai ? kai.name : '' };
 }
 function shashinSaveItems_(items, by) {
   var n = 0;
@@ -1592,7 +1635,7 @@ function shashinSaveItems_(items, by) {
     if (!it || !it.id || !it.siteId) return;
     var obj = { itemId: String(it.id), siteId: String(it.siteId), cat: it.cat || 'その他', kind: it.kind || '', no: it.no == null ? '' : String(it.no), name: it.name || '', jushu: it.jushu || '',
       kikaku: it.kikaku || '', memo: it.memo || '', lat: it.lat == null ? '' : it.lat, lng: it.lng == null ? '' : it.lng, src: it.src || 'manual', state: '有効',
-      parkRec: it.parkRec || '', parkFid: it.parkFid || '', px: it.px == null ? '' : it.px, py: it.py == null ? '' : it.py };
+      parkRec: it.parkRec || '', parkFid: it.parkFid || '', px: it.px == null ? '' : it.px, py: it.py == null ? '' : it.py, kai: it.kai || '' };
     if (!rows_('shashinItems').some(function (r) { return String(r.itemId) === obj.itemId; })) { obj.by = by || ''; obj.at = now_(); }
     upsert_('shashinItems', 'itemId', 'I', obj, by);
     n++;
@@ -1636,7 +1679,7 @@ function shashinUploadRaw_(b) {
   if (row.rawFileId) return { ok: true, fileId: row.rawFileId, dup: true };
   var site = shashinSite_(row.siteId) || { kind: '', contract: row.contract, name: row.site };
   var lock = LockService.getScriptLock(), folder; lock.waitLock(25000);
-  try { folder = subFolder_(shashinFolder_(site, row.takenAt), '黒板なし'); } finally { lock.releaseLock(); }
+  try { folder = subFolder_(shashinFolder_(site, row.takenAt, shashinKaiName_(row.kai)), '黒板なし'); } finally { lock.releaseLock(); }
   var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), 'image/jpeg', shashinClean_(row.fileName) || (b.photoId + '.jpg')));
   lock.waitLock(25000);
   try { upsert_('shashinPhotos', 'photoId', 'F', { photoId: String(b.photoId), rawFileId: file.getId() }, b.by); } finally { lock.releaseLock(); }
@@ -1684,7 +1727,7 @@ function shashinUpload_(b) {
   var site = shashinSite_(ph.siteId) || { kind: ph.kind, contract: ph.contract, name: ph.site };
   var lock = LockService.getScriptLock(), folder;
   lock.waitLock(25000);
-  try { folder = shashinFolder_(site, ph.takenAt); } finally { lock.releaseLock(); }
+  try { folder = shashinFolder_(site, ph.takenAt, shashinKaiName_(ph.kai)); } finally { lock.releaseLock(); }
   var bd = ph.board || {}, name = shashinUniqueName_(ph.siteId, shashinClean_(ph.fileName) || (ph.photoId + '.jpg'));
   var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), 'image/jpeg', name));
   var desc = [bd.koshu, bd.sokuten, bd.jushu, bd.kikaku, bd.stage, bd.biko].filter(function (x) { return x; }).join(' ／ ');
@@ -1694,7 +1737,7 @@ function shashinUpload_(b) {
     had = find();
     if (had) { try { file.setTrashed(true); } catch (e) {} return { ok: true, url: had.url, fileId: had.fileId, dup: true }; }
     upsert_('shashinPhotos', 'photoId', 'F', { photoId: String(ph.photoId), siteId: ph.siteId || '', site: site.name || '', contract: site.contract || '',
-      itemId: ph.itemId || '', stage: ph.stage || '', koshu: bd.koshu || '', sokuten: bd.sokuten || '', jushu: bd.jushu || '', kikaku: bd.kikaku || '', biko: bd.biko || '', kanshu: bd.kanshu || '',
+      itemId: ph.itemId || '', kai: ph.kai || '', stage: ph.stage || '', koshu: bd.koshu || '', sokuten: bd.sokuten || '', jushu: bd.jushu || '', kikaku: bd.kikaku || '', biko: bd.biko || '', kanshu: bd.kanshu || '',
       takenAt: ph.takenAt || '', by: by, lat: ph.lat == null ? '' : ph.lat, lng: ph.lng == null ? '' : ph.lng, acc: ph.acc == null ? '' : ph.acc,
       heading: ph.heading == null ? '' : ph.heading, fileName: name, fileId: file.getId(), url: file.getUrl(), at: now_(), replaces: ph.replaces || '', state: '' }, by);
     // 撮り直し・差し替え：前の写真は「差し替え済」にして残す（元に戻せる）
@@ -1835,7 +1878,9 @@ function msPut_(folderId, name, blob) {
 }
 function msPartsOf_(r, kind) {
   var site = shashinSite_(r.siteId) || { kind: '', contract: r.contract, name: r.site };
-  return ['工事写真', shashinFy_(r.takenAt) + '年度', shashinClean_(site.contract) || shashinClean_(site.kind) || 'その他', shashinClean_(site.name) || '現場名なし', kind === 'raw' ? '黒板なし' : '黒板あり'];
+  var kn = shashinKaiName_(r.kai), parts = ['工事写真', shashinFy_(r.takenAt) + '年度', shashinClean_(site.contract) || shashinClean_(site.kind) || 'その他'];
+  if (kn) parts.push(shashinClean_(kn));
+  return parts.concat([shashinClean_(site.name) || '現場名なし', kind === 'raw' ? '黒板なし' : '黒板あり']);
 }
 /* 1枚分（黒板あり・黒板なし）を送る。送れたら記録に msId / msRawId */
 function msCopyRow_(r) {

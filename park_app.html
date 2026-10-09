@@ -2279,7 +2279,7 @@ function renderTreeEdit(el){
 let SHOTS=null, shotMarks=lsGet('park_shot_marks')!=='off';
 async function loadShots(){
   if(!state.cloudId||!navigator.onLine) return;
-  try{ const j=await fetch(PARK_GAS+'?app=shashin&action=parkShots&rec='+encodeURIComponent(state.cloudId),{cache:'no-store'}).then(r=>r.json());
+  try{ const j=await fetch(PARK_GAS+'?app=shashin&action=parkShots&rec='+encodeURIComponent(state.cloudId)+'&order='+encodeURIComponent(parkOrder()),{cache:'no-store'}).then(r=>r.json());
     if(j&&j.ok){ SHOTS={stages:j.stages||[],shots:j.shots||{},rule:j.rule||null,free:j.free||{},site:j.site||'',planned:j.planned||[],meas:j.meas||{}}; draw(); renderShotSum(); renderPickBar(); measNotice(); } }catch(e){}
 }
 function drawShotMark(f,x,y,r){
@@ -2363,7 +2363,7 @@ async function openShotList(){
 }
 $('shotListBtn').onclick=openShotList;
 $('slClose').onclick=()=>$('shotListModal').classList.remove('on');
-$('slGo').onclick=async()=>{ await draftSaveNow(); leaveOk=true; const q=new URLSearchParams({from:'park',view:'check',park:($('parkName').value||'').trim(),contract:($('contractName').value||'').trim(),rec:state.cloudId||''}); location.href='shashin.html?'+q.toString(); };
+$('slGo').onclick=async()=>{ await draftSaveNow(); leaveOk=true; const q=new URLSearchParams({from:'park',view:'check',park:($('parkName').value||'').trim(),contract:($('contractName').value||'').trim(),rec:state.cloudId||'',order:parkOrder(),date:parkWorkDate()}); location.href='shashin.html?'+q.toString(); };
 window.openShotList=openShotList;
 /* ---------- 撮る木をえらぶ → 工事写真へ送る（工事写真の「撮り残し」に入り、そこでまとめて撮る） ----------
    f.shoot＝撮る木にえらんだ、f.shootSent＝工事写真へ送った。えらぶのをやめて送り直すと、まだ撮っていない項目は工事写真からも消える */
@@ -2460,13 +2460,13 @@ async function sendPickedCore(){
   try{
     await cloudSaveQuiet();
     const T=sel.map(f=>{ const p=featPos(f); return { fid:featFid(f), type:f.type||'tree', cat:f.cat||'', kind:f.kind||'', rank:f.rank||'', C:f.C||'', area:f.area?Math.round(f.area*10)/10:'', x:Math.round(p.x*10)/10, y:Math.round(p.y*10)/10 }; });
-    const j=await fetch(PARK_GAS,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({app:'shashin',mode:'parkTargets',by:myName(),park,contract:($('contractName').value||'').trim(),rec:state.cloudId,targets:T,remove:rm.map(featFid)})}).then(r=>r.json());
+    const j=await fetch(PARK_GAS,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({app:'shashin',mode:'parkTargets',by:myName(),park,contract:($('contractName').value||'').trim(),rec:state.cloudId,order:parkOrder(),date:parkWorkDate(),targets:T,remove:rm.map(featFid)})}).then(r=>r.json());
     if(!j.ok) throw new Error(/unknown/.test(j.error||'')?'共通GASが まだ古いままです（少し待ってからもう一度）':(j.error||'送れませんでした'));
     draftLater(); setTimeout(loadShots,600);
     return j;
   }catch(e){ was.forEach((v,f)=>f.shootSent=v); throw e; }
 }
-function sentMsg(j){ return `工事写真の「${j.site}」に送りました。\n\n新しく入れた：${j.added} 本・か所${j.already?`\nもう入っていた：${j.already}`:''}${j.removed?`\n外した：${j.removed}`:''}${j.kept?`\n（撮った写真があるので外さなかった：${j.kept}）`:''}`; }
+function sentMsg(j){ return `工事写真の「${j.site}」${j.kai?'の「'+j.kai+'」':''}に送りました。\n\n新しく入れた：${j.added} 本・か所${j.already?`\nもう入っていた：${j.already}`:''}${j.removed?`\n外した：${j.removed}`:''}${j.kept?`\n（撮った写真があるので外さなかった：${j.kept}）`:''}`; }
 async function sendPicked(){
   const F=pickFeats();
   if(!F.some(f=>f.shoot)&&!F.some(f=>f.shootSent)){ alert('撮る木をタップでえらんでください（オレンジの点線の輪が付きます）'); return; }
@@ -2564,6 +2564,9 @@ function openShootDev(after){
   $('sdPhoneBox').style.display='none'; if(d==='phone') showPhoneBox();
 }
 function closeShootDev(go){ clearInterval(sdLinkT); const m=$('shootDevModal'); m.classList.remove('on'); const a=m._after; m._after=null; updateHint(); syncShootFab(); if(go&&a) a(); }
+/* 回（指示）：指示番号と作業日を工事写真に渡す（工事写真では「委託名 ＞ 指示番号 ＞ 公園名」で分ける） */
+function parkOrder(){ return String(($('orderNo')&&$('orderNo').value)||'').trim().replace(/^指示\s*/,''); }
+function parkWorkDate(){ return String(($('workDate')&&$('workDate').value)||($('startDate')&&$('startDate').value)||'').slice(0,10); }
 async function treeQuery(f){
   const park=($('parkName').value||'').trim();
   if(!park){ alert('公園名を入れてください（工事写真アプリで現場をさがすのに使います）'); return null; }
@@ -2572,7 +2575,7 @@ async function treeQuery(f){
       try{ await $('cloudSave').onclick(); }catch(e){}
     }
   }
-  return { park, contract:($('contractName').value||'').trim(), rec:state.cloudId||'', fid:treeFid(f),
+  return { park, contract:($('contractName').value||'').trim(), rec:state.cloudId||'', order:parkOrder(), date:parkWorkDate(), fid:treeFid(f),
     cat:f.cat||'', kind:f.kind||'', rank:f.rank||'', C:f.C||'', type:f.type||'tree', area:f.area?Math.round(f.area*10)/10:'',
     x:Math.round(featPos(f).x*10)/10, y:Math.round(featPos(f).y*10)/10 };
 }

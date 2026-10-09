@@ -384,6 +384,10 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
 .batchBar .bbH{width:100%;font-size:12px;color:var(--sub)}
 .batchBar button{flex:1;min-width:0;padding:10px 6px;border-radius:12px;background:var(--main);color:#fff;font-weight:700;font-size:14px;line-height:1.3}
 .batchBar button small{display:block;font-size:11px;font-weight:400;opacity:.9}
+.kaiBar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:#eef4ee;border-bottom:1px solid #d7e3d7;font-size:13px}
+.kaiBar .kl{font-weight:700;color:var(--main)}.kaiBar .kn{color:var(--sub);flex:1}
+.kaiBar select{flex:1;min-width:0;width:auto;padding:6px 8px;border-radius:9px;font-size:14px;font-weight:700;border:1px solid #b9cfb9;background:#fff}
+.kaiBar button{flex:none;background:#fff;border:1px solid var(--main);color:var(--main);border-radius:9px;padding:6px 10px;font-size:13px;font-weight:700}
 .fySel{flex:none;width:auto;padding:6px 8px;border-radius:10px;font-size:13px;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--main);margin-right:4px}
 .batchBar .bbH a{color:var(--main);font-weight:700;white-space:nowrap}
 .batchNote{background:#fff7e6;border:1px solid #f5c26b;color:#7a4a00;border-radius:10px;padding:9px 12px;margin:0 0 10px;font-size:13px}
@@ -482,6 +486,7 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
 <section id="album" class="screen">
   <header><button class="back" data-go="home">‹</button><h1 id="albumTitle"></h1><button id="btnOut">出力</button><button id="btnInfo">情報</button><button id="btnDrive">ドライブ</button></header>
   <div id="albumBanner"></div>
+  <div id="kaiBar" class="kaiBar"></div>
   <div class="tabs">
     <button data-tab="photos" class="on">写真</button>
     <button data-tab="check">チェック</button>
@@ -881,6 +886,7 @@ let tpls = LS.get('shashin_tpl',{});
 let infos = LS.get('shashin_infos',{});            // 案件の情報（委託は 委託名＋年度、そのほかは現場ごと）
 let lastAt = LS.get('shashin_last',{});           // 現場ごとの最後に撮った日時（みんなの分）              // 現場ごとの黒板の型
 let teamPhotos = [];
+let kais = LS.get('shashin_kais',[]);   // 回（指示・作業期間）：委託は委託ごと、そのほかは現場ごと。年度ごと
 let loadError = '';                              // 開いている現場の、みんなが撮った写真の記録
 function me(){
   for(const k of ['dandori_me','nippou_author']){
@@ -950,12 +956,13 @@ const siteOf = id => sites.find(s=>String(s.id)===String(id));
 async function syncAll(silent){
   if(!canSync()){ if(!silent) toast('電波がありません（控えの一覧で動きます）'); return; }
   try{
-    await syncDeletes();
+    await syncDeletes(); await pushKais();
     const unsynced=items.filter(i=>!i.synced);
     if(unsynced.length){ const js=await gasPost({mode:'saveItems',items:unsynced}); if(js.ok) unsynced.forEach(i=>i.synced=true); }
     const j=await gasGet({action:'data'});
     if(!j.ok) throw new Error(/unknown action/.test(j.error||'')?'共通GASの更新がまだです（数分で反映されます）':j.error);
-    sites=j.sites||[]; counts=j.counts||{}; lastAt=j.last||{}; if(Array.isArray(j.admins)) LS.set('shashin_admins',j.admins);
+    sites=j.sites||[]; counts=j.counts||{}; lastAt=j.last||{};
+    if(Array.isArray(j.kais)){ const pend=LS.get('shashin_kai_pending',{}); kais=j.kais.concat(Object.values(pend).filter(k=>!j.kais.some(x=>x.id===k.id))); LS.set('shashin_kais',kais); } if(Array.isArray(j.admins)) LS.set('shashin_admins',j.admins);
     if(Array.isArray(j.boards)){ customBoards=j.boards.map(x=>({...x,custom:true})); LS.set('shashin_boards_custom',customBoards); rebuildTemplates(); }
     if(j.defaultBoard){ defaultBoard=j.defaultBoard; LS.set('shashin_default_board',defaultBoard); }
     infos={}; (j.infos||[]).forEach(x=>{ infos[x.key]=x; }); Object.assign(infos, LS.get('shashin_infos_pending',{}));
@@ -999,7 +1006,7 @@ async function processQueue(){
       try{
         const data=await blobToBase64(p.blob);
         const j=await gasPost({mode:'upload',by:p.staff||me(),data,photo:{ photoId:p.id, siteId:p.siteId, site:d.name||'', contract:d.contract||'', kind:d.kind||'',
-          itemId:p.itemId||'', stage:p.stage||'', board:p.board, fileName:p.fileName, replaces:p.replaces||'', takenAt:new Date(p.takenAt).toISOString(),
+          itemId:p.itemId||'', kai:p.kai||'', stage:p.stage||'', board:p.board, fileName:p.fileName, replaces:p.replaces||'', takenAt:new Date(p.takenAt).toISOString(),
           lat:p.lat, lng:p.lng, acc:p.acc, heading:p.heading }});
         if(j.ok){ p.status='done'; p.fileUrl=j.url; p.fileId=j.fileId||''; if(!j.dup) counts[p.siteId]=(counts[p.siteId]||0)+1; } else { p.status='error'; p.err=j.error||''; }
         if(p.status==='done') await uploadRaw(p);
@@ -1274,7 +1281,7 @@ function openAlbum(id,key,opt){
   const base = info.koji || cur.contract || cur.name;
   const koji = cur.contract && !base.includes(cur.name) ? `${base}\n${cur.name}` : base;
   boards[cur.id]={ koshu:'', sokuten:'', stage:'', biko:'', jushu:'', kikaku:'', ...b, koji, site:cur.name, hacchu: info.orderer||'', sekosha: info.sekosha || '庭乃持田園有限会社', date:today() };
-  teamPhotos=[]; loadTeamPhotos();
+  teamPhotos=[]; loadTeamPhotos().then(()=>{ if(!(opt&&opt.noKaiCheck)&&cur&&cur.id===id) setTimeout(kaiCheck,300); });
   boardOn = !cur.publicKoji;
   saveAll();
   $('#albumBanner').innerHTML = cur.publicKoji
@@ -1301,7 +1308,7 @@ $('#btnDrive').onclick=()=>{
   if(!cur) return;
   if(!canSync()){ toast('電波がありません'); return; }
   const w=window.open('about:blank','_blank');   // iPhoneは押した直後に開かないと止められるので、先に開いておく
-  gasGet({action:'folder',siteId:cur.id,fy:cur.fy||fyOf()}).then(j=>{
+  gasGet({action:'folder',siteId:cur.id,fy:cur.fy||fyOf(),kai:curKaiId()}).then(j=>{
     if(j.ok){ if(w) w.location.href=j.url; else location.href=j.url; }
     else { if(w) w.close(); toast(j.error||'開けませんでした',3000); }
   }).catch(()=>{ if(w) w.close(); toast('開けませんでした',3000); });
@@ -1859,7 +1866,7 @@ function setParkRec(siteId,rec){ if(!rec) return; LS.set('shashin_parkrec_'+site
 /* 図面の木 → 撮影項目（無ければ作る。No.は同じ工種・規格の中で次の番号） */
 function itemForTree(siteId,rec,f){
   const fid=treeFid(f); let it=items.find(i=>i.siteId===siteId&&i.parkFid===fid);   // 図面を保存し直して別の記録になっても、同じ目印なら同じ項目
-  if(it) return it;
+  if(it){ const k=curKaiId(); if(k&&it.kai!=null&&it.kai!==''&&!String(it.kai).split(',').includes(k)){ it.kai=it.kai+','+k; it.synced=false; saveAll(); pushItem(it); } return it; }
   const tree=!f.type||f.type==='tree', ar=Number(f.area)||0;
   const kikaku = tree ? (f.rank?'C='+f.rank:'') : (ar?`${Math.round(ar*10)/10}㎡`:'');
   const no=items.filter(i=>i.siteId===siteId&&i.cat===f.cat&&(i.kind||'')===(f.kind||'')&&(tree?(i.kikaku||'')===kikaku:i.src==='park-area')).reduce((m,i)=>Math.max(m,Number(i.no)||0),0)+1;
@@ -1881,7 +1888,12 @@ async function handleParkLink(P,opt){
   if(c.length>1&&con){ const c2=c.filter(s=>norm(s.contract).includes(norm(con))||norm(con).includes(norm(s.contract))); if(c2.length) c=c2; }
   const s=c[0];
   if(!s){ toast(`「${name}」が現場マスタに見つかりません。現場をえらんでください`,4500); $('#btnPick').click(); return; }
-  if(!(opt.remote&&cur&&cur.id===s.id)) openAlbum(s.id,infoKey(s,fyOf()),{camera:false});
+  if(!(opt.remote&&cur&&cur.id===s.id)) openAlbum(s.id,infoKey(s,fyOf()),{camera:false,noKaiCheck:true});
+  // 公園報告の指示番号・作業日の回にする（なければ作る）
+  const ord=String(P.get('order')||'').trim(), wd=P.get('date')||'';
+  if(ord||wd){ const nm=kaiNameFrom(ord,wd), hit=siteKais().find(k=>(ord&&String(k.order)===ord.replace(/^指示/,''))||(!ord&&k.name===nm));
+    if(hit) setCurKai(hit.id); else { const k=newKai({name:nm,order:ord.replace(/^指示/,''),start:wd||isoDay(),rec:P.get('rec')||''}); setCurKai(k.id); }
+    renderKaiBar(); }
   const rec=P.get('rec')||'';
   if(rec) setParkRec(s.id,rec);
   if(!opt.remote){ try{ sessionStorage.setItem('shashin_from_park','1'); }catch(e){} drawParkBanner(); }
@@ -2377,6 +2389,7 @@ async function saveItemFromModal(){
   return it;
 }
 function pushItem(it){
+  if(it.kai==null&&cur&&it.siteId===cur.id){ const k=curKaiId(); if(k) it.kai=k; }   // 新しい項目は今の回の撮るもの
   if(!canSync()) return;
   gasPost({mode:'saveItems',items:[it]}).then(j=>{ if(j.ok){ it.synced=true; saveAll(); } }).catch(()=>{});
 }
@@ -2857,13 +2870,62 @@ async function gasGetApp(app,params){
 function targetKeyOf(p){ return p.itemId ? 'I|'+p.itemId : 'B|'+[p.board?.koshu||p.koshu||'', p.board?.kikaku||p.kikaku||'', p.board?.sokuten||p.sokuten||''].join('|'); }
 /* 年度ごと：開いている年度（cur.fy）に撮った写真だけを使う。ほかの年度は一覧の上で切り替え */
 function photoFy(p){ return p.takenAt?fyOf(new Date(p.takenAt)):fyOf(); }
-function allPhotosAll(){ if(!cur) return []; const fy=cur.fy||fyOf(); return allPhotosAnyYear().filter(p=>photoFy(p)===fy); }
+function allPhotosAll(){ if(!cur) return []; const fy=cur.fy||fyOf(); let L=allPhotosAnyYear().filter(p=>photoFy(p)===fy);
+  if(siteKais().length){ const k=curKaiId(); L=L.filter(p=>(p.kai||'')===k); }   // 回ごと
+  return L; }
+/* ---- 回（指示・作業期間）：公共は指示番号、マンション・民間は作業開始日。写真・撮るもの・チェック・報告書・ZIPは回ごと ---- */
+function kaiScope(){ return cur.contract?'C|'+cur.contract:'S|'+cur.id; }
+function siteKais(){ if(!cur) return []; const sc=kaiScope(), fy=cur.fy||fyOf(); return kais.filter(k=>k.scope===sc&&Number(k.fy)===fy&&k.state!=='削除').sort((a,b)=>String(a.start).localeCompare(String(b.start))||COLL.compare(a.name,b.name)); }
+function curKaiId(){ if(!cur) return ''; const L=siteKais(); if(!L.length) return ''; const v=LS.get('shashin_kai_cur_'+cur.id,null); if(v==='') return ''; if(v&&L.some(k=>k.id===v)) return v; return L[L.length-1].id; }
+function curKai(){ const id=curKaiId(); return kais.find(k=>k.id===id)||null; }
+function setCurKai(id){ LS.set('shashin_kai_cur_'+cur.id,id); }
+function isoDay(t){ const d=new Date(t||Date.now()); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+function newKai(o){
+  const k={ id:'K'+uid().replace(/-/g,'').slice(0,10), scope:kaiScope(), fy:cur.fy||fyOf(), name:o.name, order:o.order||'', start:o.start||isoDay(), rec:o.rec||'' };
+  kais.push(k); LS.set('shashin_kais',kais);
+  const pend=LS.get('shashin_kai_pending',{}); pend[k.id]=k; LS.set('shashin_kai_pending',pend); pushKais();
+  return k;
+}
+async function pushKais(){
+  if(!canSync()) return; const pend=LS.get('shashin_kai_pending',{});
+  for(const k of Object.values(pend)){ try{ const j=await gasPost({mode:'saveKai',kai:k}); if(j.ok){ const p2=LS.get('shashin_kai_pending',{}); delete p2[k.id]; LS.set('shashin_kai_pending',p2); } }catch(e){} }
+}
+function kaiNameFrom(order,start){ const o=String(order||'').trim().replace(/^指示/,''); return o?'指示'+o:(start||isoDay())+'〜'; }
+function askNewKai(){
+  const pub=!!cur.contract;
+  const v=prompt(pub?'新しい回を作ります。\n指示番号を入れてください（指示番号がないときは空のまま → 今日の日付の回になります）':'新しい回を作ります。\n名前を入れてください（空のままなら今日の日付「'+isoDay()+'〜」）','');
+  if(v==null) return null;
+  const t=v.trim(), isNo=/^(指示)?\s*[0-9０-９\-－]+$/.test(t);
+  const order=pub&&isNo?t.replace(/^指示\s*/,'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)):'';
+  const name=order?'指示'+order:(t||isoDay()+'〜');
+  const dup=siteKais().find(k=>k.name===name); if(dup){ setCurKai(dup.id); toast(`「${name}」はもうあるので、それにしました`,2500); return dup; }
+  const k=newKai({name,order,start:isoDay()}); setCurKai(k.id); toast(`「${name}」の回にしました`,2000); return k;
+}
+function renderKaiBar(){
+  const el=$('#kaiBar'); if(!el||!cur) return;
+  const L=siteKais(), k=curKaiId(), fy=cur.fy||fyOf();
+  const legacy=allPhotosAnyYear().some(p=>photoFy(p)===fy&&!p.kai);
+  if(!L.length){ el.innerHTML=`<span class="kl">回</span><span class="kn">まだ分けていません</span><button id="kaiNew">＋ 新しい回</button>`; }
+  else el.innerHTML=`<span class="kl">回</span><select id="kaiSel">${L.map(x=>`<option value="${esc(x.id)}" ${x.id===k?'selected':''}>${esc(x.name)}${x.start&&!/〜$/.test(x.name)?'（'+Number(String(x.start).slice(5,7))+'/'+Number(String(x.start).slice(8,10))+'〜）':''}</option>`).join('')}${legacy?`<option value="" ${k===''?'selected':''}>回を分ける前の写真</option>`:''}</select><button id="kaiNew">＋ 新しい回</button>`;
+  const sel=$('#kaiSel'); if(sel) sel.onchange=()=>{ setCurKai(sel.value); afterKaiChange(); };
+  $('#kaiNew').onclick=()=>{ if(askNewKai()) afterKaiChange(); };
+}
+function afterKaiChange(){ renderKaiBar(); renderPhotos(); updateCheckBadge(); if($('#check').classList.contains('on')) renderCheck(); if($('#mapPane').classList.contains('on')) setTimeout(()=>ZV.on?drawZumen():renderMap(),30); }
+/* 撮り始めるとき：前の撮影から10日以上あいていたら「新しい回にしますか？」（1日1回まで） */
+function kaiCheck(){
+  if(!cur) return; const key='shashin_kai_ask_'+cur.id+'_'+isoDay(); if(LS.get(key,false)) return;
+  const fy=cur.fy||fyOf(), mine=allPhotosAll(), all=allPhotosAnyYear().filter(p=>photoFy(p)===fy);
+  const base=siteKais().length?mine:all; if(!base.length) return;
+  const last=Math.max(...base.map(p=>p.takenAt||0)), days=Math.floor((Date.now()-last)/86400000);
+  if(days<10) return; LS.set(key,true);
+  if(confirm(`この${siteKais().length?'回':'現場'}で最後に撮ったのは ${days} 日前（${isoDay(last)}）です。\n新しい回（${cur.contract?'指示':'作業'}）として分けますか？\n\nOK＝新しい回を作る\nキャンセル＝今までと同じところに撮る`)){ if(askNewKai()) afterKaiChange(); }
+}
 function photoYears(){ const y=new Set(allPhotosAnyYear().map(photoFy)); y.add(fyOf()); if(cur&&cur.fy) y.add(cur.fy); return [...y].sort((a,b)=>b-a); }
 function allPhotosAnyYear(){   // この端末の写真＋みんなの写真（送信済みは重ならないように）。削除・差し替え済みも入る
   if(!cur) return [];
-  const mine=photosCache.filter(p=>p.siteId===cur.id).map(p=>({ id:p.id, itemId:p.itemId, stage:p.stage, board:p.board, takenAt:p.takenAt, thumb:p.thumb, by:p.staff, local:true, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, acc:p.acc, heading:p.heading, rawFileId:p.rawFileId||'', hasRaw:!!p.raw }));
+  const mine=photosCache.filter(p=>p.siteId===cur.id).map(p=>({ id:p.id, itemId:p.itemId, kai:p.kai||'', stage:p.stage, board:p.board, takenAt:p.takenAt, thumb:p.thumb, by:p.staff, local:true, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, acc:p.acc, heading:p.heading, rawFileId:p.rawFileId||'', hasRaw:!!p.raw }));
   const ids=new Set(mine.map(p=>p.id));
-  const team=teamPhotos.filter(p=>!ids.has(p.photoId)).map(p=>({ id:p.photoId, itemId:p.itemId, stage:p.stage, board:{koshu:p.koshu,sokuten:p.sokuten,kikaku:p.kikaku||'',biko:p.biko||''}, takenAt:new Date(String(p.takenAt).replace(' ','T')).getTime()||0, url:p.url, by:p.by, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, heading:p.heading, rawFileId:p.rawFileId||'', hasRaw:!!p.rawFileId }));
+  const team=teamPhotos.filter(p=>!ids.has(p.photoId)).map(p=>({ id:p.photoId, itemId:p.itemId, kai:p.kai||'', stage:p.stage, board:{koshu:p.koshu,sokuten:p.sokuten,kikaku:p.kikaku||'',biko:p.biko||''}, takenAt:new Date(String(p.takenAt).replace(' ','T')).getTime()||0, url:p.url, by:p.by, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, heading:p.heading, rawFileId:p.rawFileId||'', hasRaw:!!p.rawFileId }));
   return mine.concat(team);
 }
 function allPhotosHere(){   // 見えている写真（削除したもの・撮り直しで入れ替わった前の写真は除く）
@@ -2872,7 +2934,7 @@ function allPhotosHere(){   // 見えている写真（削除したもの・撮�
 }
 function targets(){
   const map=new Map(), st=curStages();
-  items.filter(i=>i.siteId===cur.id).forEach(i=>map.set('I|'+i.id,{ key:'I|'+i.id, item:i, label:koshuLabel(i), sub:[i.kikaku, i.no?`No.${i.no}`:'', i.name, i.jushu].filter(Boolean).join(' ・ '), photos:[] }));
+  items.filter(i=>i.siteId===cur.id&&itemInKai(i)).forEach(i=>map.set('I|'+i.id,{ key:'I|'+i.id, item:i, label:koshuLabel(i), sub:[i.kikaku, i.no?`No.${i.no}`:'', i.name, i.jushu].filter(Boolean).join(' ・ '), photos:[] }));
   allPhotosHere().forEach(p=>{ const k=targetKeyOf(p);
     if(!map.has(k)){ const b=p.board||{}; map.set(k,{ key:k, item:null, label:b.koshu||'（工種なし）', sub:[b.kikaku,b.sokuten].filter(Boolean).join(' ・ '), photos:[] }); }
     map.get(k).photos.push(p); });
@@ -2885,6 +2947,7 @@ function targets(){
     if(t.item) st.forEach(s=>{ if(!t.done[s]&&shotLog[t.item.id]?.[s]) t.done[s]=1; });
     return t; });
 }
+function itemInKai(i){ if(!siteKais().length) return true; const k=curKaiId(), l=String(i.kai||'').split(',').filter(Boolean); if(!l.length) return true; return !!k&&l.includes(k); }
 /* 抜け：あとの状況が撮れているのに、前の状況がない → ×。最後の状況だけがまだ → 「まだ」 */
 function judge(t){
   const st=curStages(), res={};
@@ -2935,12 +2998,12 @@ function renderCheck(){
 }
 let photoView=LS.get('shashin_view','card');   // card＝1対象1枚のカード、list＝1枚ずつ写真と黒板の中身
 let photoSort=LS.get('shashin_sort','recent'); if(photoSort==='time') photoSort='recent';
-function drawSortBar(){
+function drawSortBar(){ renderKaiBar();
   const ys=photoYears(), fy=cur.fy||fyOf();
   $('#sortBar').innerHTML=(ys.length>1||fy!==fyOf()?`<select id="fySel" class="fySel">${ys.map(y=>`<option value="${y}" ${y===fy?'selected':''}>${y}年度${y===fyOf()?'（今年度）':''}</option>`).join('')}</select>`:'')
     +[['recent','撮った順'],['target','工種・測点'],['todo','撮り残し']].map(([k,l])=>`<button data-s="${k}" class="${photoSort===k?'on':''}">${l}</button>`).join('')
     +`<button class="vw" id="viewTgl" title="${photoView==='list'?'カードで見る':'リストで見る'}">${photoView==='list'?'▦':'☰'}</button>`;
-  const fs=$('#fySel'); if(fs) fs.onchange=()=>{ const y=Number(fs.value), s=siteOf(cur.id); if(!s) return; openAlbum(cur.id, s.contract?infoKey(s,y):cur.infoKey, {camera:false}); cur.fy=y; renderPhotos(); updateCheckBadge(); toast(`${y}年度の写真を表示しています`,1800); };
+  const fs=$('#fySel'); if(fs) fs.onchange=()=>{ const y=Number(fs.value), s=siteOf(cur.id); if(!s) return; openAlbum(cur.id, s.contract?infoKey(s,y):cur.infoKey, {camera:false,noKaiCheck:true}); cur.fy=y; renderPhotos(); updateCheckBadge(); toast(`${y}年度の写真を表示しています`,1800); };
   $('#sortBar').querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{ photoSort=b.dataset.s; LS.set('shashin_sort',photoSort); renderPhotos(); });
   $('#viewTgl').onclick=()=>{ photoView=photoView==='list'?'card':'list'; LS.set('shashin_view',photoView); renderPhotos(); setTimeout(scrollToSel,30); };
 }
@@ -3224,7 +3287,7 @@ function photoFileName(p,i){ const b=p.board||{}, ko=cleanName(b.koshu), kk=clea
 /* まとめて渡す：撮影日（日ごと）と、まとめたフォルダの名前「作業日_公園名」（すべてのときは最後の撮影日＝作業完了日） */
 const dayOf=t=>{ const d=new Date(t); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; };
 function zipDays(){ const m={}; reportTargets().forEach(t=>t.ph.forEach(p=>{ const d=dayOf(p.takenAt); m[d]=(m[d]||0)+1; })); return Object.keys(m).sort().map(day=>({day,n:m[day]})); }
-function zipBase(){ const dl=zipDays(), day=RP.day||(dl.length?dl[dl.length-1].day:dayOf(Date.now())); return `${day}_${cleanName(cur.name)}`; }
+function zipBase(){ const dl=zipDays(), day=RP.day||(dl.length?dl[dl.length-1].day:dayOf(Date.now())), k=curKai(); return `${day}_${cleanName(cur.name)}${k&&k.order?'_'+cleanName(k.name):''}`; }
 $('#rpZipGo').onclick=async()=>{
   const ts=reportTargets().map(t=>({...t,ph:RP.day?t.ph.filter(p=>dayOf(p.takenAt)===RP.day):t.ph})).filter(t=>t.ph.length); if(!ts.length){ toast('写真がありません'); return; }
   const base=zipBase();
@@ -3622,7 +3685,8 @@ async function composeAndSave(c,ctx,imported,opt={}){
   const geo = base ? { lat:base.lat??null, lng:base.lng??null, acc:base.acc??null, heading:base.heading??null }
                    : { lat:geoFresh?lastGeo.lat:null, lng:geoFresh?lastGeo.lng:null, acc:geoFresh?lastGeo.acc:null, heading:imported?null:heading };
   const p={ id:uid(), siteId:cur.id, blob, raw, thumb:tc.toDataURL('image/jpeg',0.75), board:b, tpl:cur.tpl, boardOn:bOn,
-    itemId: opt.itemId ?? (curItem?.id||''), stage, takenAt:now.getTime(), staff:me(), fileName, status:'pending', replaces:opt.replaces||'', ...geo };
+    itemId: opt.itemId ?? (curItem?.id||''), stage, takenAt:now.getTime(), staff:me(), fileName, status:'pending', replaces:opt.replaces||'', ...geo,
+    kai: opt.replaces ? ((allPhotosAnyYear().find(x=>x.id===opt.replaces)||{}).kai ?? curKaiId()) : curKaiId() };
   await idbPut(p);
   if(opt.replaces){ const old=photosCache.find(x=>x.id===opt.replaces); if(old){ old.state='差し替え済'; old.stateDirty=false; await idbPut(old); } }
   await refreshPhotos();
