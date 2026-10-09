@@ -1514,9 +1514,9 @@ function renderMap(){
   });
   // 図面と地図を合わせてあれば、まだ項目になっていない図面の木も小さく出す（タップで撮影）
   const g=geoOf(cur.id), rec=parkRecOf(cur.id);
-  if(g&&rec){ const R=parkCache[rec];
-    if(!R){ if(canSync()) loadParkRec(rec).then(()=>{ if($('#mapPane').classList.contains('on')&&!ZV.on) renderMap(); }).catch(()=>{}); }
-    else R.trees.filter(f=>!treeItem(f)).forEach(f=>{ const ll=g.px2ll(f.pt.x,f.pt.y);
+  if(rec){ const R=parkCache[rec];
+    if(!R){ if(canSync()&&!renderMap.loading){ renderMap.loading=true; loadParkRec(rec).then(()=>{ renderMap.loading=false; if($('#mapPane').classList.contains('on')&&!ZV.on) renderMap(); }).catch(()=>{ renderMap.loading=false; }); } }
+    else if(g) R.trees.filter(f=>!treeItem(f)).forEach(f=>{ const ll=g.px2ll(f.pt.x,f.pt.y);
       L.circleMarker([ll.lat,ll.lng],{radius:7,color:'#2f6b3f',weight:2,fillColor:'#fff',fillOpacity:1}).on('click',()=>{ if(placing) return; const it=itemForTree(cur.id,rec,f); openPointSheet(it.id); renderMap(); }).addTo(mapLayer); }); }
   // 撮った場所 → 撮った木 の点線と矢印（どの木を撮ったか分かるように）
   allPhotosHere().filter(p=>p.itemId&&p.lat!=null&&p.lat!=='').forEach(p=>{
@@ -1634,7 +1634,19 @@ function drawParkBanner(){
 }
 
 /* ---- 図面と地図の合わせ（2本の木の図面上の位置と、地図上の位置から、拡大・回転・移動を決める） ---- */
-const geoOf = siteId => { const g=(curOpts().parkGeo||{})[siteId]; return g&&g.a&&g.b?mkGeo(g):null; };
+const geoOf = siteId => {
+  const g=(curOpts().parkGeo||{})[siteId]; if(g&&g.a&&g.b) return mkGeo(g);
+  const rec=parkRecOf(siteId), R=rec&&parkCache[rec];      // 国土地理院から切り出した図面は、はじめから緯度経度が分かっている
+  return R&&R.d.geo&&R.d.geo.kind==='wm' ? mkGeoWM(R.d.geo) : null;
+};
+function mkGeoWM(g){
+  const n=256*Math.pow(2,g.z), wm=(lat,lng)=>{ const s=Math.sin(lat*Math.PI/180); return {x:(lng+180)/360*n, y:(0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n}; };
+  const yc=g.y0+500, latc=Math.atan(Math.sinh(Math.PI*(1-2*yc/n)))*180/Math.PI;
+  const f=g.f||1;   // 図面は地図の f 倍の大きさで作ってある
+  return { px2ll(x,y){ const gx=g.x0+x/f, gy=g.y0+y/f; return {lng:gx/n*360-180, lat:Math.atan(Math.sinh(Math.PI*(1-2*gy/n)))*180/Math.PI}; },
+           ll2px(lat,lng){ const p=wm(lat,lng); return {x:(p.x-g.x0)*f, y:(p.y-g.y0)*f}; },
+           mpp:156543.03392*Math.cos(latc*Math.PI/180)/Math.pow(2,g.z)/f, north:0, auto:true };
+}
 function mkGeo(g){
   const lat0=g.a.lat, lng0=g.a.lng, r=Math.PI/180, mLat=111132.954-559.822*Math.cos(2*lat0*r), mLon=111412.84*Math.cos(lat0*r);
   const W=(lat,lng)=>({re:(lng-lng0)*mLon, im:(lat-lat0)*mLat}), P=(x,y)=>({re:x,im:-y});
@@ -1664,7 +1676,7 @@ let ALN=null;   // 地図と合わせている途中 {pairs:[], pick:{f}}
 function zumenCanvas(){ return $('#zumen'); }
 async function showZumen(on){
   ZV.on=on; $('#zumen').style.display=on?'block':'none'; $('#map').style.visibility=on?'hidden':'';
-  $('#mtView').textContent=on?'🗺 地図':'📐 図面'; $('#mtAlign').style.display=on?'':'none';
+  $('#mtView').textContent=on?'🗺 地図':'📐 図面'; $('#mtAlign').style.display='none';
   $('.legend').innerHTML = on
     ? `○ 図面の木：<i style="background:#fff"></i>まだ <i style="background:${PROG_COLOR.part}"></i>途中 <i style="background:${PROG_COLOR.all}"></i>そろった<br><b>木をタップ</b>で撮影・写真を見る${geoOf(cur.id)?'。矢印＝撮った場所→木':''}`
     : `➤ 撮った場所と向き（GPS）。<b>矢印を指で動かすと場所を直せます</b><br><span style="color:#d35400">■</span>前　<span style="color:#2471a3">■</span>中　<span style="color:#1e8449">■</span>後　● 木（白＝まだ・橙＝途中・緑＝そろった）`;
@@ -1672,7 +1684,8 @@ async function showZumen(on){
   const rec=parkRecOf(cur.id);
   if(!rec){ drawZumenMsg('公園報告の図面がまだつながっていません。<br>公園報告アプリで木をタップ →「📷 この木の写真を撮る」、または 情報 → ③ 読み込む →「公園報告の図面から」でつながります。'); return; }
   if(!canSync()&&!parkCache[rec]){ drawZumenMsg('電波のある所で開いてください'); return; }
-  try{ drawZumenMsg('図面を読み込んでいます…'); const R=await loadParkRec(rec); ZV.rec=rec; $('#zumenMsg').style.display='none'; if(ZV.fitted!==rec) fitZumen(R); drawZumen(); }
+  try{ drawZumenMsg('図面を読み込んでいます…'); const R=await loadParkRec(rec); ZV.rec=rec; $('#zumenMsg').style.display='none'; if(ZV.fitted!==rec) fitZumen(R); drawZumen();
+    const auto=R.d.geo&&R.d.geo.kind==='wm'; $('#mtAlign').style.display=auto?'none':''; $('#mtAlign').textContent=geoOf(cur.id)?'📍 地図と合わせ直す':'📍 地図と合わせる'; }
   catch(e){ drawZumenMsg('図面を読み込めませんでした：'+esc(e.message||e)); }
 }
 function drawZumenMsg(h){ const m=$('#zumenMsg'); m.innerHTML=h; m.style.display='block'; const c=zumenCanvas(); c.getContext('2d').clearRect(0,0,c.width,c.height); }

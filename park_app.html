@@ -48,6 +48,17 @@
   .mini button:hover{border-color:var(--blue)}
   canvas{display:block;background:#0b0e13;cursor:crosshair;touch-action:none}
   .stage{position:relative;overflow:hidden}
+  .subopts{margin:0 0 6px 12px;padding-left:8px;border-left:2px solid var(--line)}
+  .gsiModal{position:fixed;inset:0;z-index:60;background:var(--bg);display:none;flex-direction:column}
+  .gsiModal.on{display:flex}
+  .gsiBar{display:flex;gap:6px;align-items:center;padding:8px 10px;background:var(--panel)}
+  .gsiBar b{flex:1;color:var(--ink);font-size:15px}
+  .gsiBar input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:9px;font-size:16px}
+  .gsiBar button{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:9px 12px;font-size:14px;font-weight:700;white-space:nowrap}
+  #gsiMapBox{flex:1;min-height:0}
+  .gsiFoot{padding:10px;background:var(--panel);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  #gsiNote{flex:1;min-width:200px;color:var(--mut);font-size:13px}
+  #gsiTake{background:#2f6b3f;color:#fff;border:none;border-radius:10px;padding:13px 20px;font-size:16px;font-weight:700}
   .shootFab{position:absolute;left:50%;bottom:76px;transform:translateX(-50%);z-index:6;background:#2f6b3f;color:#fff;border:none;border-radius:999px;padding:13px 22px;font-size:16px;font-weight:700;box-shadow:0 3px 12px rgba(0,0,0,.35);white-space:nowrap}
   .hint{position:absolute;left:10px;top:10px;background:rgba(14,18,24,.5);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
     border:1px solid rgba(130,150,170,.22);padding:6px 10px;border-radius:8px;font-size:11px;color:var(--ink);max-width:52%;line-height:1.45;cursor:pointer}
@@ -426,6 +437,17 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <div class="secbody">
         <button class="btn" id="loadImg">公園図面を読み込む<small>PNG / JPG（背景にする）</small></button>
         <input type="file" id="imgFile" accept="image/*" hidden>
+        <button class="btn" id="mapPickBtn">🗺 地図から選ぶ <span class="chv">▸</span><small>国土地理院の地図・航空写真、Googleマップのスクショ</small></button>
+        <div id="mapPickOpts" class="subopts" style="display:none">
+          <button class="btn" id="gsiStdBtn">国土地理院の地図<small>その場で切り出し・縮尺は自動</small></button>
+          <button class="btn" id="gsiPhotoBtn">国土地理院の航空写真<small>その場で切り出し・縮尺は自動</small></button>
+          <button class="btn" id="gmapShotBtn">Googleマップのスクショを取り込む<small>スクショを選んだあと、縮尺合わせをします</small></button>
+          <div id="gmapOpts" class="subopts" style="display:none">
+            <button class="btn ghost" id="gmapOpenBtn">① Googleマップで公園を開く<small>公園名でさがします。画面いっぱいに出してスクショ</small></button>
+            <button class="btn ghost" id="gmapFileBtn">② スクショを選ぶ<small>写真（カメラロール）から</small></button>
+            <input type="file" id="gmapFile" accept="image/*" hidden>
+          </div>
+        </div>
         <div class="mini">
           <button id="zoomIn">＋拡大</button><button id="zoomOut">－縮小</button><button id="fit">全体表示</button>
         </div>
@@ -642,6 +664,12 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
   </div>
 </div>
 
+<div class="gsiModal" id="gsiModal">
+  <div class="gsiBar"><b id="gsiTitle">国土地理院の地図から図面を作る</b><button id="gsiClose">✕</button></div>
+  <div class="gsiBar"><input id="gsiQ" placeholder="公園名・住所でさがす"><button id="gsiGo">さがす</button><button id="gsiHereBtn">📍現在地</button></div>
+  <div id="gsiMapBox"></div>
+  <div class="gsiFoot"><div id="gsiNote">公園が画面に入るように動かして、「この範囲を図面にする」を押してください</div><button id="gsiTake">この範囲を図面にする</button></div>
+</div>
 <div class="modal" id="modal">
   <div class="card">
     <button class="close" id="modalClose">閉じる ✕</button>
@@ -2701,7 +2729,7 @@ $('manAdd').onclick=()=>{const k=$('manKind').value,q=parseFloat($('manQty').val
 
 /* ---------- 保存/読込/書き出し ---------- */
 $('loadImg').onclick=()=>$('imgFile').click();
-$('imgFile').onchange=e=>{const f=e.target.files[0];if(f)openMapFile(f);e.target.value='';};
+$('imgFile').onchange=e=>{const f=e.target.files[0];if(f){state.geo=null;openMapFile(f);}e.target.value='';};
 // 図面の画像を読み込む
 function openMapFile(file){
   const r=new FileReader();
@@ -2736,7 +2764,7 @@ $('saveJson').onclick=()=>{
     rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value,
         genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:'',genzaiSrc:genzaiSrc},
     customWorks:customWorksDefs,
-    mapImg:state.mapImg||null,saved:new Date().toISOString()};
+    mapImg:state.mapImg||null,geo:state.geo||null,saved:new Date().toISOString()};
   const base=(order?order+'_':'')+(data.park);
   dl(JSON.stringify(data),`${base}.json`,'application/json');
 };
@@ -2745,6 +2773,80 @@ $('openMap').onclick=()=>{
   if(!q){alert('先に公園名を入力してください。');return;}
   window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q),'_blank');
 };
+/* ---------- 図面を「地図から選ぶ」：国土地理院の地図・航空写真をその場で切り出す／Googleマップのスクショ ----------
+   国土地理院から切り出した図面は、縮尺と緯度経度が分かっているので、縮尺合わせがいらない。
+   工事写真アプリの地図にも、そのまま木の位置が出せる（state.geo） */
+const GSI_LAYERS={ std:{url:'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png',max:18,name:'国土地理院の地図'}, photo:{url:'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg',max:18,name:'国土地理院の航空写真'} };
+let gsiMap=null, gsiLayer=null, gsiKind='std';
+function loadCss(href){ if(document.querySelector(`link[href="${href}"]`))return; const l=document.createElement('link'); l.rel='stylesheet'; l.href=href; document.head.appendChild(l); }
+function loadJs(src){ return new Promise((res,rej)=>{ if(window.L&&window.L.map) return res(); const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+$('mapPickBtn').onclick=()=>{ const o=$('mapPickOpts'); o.style.display=o.style.display==='none'?'':'none'; $('mapPickBtn').querySelector('.chv').textContent=o.style.display==='none'?'▸':'▾'; };
+$('gsiStdBtn').onclick=()=>openGsiPicker('std');
+$('gsiPhotoBtn').onclick=()=>openGsiPicker('photo');
+$('gmapShotBtn').onclick=()=>{ const o=$('gmapOpts'); o.style.display=o.style.display==='none'?'':'none'; };
+$('gmapOpenBtn').onclick=()=>{ const q=($('parkName').value||'').trim(); window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q||'公園'),'_blank'); };
+$('gmapFileBtn').onclick=()=>{ $('gmapFile').click(); };
+$('gmapFile').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if(!f)return; if(!confirmReplaceImg())return; state.geo=null; openMapFile(f);
+  setTimeout(()=>alert('Googleマップのスクショを図面にしました。\n\n面積を出すには「① 縮尺合わせ」で、スクショの縮尺（左下の目盛りなど）の両端をタップして長さを入れてください。'),400); };
+function confirmReplaceImg(){ return !(state.img&&state.features.length) || confirm('いまの図面を入れ替えます。描いた図形はそのままの位置に残ります（ずれることがあります）。よろしいですか？'); }
+async function openGsiPicker(kind){
+  gsiKind=kind; $('gsiModal').classList.add('on'); $('gsiTitle').textContent=GSI_LAYERS[kind].name+'から図面を作る';
+  try{
+    loadCss('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css');
+    await loadJs('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');
+  }catch(e){ alert('地図を読み込めませんでした（電波を確認してください）'); $('gsiModal').classList.remove('on'); return; }
+  if(!gsiMap){
+    gsiMap=L.map('gsiMapBox',{zoomControl:true,maxZoom:19}).setView([35.59,139.61],17);
+  }
+  if(gsiLayer) gsiMap.removeLayer(gsiLayer);
+  gsiLayer=L.tileLayer(GSI_LAYERS[kind].url,{maxZoom:19,maxNativeZoom:GSI_LAYERS[kind].max,attribution:'国土地理院'}).addTo(gsiMap);
+  setTimeout(()=>gsiMap.invalidateSize(),60);
+  const q=($('parkName').value||'').trim(); $('gsiQ').value=q;
+  if(q) gsiSearch(q); else gsiHere();
+}
+async function gsiSearch(q){
+  q=(q||$('gsiQ').value||'').trim(); if(!q) return;
+  try{ const r=await (await fetch('https://msearch.gsi.go.jp/address-search/AddressSearch?q='+encodeURIComponent(q))).json();
+    if(r&&r[0]){ const [lng,lat]=r[0].geometry.coordinates; gsiMap.setView([lat,lng],18); $('gsiNote').textContent='「'+r[0].properties.title+'」を表示しました。公園がわくに入るように動かしてください'; }
+    else $('gsiNote').textContent='見つかりませんでした。地図を指で動かして公園を出してください';
+  }catch(e){ $('gsiNote').textContent='さがせませんでした。「現在地」か、地図を指で動かしてください'; }
+}
+function gsiHere(){ if(!navigator.geolocation)return; navigator.geolocation.getCurrentPosition(p=>gsiMap.setView([p.coords.latitude,p.coords.longitude],18),()=>{}, {enableHighAccuracy:true,timeout:10000}); }
+$('gsiGo').onclick=()=>gsiSearch();
+$('gsiQ').onkeydown=e=>{ if(e.key==='Enter') gsiSearch(); };
+$('gsiHereBtn').onclick=gsiHere;
+$('gsiClose').onclick=()=>$('gsiModal').classList.remove('on');
+const wmPx=(lat,lng,z)=>{ const n=256*Math.pow(2,z), s=Math.sin(lat*Math.PI/180); return {x:(lng+180)/360*n, y:(0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n}; };
+$('gsiTake').onclick=async()=>{
+  if(!confirmReplaceImg()) return;
+  const b=gsiMap.getBounds(), maxZ=GSI_LAYERS[gsiKind].max;
+  let z=Math.min(maxZ, Math.round(gsiMap.getZoom())+1), p0, p1;
+  for(;;){ p0=wmPx(b.getNorth(),b.getWest(),z); p1=wmPx(b.getSouth(),b.getEast(),z); if((p1.x-p0.x)<=4096&&(p1.y-p0.y)<=4096||z<=14) break; z--; }
+  const x0=Math.floor(p0.x), y0=Math.floor(p0.y), W=Math.ceil(p1.x)-x0, H=Math.ceil(p1.y)-y0;
+  const f=Math.max(1,Math.min(4,Math.ceil(2000/Math.max(W,H))));   // 画面が小さくても図面は2000px程度に（拡大しても描いた線がきれい）
+  const c=document.createElement('canvas'); c.width=W*f; c.height=H*f; const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height); ctx.imageSmoothingQuality='high';
+  const tiles=[]; for(let tx=Math.floor(x0/256); tx<=Math.floor((x0+W)/256); tx++) for(let ty=Math.floor(y0/256); ty<=Math.floor((y0+H)/256); ty++) tiles.push([tx,ty]);
+  $('gsiTake').disabled=true; $('gsiNote').textContent=`地図を切り出しています…（${tiles.length}枚）`;
+  let bad=0;
+  await Promise.all(tiles.map(([tx,ty])=>new Promise(res=>{ const im=new Image(); im.crossOrigin='anonymous';
+    im.onload=()=>{ ctx.drawImage(im,(tx*256-x0)*f,(ty*256-y0)*f,256*f,256*f); res(); }; im.onerror=()=>{ bad++; res(); };
+    im.src=GSI_LAYERS[gsiKind].url.replace('{z}',z).replace('{x}',tx).replace('{y}',ty); })));
+  ctx.font='bold 14px sans-serif'; ctx.fillStyle='rgba(255,255,255,.85)'; const cr='出典：国土地理院（'+GSI_LAYERS[gsiKind].name.replace('国土地理院の','')+'）'; const tw=ctx.measureText(cr).width, CW=c.width, CH=c.height; ctx.fillRect(CW-tw-14,CH-24,tw+12,22); ctx.fillStyle='#333'; ctx.fillText(cr,CW-tw-8,CH-8);
+  let url; try{ url=c.toDataURL(gsiKind==='photo'?'image/jpeg':'image/png',0.9); }
+  catch(e){ $('gsiTake').disabled=false; alert('この端末では地図を切り出せませんでした。Googleマップや地理院地図のスクショを「Googleマップのスクショを取り込む」から入れてください。'); return; }
+  $('gsiTake').disabled=false;
+  if(bad>=tiles.length){ alert('地図を取れませんでした（電波を確認してください）'); return; }
+  const im=new Image(); im.onload=()=>{
+    const latc=(b.getNorth()+b.getSouth())/2;
+    state.img=im; state.imgData=url; state.scale=156543.03392*Math.cos(latc*Math.PI/180)/Math.pow(2,z)/f;   // 1pxが何m
+    state.geo={kind:'wm', z, x0, y0, f, src:gsiKind};
+    updateScaleBadge(); fit(); updateHint(); requestAnimationFrame(fit);
+    $('secMap').classList.add('collapsed'); $('mapSt').textContent='読込済（国土地理院）'; const cs=$('calSt'); if(cs) cs.textContent='自動';
+    $('gsiModal').classList.remove('on');
+    alert(GSI_LAYERS[gsiKind].name+'から図面を作りました。\n縮尺は自動で合わせてあります（縮尺合わせは不要）。\n工事写真アプリの地図にも、木の位置がそのまま出ます。');
+  }; im.src=url;
+};
+
 $('openJson').onclick=()=>$('jsonFile').click();
 $('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f)return;openParkFile(f);e.target.value='';};
 // 公園データ（.json）を開く。ボタンからでも、ファイルを落としても、ここを通る。
@@ -2784,7 +2886,7 @@ function applyParkJson(text){
   catch(err){ alert('読み込みの途中で問題が起きました。\n'+((err&&err.message)||err)+'\n\nデータは残っているので、もう一度お試しください。'); }
 }
 function applyParkData(d,kb){
-  $('parkName').value=d.park||'';state.scale=d.scale||null;
+  $('parkName').value=d.park||'';state.scale=d.scale||null;state.geo=d.geo||null;
   if(d.contract!==undefined)$('contractName').value=d.contract||'';
   $('orderNo').value=d.order||'';$('workDate').value=d.date||'';
   if($('startDate'))$('startDate').value=d.start||'';if($('finishDate'))$('finishDate').value=d.finish||'';
@@ -2880,7 +2982,7 @@ function parkPayload(){
         addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value,
         genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:'',genzaiSrc:genzaiSrc},
     customWorks:customWorksDefs,
-    mapImg:state.mapImg||null,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,saved:new Date().toISOString()};
+    mapImg:state.mapImg||null,geo:state.geo||null,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,saved:new Date().toISOString()};
 }
 $('cloudSave').onclick=async()=>{
   if(!$('parkName').value){ alert('公園名を入れてください。一覧で見分けがつかなくなります。'); return; }
