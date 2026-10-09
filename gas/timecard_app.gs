@@ -35,7 +35,7 @@ const CODE_MIN = { qr: 10, temp: 60 * 24 };
 
 const SHEETS = {
   staff:    ['id', 'name', 'disp', 'freeeNo', 'setting', 'pay', 'role', 'punch', 'join', 'active'],
-  days:     ['key', 'staffId', 'date', 'kind', 'half', 'pay', 'leaveBy', 'in', 'out', 'brk', 'site', 'src', 'by', 'lag', 'bio', 'gps', 'lat', 'lng', 'acc', 'checked', 'updatedAt', 'dist', 'away', 'direct'],
+  days:     ['key', 'staffId', 'date', 'kind', 'half', 'pay', 'leaveBy', 'in', 'out', 'brk', 'site', 'src', 'by', 'lag', 'bio', 'gps', 'lat', 'lng', 'acc', 'checked', 'updatedAt', 'dist', 'away', 'direct', 'outSite', 'outDist'],
   punches:  ['receivedAt', 'staffId', 'type', 'pressedAt', 'date', 'time', 'lat', 'lng', 'acc', 'site', 'clientId', 'bio', 'device'],
   history:  ['at', 'by', 'staffId', 'date', 'field', 'before', 'after', 'reason'],
   calendar: ['date', 'off'],
@@ -213,7 +213,7 @@ const API = {
     const upd = {
       staffId: me.id, date, kind: old.kind || b.kind || '出勤', half: old.half || '', pay: old.pay || '',
       brk: old.brk !== '' && old.brk !== undefined ? old.brk : settings_().break,
-      site: b.site || old.site || '', src: (!old.src || old.src === '打刻') ? '打刻' : old.src, by: me.disp,
+      site: old.site || '', src: (!old.src || old.src === '打刻') ? '打刻' : old.src, by: me.disp,
       lag: Math.max(Number(old.lag) || 0, lag), bio: b.bio === 'unverified' ? 'unverified' : (old.bio || b.bio || ''),
       gps: b.lat ? 'TRUE' : (old.gps || 'FALSE'), lat: b.lat || old.lat || '', lng: b.lng || old.lng || '', acc: b.acc || old.acc || '',
       leaveBy: old.leaveBy || '', checked: 'FALSE',
@@ -221,11 +221,16 @@ const API = {
     if (type === 'in') {
       if (old.in && old.in !== time) addHistory_(me.disp, me.id, date, '出勤（打ち直し）', old.in, time, 'スマホ打刻');
       upd.in = time;
+      upd.site = b.site || old.site || '';   // 出勤の現場
       const ofc = officeCheck_(b.lat, b.lng, b.acc);
       upd.dist = ofc.dist; upd.away = ofc.away ? '1' : ''; upd.direct = b.direct ? '1' : '';
     } else {
       if (old.out && old.out !== time) addHistory_(me.disp, me.id, date, '退勤（打ち直し）', old.out, time, 'スマホ打刻');
       upd.out = time;
+      // 退勤の現場（直行直帰で出勤と違う現場のとき）。退勤はどこで押してもよい。事務所からの距離は直帰の目安に残す
+      if (!upd.site) upd.site = b.site || '';
+      else upd.outSite = b.site && b.site !== upd.site ? b.site : (old.outSite || '');
+      upd.outDist = officeCheck_(b.lat, b.lng, b.acc).dist;
     }
     let wasRest = false;
     if (upd.kind === '休み' && !upd.half) { upd.kind = '出勤'; upd.pay = ''; upd.leaveBy = ''; wasRest = true; }
@@ -259,6 +264,7 @@ const API = {
     const old = findDay_(st.id, date) || {};
     const nv = { kind, in: inT, out: outT, brk: String(brk), site: String(b.site || '') };
     const labels = { kind: '区分', in: '出勤', out: '退勤', brk: '休憩（分）', site: '現場' };
+    if (b.outSite !== undefined) { const os = String(b.outSite || '').trim(); nv.outSite = os === nv.site ? '' : os; labels.outSite = '退勤の現場'; }
     const oldVal = f => f === 'kind' ? (old.kind || '出勤') : f === 'brk' ? String(old.brk === '' || old.brk === undefined ? settings_().break : old.brk) : String(old[f] || '');
     const changes = Object.keys(labels).filter(f => oldVal(f) !== String(nv[f]));
     if (!changes.length) throw err_('変わったところがありません');

@@ -424,6 +424,14 @@ function officeAway(pos){
   const d = distM(pos.lat, pos.lng, Number(st.officeLat), Number(st.officeLng));
   return d > officeLimit(pos.acc) ? Math.round(d) : null;
 }
+/** 現場の表示：出勤と退勤で違うときは「A → B」、事務所から離れて退勤した日は（直帰） */
+function siteText(d){
+  if (!d) return '';
+  let t = d.site || '';
+  if (d.outSite && d.outSite !== d.site) t = (t ? t + ' → ' : '→ ') + d.outSite;
+  if (d.out && d.outDist !== undefined && d.outDist !== '' && Number(d.outDist) > officeLimit(0)) t += '（直帰）';
+  return t;
+}
 const openFlag = (fl, d) => fl.some(f => f.must) || (fl.length > 0 && !(d && d.checked));
 
 /* ===================== 通信 ===================== */
@@ -571,7 +579,8 @@ async function doPunch(type){
   S.queue.push(item); lsSet(LS.queue, S.queue);
   const t = jstParts(new Date(pressedAt));
   const k = K(S.me.id, t.date), prevDay = S.days[k], old = prevDay || { staffId:S.me.id, date:t.date, kind, brk:S.settings.break };
-  S.days[k] = Object.assign({}, old, type==='in' ? { in:t.time } : { out:t.time }, { site: site || old.site, src: old.src || '打刻', pending:true });
+  const sitePatch = type==='in' || !old.site ? { site: site || old.site } : { outSite: site && site !== old.site ? site : (old.outSite || '') };
+  S.days[k] = Object.assign({}, old, type==='in' ? { in:t.time } : { out:t.time }, sitePatch, { src: old.src || '打刻', pending:true });
   render();
   item.waiting = true;
   let pos = await getPos();
@@ -747,7 +756,7 @@ function punchView(){
       <button class="out" data-act="punch" data-arg="out">退勤<small>${d.out ? '退勤済み' : 'タップで記録'}</small></button>
     </div>
     <div class="fields">
-      <label class="f">現場<input id="site" list="siteList" value="${esc(d.site || lastSite)}" placeholder="現場名（なくてもOK）"><datalist id="siteList">${S.sites.map(s => `<option value="${esc(s)}">`).join('')}</datalist></label>
+      <label class="f">${d.in && !d.out ? '退勤する現場<span class="muted small">（出勤と違う現場で終わるときは直す）</span>' : '現場'}<input id="site" list="siteList" value="${esc(d.in && !d.out ? (d.outSite || d.site || lastSite) : (d.site || lastSite))}" placeholder="現場名（なくてもOK）"><datalist id="siteList">${S.sites.map(s => `<option value="${esc(s)}">`).join('')}</datalist></label>
       <label class="f">今日の区分<select id="kind">${['出勤','休日出勤','雨天中止（半日）'].map(k => `<option ${d.kind===k?'selected':''}>${k}</option>`).join('')}</select></label>
     </div>
     <div class="small muted">押した場所と時刻を記録します。休憩は標準の${esc(S.settings.break)}分を自動で引きます。${bioInfo() ? '押すと顔認証・指紋認証が出ます。' : ''}</div>
@@ -840,7 +849,7 @@ function listView(id, admin){
     else if (kind) txt = '';
     else txt = off ? (type==='法定休日' ? '休日' : '所定休日') : (s===td ? 'まだ打刻なし' : '—');
     const cls = wd(s)===0 ? 'sun' : wd(s)===6 ? 'sat' : '';
-    const chips = [kind ? `<span class="pill">${esc(kind)}</span>` : '', d && d.site && d.in ? `<span class="pill">${esc(d.site)}</span>` : '',
+    const chips = [kind ? `<span class="pill">${esc(kind)}</span>` : '', d && d.in && siteText(d) ? `<span class="pill">${esc(siteText(d))}</span>` : '',
       ...fl.map(f => `<span class="pill ${f.lv} ${d && d.checked && !f.must ? 'done':''}">${esc(f.t)}${d && d.checked && !f.must ? '・確認済み':''}</span>`)].join('');
     return `<button class="day ${off?'off':''}" data-act="day" data-arg="${esc(id)}|${s}" ${canEdit(id) && !isClosed(s) ? '' : 'disabled'}>
       <span class="d ${cls}">${dlabel(s)}</span><span class="t num">${txt}</span><span class="h num">${w ? hm(w) : ''}</span>${chips ? `<span class="chips">${chips}</span>` : ''}</button>`;
@@ -1175,14 +1184,15 @@ function daySheet(){
 function editSheet(){
   const [id, s] = S.edit.key.split('|');
   const d0 = getDay(id,s) || {}, st = byId(id) || {}, F = S.edit.form;
-  const d = F ? Object.assign({}, d0, { kind:F.kind, site:F.site, in:F.in, out:F.out, brk:F.brk }) : d0;
+  const d = F ? Object.assign({}, d0, { kind:F.kind, site:F.site, outSite:F.outSite, in:F.in, out:F.out, brk:F.brk }) : d0;
   const isNew = !d0.in && !d0.kind;
   return `<div class="sheet" data-act="editbg"><div class="box" role="dialog" aria-label="勤怠の入力">
     <h3>${esc(st.name)}　${dlabel(s)}　${isNew ? 'あとから入力' : '修正'}</h3>
     ${id !== S.me.id ? '<div class="small muted">代理で入力します。集計では特記「代理入力」として表示されます。</div>' : '<div class="small muted">ここで入れた時刻は、集計で特記として表示されます。</div>'}
     <div class="fields">
       <label class="f">区分<select id="e-kind">${KINDS.map(k => `<option ${(d.kind||'出勤')===k ? 'selected':''}>${k}</option>`).join('')}</select></label>
-      <label class="f">現場<input id="e-site" list="siteList2" value="${esc(d.site||'')}"><datalist id="siteList2">${S.sites.map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>
+      <label class="f">出勤の現場<input id="e-site" list="siteList2" value="${esc(d.site||'')}"></label>
+      <label class="f">退勤の現場<span class="muted small">（出勤と違うときだけ）</span><input id="e-outSite" list="siteList2" value="${esc(d.outSite||'')}"><datalist id="siteList2">${S.sites.map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>
       <label class="f">出勤<input id="e-in" type="time" value="${esc(d.in||'')}"></label>
       <label class="f">退勤<input id="e-out" type="time" value="${esc(d.out||'')}"></label>
       <label class="f">休憩（分）<input id="e-brk" type="number" min="0" step="5" value="${esc(d.brk === undefined || d.brk === '' ? S.settings.break : d.brk)}"></label>
@@ -1296,7 +1306,7 @@ function printAttendance(which){
     const rows = datesIn(pr.from, pr.to).map(s => {
       const d = getDay(id,s), w = workMin(d), fl = flags(id,s,d);
       return `<tr><td>${dlabel(s)}</td><td>${esc(d && d.kind && d.kind !== '出勤' ? kindLabel(d,id) : (d && d.in ? '出勤' : (isOff(s) ? '休日' : '')))}</td><td class="r">${esc(d && d.in || '')}</td><td class="r">${esc(d && d.out || '')}</td>
-        <td class="r">${w ? esc(d.brk === '' || d.brk === undefined ? S.settings.break : d.brk) : ''}</td><td class="r">${w ? hm(w) : ''}</td><td>${esc(d && d.site || '')}</td><td>${esc(fl.map(f => f.t).join('・'))}</td></tr>`;
+        <td class="r">${w ? esc(d.brk === '' || d.brk === undefined ? S.settings.break : d.brk) : ''}</td><td class="r">${w ? hm(w) : ''}</td><td>${esc(siteText(d))}</td><td>${esc(fl.map(f => f.t).join('・'))}</td></tr>`;
     }).join('');
     return `<div class="pr-page"><div class="pr-head"><div class="pr-title">出勤簿　${esc(st.name)}</div><div>${pr.label}（${pr.from}〜${pr.to}）　庭乃持田園有限会社</div></div>
       <table class="pr-att"><tr><th>日付</th><th>区分</th><th>出勤</th><th>退勤</th><th>休憩(分)</th><th>勤務</th><th>現場</th><th>特記</th></tr>${rows}</table>
@@ -1372,7 +1382,7 @@ document.addEventListener('click', async e => {
     case 'editclose': S.edit = null; render(); return;
     case 'editsave': {
       const [id, s] = S.edit.key.split('|'); const v = k => ($('#'+k) || {}).value || '';
-      const form = { staffId:id, date:s, kind:v('e-kind'), in:v('e-in'), out:v('e-out'), brk:v('e-brk'), site:v('e-site'), reason:v('e-reason'), memo:v('e-memo') };
+      const form = { staffId:id, date:s, kind:v('e-kind'), in:v('e-in'), out:v('e-out'), brk:v('e-brk'), site:v('e-site'), outSite:v('e-outSite'), reason:v('e-reason'), memo:v('e-memo') };
       S.edit.form = form; S.edit.saving = true; S.edit.err = ''; render();
       try {
         const r = await api('saveDay', form);
