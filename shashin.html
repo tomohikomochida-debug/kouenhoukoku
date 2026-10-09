@@ -3205,7 +3205,9 @@ $('#rpPdf').onclick=async()=>{
     await shareFile(new File([pdf.output('blob')],name,{type:'application/pdf'}));
   }catch(e){ prog(''); toast('PDFを作れませんでした：'+(e.message||e),4000); }
 };
-function photoFileName(p,i){ const b=p.board||{}; return [String(i+1).padStart(3,'0'),cleanName(b.koshu)||'写真',cleanName(b.kikaku),cleanName(b.sokuten),cleanName(p.stage)].filter(Boolean).join('_')+'.jpg'; }
+/* ファイル名の工種：木の剪定などは略す（工事写真リネームと同じ決まり）。基本剪定（落葉木）→基落、軽剪定（着葉木）→軽着。木以外はそのまま */
+function koshuAbbr(k){ const s=String(k||'').trim().split(/[　\s]+/)[0]; const m=s.match(/^(.+?)[（(]([^）)]*木)[）)]$/); return m?m[1].charAt(0)+m[2].charAt(0):s; }
+function photoFileName(p,i){ const b=p.board||{}, ko=cleanName(b.koshu), kk=cleanName(b.kikaku); return [String(i+1).padStart(3,'0'),cleanName(koshuAbbr(b.koshu))||'写真',(kk&&!ko.includes(kk.replace(/^C=/,'')))?kk:'',cleanName(b.sokuten),cleanName(p.stage)].filter(Boolean).join('_')+'.jpg'; }
 $('#rpZipGo').onclick=async()=>{
   const ts=reportTargets(); if(!ts.length){ toast('写真がありません'); return; }
   try{
@@ -3593,10 +3595,11 @@ async function composeAndSave(c,ctx,imported,opt={}){
   const tc=document.createElement('canvas'), ts=360/Math.max(c.width,c.height);
   tc.width=Math.round(c.width*ts); tc.height=Math.round(c.height*ts); tc.getContext('2d').drawImage(c,0,0,tc.width,tc.height);
   const base=opt.base||null, now=base&&base.takenAt?new Date(base.takenAt):new Date();
-  const stamp=`${now.getFullYear()}${pad2(now.getMonth()+1)}${pad2(now.getDate())}-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`;
+  const day=`${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`;   // ファイル名：撮影日_工種_規格_測点_状況（同じ名前は共通GASで _2,_3 を付ける）
   const stage = opt.stage ?? (curStage||b.stage||'');
-  const clean=s=>String(s||'').replace(/[\\/:*?"<>|\s]+/g,'').slice(0,20);
-  const fileName=[stamp,clean(b.koshu)||'写真',clean(b.sokuten),clean(stage),clean(me())].filter(Boolean).join('_')+(opt.replaces?'_'+uid().slice(0,4):'')+'.jpg';
+  const clean=s=>String(s||'').replace(/[\\/:*?"<>|\s]+/g,'').slice(0,30);
+  const ko=clean(koshuAbbr(b.koshu))||'写真', kk=clean(b.kikaku);
+  const fileName=[day,ko,(kk&&!clean(b.koshu).includes(kk.replace(/^C=/,'')))?kk:'',clean(b.sokuten),clean(stage)].filter(Boolean).join('_')+'.jpg';   // 撮影日_工種_規格_測点_状況
   const geoFresh = lastGeo && (Date.now()-lastGeo.t<60000) && !imported;
   const geo = base ? { lat:base.lat??null, lng:base.lng??null, acc:base.acc??null, heading:base.heading??null }
                    : { lat:geoFresh?lastGeo.lat:null, lng:geoFresh?lastGeo.lng:null, acc:geoFresh?lastGeo.acc:null, heading:imported?null:heading };

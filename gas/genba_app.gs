@@ -1366,6 +1366,14 @@ function shashinRoot_() {
   PropertiesService.getScriptProperties().setProperty('SHASHIN_FOLDER_ID', folder.getId());
   return folder;
 }
+/* 同じ現場に同じ名前の写真があれば、_2, _3 … を付ける（撮影日_工種_規格_測点_状況 は同じ日に2枚撮ると重なるため。SharePointで上書きされないように） */
+function shashinUniqueName_(siteId, name) {
+  var used = {}; rows_('shashinPhotos').forEach(function (r) { if (String(r.siteId) === String(siteId)) used[String(r.fileName)] = true; });
+  if (!used[name]) return name;
+  var m = name.match(/^(.*?)(\.[^.]+)?$/), base = m[1], ext = m[2] || '';
+  for (var i = 2; i < 1000; i++) { var n = base + '_' + i + ext; if (!used[n]) return n; }
+  return base + '_' + Date.now() + ext;
+}
 function shashinClean_(s) { return String(s || '').replace(/[\\\/:*?"<>|]/g, '').trim(); }
 function shashinFolder_(site) {
   var top = subFolder_(shashinRoot_(), shashinClean_(site.contract) || shashinClean_(site.kind) || 'その他');
@@ -1673,7 +1681,7 @@ function shashinUpload_(b) {
   var lock = LockService.getScriptLock(), folder;
   lock.waitLock(25000);
   try { folder = shashinFolder_(site); } finally { lock.releaseLock(); }
-  var bd = ph.board || {}, name = shashinClean_(ph.fileName) || (ph.photoId + '.jpg');
+  var bd = ph.board || {}, name = shashinUniqueName_(ph.siteId, shashinClean_(ph.fileName) || (ph.photoId + '.jpg'));
   var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), 'image/jpeg', name));
   var desc = [bd.koshu, bd.sokuten, bd.jushu, bd.kikaku, bd.stage, bd.biko].filter(function (x) { return x; }).join(' ／ ');
   if (desc) { try { file.setDescription(desc); } catch (e) {} }
