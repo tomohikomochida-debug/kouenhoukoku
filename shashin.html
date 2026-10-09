@@ -384,6 +384,7 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
 .batchBar .bbH{width:100%;font-size:12px;color:var(--sub)}
 .batchBar button{flex:1;min-width:0;padding:10px 6px;border-radius:12px;background:var(--main);color:#fff;font-weight:700;font-size:14px;line-height:1.3}
 .batchBar button small{display:block;font-size:11px;font-weight:400;opacity:.9}
+.fySel{flex:none;width:auto;padding:6px 8px;border-radius:10px;font-size:13px;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--main);margin-right:4px}
 .batchBar .bbH a{color:var(--main);font-weight:700;white-space:nowrap}
 .batchNote{background:#fff7e6;border:1px solid #f5c26b;color:#7a4a00;border-radius:10px;padding:9px 12px;margin:0 0 10px;font-size:13px}
 .batchNote a{color:#b25e00;font-weight:700}
@@ -523,8 +524,10 @@ body.selOn #photos .scroll{padding-bottom:calc(var(--safe-b) + 290px)}
     <div class="card">
       <div class="t" style="font-size:16px">写真をまとめて渡す（ZIP）</div>
       <div class="s">ファイル名は「番号_工種_規格_測点_状況.jpg」になります</div>
-      <div class="field" style="margin-top:10px"><label>写真</label><div class="quick" id="rpImg"></div></div>
+      <div class="field" style="margin-top:10px"><label>撮影日（この年度の中で）</label><div class="quick" id="rpDay"></div></div>
+      <div class="field"><label>写真</label><div class="quick" id="rpImg"></div></div>
       <div class="field"><label>フォルダ</label><div class="quick" id="rpZip"></div></div>
+      <div class="s" id="rpZipName" style="margin:4px 0"></div>
       <button class="btn" id="rpZipGo">写真をまとめる</button>
     </div>
     <div class="progress" id="rpProg"></div>
@@ -1298,7 +1301,7 @@ $('#btnDrive').onclick=()=>{
   if(!cur) return;
   if(!canSync()){ toast('電波がありません'); return; }
   const w=window.open('about:blank','_blank');   // iPhoneは押した直後に開かないと止められるので、先に開いておく
-  gasGet({action:'folder',siteId:cur.id}).then(j=>{
+  gasGet({action:'folder',siteId:cur.id,fy:cur.fy||fyOf()}).then(j=>{
     if(j.ok){ if(w) w.location.href=j.url; else location.href=j.url; }
     else { if(w) w.close(); toast(j.error||'開けませんでした',3000); }
   }).catch(()=>{ if(w) w.close(); toast('開けませんでした',3000); });
@@ -2852,7 +2855,11 @@ async function gasGetApp(app,params){
    ========================================================= */
 /* 写真がどの対象を撮ったものか：撮影項目があればその項目、無ければ黒板の 工種＋規格＋測点 */
 function targetKeyOf(p){ return p.itemId ? 'I|'+p.itemId : 'B|'+[p.board?.koshu||p.koshu||'', p.board?.kikaku||p.kikaku||'', p.board?.sokuten||p.sokuten||''].join('|'); }
-function allPhotosAll(){   // この端末の写真＋みんなの写真（送信済みは重ならないように）。削除・差し替え済みも入る
+/* 年度ごと：開いている年度（cur.fy）に撮った写真だけを使う。ほかの年度は一覧の上で切り替え */
+function photoFy(p){ return p.takenAt?fyOf(new Date(p.takenAt)):fyOf(); }
+function allPhotosAll(){ if(!cur) return []; const fy=cur.fy||fyOf(); return allPhotosAnyYear().filter(p=>photoFy(p)===fy); }
+function photoYears(){ const y=new Set(allPhotosAnyYear().map(photoFy)); y.add(fyOf()); if(cur&&cur.fy) y.add(cur.fy); return [...y].sort((a,b)=>b-a); }
+function allPhotosAnyYear(){   // この端末の写真＋みんなの写真（送信済みは重ならないように）。削除・差し替え済みも入る
   if(!cur) return [];
   const mine=photosCache.filter(p=>p.siteId===cur.id).map(p=>({ id:p.id, itemId:p.itemId, stage:p.stage, board:p.board, takenAt:p.takenAt, thumb:p.thumb, by:p.staff, local:true, excluded:!!p.excluded, fileId:p.fileId||'', state:p.state||'', replaces:p.replaces||'', lat:p.lat, lng:p.lng, acc:p.acc, heading:p.heading, rawFileId:p.rawFileId||'', hasRaw:!!p.raw }));
   const ids=new Set(mine.map(p=>p.id));
@@ -2929,8 +2936,11 @@ function renderCheck(){
 let photoView=LS.get('shashin_view','card');   // card＝1対象1枚のカード、list＝1枚ずつ写真と黒板の中身
 let photoSort=LS.get('shashin_sort','recent'); if(photoSort==='time') photoSort='recent';
 function drawSortBar(){
-  $('#sortBar').innerHTML=[['recent','撮った順'],['target','工種・測点'],['todo','撮り残し']].map(([k,l])=>`<button data-s="${k}" class="${photoSort===k?'on':''}">${l}</button>`).join('')
+  const ys=photoYears(), fy=cur.fy||fyOf();
+  $('#sortBar').innerHTML=(ys.length>1||fy!==fyOf()?`<select id="fySel" class="fySel">${ys.map(y=>`<option value="${y}" ${y===fy?'selected':''}>${y}年度${y===fyOf()?'（今年度）':''}</option>`).join('')}</select>`:'')
+    +[['recent','撮った順'],['target','工種・測点'],['todo','撮り残し']].map(([k,l])=>`<button data-s="${k}" class="${photoSort===k?'on':''}">${l}</button>`).join('')
     +`<button class="vw" id="viewTgl" title="${photoView==='list'?'カードで見る':'リストで見る'}">${photoView==='list'?'▦':'☰'}</button>`;
+  const fs=$('#fySel'); if(fs) fs.onchange=()=>{ const y=Number(fs.value), s=siteOf(cur.id); if(!s) return; openAlbum(cur.id, s.contract?infoKey(s,y):cur.infoKey, {camera:false}); cur.fy=y; renderPhotos(); updateCheckBadge(); toast(`${y}年度の写真を表示しています`,1800); };
   $('#sortBar').querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{ photoSort=b.dataset.s; LS.set('shashin_sort',photoSort); renderPhotos(); });
   $('#viewTgl').onclick=()=>{ photoView=photoView==='list'?'card':'list'; LS.set('shashin_view',photoView); renderPhotos(); setTimeout(scrollToSel,30); };
 }
@@ -2953,6 +2963,9 @@ function drawReportUI(){
   chip('#rpParts',[['cover','表紙'],['check','撮影チェック表'],...(parkRecOf(cur.id)?[['posmap','撮影位置図']]:[]),['lines','所見を書く罫線']],v=>RP[v],v=>{ RP[v]=!RP[v]; if(v==='posmap'){ const on=RP.posmap; setCaseOpt(o=>{ o.posmap=on; }); } });
   chip('#rpZip',ZIPS,v=>RP.zip===v,v=>RP.zip=v);
   chip('#rpImg',[['on','黒板あり'],['off','黒板なし'],['both','両方（フォルダを分ける）']],v=>(RP.img||'on')===v,v=>RP.img=v);
+  const dl=zipDays(); if(RP.day&&!dl.some(d=>d.day===RP.day)) RP.day='';
+  chip('#rpDay',[['',`すべて（${dl.length}日分）`],...dl.map(d=>[d.day,`${Number(d.day.slice(5,7))}/${Number(d.day.slice(8))}（${d.n}枚）`])],v=>(RP.day||'')===v,v=>RP.day=v);
+  const zd=$('#rpZipName'); if(zd) zd.textContent=`まとめる名前：${zipBase()}`;
   drawCoverUI();
   const ts=reportTargets();
   $('#rpOrder').innerHTML=ts.map((t,i)=>`<div class="tordRow"><span style="width:22px;color:var(--sub)">${i+1}</span><div class="nm">${esc(t.label)}<small>${esc(t.sub)} ・ ${t.ph.length}枚</small></div><button data-up="${i}">↑</button><button data-dn="${i}">↓</button></div>`).join('')||'<div class="s">写真がまだありません</div>';
@@ -3208,8 +3221,13 @@ $('#rpPdf').onclick=async()=>{
 /* ファイル名の工種：木の剪定などは略す（工事写真リネームと同じ決まり）。基本剪定（落葉木）→基落、軽剪定（着葉木）→軽着。木以外はそのまま */
 function koshuAbbr(k){ const s=String(k||'').trim().split(/[　\s]+/)[0]; const m=s.match(/^(.+?)[（(]([^）)]*木)[）)]$/); return m?m[1].charAt(0)+m[2].charAt(0):s; }
 function photoFileName(p,i){ const b=p.board||{}, ko=cleanName(b.koshu), kk=cleanName(b.kikaku); return [String(i+1).padStart(3,'0'),cleanName(koshuAbbr(b.koshu))||'写真',(kk&&!ko.includes(kk.replace(/^C=/,'')))?kk:'',cleanName(b.sokuten),cleanName(p.stage)].filter(Boolean).join('_')+'.jpg'; }
+/* まとめて渡す：撮影日（日ごと）と、まとめたフォルダの名前「作業日_公園名」（すべてのときは最後の撮影日＝作業完了日） */
+const dayOf=t=>{ const d=new Date(t); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; };
+function zipDays(){ const m={}; reportTargets().forEach(t=>t.ph.forEach(p=>{ const d=dayOf(p.takenAt); m[d]=(m[d]||0)+1; })); return Object.keys(m).sort().map(day=>({day,n:m[day]})); }
+function zipBase(){ const dl=zipDays(), day=RP.day||(dl.length?dl[dl.length-1].day:dayOf(Date.now())); return `${day}_${cleanName(cur.name)}`; }
 $('#rpZipGo').onclick=async()=>{
-  const ts=reportTargets(); if(!ts.length){ toast('写真がありません'); return; }
+  const ts=reportTargets().map(t=>({...t,ph:RP.day?t.ph.filter(p=>dayOf(p.takenAt)===RP.day):t.ph})).filter(t=>t.ph.length); if(!ts.length){ toast('写真がありません'); return; }
+  const base=zipBase();
   try{
     prog('準備しています…');
     await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
@@ -3217,15 +3235,15 @@ $('#rpZipGo').onclick=async()=>{
     for(const t of ts){ for(const p of t.ph){
       prog(`写真をまとめています… ${i+1} / ${total}`);
       const b=p.board||{}, dir = RP.zip==='koshu' ? cleanName(b.koshu||'工種なし')+'/' : RP.zip==='koshu_no' ? cleanName(b.koshu||'工種なし')+'/'+(cleanName(b.sokuten)||'測点なし')+'/' : '';
-      const top = mode==='both' ? ['黒板あり/','黒板なし/'] : [''];
+      const top = mode==='both' ? [base+'/黒板あり/',base+'/黒板なし/'] : [base+'/'];
       if(mode!=='off'){ try{ zip.file(top[0]+dir+photoFileName(p,i), await photoBlob(p)); }catch(e){} }
-      if(mode!=='on'){ try{ zip.file((mode==='both'?top[1]:'')+dir+photoFileName(p,i), await rawBlob(p)); }catch(e){ noRaw++; } }
+      if(mode!=='on'){ try{ zip.file((mode==='both'?top[1]:top[0])+dir+photoFileName(p,i), await rawBlob(p)); }catch(e){ noRaw++; } }
       i++; } }
     if(noRaw) toast(`黒板なしの写真が無いものが ${noRaw}枚ありました（この機能より前に撮った写真・ほかの端末でまだ送っていない写真）`,5000);
     prog('ファイルにしています…');
     const blob=await zip.generateAsync({type:'blob'});
     prog('できました。保存先・送り先を選んでください');
-    await shareFile(new File([blob],`写真_${cleanName(cur.name)}${(RP.img||'on')==='off'?'_黒板なし':(RP.img==='both'?'_黒板あり・なし':'')}.zip`,{type:'application/zip'}));
+    await shareFile(new File([blob],`${base}${(RP.img||'on')==='off'?'_黒板なし':(RP.img==='both'?'_黒板あり・なし':'')}.zip`,{type:'application/zip'}));
   }catch(e){ prog(''); toast('まとめられませんでした：'+(e.message||e),4000); }
 };
 

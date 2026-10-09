@@ -1375,8 +1375,11 @@ function shashinUniqueName_(siteId, name) {
   return base + '_' + Date.now() + ext;
 }
 function shashinClean_(s) { return String(s || '').replace(/[\\\/:*?"<>|]/g, '').trim(); }
-function shashinFolder_(site) {
-  var top = subFolder_(shashinRoot_(), shashinClean_(site.contract) || shashinClean_(site.kind) || 'その他');
+/* 年度（4月〜翌3月）。撮影日から決める */
+function shashinFy_(when) { var d = when ? new Date(String(when).replace(' ', 'T')) : new Date(); if (isNaN(d.getTime())) d = new Date(); return d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1; }
+/* 保存先：工事写真 ＞ 2026年度 ＞ 委託名 ＞ 現場名（when＝撮影日。年度ごとに分ける） */
+function shashinFolder_(site, when) {
+  var top = subFolder_(subFolder_(shashinRoot_(), shashinFy_(when) + '年度'), shashinClean_(site.contract) || shashinClean_(site.kind) || 'その他');
   return subFolder_(top, shashinClean_(site.name) || '現場名なし');
 }
 function shashinSite_(siteId) {
@@ -1402,9 +1405,10 @@ function shashinParkShots_(p) {
   // 木・範囲の目印（parkFid）ごとに撮った状況。記録を保存し直して別の記録になっても、同じ現場・同じ目印ならつながる（撮る人と図面を作る人がちがっても同じ）
   var its = allItems.filter(function (r) { return r.parkFid && (siteId ? String(r.siteId) === siteId : String(r.parkRec) === rec); });
   var byItem = {}; its.forEach(function (r) { byItem[r.itemId] = r; });
-  var shots = {}, free = {}, meas = {};
+  var shots = {}, free = {}, meas = {}, fyNow = shashinFy_(null);
   rows_('shashinPhotos').forEach(function (r) {
     if (r.state) return;
+    if (r.takenAt && shashinFy_(r.takenAt) !== fyNow) return;   // 年度ごと：今の年度に撮った写真だけ
     var it0 = byItem[r.itemId], c = it0 ? shashinMeasC_(r) : null;   // 黒板に書いた実際の幹周（範囲ではなく1つの数字）
     if (c && (!meas[it0.parkFid] || String(r.takenAt) > String(meas[it0.parkFid].at))) meas[it0.parkFid] = { C: c, at: String(r.takenAt || ''), by: r.by || '' };
     if (!r.stage) return;
@@ -1499,7 +1503,7 @@ function shashinGet_(a, p) {
     var s = shashinSite_(p.siteId);
     if (!s) return { ok: false, error: 'この現場は現場マスタにありません' };
     var l = LockService.getScriptLock(); l.waitLock(25000);
-    try { return { ok: true, url: shashinFolder_(s).getUrl() }; } finally { l.releaseLock(); }
+    try { return { ok: true, url: shashinFolder_(s, p.fy ? (Number(p.fy) + '-10-01') : null).getUrl() }; } finally { l.releaseLock(); }
   }
   return { ok: false, error: 'unknown action' };
 }
@@ -1632,7 +1636,7 @@ function shashinUploadRaw_(b) {
   if (row.rawFileId) return { ok: true, fileId: row.rawFileId, dup: true };
   var site = shashinSite_(row.siteId) || { kind: '', contract: row.contract, name: row.site };
   var lock = LockService.getScriptLock(), folder; lock.waitLock(25000);
-  try { folder = subFolder_(shashinFolder_(site), '黒板なし'); } finally { lock.releaseLock(); }
+  try { folder = subFolder_(shashinFolder_(site, row.takenAt), '黒板なし'); } finally { lock.releaseLock(); }
   var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), 'image/jpeg', shashinClean_(row.fileName) || (b.photoId + '.jpg')));
   lock.waitLock(25000);
   try { upsert_('shashinPhotos', 'photoId', 'F', { photoId: String(b.photoId), rawFileId: file.getId() }, b.by); } finally { lock.releaseLock(); }
@@ -1680,7 +1684,7 @@ function shashinUpload_(b) {
   var site = shashinSite_(ph.siteId) || { kind: ph.kind, contract: ph.contract, name: ph.site };
   var lock = LockService.getScriptLock(), folder;
   lock.waitLock(25000);
-  try { folder = shashinFolder_(site); } finally { lock.releaseLock(); }
+  try { folder = shashinFolder_(site, ph.takenAt); } finally { lock.releaseLock(); }
   var bd = ph.board || {}, name = shashinUniqueName_(ph.siteId, shashinClean_(ph.fileName) || (ph.photoId + '.jpg'));
   var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), 'image/jpeg', name));
   var desc = [bd.koshu, bd.sokuten, bd.jushu, bd.kikaku, bd.stage, bd.biko].filter(function (x) { return x; }).join(' ／ ');
@@ -1831,7 +1835,7 @@ function msPut_(folderId, name, blob) {
 }
 function msPartsOf_(r, kind) {
   var site = shashinSite_(r.siteId) || { kind: '', contract: r.contract, name: r.site };
-  return ['工事写真', shashinClean_(site.contract) || shashinClean_(site.kind) || 'その他', shashinClean_(site.name) || '現場名なし', kind === 'raw' ? '黒板なし' : '黒板あり'];
+  return ['工事写真', shashinFy_(r.takenAt) + '年度', shashinClean_(site.contract) || shashinClean_(site.kind) || 'その他', shashinClean_(site.name) || '現場名なし', kind === 'raw' ? '黒板なし' : '黒板あり'];
 }
 /* 1枚分（黒板あり・黒板なし）を送る。送れたら記録に msId / msRawId */
 function msCopyRow_(r) {
