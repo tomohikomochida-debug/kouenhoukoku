@@ -88,4 +88,5 @@ function backupAt_() { try { var f = backupFile_(false); return f ? Utilities.fo
 function permissions_() {
   SpreadsheetApp.openById(''); SpreadsheetApp.create(''); DriveApp.getFilesByName(''); DriveApp.createFolder('');
   CalendarApp.getAllCalendars(); UrlFetchApp.fetch(''); LockService.getScriptLock(); DriveApp.getFileById('');
+  MailApp.sendEmail('', '', ''); Maps.newGeocoder();   // 事故報告：親方へのメールのお知らせ・場所の住所
 }

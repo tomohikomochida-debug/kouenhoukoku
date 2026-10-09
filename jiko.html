@@ -1,0 +1,1567 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="事故報告">
+<meta name="theme-color" content="#214A37">
+<title>事故報告｜庭乃持田園</title>
+<style>
+:root{
+  --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7; --ok:#2E7D55;
+  --tape:#C77C30; --bark:#5B5750; --ink:#22231F; --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F; --danger-soft:#FBE3DE;
+  --radius:10px; --shadow:0 1px 0 rgba(34,35,31,.04), 0 8px 24px -16px rgba(34,35,31,.25);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif;-webkit-text-size-adjust:100%;line-height:1.6}
+header{background:var(--leaf);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:20;padding-top:calc(12px + env(safe-area-inset-top))}
+header .row{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;flex:1;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header .me{font-size:13px;background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:999px;padding:5px 12px;font-family:inherit;cursor:pointer}
+header .gear{font-size:18px;background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:999px;width:34px;height:34px;cursor:pointer}
+.home-btn{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;color:#fff;text-decoration:none;font-family:inherit;font-size:13px;font-weight:700;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.32);border-radius:999px;padding:5px 11px 5px 9px;white-space:nowrap;line-height:1.2;cursor:pointer}
+.home-btn .hb-ic{font-size:15px;line-height:1}
+@media (max-width:400px){ .home-btn{padding:5px 8px} .home-btn .hb-t{display:none} }
+.netbar{background:var(--tape);color:#fff;font-size:12.5px;text-align:center;padding:5px 12px}
+.error-banner{display:none;background:var(--danger);color:#fff;padding:10px 16px;font-size:13px}
+main{max-width:680px;margin:0 auto;padding:14px 16px calc(100px + env(safe-area-inset-bottom))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+.card.warn{border-left:6px solid var(--danger)}
+h2{font-size:15.5px;margin:2px 0 10px;color:var(--leaf)}
+h3{font-size:14px;margin:14px 0 6px;color:var(--bark)}
+.hint{font-size:12.5px;color:var(--bark);margin:4px 0 0}
+label.lbl{display:block;font-size:13px;font-weight:700;color:var(--bark);margin:12px 0 6px}
+label.lbl:first-child{margin-top:0}
+label.lbl .req{color:var(--danger);font-size:11.5px;margin-left:4px}
+input[type=text],input[type=tel],input[type=email],input[type=search],input[type=date],input[type=time],input[type=number],input[type=password],textarea,select{width:100%;font:inherit;font-size:16px;padding:10px 12px;
+  border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink)}
+textarea{min-height:90px;resize:vertical}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--leaf);outline-offset:1px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-size:15px;font-weight:700;
+  border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:10px 16px;min-height:46px;cursor:pointer;text-decoration:none}
+.btn.primary{background:var(--leaf);color:#fff;border-color:var(--leaf)}
+.btn.danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+.btn.line-danger{color:var(--danger);border-color:var(--danger)}
+.btn.tape{background:var(--tape);color:#fff;border-color:var(--tape)}
+.btn.block{width:100%}
+.btn.sm{min-height:36px;padding:6px 12px;font-size:13.5px}
+.btn:disabled{opacity:.45;cursor:default}
+.row2{display:flex;gap:8px}
+.row2>*{flex:1;min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--field);border-radius:999px;padding:8px 14px;font-size:14.5px;cursor:pointer;color:var(--ink);font-family:inherit;line-height:1.3}
+.chip.on{background:var(--leaf);border-color:var(--leaf);color:#fff;font-weight:700}
+.chip.big{padding:12px 16px;font-size:15.5px;flex:1;min-width:130px;border-radius:12px;text-align:center}
+.chip small{display:block;font-size:11.5px;font-weight:400;opacity:.85}
+.q{border-top:1px dashed var(--line);padding-top:12px;margin-top:12px}
+.q:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.q .qt{font-weight:700;font-size:14.5px;margin-bottom:8px}
+.q .qt .no{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--tape);color:#fff;font-size:12.5px;align-items:center;justify-content:center;margin-right:6px}
+.note{background:#FFF8E6;border:1px solid #F0DDB0;border-left:6px solid #D9A21B;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:13.5px}
+.note.red{background:var(--danger-soft);border-color:#EDC2B7;border-left-color:var(--danger)}
+.note.green{background:#EEF4EF;border-color:#CFE0D3;border-left-color:var(--ok)}
+.note b{display:block;margin-bottom:2px}
+.tag{display:inline-block;font-size:11.5px;border-radius:6px;padding:1px 7px;margin:0 4px 2px 0;background:#EEE;color:var(--bark);vertical-align:1px;white-space:nowrap}
+.tag.car{background:#E3ECF7;color:#2B5287}.tag.work{background:#EEF4EF;color:var(--leaf)}
+.tag.red{background:var(--danger-soft);color:var(--danger);font-weight:700}
+.tag.stage{background:var(--leaf-soft);color:var(--leaf);font-weight:700}
+.tag.done{background:#EEE;color:#777}
+.tag.wait{background:#FFF1D6;color:#8A5A00;font-weight:700}
+.sos{display:block;width:100%;border:0;border-radius:16px;background:var(--danger);color:#fff;font:inherit;font-size:21px;font-weight:800;padding:22px 16px;cursor:pointer;box-shadow:0 10px 24px -12px rgba(176,83,63,.8);letter-spacing:.05em}
+.sos small{display:block;font-size:13px;font-weight:500;opacity:.9;letter-spacing:0;margin-top:2px}
+.item{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-bottom:8px;cursor:pointer;box-shadow:var(--shadow)}
+.item .t{font-weight:700;font-size:15px}
+.item .s{font-size:12.5px;color:var(--bark)}
+.item.stale{border-left:5px solid #D9A21B}
+.item.draft{border-left:5px solid var(--tape)}
+.empty{color:var(--bark);text-align:center;padding:20px 10px;font-size:14px}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);z-index:30;padding-bottom:env(safe-area-inset-bottom)}
+nav.tabs .in{max-width:680px;margin:0 auto;display:flex}
+nav.tabs button{flex:1;border:0;background:none;font:inherit;font-size:11.5px;color:var(--bark);padding:8px 0 7px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;position:relative}
+nav.tabs button .ic{font-size:21px;line-height:1.1}
+nav.tabs button.on{color:var(--leaf);font-weight:700}
+nav.tabs .badge{position:absolute;top:3px;left:calc(50% + 8px);background:var(--danger);color:#fff;font-size:10.5px;border-radius:999px;padding:0 6px;min-width:18px}
+.bottombar{position:fixed;left:0;right:0;bottom:0;background:rgba(246,245,240,.97);border-top:1px solid var(--line);z-index:31;padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+.bottombar .in{max-width:680px;margin:0 auto;display:flex;gap:8px;align-items:center}
+.bottombar .st{flex:1;font-size:12px;color:var(--bark);line-height:1.35}
+.modal-bg{position:fixed;inset:0;background:rgba(34,35,31,.45);z-index:50;display:none;align-items:flex-end;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--paper);width:100%;max-width:680px;max-height:94vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.modal h3{margin:0 0 12px;font-size:17px;color:var(--leaf)}
+.toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;z-index:70;opacity:0;transition:opacity .2s;pointer-events:none;max-width:92%;text-align:center}
+.toast.show{opacity:1}
+.loading{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px}
+.btn:not(.primary):not(.danger):not(.tape) .loading{border-color:var(--line);border-top-color:var(--leaf)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
+.seg button{flex:1;border:0;background:var(--card);font:inherit;font-size:13.5px;padding:9px 4px;cursor:pointer;color:var(--bark)}
+.seg button.on{background:var(--leaf);color:#fff;font-weight:700}
+.steps{list-style:none;margin:0;padding:0}
+.steps li{display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line)}
+.steps li:first-child{border-top:0}
+.steps .ck{flex:none;width:30px;height:30px;border-radius:50%;border:2px solid var(--line);background:#fff;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:transparent}
+.steps li.done .ck{background:var(--ok);border-color:var(--ok);color:#fff}
+.steps li.done .bd>b{text-decoration:line-through;color:var(--bark)}
+.steps .bd{flex:1;min-width:0}
+.steps .bd b{font-size:15.5px}
+.steps .bd .hint{margin-top:2px}
+.steps .act{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.script{background:#fff;border:2px solid var(--leaf);border-radius:12px;padding:12px 14px;font-size:17px;font-weight:700;color:var(--leaf);margin:6px 0}
+.slots{display:grid;grid-template-columns:1fr;gap:10px}
+.slot{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--field)}
+.slot.miss{border-color:#E7B9AC;background:#FDF3F0}
+.slot .hd{display:flex;align-items:center;gap:6px}
+.slot .hd b{flex:1;font-size:14.5px}
+.slot .hd .need{font-size:11.5px;color:var(--danger);font-weight:700}
+.slot .hd .okk{font-size:12px;color:var(--ok);font-weight:700}
+.slot .hint{margin:2px 0 6px}
+.thumbs{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.th{position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;background:var(--leaf-soft);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--bark);border:1px solid var(--line);cursor:pointer;padding:0}
+.th img{width:100%;height:100%;object-fit:cover;display:block}
+.th .badge{position:absolute;left:3px;bottom:3px;font-size:10px;background:rgba(0,0,0,.6);color:#fff;border-radius:4px;padding:0 4px}
+.th .x{position:absolute;right:2px;top:2px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:13px;line-height:24px;cursor:pointer}
+.th.off{opacity:.35}
+.kv{display:grid;grid-template-columns:108px 1fr;gap:5px 10px;font-size:14px;margin:0}
+.kv dt{color:var(--bark)}
+.kv dd{margin:0;white-space:pre-wrap;word-break:break-word}
+.secline{font-size:12.5px;font-weight:700;color:#fff;background:var(--leaf);border-radius:6px;padding:3px 10px;margin:14px 0 8px;display:inline-block}
+.prog{display:flex;gap:3px;margin:6px 0 4px}
+.prog i{flex:1;height:7px;border-radius:4px;background:var(--line)}
+.prog i.on{background:var(--leaf)}
+.prog i.cur{background:var(--tape)}
+.log{border-top:1px solid var(--line);padding:8px 0;font-size:14px}
+.log .m{font-size:12px;color:var(--bark)}
+.log .x{float:right;border:0;background:none;color:var(--bark);cursor:pointer;font-size:14px}
+.checklist .ci{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:14.5px}
+.checklist .ci:first-child{border-top:0}
+.checklist .ci button{flex:none;width:28px;height:28px;border-radius:7px;border:2px solid var(--line);background:#fff;cursor:pointer;color:transparent;font-size:14px}
+.checklist .ci.done button{background:var(--ok);border-color:var(--ok);color:#fff}
+.checklist .ci span{flex:1}
+.checklist .ci small{color:var(--bark)}
+.wit{display:flex;gap:6px;margin-bottom:6px}
+.wit input{flex:1}
+.bigsum{font-size:18px;line-height:1.7}
+.bigsum dt{font-size:13px;color:var(--bark);margin-top:8px}
+.bigsum dd{margin:0;font-weight:700}
+.sketch-wrap{background:#fff;border:1px solid var(--line);border-radius:10px;touch-action:none;overflow:hidden}
+.sketch-wrap canvas{display:block;width:100%;height:auto;touch-action:none}
+.tools{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.dot{width:34px;height:34px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer}
+.dot.on{box-shadow:0 0 0 3px var(--tape)}
+.bars{display:flex;align-items:flex-end;gap:6px;height:90px;margin:16px 0 4px}
+.bars div{flex:1;background:var(--leaf-soft);border-radius:4px 4px 0 0;position:relative;min-height:2px}
+.bars div span{position:absolute;top:-17px;left:0;right:0;text-align:center;font-size:11px;color:var(--bark)}
+.barx{display:flex;gap:6px;font-size:11px;color:var(--bark)}
+.barx span{flex:1;text-align:center}
+.hy{border-top:1px solid var(--line);padding:10px 0}
+.hy:first-child{border-top:0}
+.hy .t{font-size:14.5px;white-space:pre-wrap}
+.hy .m{font-size:12px;color:var(--bark)}
+.hy .cm{background:#EEF4EF;border-radius:8px;padding:6px 10px;font-size:13.5px;margin-top:6px}
+.pend{font-size:12.5px;background:#FFF1D6;color:#8A5A00;border-radius:8px;padding:6px 10px;margin-bottom:10px}
+.pdfprev{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.pdfprev canvas{width:100%;height:auto;border:1px solid var(--line);background:#fff;box-shadow:var(--shadow)}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="error-banner" id="errBanner"></div>
+<header><div class="row">
+  <a class="home-btn" id="homeBtn" href="index.html" title="アプリ一覧にもどる"><span class="hb-ic">🏠</span><span class="hb-t">ホーム</span></a>
+  <h1 id="title">🚨 事故報告</h1>
+  <button class="gear" id="gearBtn" type="button" title="設定" hidden>⚙</button>
+  <button class="me" id="meBtn" type="button" hidden></button>
+</div></header>
+<div class="netbar" id="netbar" hidden>電波がありません。入力はこの端末に保存され、電波が戻ったら送ります</div>
+<main id="main"><div class="empty"><span class="loading" style="border-top-color:var(--leaf)"></span> 読み込んでいます…</div></main>
+<nav class="tabs" id="tabs" hidden><div class="in">
+  <button type="button" data-tab="home" class="on"><span class="ic">🚨</span>事故報告</button>
+  <button type="button" data-tab="hiyari"><span class="ic">⚠️</span>ヒヤリハット</button>
+  <button type="button" data-tab="list"><span class="ic">📊</span>一覧・進捗<span class="badge" id="listBadge" hidden></span></button>
+</div></nav>
+<div class="bottombar" id="bottombar" hidden><div class="in" id="bottomIn"></div></div>
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
+<input type="file" id="fileLib" accept="image/*" multiple hidden>
+
+<script>
+/* =========================================================
+   事故報告（jiko.html）
+   ・本人確認はタイムカードと同じログイン（名前＋4桁の暗証番号）。役割（親方・事務担当・スタッフ）もタイムカードのまま
+   ・入力はこの端末に自動で保存（電波がなくても書ける）→「送る」で送信。電波がないときは戻ったら自動で送る
+   ・サーバー：現場アプリGAS（app=jiko）。データは「事故報告データ（社外秘）」スプレッドシートと「社内アプリ ＞ 事故報告」フォルダ
+   ========================================================= */
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
+const COMPANY_DEFAULT = { name: '庭乃持田園有限会社', address: '神奈川県川崎市高津区向ケ丘94-2', phone: '' };
+
+/* ---------------- 選択肢 ---------------- */
+const PURPOSES = ['現場へ移動', '処分場へ搬出', '資材の仕入れ', '帰社', 'その他'];
+const LOAD_KINDS = ['剪定枝', '伐採材', '刈草', '土砂', '資材', '機械'];
+const CAR_SCENES = ['交差点', '駐車場・敷地内', 'バック中', '追突した', '追突された', '車線変更', '狭い道ですれ違い', '右左折', 'その他'];
+const PLACE_TYPES = ['公道', '私有地（処分場・駐車場の中など）', '現場の中'];
+const WEATHERS = ['晴れ', 'くもり', '雨', '雪', '強風'];
+const ROADS = ['乾いている', 'ぬれている', '凍結', '未舗装'];
+const TASKS = ['剪定', '伐採', '草刈り', '刈込', '植栽', '運搬・積込', '清掃', 'その他'];
+const MACHINES = ['チェーンソー', '刈払機', 'ブロワー', 'ヘッジトリマー', '高所作業車', 'ユンボ', 'ユニック', 'はしご・脚立', '手道具だけ'];
+const SAFETY = ['カラーコーン', '誘導員', '飛散防止ネット', '声かけ・合図', '立入禁止の表示', '特になし'];
+const OWNER_TYPES = ['市・道路管理者', '電力会社', '電話会社', 'お客さん（現場）', '近所の家・会社', 'その他'];
+const ROUSAI_TYPES = ['切り傷', '転落・転倒', '飛来・落下物', '挟まれ', '蜂刺され', '熱中症', '腰痛', '打撲・骨折', 'その他'];
+const HY_ACT = ['剪定', '伐採', '草刈り', '刈込', '運搬・積込', '運転', '高所作業', 'その他'];
+const HY_KINDS = ['転落・転倒', '飛来・落下', '切れ・こすれ', '挟まれ', '車両・接触', '飛び石', '蜂・虫・動物', '熱中症', '電線・感電', 'その他'];
+const STAGES_DEF = ['報告受付', '保険会社へ第一報', '詳細の確認・清書', '詳細報告書を提出', '相手へ連絡済', '対応中', '示談交渉中', '解決', '完了'];
+const ROUSAI_STAGES = ['受診', '書類提出', '休業補償の申請', '職場復帰'];
+const LICENSES = [['普通', 1], ['準中型（5t限定）', 2], ['準中型', 3], ['中型（8t限定）', 4], ['中型', 5], ['大型', 6]];
+const licRank = n => (LICENSES.find(l => l[0] === n) || [0, 0])[1];
+const SLOT_JA = { scene: '全景', own_far: '自社の損傷（引き）', own_near: '自社の損傷（寄り）', their_far: '相手側（引き）', their_near: '相手側（寄り）', detail: '損傷の詳細', plate: '相手のナンバー',
+  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', hiyari: 'ヒヤリハット' };
+
+/* ---------------- 小道具 ---------------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const nowTime = () => { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const nowStr = () => today() + ' ' + nowTime();
+const jaDate = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (+m[1]) + '年' + (+m[2]) + '月' + (+m[3]) + '日' : (s || ''); };
+const mdDate = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (+m[2]) + '/' + (+m[3]) : (s || ''); };
+const daysSince = s => { const t = Date.parse(String(s || '').replace(' ', 'T')); return isNaN(t) ? 0 : Math.floor((Date.now() - t) / 86400000); };
+const rid = () => Math.random().toString(36).slice(2, 6);
+const newId = p => { const d = new Date(); return p + '-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '-' + rid(); };
+const getP = (o, p) => p.split('.').reduce((a, k) => a == null ? undefined : a[k], o);
+const setP = (o, p, v) => { const ks = p.split('.'); let a = o; for (let i = 0; i < ks.length - 1; i++) { if (a[ks[i]] == null || typeof a[ks[i]] !== 'object') a[ks[i]] = {}; a = a[ks[i]]; } a[ks[ks.length - 1]] = v; };
+const clone = o => JSON.parse(JSON.stringify(o || {}));
+const lsGet = (k, d = null) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
+const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+function toast(t, ms = 2400) { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), ms); }
+function showErr(t) { const b = $('#errBanner'); if (!t) { b.style.display = 'none'; return; } b.textContent = '⚠ ' + t; b.style.display = 'block'; clearTimeout(showErr.t); showErr.t = setTimeout(() => b.style.display = 'none', 9000); }
+window.addEventListener('error', e => showErr('画面でエラーが起きました：' + (e.message || '')));
+window.addEventListener('unhandledrejection', e => showErr('エラー：' + ((e.reason && e.reason.message) || e.reason || '')));
+function fetchT(url, opt, ms = 30000) { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms); return fetch(url, Object.assign({}, opt, { signal: ac.signal })).finally(() => clearTimeout(t)); }
+async function post(body, ms) {
+  let r; try { r = await fetchT(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }, ms); }
+  catch (e) { throw new Error(e.name === 'AbortError' ? '時間がかかりすぎました。電波の良い所でもう一度' : '送れませんでした（電波を確かめてください）'); }
+  return r.json();
+}
+async function api(mode, body = {}, ms = 45000) {
+  const j = await post(Object.assign({ app: 'jiko', mode, token: S.token }, body), ms);
+  if (!j.ok && j.code === 'auth') { lsSet('tc_token', null); S.token = ''; renderLogin(j.error); throw new Error(j.error || 'ログインし直してください'); }
+  return j;
+}
+const blobToB64 = b => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = () => ng(r.error); r.readAsDataURL(b); });
+const b64ToBlob = (d, m) => { const bin = atob(d), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type: m || 'image/jpeg' }); };
+
+/* ---------------- この端末の保存（IndexedDB。使えないときは画面を閉じるまで） ---------------- */
+const MEM = { kv: {}, photos: {} };
+const DB = {
+  p: null,
+  open() { if (this.p) return this.p; this.p = new Promise(ok => { try { const r = indexedDB.open('jiko', 1); r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('kv'); d.createObjectStore('photos', { keyPath: 'photoId' }); }; r.onsuccess = () => ok(r.result); r.onerror = () => ok(null); } catch (e) { ok(null); } }); return this.p; },
+  async tx(store, mode, fn) { const d = await this.open(); if (!d) return null; return new Promise((ok, ng) => { const t = d.transaction(store, mode), s = t.objectStore(store); let res; const q = fn(s); if (q) q.onsuccess = () => res = q.result; t.oncomplete = () => ok(res); t.onerror = () => ng(t.error); }); },
+  async get(k) { const d = await this.open(); return d ? this.tx('kv', 'readonly', s => s.get(k)) : MEM.kv[k]; },
+  async set(k, v) { const d = await this.open(); if (!d) { MEM.kv[k] = v; return; } return this.tx('kv', 'readwrite', s => s.put(v, k)); },
+  async pget(id) { const d = await this.open(); return d ? this.tx('photos', 'readonly', s => s.get(id)) : MEM.photos[id]; },
+  async pput(o) { const d = await this.open(); if (!d) { MEM.photos[o.photoId] = o; return; } return this.tx('photos', 'readwrite', s => s.put(o)); },
+  async pall() { const d = await this.open(); return d ? (await this.tx('photos', 'readonly', s => s.getAll())) || [] : Object.values(MEM.photos); },
+  async pdel(id) { const d = await this.open(); if (!d) { delete MEM.photos[id]; return; } return this.tx('photos', 'readwrite', s => s.delete(id)); },
+};
+
+/* ---------------- 状態 ---------------- */
+const S = {
+  token: lsGet('tc_token', ''), me: null, staff: [], sites: [], suppliers: [], vehicles: [], settings: { vehicles: {}, licenses: {}, company: {}, insurance: {} },
+  cases: [], hiyari: [], drafts: {}, hyOut: [], localPhotos: [], tab: 'home', view: null, listSeg: 'open', loaded: false
+};
+const isBoss = () => S.me && S.me.role === 'boss';
+const isOffice = () => S.me && S.me.role === 'office';
+const staffName = id => { const s = S.staff.find(x => String(x.id) === String(id)); return s ? s.disp : ''; };
+const vehicleById = id => S.vehicles.find(v => String(v.id) === String(id));
+const caseById = id => S.cases.find(c => c.id === id);
+
+/* =========================================================
+   画面の切り替え（戻るボタン・スワイプで戻れるように履歴を使う）
+   ========================================================= */
+function go(view, push = true) {
+  S.view = view;
+  if (push) history.pushState({ v: view }, '');
+  render();
+  window.scrollTo(0, 0);
+}
+window.addEventListener('popstate', e => { S.view = (e.state && e.state.v) || null; closeModal(); render(); });
+function back() { if (history.state && history.state.v) history.back(); else { S.view = null; render(); } }
+document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.view = null; history.replaceState(null, ''); render(); window.scrollTo(0, 0); });
+$('#meBtn').onclick = () => openModal(`<h3>${esc(S.me.disp)}さん</h3><p class="hint">役割：${esc({ boss: '親方', office: '事務担当', staff: 'スタッフ' }[S.me.role])}（タイムカードと同じ）</p>
+  <div class="row2" style="margin-top:14px"><button class="btn" onclick="closeModal()">閉じる</button><button class="btn line-danger" onclick="logout()">ログアウト</button></div>`);
+$('#gearBtn').onclick = () => go({ name: 'settings' });
+function openModal(html) { $('#modal').innerHTML = html; $('#modalBg').classList.add('show'); }
+function closeModal() { $('#modalBg').classList.remove('show'); $('#modal').innerHTML = ''; }
+$('#modalBg').addEventListener('click', e => { if (e.target.id === 'modalBg' && !$('#modal').dataset.lock) closeModal(); });
+
+function setHeader(title, backable) {
+  $('#title').textContent = title;
+  const hb = $('#homeBtn');
+  if (backable) { hb.innerHTML = '<span class="hb-ic">‹</span><span class="hb-t">もどる</span>'; hb.onclick = e => { e.preventDefault(); back(); }; }
+  else { hb.innerHTML = '<span class="hb-ic">🏠</span><span class="hb-t">ホーム</span>'; hb.onclick = null; }
+}
+function setBottom(html) { const b = $('#bottombar'); if (!html) { b.hidden = true; $('#tabs').hidden = !S.loaded; return; } $('#bottomIn').innerHTML = html; b.hidden = false; $('#tabs').hidden = true; }
+
+function render() {
+  if (!S.token) return renderLogin();
+  if (!S.loaded) return;
+  $('#meBtn').hidden = false; $('#meBtn').textContent = S.me.disp;
+  $('#gearBtn').hidden = !isBoss();
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
+  const v = S.view;
+  if (v && v.name === 'steps') return renderSteps();
+  if (v && v.name === 'form') return renderForm();
+  if (v && v.name === 'case') return renderCase(v.id);
+  if (v && v.name === 'settings') return renderSettings();
+  setBottom('');
+  setHeader('🚨 事故報告', false);
+  if (S.tab === 'hiyari') return renderHiyari();
+  if (S.tab === 'list') return renderList();
+  return renderHome();
+}
+
+/* =========================================================
+   ログイン（タイムカードと同じ。ここでログインするとタイムカードもログイン済みになる）
+   ========================================================= */
+async function renderLogin(msg) {
+  $('#tabs').hidden = true; $('#bottombar').hidden = true; $('#meBtn').hidden = true; $('#gearBtn').hidden = true;
+  setHeader('🚨 事故報告', false);
+  $('#main').innerHTML = `<div class="card"><h2>ログイン</h2>
+    <p class="hint" style="margin-top:0">タイムカードと同じ、名前と4桁の暗証番号です。${msg ? '<br><b style="color:var(--danger)">' + esc(msg) + '</b>' : ''}</p>
+    <label class="lbl">名前</label><select id="lgWho"><option value="">読み込んでいます…</option></select>
+    <label class="lbl">暗証番号（4桁）</label><input type="password" id="lgPin" inputmode="numeric" maxlength="4" autocomplete="current-password">
+    <button class="btn primary block" id="lgGo" style="margin-top:14px">ログイン</button>
+    <p class="hint" style="margin-top:12px">まだ暗証番号を決めていない人は、先に <a href="timecard.html">タイムカード</a> で登録してください。</p></div>`;
+  try {
+    const j = await post({ app: 'timecard', action: 'names' }, 20000);
+    $('#lgWho').innerHTML = '<option value="">選んでください</option>' + ((j && j.names) || []).map(n => `<option value="${esc(n.id)}">${esc(n.disp || n.name)}</option>`).join('');
+  } catch (e) { $('#lgWho').innerHTML = '<option value="">名前を読み込めません（電波を確かめてください）</option>'; }
+  $('#lgGo').onclick = async () => {
+    const who = $('#lgWho').value, pin = $('#lgPin').value;
+    if (!who || !/^\d{4}$/.test(pin)) { toast('名前と4桁の暗証番号を入れてください'); return; }
+    const b = $('#lgGo'); b.disabled = true; b.innerHTML = '<span class="loading"></span>';
+    try {
+      const device = (navigator.userAgent.match(/iPhone|iPad|Android[^;)]*|Windows|Macintosh/) || ['端末'])[0];
+      const j = await post({ app: 'timecard', action: 'login', staffId: who, pin, device }, 30000);
+      if (!j.ok) throw new Error(j.error || 'ログインできませんでした');
+      S.token = j.token; lsSet('tc_token', j.token); lsSet('tc_me', j.me);
+      boot();
+    } catch (e) { toast(e.message, 4000); b.disabled = false; b.textContent = 'ログイン'; }
+  };
+}
+async function logout() { try { await post({ app: 'timecard', action: 'logout', token: S.token }, 10000); } catch (e) {} lsSet('tc_token', null); lsSet('tc_me', null); lsSet('jiko_cache', null); S.token = ''; S.loaded = false; closeModal(); renderLogin(); }
+
+/* =========================================================
+   読み込み・送信（電波がなければ端末に残して、戻ったら送る）
+   ========================================================= */
+function applyInit(j) {
+  S.me = j.me; S.staff = j.staff || []; S.sites = j.sites || []; S.suppliers = j.suppliers || []; S.vehicles = j.vehicles || [];
+  S.settings = j.settings || S.settings; S.cases = j.cases || []; S.hiyari = j.hiyari || [];
+}
+async function boot() {
+  S.drafts = (await DB.get('drafts')) || {}; S.hyOut = (await DB.get('hyOut')) || [];
+  S.localPhotos = await DB.pall();
+  const cache = lsGet('jiko_cache', null);
+  if (cache && cache.me) { applyInit(cache); S.loaded = true; route(); }
+  await refresh(!S.loaded);
+  sync();
+}
+async function refresh(first) {
+  try {
+    const j = await api('init', {}, 45000);
+    if (!j.ok) throw new Error(j.error || '読み込めませんでした');
+    applyInit(j); S.loaded = true;
+    try { lsSet('jiko_cache', Object.assign({}, j, { at: Date.now() })); } catch (e) {}
+    if (first) route(); else if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render();
+    updateBadges();
+  } catch (e) {
+    if (!S.loaded) $('#main').innerHTML = `<div class="card"><h2>読み込めませんでした</h2><p class="hint">${esc(e.message)}</p><button class="btn primary" onclick="refresh(true)">もう一度</button></div>`;
+    else if (navigator.onLine) showErr(e.message);
+  }
+}
+function route() {
+  const q = new URLSearchParams(location.search), cid = q.get('case');
+  if (cid) { history.replaceState(null, '', location.pathname); S.tab = 'list'; go({ name: 'case', id: cid }); return; }
+  if (q.get('tab')) { S.tab = q.get('tab'); history.replaceState(null, '', location.pathname); }
+  render();
+}
+function updateBadges() {
+  const n = isBoss() ? S.cases.filter(c => c.state !== '完了' && (!c.stage || c.stage === '報告受付')).length : 0;
+  const b = $('#listBadge'); b.hidden = !n; b.textContent = n;
+}
+async function saveDrafts() { await DB.set('drafts', S.drafts); }
+function pendingCount() {
+  return Object.values(S.drafts).filter(d => d.submitted).length + S.localPhotos.filter(p => !p.sent && photoReady(p)).length + S.hyOut.length;
+}
+function photoReady(p) {
+  if (p.caseId.startsWith('H-')) return !S.hyOut.some(h => h.item.id === p.caseId) || true;
+  const d = S.drafts[p.caseId];
+  return !!caseById(p.caseId) || !!(d && d.submitted);
+}
+let syncing = false;
+async function sync() {
+  if (syncing || !S.token) return;
+  if (!navigator.onLine) { updateNet(); return; }
+  syncing = true; let changed = false, failed = '';
+  try {
+    for (const d of Object.values(S.drafts)) {
+      if (!d.submitted) continue;
+      const j = await api('save', { case: { id: d.id, data: d.data, boss: d.boss }, base: d.base || '' }, 60000);
+      if (j.ok || j.conflict) {
+        upsertCase(j.case); delete S.drafts[d.id]; await saveDrafts(); changed = true;
+        if (j.conflict) toast(j.error, 5000);
+      } else { failed = j.error; break; }
+    }
+    const hy = S.hyOut.slice();
+    for (const h of hy) {
+      const j = await api(h.mode || 'hiyari', h.body, 30000);
+      if (j.ok) { S.hyOut = S.hyOut.filter(x => x !== h); await DB.set('hyOut', S.hyOut); changed = true; } else { failed = j.error; break; }
+    }
+    for (const p of S.localPhotos.filter(x => !x.sent)) {
+      if (!photoReady(p)) continue;
+      const meta = { photoId: p.photoId, caseId: p.caseId, slot: p.slot, caption: p.caption || '', takenAt: p.takenAt, lat: p.lat, lng: p.lng };
+      const body = { photo: meta, data: await blobToB64(p.blob) };
+      if (p.raw && p.raw.size <= 12 * 1024 * 1024) { body.raw = await blobToB64(p.raw); body.rawMime = p.rawMime || p.raw.type || 'image/jpeg'; }
+      const j = await api('photo', body, 180000);
+      if (j.ok) {
+        p.sent = true; p.raw = null; await DB.pput(p); changed = true;
+        const c = caseById(p.caseId);
+        if (c && c.photos && !c.photos.some(x => x.photoId === p.photoId)) c.photos.push({ photoId: p.photoId, slot: p.slot, caption: p.caption, takenAt: p.takenAt, by: S.me.disp, inPdf: p.slot !== 'sketch', share: ['scene', 'around'].includes(p.slot) });
+      } else { failed = j.error; break; }
+    }
+  } catch (e) { failed = e.message; }
+  syncing = false; updateNet();
+  if (failed && navigator.onLine) showErr('送れなかったものがあります：' + failed);
+  if (changed) { await refresh(false); }
+  if (pendingCount() && navigator.onLine && !failed) setTimeout(sync, 3000);
+}
+function upsertCase(v) { if (!v) return; const i = S.cases.findIndex(c => c.id === v.id); if (i >= 0) S.cases[i] = v; else S.cases.unshift(v); }
+function updateNet() {
+  $('#netbar').hidden = navigator.onLine;
+  const n = pendingCount(), el = document.getElementById('pendBox');
+  if (el) { el.hidden = !n; el.innerHTML = n ? `📤 まだ送れていないものが <b>${n}件</b> あります。${navigator.onLine ? '<button class="btn sm" onclick="sync()" style="margin-left:6px">今すぐ送る</button>' : '電波が戻ったら自動で送ります'}` : ''; }
+}
+window.addEventListener('online', () => { updateNet(); sync(); });
+window.addEventListener('offline', updateNet);
+setInterval(() => { if (pendingCount()) sync(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.loaded) { sync(); if (!S.view) refresh(false); } });
+
+/* =========================================================
+   ホーム（事故報告タブ）
+   ========================================================= */
+function renderHome() {
+  const drafts = Object.values(S.drafts).sort((a, b) => (b.updated || '') > (a.updated || '') ? 1 : -1);
+  const mine = S.cases.filter(c => c.role === 'party' && c.state !== '完了');
+  const waiting = isBoss() ? S.cases.filter(c => c.state !== '完了' && (!c.stage || c.stage === '報告受付')) : [];
+  $('#main').innerHTML = `
+    <div class="pend" id="pendBox" hidden></div>
+    <button class="sos" id="sosBtn">🚨 事故が起きた<small>まず落ち着いて。上から順に進めます</small></button>
+    <div class="row2" style="margin:12px 0">
+      <button class="btn block" id="writeBtn">📝 報告を書く（手順をとばす）</button>
+    </div>
+    ${waiting.length ? `<div class="sec-t"><h3>📞 第一報を待っている事故</h3>${waiting.map(caseItem).join('')}</div>` : ''}
+    ${drafts.length ? `<h3>書きかけ・未送信</h3>${drafts.map(draftItem).join('')}` : ''}
+    ${mine.length ? `<h3>自分が関わっている事故</h3>${mine.map(caseItem).join('')}` : ''}
+    <div class="card" style="margin-top:14px"><h2>🔰 このアプリでできること</h2>
+      <p class="hint" style="margin:0">・事故直後にやることを順番に表示<br>・写真・場所・経緯をその場で記録（電波がなくても保存）<br>・親方に届いて、保険会社への報告書（PDF）にまとまる<br>・ヒヤリハット（事故にならなかった危ない場面）も送れる</p></div>`;
+  $('#sosBtn').onclick = () => go({ name: 'steps' });
+  $('#writeBtn').onclick = () => startDraft();
+  document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openItem(b.dataset.open));
+  updateNet();
+}
+function caseKindTags(d, c) {
+  const dm = d.damage || {};
+  return `<span class="tag ${d.kind === 'car' ? 'car' : 'work'}">${d.kind === 'car' ? '🚗 車両' : '🌳 作業'}</span>` +
+    (d.party === 'other' ? `<span class="tag">相手あり${d.who === 'they' ? '・当てられた' : d.who === 'we' ? '・当てた' : ''}</span>` : d.party === 'solo' ? '<span class="tag">単独</span>' : '') +
+    (dm.ownPerson || dm.theirPerson ? '<span class="tag red">けがあり</span>' : '');
+}
+function caseItem(c) {
+  const d = c.data || {}, stale = c.state !== '完了' && daysSince(c.updatedAt) >= 7;
+  const st = c.state === '完了' ? '<span class="tag done">完了</span>' : `<span class="tag ${(!c.stage || c.stage === '報告受付') ? 'wait' : 'stage'}">${esc(c.stage || '報告受付')}</span>`;
+  const who = c.role === 'staff' ? '' : esc([d.driver, d.kind === 'car' ? (d.car || {}).vehicle : (d.work || {}).site].filter(Boolean).join('・'));
+  return `<button class="item${stale ? ' stale' : ''}" data-open="c:${esc(c.id)}"><div class="t">${c.no ? esc(c.no) + '　' : ''}${esc(mdDate(d.date))} ${caseKindTags(d, c)}</div>
+    <div class="s">${st} ${who} ${esc((d.place && (d.place.address || d.place.area)) || '')}${stale ? `<br>⏸ ${daysSince(c.updatedAt)}日 動きがありません` : ''}</div></button>`;
+}
+function draftItem(d) {
+  const x = d.data || {};
+  return `<button class="item draft" data-open="d:${esc(d.id)}"><div class="t">${d.base ? '直している報告' : '書きかけの報告'}　${esc(mdDate(x.date))} ${x.kind ? caseKindTags(x) : ''}</div>
+    <div class="s">${d.submitted ? '📤 送信待ち（電波が戻ったら送ります）' : '✏️ まだ送っていません（タップして続きを書く）'}・${esc(d.updated || '')}</div></button>`;
+}
+function openItem(k) {
+  const [t, id] = [k.slice(0, 1), k.slice(2)];
+  if (t === 'c') go({ name: 'case', id });
+  else if (t === 'd') { const d = S.drafts[id]; if (d && d.submitted && !d.base) { toast('送信待ちです。電波が戻ったら送ります'); return; } go({ name: 'form', id }); }
+}
+
+/* =========================================================
+   事故直後の手順
+   ========================================================= */
+function renderSteps() {
+  setHeader('🚨 事故直後にやること', true); setBottom('');
+  $('#tabs').hidden = true;
+  const st = S.settings || {}, bossTel = (st.bossPhone || '').replace(/[^\d+]/g, '');
+  const vs = S.vehicles.filter(v => (st.vehicles || {})[v.id] && (st.vehicles[v.id].road || st.vehicles[v.id].insurerPhone));
+  const done = S.stepDone || (S.stepDone = {});
+  const li = (k, title, hint, act = '') => `<li class="${done[k] ? 'done' : ''}" data-step="${k}"><button class="ck" type="button">✓</button><div class="bd"><b>${title}</b>${hint ? `<div class="hint">${hint}</div>` : ''}${act ? `<div class="act">${act}</div>` : ''}</div></li>`;
+  $('#main').innerHTML = `
+    <div class="card"><ul class="steps">
+      ${li('rescue', 'けが人がいれば救護・119', '意識・出血を確かめる。動かすと危ない時は無理に動かさない', '<a class="btn danger sm" href="tel:119">📞 119（救急）</a>')}
+      ${li('safe', '二次事故を防ぐ', 'ハザード・カラーコーン・発炎筒。道路の上に立たない')}
+      ${li('police', '公道の交通事故なら110', '物損だけでも、相手がいなくても届け出る（法律の義務。届けないと保険が使えないことがある）。相手に「警察はいい」と言われても呼ぶ', '<a class="btn sm" href="tel:110">📞 110（警察）</a>')}
+      ${li('boss', '親方へ電話', '保険会社への連絡は親方がします', bossTel ? `<a class="btn primary sm" href="tel:${esc(bossTel)}">📞 親方に電話</a>` : '<span class="hint">（親方の電話番号は設定で入れられます）</span>')}
+      ${li('other', '相手と連絡先を交換', '名前・電話・車のナンバー・保険会社。下の言い方で伝える',
+        '<div class="script">「会社の保険会社から連絡させていただきます。お名前とご連絡先を教えていただけますか」</div>')}
+      ${li('promise', 'その場で約束しない', '「全部こちらが悪い」「全額払います」など、過失や支払いの約束はしない。謝るのは「ご迷惑をおかけしました」まで')}
+      ${li('photo', '写真を撮って報告を書く', '全景（引き）→ 損傷（寄り）→ ナンバー → 周りの様子。下のボタンから')}
+    </ul></div>
+    ${vs.length ? `<div class="card"><h2>🚛 車が動かないとき（ロードサービス）</h2>${vs.map(v => { const x = st.vehicles[v.id]; const tel = (x.road || x.insurerPhone || '').replace(/[^\d+]/g, ''); return `<div class="row2" style="align-items:center;margin-bottom:6px"><span>${esc(v.name)} <small class="hint">${esc(v.plate || '')}</small></span><a class="btn sm" style="flex:0 0 auto" href="tel:${esc(tel)}">📞 ${x.road ? 'ロードサービス' : '保険会社'}</a></div>`; }).join('')}</div>` : ''}
+    <button class="btn primary block" id="toForm" style="min-height:56px;font-size:17px">📝 報告を書く（写真から）</button>`;
+  document.querySelectorAll('[data-step] .ck').forEach(b => b.onclick = () => { const k = b.closest('li').dataset.step; done[k] = !done[k]; b.closest('li').classList.toggle('done', done[k]); });
+  $('#toForm').onclick = () => startDraft(true);
+}
+
+/* =========================================================
+   報告フォーム
+   ========================================================= */
+function blankData() {
+  return { kind: '', party: '', who: '', damage: {}, date: today(), time: nowTime(), weather: '', road: '', place: {}, car: { load: {} }, work: {}, driverId: S.me.id, driver: S.me.disp,
+    memberIds: [], members: [], witnesses: [], other: {}, story: '', ownDamage: '', theirDamage: '', theirInjury: {}, rousai: {}, police: {}, ambulance: '' };
+}
+async function startDraft(fromSteps, preset) {
+  const id = (preset && preset._id) || newId('J');
+  const data = Object.assign(blankData(), preset || {}); delete data._id;
+  S.drafts[id] = { id, data, boss: null, base: '', submitted: false, updated: nowStr() };
+  await saveDrafts();
+  if (fromSteps) history.replaceState({ v: { name: 'form', id } }, ''), S.view = { name: 'form', id }, render(), window.scrollTo(0, 0);
+  else go({ name: 'form', id });
+  getGeo(true);
+}
+async function editCase(id) {
+  const c = caseById(id); if (!c) return;
+  const ex = Object.values(S.drafts).find(d => d.id === id);
+  if (!ex) { S.drafts[id] = { id, data: clone(c.data), boss: isBoss() ? clone(c.boss) : null, base: c.updatedAt, submitted: false, updated: nowStr() }; await saveDrafts(); }
+  go({ name: 'form', id });
+}
+let draftTimer = null;
+function touchDraft() { const d = curDraft(); if (!d) return; d.updated = nowStr(); clearTimeout(draftTimer); draftTimer = setTimeout(saveDrafts, 350); }
+function curDraft() { return S.view && S.view.name === 'form' ? S.drafts[S.view.id] : null; }
+
+/* --- 部品 --- */
+function chip(path, val, label, o = {}) {
+  const d = curDraft().data, cur = getP(d, path);
+  const on = o.multi ? Array.isArray(cur) && cur.includes(val) : (o.bool ? !!cur : cur === val);
+  return `<button type="button" class="chip${o.big ? ' big' : ''}${on ? ' on' : ''}" data-chip="${esc(path)}" data-v="${esc(val)}"${o.multi ? ' data-multi="1"' : ''}${o.bool ? ' data-bool="1"' : ''}${o.excl ? ` data-excl="${esc(o.excl)}"` : ''}>${label}</button>`;
+}
+const chips = (path, list, o = {}) => `<div class="chips">${list.map(v => chip(path, v, esc(v), o)).join('')}</div>`;
+const inp = (path, ph = '', type = 'text', o = {}) => { const v = getP(curDraft().data, path); return `<input type="${type}" data-k="${esc(path)}" value="${esc(v == null ? '' : v)}" placeholder="${esc(ph)}"${o.list ? ` list="${o.list}"` : ''}${o.mode ? ` inputmode="${o.mode}"` : ''}${o.re ? ' data-re="1"' : ''}>`; };
+const area = (path, ph = '', rows = 4) => `<textarea data-k="${esc(path)}" rows="${rows}" placeholder="${esc(ph)}">${esc(getP(curDraft().data, path) || '')}</textarea>`;
+const lbl = (t, req) => `<label class="lbl">${t}${req ? '<span class="req">必須</span>' : ''}</label>`;
+
+function slotsFor(d) {
+  const dm = d.damage || {}, car = d.kind === 'car', out = [];
+  const add = (slot, need, hint) => out.push({ slot, need, hint });
+  add('scene', true, '事故の場所がわかるように、離れて全体を撮る');
+  if (dm.ownThing) { add('own_far', true, car ? '自社の車の、ぶつけた側を離れて' : '壊れた自社の機械・道具を離れて'); add('own_near', false, 'へこみ・傷を近くで。複数枚OK'); }
+  if (dm.theirThing || d.party === 'other') { add('their_far', true, car ? '相手の車・当たった物を離れて。ほぼ無傷でも、無傷の状態を撮っておく（後で「壊れた」と言われたときの証拠）' : '壊した物を離れて'); add('their_near', false, '当たった所を近くで'); add('detail', false, 'へこみ・割れの詳しい所。物差しや手を添えると大きさが伝わる'); }
+  if (car && d.party === 'other') add('plate', true, '相手の車のナンバーがはっきり読めるように');
+  if (car) add('around', true, '信号・標識・道幅・見通し・ブレーキ跡など');
+  if (car && (d.car || {}).loadOn === '荷物あり') add('load', false, '荷台の積み方・シート掛け');
+  if (!car && d.kind === 'work') add('machine', false, '使っていた機械・道具');
+  if (car && d.party === 'other') add('docs', false, '相手の免許証・車検証・保険証券。相手の了承がある場合だけ');
+  if (dm.theirPerson || dm.ownPerson) add('injury', false, '撮ってもよいか聞ける雰囲気のときだけ。無理に撮らない');
+  add('other', false, 'そのほか残しておきたいもの');
+  return out;
+}
+function photosOf(caseId, slot) {
+  const loc = S.localPhotos.filter(p => p.caseId === caseId && !p.removed && (!slot || p.slot === slot));
+  const c = caseById(caseId), srv = c && c.photos ? c.photos.filter(p => (!slot || p.slot === slot) && !loc.some(l => l.photoId === p.photoId)) : [];
+  return loc.map(p => ({ photoId: p.photoId, slot: p.slot, caption: p.caption, local: true, sent: p.sent, takenAt: p.takenAt })).concat(srv.map(p => Object.assign({ srv: true }, p)));
+}
+
+function renderForm() {
+  const dr = curDraft();
+  if (!dr) { S.view = null; return render(); }
+  const d = dr.data, dm = d.damage || (d.damage = {}), car = d.kind === 'car', work = d.kind === 'work';
+  setHeader(dr.base ? '✏️ 報告を直す' : '📝 事故報告を書く', true);
+  const keepY = window.scrollY;
+  const sitesDl = `<datalist id="dlSites">${S.sites.map(s => `<option value="${esc(s.name)}">${esc(s.contract || s.kind || '')}</option>`).join('')}</datalist>`;
+  const placesDl = `<datalist id="dlPlaces"><option value="事務所">${S.suppliers.filter(s => s.kind === '処分場').map(s => `<option value="${esc(s.name)}">処分場</option>`).join('')}${S.suppliers.filter(s => s.kind !== '処分場').map(s => `<option value="${esc(s.name)}">${esc(s.kind || '')}</option>`).join('')}${S.sites.map(s => `<option value="${esc(s.name)}">現場</option>`).join('')}</datalist>`;
+  const staffOpts = sel => '<option value="">選ぶ</option>' + S.staff.map(s => `<option value="${esc(s.id)}"${String(sel) === String(s.id) ? ' selected' : ''}>${esc(s.disp)}</option>`).join('');
+  let h = sitesDl + placesDl;
+
+  /* ① 4つの質問 */
+  h += `<div class="card"><h2>最初にこれだけ</h2>
+    <div class="q"><div class="qt"><span class="no">1</span>どんな事故？</div><div class="chips">${chip('kind', 'car', '🚗 車両事故<small>運転中・駐車中</small>', { big: true })}${chip('kind', 'work', '🌳 作業事故<small>作業中・けが</small>', { big: true })}</div></div>
+    <div class="q"><div class="qt"><span class="no">2</span>相手はいる？</div><div class="chips">${chip('party', 'solo', '単独（自損）<small>電柱・ガードレールなどもこちら</small>', { big: true })}${chip('party', 'other', '相手あり<small>車・人・相手のいる物</small>', { big: true })}</div></div>
+    ${d.party === 'other' ? `<div class="q"><div class="qt"><span class="no">3</span>どちらが？</div><div class="chips">${chip('who', 'we', 'こちらが当てた')}${chip('who', 'they', '当てられた')}${chip('who', 'unknown', '双方・はっきりしない')}</div><p class="hint">その場で決めつけなくて大丈夫です。わからなければ「双方・はっきりしない」</p></div>` : ''}
+    <div class="q"><div class="qt"><span class="no">${d.party === 'other' ? 4 : 3}</span>被害は？（いくつでも）</div>
+      <div class="chips">${chip('damage.ownThing', '1', '自社の物（車・機械）', { bool: true, excl: 'none' })}${chip('damage.theirThing', '1', '相手の物・壊した物', { bool: true, excl: 'none' })}${chip('damage.ownPerson', '1', '自社の人のけが', { bool: true, excl: 'none' })}${chip('damage.theirPerson', '1', '相手の人のけが', { bool: true, excl: 'none' })}${chip('damage.none', '1', '被害なし', { bool: true, excl: 'all' })}</div>
+      ${d.party === 'solo' && dm.theirThing ? '<div class="note"><b>単独でも「相手の物」があります</b>電柱・ガードレール・標識・塀などは持ち主（市・電力会社など）が相手になります。ほぼ無傷でも持ち主を記録して、無傷の写真を撮っておきます。</div>' : ''}
+    </div></div>`;
+
+  if (d.kind) {
+    /* ② いつ・どこ */
+    const pl = d.place || {};
+    h += `<div class="card"><h2>🕘 いつ・どこで</h2>
+      <div class="row2"><div>${lbl('日付', 1)}${inp('date', '', 'date')}</div><div>${lbl('時刻', 1)}${inp('time', '', 'time')}</div></div>
+      ${lbl('天気')}${chips('weather', WEATHERS)}
+      ${car ? lbl('路面') + chips('road', ROADS) : ''}
+      ${lbl('場所', 1)}<div class="row2" style="margin-bottom:6px"><button type="button" class="btn sm" id="geoBtn">📍 今いる場所を入れる</button>${pl.lat ? `<a class="btn sm" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${pl.lat},${pl.lng}">🗺 地図で見る</a>` : ''}</div>
+      ${inp('place.address', '例：川崎市高津区○○ ○○交差点の手前')}
+      ${pl.lat ? `<p class="hint">位置を記録しました（誤差 約${Math.round(pl.acc || 0)}m）</p>` : ''}
+      ${lbl('目印')}${inp('place.note', '交差点名・電柱の番号・お店の名前など')}
+      ${car ? lbl('場所の種類') + chips('place.type', PLACE_TYPES, {}) : ''}
+    </div>`;
+
+    /* ③ 車両事故 / 作業事故 */
+    if (car) {
+      const c = d.car || (d.car = { load: {} }), v = vehicleById(c.vehicleId), lic = licWarn(d);
+      h += `<div class="card"><h2>🚗 移動と車</h2>
+        ${lbl('移動の目的', 1)}${chips('car.purpose', PURPOSES)}
+        <div class="row2"><div>${lbl('出発地')}${inp('car.from', '例：○○公園（作業帰り）', 'text', { list: 'dlPlaces' })}</div><div>${lbl('目的地')}${inp('car.to', '例：○○処分場', 'text', { list: 'dlPlaces' })}</div></div>
+        ${lbl('関連する現場（あれば）')}${inp('car.relSite', '処分する枝が出た現場など', 'text', { list: 'dlSites' })}
+        ${lbl('車', 1)}<select data-k="car.vehicleId" data-re="1"><option value="">選ぶ</option>${S.vehicles.map(x => `<option value="${esc(x.id)}"${String(c.vehicleId) === String(x.id) ? ' selected' : ''}>${esc(x.name)}${x.plate ? '（' + esc(x.plate) + '）' : ''}</option>`).join('')}<option value="__other"${c.vehicleId === '__other' ? ' selected' : ''}>一覧にない車（手で入れる）</option></select>
+        ${c.vehicleId === '__other' ? `<div class="row2" style="margin-top:6px"><div>${inp('car.vehicle', '車の名前')}</div><div>${inp('car.plate', 'ナンバー')}</div></div>` : ''}
+        ${lic ? `<div class="note red"><b>免許の区分を確かめてください</b>${esc(lic)}</div>` : ''}
+        ${lbl('業務中・通勤中')}${chips('car.commute', ['業務中', '通勤中'])}
+        ${lbl('荷物')}${chips('car.loadOn', ['荷物あり', '空車'])}
+        ${c.loadOn === '荷物あり' ? `<div style="border-left:3px solid var(--line);padding-left:10px;margin-top:8px">
+          ${lbl('積んでいた物')}${chips('car.load.kinds', LOAD_KINDS, { multi: true })}
+          ${lbl('量の目安')}${inp('car.load.amount', '例：荷台いっぱい・約1t')}
+          ${lbl('シート掛け・固定')}${chips('car.load.cover', ['シート・固定あり', 'シート・固定なし'])}
+          ${lbl('積荷の落下・飛散')}${chips('car.load.spill', ['落ちていない', '落下・飛散あり'])}
+          ${(c.load || {}).spill === '落下・飛散あり' ? '<div class="note red"><b>積荷が落ちた・飛んだ</b>落ちた物で相手に損害が出ると扱いが変わります。落ちた物と場所の写真を撮っておいてください。</div>' : ''}</div>` : ''}
+        ${lbl('事故の形')}${chips('car.scene', CAR_SCENES)}
+        ${lbl('信号・一時停止')}${chips('car.signal', ['信号あり', '信号なし', '一時停止あり'])}
+        ${lbl('おおよその速度')}${inp('car.speed', '例：10km/hくらい・止まっていた')}
+        ${lbl('ドライブレコーダー')}${chips('car.recorder', ['あり・保存した', 'あり・まだ保存していない', 'なし'])}
+        ${c.recorder === 'あり・まだ保存していない' ? '<div class="note"><b>映像を早めに保存</b>上書きされる前に、SDカードを抜くか保存操作をしてください。</div>' : ''}
+        ${lbl('車は自分で走れる？')}${chips('car.drivable', ['自走できる', '自走できない（レッカー）'])}
+        ${c.drivable === '自走できない（レッカー）' ? roadServiceNote(c.vehicleId) : ''}
+        ${lbl('運転前のアルコールチェック')}${chips('car.alcohol', ['チェックした', 'していない'])}
+      </div>`;
+    }
+    if (work) {
+      const w = d.work || (d.work = {});
+      h += `<div class="card"><h2>🌳 現場と作業</h2>
+        ${lbl('現場名', 1)}${inp('work.site', '現場の一覧から選ぶか、手で入れる', 'text', { list: 'dlSites' })}
+        ${lbl('発注者・お客さん')}${inp('work.orderer', '例：川崎市 高津区役所')}
+        ${lbl('作業内容')}${chips('work.task', TASKS)}
+        ${lbl('使っていた機械・道具')}${chips('work.machines', MACHINES, { multi: true })}
+        ${lbl('安全対策（していたもの）')}${chips('work.safety', SAFETY, { multi: true })}
+      </div>`;
+    }
+
+    /* ④ 人 */
+    h += `<div class="card"><h2>👷 関わった人</h2>
+      ${lbl(car ? '運転していた人' : '作業していた人（当事者）', 1)}<select data-k="driverId" data-re="1">${staffOpts(d.driverId)}</select>
+      <p class="hint">本人がけが・動転している時は、代わりに書いてかまいません（報告者はあなたになります）</p>
+      ${lbl(car ? '同乗者' : '一緒に作業していた人')}<div class="chips">${S.staff.filter(s => String(s.id) !== String(d.driverId)).map(s => chip('memberIds', String(s.id), esc(s.disp), { multi: true })).join('')}</div>
+      ${lbl('目撃者（いれば）')}<div id="witList">${(d.witnesses || []).map((w, i) => `<div class="wit"><input type="text" data-k="witnesses.${i}.name" value="${esc(w.name || '')}" placeholder="名前"><input type="tel" data-k="witnesses.${i}.contact" value="${esc(w.contact || '')}" placeholder="連絡先"><button type="button" class="btn sm" data-witdel="${i}">×</button></div>`).join('')}</div>
+      <button type="button" class="btn sm" id="witAdd">＋ 目撃者を足す</button>
+    </div>`;
+
+    /* ⑤ 相手 */
+    if (d.party === 'other' || dm.theirThing) {
+      const o = d.other || (d.other = {});
+      h += `<div class="card"><h2>🤝 相手の情報</h2>`;
+      if (d.party === 'other') {
+        h += `<div class="row2"><div>${lbl('名前')}${inp('other.name', '相手の名前')}</div><div>${lbl('電話')}${inp('other.phone', '', 'tel')}</div></div>
+          ${lbl('住所')}${inp('other.address', '')}
+          ${car ? `<div class="row2"><div>${lbl('ナンバー')}${inp('other.plate', '例：川崎 300 あ 12-34')}</div><div>${lbl('車種・色')}${inp('other.carModel', '例：白のプリウス')}</div></div>` : ''}
+          <div class="row2"><div>${lbl('相手の保険会社')}${inp('other.insurer', '')}</div><div>${lbl('保険会社の電話')}${inp('other.insurerPhone', '', 'tel')}</div></div>
+          ${lbl('相手は仕事中だった？')}${chips('other.atWork', ['仕事中', '仕事中ではない', 'わからない'])}
+          ${o.atWork === '仕事中' ? lbl('相手の勤務先') + inp('other.employer', '会社名・連絡先') : ''}`;
+      }
+      if (dm.theirThing) {
+        h += `<h3>壊した物・当たった物の持ち主</h3>${chips('other.ownerType', OWNER_TYPES)}
+          <div class="row2" style="margin-top:8px"><div>${lbl('持ち主・管理者の名前')}${inp('other.ownerName', '例：川崎市 高津区役所道路公園センター')}</div><div>${lbl('連絡先')}${inp('other.ownerContact', '', 'tel')}</div></div>
+          ${lbl('当たった物')}${inp('other.thing', '例：ガードレール・電柱・ブロック塀・植木')}`;
+      }
+      h += `</div>`;
+    }
+
+    /* ⑥ 経緯・略図 */
+    const sk = photosOf(dr.id, 'sketch')[0];
+    h += `<div class="card"><h2>📝 どうして起きたか（経緯）</h2>
+      <p class="hint" style="margin-top:0">起きた順に。まとまっていなくて大丈夫です。🎤で話して入れてもOK</p>
+      ${area('story', '例：処分場に向かう途中、○○の交差点を左に曲がるとき、左後ろのポールに気づかずこすった。', 6)}
+      ${aiTools('story', '事故の経緯')}
+      ${lbl('位置関係の略図')}<p class="hint" style="margin-top:0">道路・車・相手・進む向きを指で描きます（保険会社にほぼ必ず聞かれます）</p>
+      <div class="row2"><button type="button" class="btn sm" id="sketchBtn">✏️ ${sk ? '略図を描き直す' : '略図を描く'}</button></div>
+      ${sk ? `<div class="thumbs">${thumbHtml(sk, { noX: true })}</div>` : ''}
+    </div>`;
+
+    /* ⑦ 損害 */
+    if (dm.ownThing || dm.theirThing || dm.theirPerson) {
+      h += `<div class="card"><h2>💥 壊れた所・けが</h2>
+        ${dm.ownThing ? lbl('自社の損傷') + area('ownDamage', '例：荷台の左後ろがへこんだ（10cmくらい）。走るのに問題なし', 2) : ''}
+        ${dm.theirThing ? lbl('相手の物の損傷') + area('theirDamage', '例：ポールはほぼ無傷（こすれ跡のみ）', 2) : ''}
+        ${dm.theirPerson ? lbl('相手のけがの状況') + area('theirInjury.text', '例：右ひじをすりむいた。本人は病院に行くと言っていた', 2) + lbl('相手が行った病院') + inp('theirInjury.hospital', '') : ''}
+      </div>`;
+    }
+    /* ⑧ 労災 */
+    if (dm.ownPerson) {
+      const r = d.rousai || (d.rousai = {});
+      h += `<div class="card"><h2>🩹 自社の人のけが（労災）</h2>
+        <div class="note red"><b>病院では「仕事中のけがです」と伝える</b>健康保険証は使わないでください（あとで切り替えが面倒になります）。</div>
+        ${lbl('けがをした人', 1)}<select data-k="rousai.staffId" data-re="1">${staffOpts(r.staffId)}</select>
+        ${lbl('業務中・通勤中')}${chips('rousai.commute', ['業務中', '通勤中'])}
+        ${lbl('けがの種類')}${chips('rousai.type', ROUSAI_TYPES)}
+        ${lbl('けがの部位')}${inp('rousai.part', '例：左手の指')}
+        ${lbl('程度')}${chips('rousai.degree', ['手当てだけ', '病院で受診', '入院'])}
+        <div class="row2"><div>${lbl('病院名')}${inp('rousai.hospital', '')}</div><div>${lbl('受診日')}${inp('rousai.visitDate', '', 'date')}</div></div>
+        ${lbl('休み')}${chips('rousai.leave', ['休みなし', '休みあり'])}
+        ${r.leave === '休みあり' ? lbl('休んだ日数（見込みでも）') + inp('rousai.leaveDays', '例：3', 'number', { mode: 'numeric', re: 1 }) : ''}
+        ${Number(r.leaveDays) >= 4 ? '<div class="note red"><b>休みが4日以上</b>労働基準監督署への報告が必要です。親方に伝えてください。</div>' : ''}
+      </div>`;
+    }
+    /* ⑨ 警察・救急 */
+    const po = d.police || (d.police = {}), needPolice = car && (d.place || {}).type !== '現場の中';
+    h += `<div class="card"><h2>🚓 警察・救急</h2>
+      ${lbl('警察への届け出', car)}${chips('police.status', ['届け出た', 'これから・後日届け出る', '届けていない', car ? '' : 'いらない（作業事故）'].filter(Boolean))}
+      ${po.status === '届けていない' && needPolice ? '<div class="note red"><b>交通事故は、物損だけでも届け出が必要です</b>今からでも、事故の場所の警察署に連絡してください。届けないと交通事故証明書が出ず、保険が使えないことがあります。</div>' : ''}
+      ${po.status === '届け出た' || po.status === 'これから・後日届け出る' ? `<div class="row2"><div>${lbl('警察署')}${inp('police.station', '例：高津警察署')}</div><div>${lbl(po.status === '届け出た' ? '届け出た日' : '届け出る予定日')}${inp('police.date', '', 'date')}</div></div>
+        <div class="row2"><div>${lbl('担当の警察官')}${inp('police.officer', '')}</div><div>${lbl('受理番号（わかれば）')}${inp('police.receiptNo', '')}</div></div>` : ''}
+      ${po.status === '届けていない' ? lbl('届けていない理由') + inp('police.reason', '例：私有地の中だった') : ''}
+      ${lbl('救急車')}${chips('ambulance', ['呼んでいない', '呼んだ'])}
+    </div>`;
+
+    /* ⑩ 写真 */
+    const slots = slotsFor(d);
+    h += `<div class="card"><h2>📷 写真</h2><p class="hint" style="margin-top:0">必要な分だけ何枚でも。撮った写真はこの端末に残り、送るときに一緒に送ります</p><div class="slots">` +
+      slots.map(s => { const ps = photosOf(dr.id, s.slot), miss = s.need && !ps.length;
+        return `<div class="slot${miss ? ' miss' : ''}"><div class="hd"><b>${esc(SLOT_JA[s.slot])}</b>${s.need ? (ps.length ? `<span class="okk">✓ ${ps.length}枚</span>` : '<span class="need">撮ってください</span>') : (ps.length ? `<span class="okk">${ps.length}枚</span>` : '')}</div>
+          <div class="hint">${esc(s.hint)}</div>${ps.length ? `<div class="thumbs">${ps.map(p => thumbHtml(p)).join('')}</div>` : ''}
+          <div class="row2"><button type="button" class="btn sm" data-cam="${s.slot}">📷 撮る</button><button type="button" class="btn sm" data-lib="${s.slot}">🖼 選ぶ</button></div></div>`; }).join('') + `</div></div>`;
+  }
+
+  if (isBoss() && dr.base) h += `<p class="hint">親方の記録（進み具合・お金・メモ）は、報告の画面で直します。</p>`;
+  h += `<div style="text-align:center;margin:18px 0"><button type="button" class="btn sm line-danger" id="discardBtn">${dr.base ? '直すのをやめる' : 'この書きかけを捨てる'}</button></div>`;
+  $('#main').innerHTML = h;
+  window.scrollTo(0, keepY);
+  const miss = d.kind ? slotsFor(d).filter(s => s.need && !photosOf(dr.id, s.slot).length).length : 0;
+  setBottom(`<div class="st">${dr.base ? '直した内容はこの端末に保存しています' : '入力はこの端末に自動で保存しています'}${miss ? `<br><b style="color:var(--danger)">撮っていない写真 ${miss}枠</b>` : ''}</div><button class="btn primary" id="sendBtn" style="min-width:120px">📤 ${dr.base ? '保存する' : '送る'}</button>`);
+  bindForm();
+  loadThumbs();
+}
+function licWarn(d) {
+  const c = d.car || {}, vs = (S.settings.vehicles || {})[c.vehicleId] || {}, need = licRank(vs.license);
+  const have = licRank((S.settings.licenses || {})[d.driverId]);
+  if (!need || !have || have >= need) return '';
+  return `${staffName(d.driverId)}さんの免許（${S.settings.licenses[d.driverId]}）では、この車（${vs.license}以上が必要）は運転できない区分かもしれません。区分が合っていないと保険が出ないことがあります。`;
+}
+function roadServiceNote(vid) {
+  const x = (S.settings.vehicles || {})[vid] || {}, tel = (x.road || x.insurerPhone || '').replace(/[^\d+]/g, '');
+  return `<div class="note"><b>ロードサービス</b>${tel ? `<a class="btn sm" href="tel:${esc(tel)}" style="margin-top:4px">📞 ${x.road ? 'ロードサービスに電話' : '保険会社に電話'}</a>` : '車の保険のロードサービスを使えます。番号がわからなければ親方へ。'}</div>`;
+}
+function bindForm() {
+  const m = $('#main'), dr = curDraft();
+  m.onclick = async e => {
+    const c = e.target.closest('[data-chip]');
+    if (c) {
+      const d = dr.data, p = c.dataset.chip, v = c.dataset.v;
+      if (c.dataset.multi) { const a = Array.isArray(getP(d, p)) ? getP(d, p).slice() : []; const i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); setP(d, p, a); if (p === 'memberIds') d.members = a.map(staffName); }
+      else if (c.dataset.bool) {
+        const nv = !getP(d, p); setP(d, p, nv);
+        if (nv && c.dataset.excl === 'none') d.damage.none = false;
+        if (nv && c.dataset.excl === 'all') d.damage = { none: true };
+      }
+      else setP(d, p, getP(d, p) === v ? '' : v);
+      if (p === 'party' && d.party !== 'other') d.who = '';
+      if (p === 'kind' && v === 'work' && (d.police || {}).status === '') d.police.status = '';
+      touchDraft(); renderForm(); return;
+    }
+    const t = e.target.closest('button'); if (!t) return;
+    if (t.id === 'geoBtn') return getGeo(false, true);
+    if (t.id === 'witAdd') { (dr.data.witnesses = dr.data.witnesses || []).push({ name: '', contact: '' }); touchDraft(); renderForm(); return; }
+    if (t.dataset.witdel != null) { dr.data.witnesses.splice(+t.dataset.witdel, 1); touchDraft(); renderForm(); return; }
+    if (t.dataset.cam) return pickPhoto(t.dataset.cam, true);
+    if (t.dataset.lib) return pickPhoto(t.dataset.lib, false);
+    if (t.dataset.ai) return aiSummarize(t.dataset.ai, t.dataset.ailabel);
+    if (t.dataset.mic) return toggleMic(t.dataset.mic, t);
+    if (t.dataset.airevert) { const k = t.dataset.airevert, d = dr.data; if (d.aiRaw && d.aiRaw[k] != null) { setP(d, k, d.aiRaw[k]); delete d.aiRaw[k]; touchDraft(); renderForm(); } return; }
+    if (t.id === 'sketchBtn') return openSketch();
+    if (t.id === 'discardBtn') return discardDraft();
+    if (t.closest('.th')) return photoMenu(t.closest('.th').dataset.pid, dr.id);
+  };
+  m.oninput = e => {
+    const el = e.target; if (!el.dataset || !el.dataset.k) return;
+    setP(dr.data, el.dataset.k, el.value);
+    if (el.dataset.k === 'driverId') dr.data.driver = staffName(el.value);
+    if (el.dataset.k === 'rousai.staffId') dr.data.rousai.staff = staffName(el.value);
+    if (el.dataset.k === 'car.vehicleId') { const v = vehicleById(el.value); if (v) { dr.data.car.vehicle = v.name; dr.data.car.plate = v.plate || ''; } else if (el.value !== '__other') { dr.data.car.vehicle = ''; dr.data.car.plate = ''; } }
+    if (el.dataset.k === 'work.site') { const s = S.sites.find(x => x.name === el.value); dr.data.work.siteId = s ? s.id : ''; }
+    touchDraft();
+    if (el.dataset.re && e.type === 'input' && el.tagName === 'SELECT') renderForm();
+  };
+  m.onchange = e => { const el = e.target; if (el.dataset && el.dataset.re) renderForm(); };
+  $('#sendBtn').onclick = sendDraft;
+}
+async function discardDraft() {
+  const dr = curDraft(); if (!dr) return;
+  if (!confirm(dr.base ? '直した内容を捨てて、元のままにしますか？' : 'この書きかけを捨てますか？（撮った写真も消えます）')) return;
+  if (!dr.base) { for (const p of S.localPhotos.filter(p => p.caseId === dr.id)) await DB.pdel(p.photoId); S.localPhotos = S.localPhotos.filter(p => p.caseId !== dr.id); }
+  delete S.drafts[dr.id]; await saveDrafts(); back();
+}
+async function sendDraft() {
+  const dr = curDraft(), d = dr.data, dm = d.damage || {}, miss = [];
+  if (!d.kind) miss.push('事故の種類'); if (!d.party) miss.push('相手の有無');
+  if (!(dm.ownThing || dm.theirThing || dm.ownPerson || dm.theirPerson || dm.none)) miss.push('被害');
+  if (!d.date) miss.push('日付'); if (!(d.place && (d.place.address || d.place.lat))) miss.push('場所');
+  if (!d.driverId) miss.push(d.kind === 'car' ? '運転していた人' : '作業していた人');
+  if (d.kind === 'car' && !(d.car || {}).purpose) miss.push('移動の目的');
+  if (d.kind === 'work' && !(d.work || {}).site) miss.push('現場名');
+  if (dm.ownPerson && !(d.rousai || {}).staffId) miss.push('けがをした人');
+  if (miss.length) { toast('まだ入っていません：' + miss.join('・'), 4000); return; }
+  const noPh = slotsFor(d).filter(s => s.need && !photosOf(dr.id, s.slot).length).map(s => SLOT_JA[s.slot]);
+  if (noPh.length && !confirm('撮っていない写真があります：' + noPh.join('・') + '\nこのまま送りますか？（あとから足せます）')) return;
+  dr.submitted = true; dr.updated = nowStr(); await saveDrafts();
+  const wasNew = !dr.base;
+  toast(navigator.onLine ? '送っています…' : '電波が戻ったら送ります');
+  S.view = null; S.tab = wasNew ? 'home' : 'list'; history.replaceState(null, ''); render();
+  await sync();
+  if (!S.drafts[dr.id]) {
+    toast(wasNew ? '送りました。親方に届きます' : '保存しました', 3000);
+    if (wasNew) openModal(`<h3>✅ 送りました</h3><p>親方に届きました。保険会社への連絡は親方がします。</p>
+      <div class="note"><b>このあと</b>・相手から連絡が来ても「会社の保険会社から連絡します」と伝える<br>・写真や内容はあとから足せます（一覧・進捗 → この事故 → 内容を直す）</div><button class="btn primary block" onclick="closeModal()">閉じる</button>`);
+  }
+}
+
+/* --- 位置 --- */
+let lastGeo = null;
+function getGeo(silent, setAddr) {
+  if (!navigator.geolocation) { if (!silent) toast('この端末では位置がとれません'); return; }
+  if (!silent) toast('位置を調べています…');
+  navigator.geolocation.getCurrentPosition(async pos => {
+    lastGeo = { lat: +pos.coords.latitude.toFixed(6), lng: +pos.coords.longitude.toFixed(6), acc: pos.coords.accuracy };
+    const dr = curDraft(); if (!dr) return;
+    const pl = dr.data.place || (dr.data.place = {});
+    if (silent && pl.lat) return;
+    Object.assign(pl, lastGeo); touchDraft();
+    if ((setAddr || !pl.address) && navigator.onLine) {
+      try { const j = await api('address', { lat: pl.lat, lng: pl.lng }, 15000); if (j.ok && j.address && (setAddr || !pl.address)) { pl.address = j.address; touchDraft(); } } catch (e) {}
+    }
+    if (curDraft() === dr) renderForm();
+    if (!silent) toast(pl.address ? '場所を入れました。違っていたら直してください' : '位置を記録しました。住所を手で入れてください');
+  }, () => { if (!silent) toast('位置がとれませんでした。住所を手で入れてください', 3500); }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+}
+
+/* --- 写真 --- */
+let pickSlot = null, pickCase = null, pickCb = null;
+function pickPhoto(slot, cam, caseId, cb) {
+  pickSlot = slot; pickCase = caseId || (curDraft() && curDraft().id); pickCb = cb || null;
+  const el = cam ? $('#fileCam') : $('#fileLib'); el.value = ''; el.click();
+  if (cam) getGeo(true);
+}
+['#fileCam', '#fileLib'].forEach(sel => $(sel).addEventListener('change', async e => {
+  const files = Array.from(e.target.files || []); if (!files.length || !pickCase) return;
+  toast('写真を入れています…');
+  for (const f of files) {
+    try { await addPhoto(f, pickSlot, pickCase, sel === '#fileCam'); } catch (err) { toast('写真を読み込めませんでした：' + err.message, 4000); }
+  }
+  if (pickCb) pickCb(); else if (curDraft()) renderForm();
+  sync();
+}));
+async function resizeImage(file, max = 1600, q = 0.85) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, ng) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ng(new Error('画像を開けません')); i.src = url; });
+    const r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.round(img.naturalWidth * r), h = Math.round(img.naturalHeight * r);
+    const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.drawImage(img, 0, 0, w, h);
+    return await new Promise(ok => c.toBlob(ok, 'image/jpeg', q));
+  } finally { URL.revokeObjectURL(url); }
+}
+async function addPhoto(file, slot, caseId, fromCam) {
+  const blob = await resizeImage(file);
+  const takenAt = fromCam ? nowStr() : (() => { const d = new Date(file.lastModified || Date.now()); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); })();
+  const p = { photoId: 'P' + Date.now().toString(36) + rid(), caseId, slot, caption: '', takenAt, lat: fromCam && lastGeo ? lastGeo.lat : '', lng: fromCam && lastGeo ? lastGeo.lng : '',
+    blob, raw: file.size <= 12 * 1024 * 1024 ? file : null, rawMime: file.type || 'image/jpeg', sent: false, at: nowStr() };
+  await DB.pput(p); S.localPhotos.push(p);
+  return p;
+}
+const urlCache = new Map();
+function thumbHtml(p, o = {}) {
+  const off = o.pdf && p.inPdf === false;
+  return `<div class="th${off ? ' off' : ''}" data-pid="${esc(p.photoId)}" role="button" tabindex="0"><span class="ph-load">…</span>${p.local && !p.sent ? '<span class="badge">未送信</span>' : ''}${o.label ? `<span class="badge">${esc(SLOT_JA[p.slot] || '')}</span>` : ''}</div>`;
+}
+async function photoUrl(id) {
+  if (urlCache.has(id)) return urlCache.get(id);
+  const lp = S.localPhotos.find(p => p.photoId === id);
+  let blob = lp && lp.blob;
+  if (!blob) { const j = await api('photoData', { photoId: id }, 60000); if (!j.ok) throw new Error(j.error); blob = b64ToBlob(j.data, j.mime); }
+  const u = URL.createObjectURL(blob); urlCache.set(id, u); return u;
+}
+async function photoBlob(id) {
+  const lp = S.localPhotos.find(p => p.photoId === id); if (lp && lp.blob) return lp.blob;
+  const j = await api('photoData', { photoId: id }, 60000); if (!j.ok) throw new Error(j.error); return b64ToBlob(j.data, j.mime);
+}
+function loadThumbs() {
+  document.querySelectorAll('.th[data-pid]').forEach(async el => {
+    if (el.querySelector('img')) return;
+    try { const u = await photoUrl(el.dataset.pid); const s = el.querySelector('.ph-load'); if (s) s.remove(); const im = new Image(); im.src = u; im.alt = ''; el.prepend(im); }
+    catch (e) { const s = el.querySelector('.ph-load'); if (s) s.textContent = '読めません'; }
+  });
+}
+function photoMenu(pid, caseId, after) {
+  const lp = S.localPhotos.find(p => p.photoId === pid), c = caseById(caseId), sp = c && c.photos ? c.photos.find(p => p.photoId === pid) : null, p = lp || sp;
+  if (!p) return;
+  const canDel = lp ? true : (c && (isBoss() || p.by === S.me.disp));
+  openModal(`<h3>${esc(SLOT_JA[p.slot] || '写真')}</h3><img id="pmImg" style="width:100%;border-radius:10px;background:var(--leaf-soft);min-height:120px" alt="">
+    <label class="lbl">説明（PDFに載ります）</label><input type="text" id="pmCap" value="${esc(p.caption || '')}" placeholder="例：自社車両 左後方">
+    <label class="lbl">枠を変える</label><select id="pmSlot">${Object.keys(SLOT_JA).filter(k => !['sketch', 'hiyari'].includes(k)).map(k => `<option value="${k}"${k === p.slot ? ' selected' : ''}>${esc(SLOT_JA[k])}</option>`).join('')}</select>
+    <p class="hint">撮影 ${esc(p.takenAt || '')}${p.by ? '・' + esc(p.by) : ''}</p>
+    <div class="row2" style="margin-top:12px">${canDel ? '<button class="btn line-danger" id="pmDel">消す</button>' : ''}<button class="btn primary" id="pmOk">閉じる</button></div>`);
+  photoUrl(pid).then(u => { const i = $('#pmImg'); if (i) i.src = u; }).catch(() => {});
+  $('#pmOk').onclick = async () => {
+    const cap = $('#pmCap').value.trim(), slot = $('#pmSlot').value;
+    if (cap !== (p.caption || '') || slot !== p.slot) {
+      p.caption = cap; p.slot = slot;
+      if (lp) { await DB.pput(lp); if (lp.sent) api('photoMeta', { photoId: pid, caption: cap, slot }).catch(() => {}); if (sp) { sp.caption = cap; sp.slot = slot; } }
+      else { try { const j = await api('photoMeta', { photoId: pid, caption: cap, slot }); if (!j.ok) toast(j.error); } catch (e) { toast(e.message); } }
+    }
+    closeModal(); after ? after() : (curDraft() ? renderForm() : render());
+  };
+  const del = $('#pmDel');
+  if (del) del.onclick = async () => {
+    if (!confirm('この写真を消しますか？')) return;
+    if (lp) { if (lp.sent) { try { await api('photoMeta', { photoId: pid, remove: true }); } catch (e) {} } await DB.pdel(pid); S.localPhotos = S.localPhotos.filter(x => x.photoId !== pid); }
+    else { try { const j = await api('photoMeta', { photoId: pid, remove: true }); if (!j.ok) { toast(j.error); return; } } catch (e) { toast(e.message); return; } }
+    if (c && c.photos) c.photos = c.photos.filter(x => x.photoId !== pid);
+    closeModal(); after ? after() : (curDraft() ? renderForm() : render());
+  };
+}
+
+/* --- AIの要点まとめ（要点まとめアプリと同じ考え方。使うかどうかは本人が選ぶ。元の文はいつでも戻せる） --- */
+function aiTools(path, label) {
+  const d = curDraft().data, used = d.aiRaw && d.aiRaw[path] != null;
+  return `<div class="row2" style="margin-top:6px"><button type="button" class="btn sm" data-mic="${path}">🎤 話して入れる</button><button type="button" class="btn sm" data-ai="${path}" data-ailabel="${esc(label)}">🤖 AIで要点をまとめる</button></div>
+    <p class="hint">AIは使っても使わなくてもOK。まとめた結果を見てから選べます${used ? '' : '（書いた文はそのまま残ります）'}</p>
+    <div id="aiOut-${path.replace(/\./g, '-')}"></div>
+    ${used ? `<div class="note green" style="margin-top:6px">🤖 AIでまとめた文を使っています <button type="button" class="btn sm" data-airevert="${path}" style="margin-left:6px">元の文に戻す</button></div>` : ''}`;
+}
+function aiContext(d) {
+  const c = d.car || {}, w = d.work || {}, dm = d.damage || {};
+  return [d.kind === 'car' ? '車両事故' : d.kind === 'work' ? '作業事故' : '', d.party === 'other' ? '相手あり' : d.party === 'solo' ? '単独' : '',
+    [dm.ownThing && '自社の物', dm.theirThing && '相手の物', dm.ownPerson && '自社の人のけが', dm.theirPerson && '相手の人のけが'].filter(Boolean).join('・'),
+    d.date, d.time, d.place && d.place.address, c.purpose, c.from && c.to ? c.from + '→' + c.to : '', c.vehicle, c.scene, w.site, w.task, d.driver ? '当事者：' + d.driver : ''].filter(Boolean).join('／');
+}
+async function aiSummarize(path, label) {
+  const dr = curDraft(), d = dr.data, t = String(getP(d, path) || '').trim();
+  if (!t) { toast('先に書くか、🎤で話してください'); return; }
+  if (!navigator.onLine) { toast('AIは電波があるときに使えます。書いた文はそのまま送れます', 3500); return; }
+  const box = document.getElementById('aiOut-' + path.replace(/\./g, '-')), btn = document.querySelector(`[data-ai="${path}"]`);
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span> まとめています';
+  try {
+    const j = await api('polish', { text: t, field: label, context: aiContext(d), speaker: d.driver || S.me.disp }, 60000);
+    if (!j.ok) throw new Error(j.error);
+    box.innerHTML = `<div class="note green"><b>🤖 AIのまとめ（確かめてから選んでください）</b>
+      ${j.headline ? `<div style="font-weight:700;margin:4px 0">${esc(j.headline)}</div>` : ''}
+      ${j.points && j.points.length ? `<ol style="margin:4px 0 8px;padding-left:20px">${j.points.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : ''}
+      <div class="hint" style="margin:0">報告書に載せる文</div><div style="white-space:pre-wrap;background:#fff;border-radius:8px;padding:8px 10px;margin:4px 0">${esc(j.text)}</div>
+      ${j.missing && j.missing.length ? `<div class="hint" style="margin-top:4px">書き足すとよいこと：${esc(j.missing.join('・'))}</div>` : ''}
+      <div class="chips" style="margin-top:8px"><button type="button" class="btn sm primary" data-aiuse="text">この文を使う</button>${j.points && j.points.length ? '<button type="button" class="btn sm" data-aiuse="points">要点（箇条書き）を使う</button>' : ''}<button type="button" class="btn sm" data-aiuse="no">使わない</button></div></div>`;
+    box.querySelectorAll('[data-aiuse]').forEach(b => b.onclick = () => {
+      const k = b.dataset.aiuse;
+      if (k === 'no') { box.innerHTML = ''; return; }
+      d.aiRaw = d.aiRaw || {}; if (d.aiRaw[path] == null) d.aiRaw[path] = t;
+      setP(d, path, k === 'points' ? j.points.map((x, i) => (i + 1) + '. ' + x).join('\n') : j.text);
+      touchDraft(); renderForm(); toast('使いました。「元の文に戻す」でいつでも戻せます', 3000);
+    });
+  } catch (e) { toast(e.message, 4000); }
+  btn.disabled = false; btn.textContent = '🤖 AIで要点をまとめる';
+}
+/* --- 話して入れる（Android・パソコンはその場で文字に。iPhoneはキーボードのマイクを案内） --- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+function toggleMic(path, btn, el) {
+  const target = el || document.querySelector(`[data-k="${path}"]`);
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!SR || isIOS) { if (target) target.focus(); toast('キーボードの🎤（マイク）を押して話してください', 3500); return; }
+  if (rec) { rec.stop(); return; }
+  rec = new SR(); rec.lang = 'ja-JP'; rec.continuous = true; rec.interimResults = false;
+  const base = target.value ? target.value.replace(/\s+$/, '') + '\n' : '';
+  let said = '';
+  rec.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) said += e.results[i][0].transcript + '。'; target.value = base + said; target.dispatchEvent(new Event('input', { bubbles: true })); };
+  rec.onend = () => { rec = null; btn.textContent = '🎤 話して入れる'; btn.classList.remove('danger'); };
+  rec.onerror = ev => { toast('音声を聞き取れませんでした（' + (ev.error || '') + '）'); };
+  rec.start(); btn.textContent = '⏹ 話し終わったら押す'; btn.classList.add('danger');
+}
+
+/* --- 略図 --- */
+function openSketch() {
+  const dr = curDraft();
+  const W = 1200, H = 800, strokes = [];
+  let color = '#22231F', width = 6, stamp = '';
+  $('#modal').dataset.lock = '1';
+  openModal(`<h3>✏️ 位置関係の略図</h3>
+    <div class="tools">${['#22231F', '#C0392B', '#2B5287'].map(c => `<button type="button" class="dot${c === color ? ' on' : ''}" data-col="${c}" style="background:${c}"></button>`).join('')}
+      <button type="button" class="btn sm" data-w="3">細</button><button type="button" class="btn sm" data-w="6">中</button><button type="button" class="btn sm" data-w="12">太</button></div>
+    <div class="tools">${['自社', '相手', '→', '信号', '電柱', '止まれ'].map(t => `<button type="button" class="chip" data-stamp="${t}">${t}</button>`).join('')}<span class="hint" style="align-self:center">文字を選んで、置く所をタップ</span></div>
+    <div class="sketch-wrap"><canvas id="skC" width="${W}" height="${H}"></canvas></div>
+    <div class="row2" style="margin-top:10px"><button type="button" class="btn sm" id="skUndo">↶ 1つ戻す</button><button type="button" class="btn sm" id="skClear">全部消す</button></div>
+    <div class="row2" style="margin-top:10px"><button type="button" class="btn" id="skCancel">やめる</button><button type="button" class="btn primary" id="skSave">この略図にする</button></div>`);
+  const cv = $('#skC'), x = cv.getContext('2d');
+  const draw = () => {
+    x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
+    x.strokeStyle = '#EEE'; x.lineWidth = 1; for (let i = 50; i < W; i += 50) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, H); x.stroke(); } for (let j = 50; j < H; j += 50) { x.beginPath(); x.moveTo(0, j); x.lineTo(W, j); x.stroke(); }
+    strokes.forEach(s => {
+      if (s.t) { x.fillStyle = s.c; x.font = `bold 40px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(s.t, s.x, s.y); return; }
+      x.strokeStyle = s.c; x.lineWidth = s.w; x.lineCap = 'round'; x.lineJoin = 'round'; x.beginPath(); s.p.forEach((pt, i) => i ? x.lineTo(pt[0], pt[1]) : x.moveTo(pt[0], pt[1])); if (s.p.length === 1) x.lineTo(s.p[0][0] + .1, s.p[0][1]); x.stroke();
+    });
+  };
+  draw();
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height]; };
+  let cur = null;
+  cv.addEventListener('pointerdown', e => { e.preventDefault(); cv.setPointerCapture(e.pointerId); const p = pos(e); if (stamp) { strokes.push({ t: stamp, x: p[0], y: p[1], c: color }); stamp = ''; document.querySelectorAll('[data-stamp]').forEach(b => b.classList.remove('on')); draw(); return; } cur = { c: color, w: width, p: [p] }; strokes.push(cur); draw(); });
+  cv.addEventListener('pointermove', e => { if (!cur) return; e.preventDefault(); cur.p.push(pos(e)); draw(); });
+  ['pointerup', 'pointercancel'].forEach(t => cv.addEventListener(t, () => cur = null));
+  document.querySelectorAll('[data-col]').forEach(b => b.onclick = () => { color = b.dataset.col; document.querySelectorAll('[data-col]').forEach(z => z.classList.toggle('on', z === b)); });
+  document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => width = +b.dataset.w);
+  document.querySelectorAll('[data-stamp]').forEach(b => b.onclick = () => { stamp = stamp === b.dataset.stamp ? '' : b.dataset.stamp; document.querySelectorAll('[data-stamp]').forEach(z => z.classList.toggle('on', z.dataset.stamp === stamp)); });
+  $('#skUndo').onclick = () => { strokes.pop(); draw(); };
+  $('#skClear').onclick = () => { if (strokes.length && confirm('全部消しますか？')) { strokes.length = 0; draw(); } };
+  const close = () => { delete $('#modal').dataset.lock; closeModal(); };
+  $('#skCancel').onclick = close;
+  $('#skSave').onclick = async () => {
+    if (!strokes.length) { toast('何も描かれていません'); return; }
+    const blob = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.9));
+    for (const p of S.localPhotos.filter(p => p.caseId === dr.id && p.slot === 'sketch' && !p.sent)) { await DB.pdel(p.photoId); }
+    S.localPhotos = S.localPhotos.filter(p => !(p.caseId === dr.id && p.slot === 'sketch' && !p.sent));
+    const c = caseById(dr.id); if (c && c.photos) c.photos = c.photos.filter(p => p.slot !== 'sketch');
+    S.localPhotos.filter(p => p.caseId === dr.id && p.slot === 'sketch').forEach(p => p.removed = true);
+    const p = { photoId: 'P' + Date.now().toString(36) + rid(), caseId: dr.id, slot: 'sketch', caption: '位置関係の略図', takenAt: nowStr(), lat: '', lng: '', blob, raw: null, sent: false, at: nowStr() };
+    await DB.pput(p); S.localPhotos.push(p);
+    close(); renderForm(); sync();
+  };
+}
+
+/* =========================================================
+   事故の画面（中身・進み具合・親方の記録）
+   ========================================================= */
+const v2 = (x, y) => [x, y].filter(Boolean).join('　');
+function reportRows(d) {
+  const car = d.kind === 'car', c = d.car || {}, w = d.work || {}, o = d.other || {}, dm = d.damage || {}, r = d.rousai || {}, po = d.police || {}, ld = c.load || {};
+  const dmg = [dm.ownThing && '自社の物', dm.theirThing && '相手の物', dm.ownPerson && '自社の人のけが', dm.theirPerson && '相手の人のけが', dm.none && '被害なし'].filter(Boolean).join('・');
+  const S1 = [['事故の種類', [car ? '車両事故' : '作業事故', d.party === 'other' ? '相手あり' : '単独（自損）', d.party === 'other' ? ({ we: 'こちらが当てた', they: '当てられた', unknown: '双方・はっきりしない' }[d.who] || '') : ''].filter(Boolean).join('・')], ['被害', dmg]];
+  const S2 = [['日時', v2(jaDate(d.date), d.time)], ['天気・路面', v2(d.weather, d.road)], ['場所', [d.place && d.place.address, d.place && d.place.note ? '（目印：' + d.place.note + '）' : '', d.place && d.place.type].filter(Boolean).join('\n')]];
+  const S3 = car ? [['移動の目的', c.purpose], ['出発地→目的地', [c.from, c.to].filter(Boolean).join(' → ')], ['関連する現場', c.relSite], ['車両', [c.vehicle, c.plate].filter(Boolean).join('　')], ['運転者', d.driver],
+    ['業務中・通勤中', c.commute], ['積載物', c.loadOn === '荷物あり' ? [(ld.kinds || []).join('・'), ld.amount, ld.cover, ld.spill ? '積荷：' + ld.spill : ''].filter(Boolean).join('　') : c.loadOn],
+    ['事故の形', [c.scene, c.signal, c.speed ? '速度：' + c.speed : ''].filter(Boolean).join('　')], ['ドライブレコーダー', c.recorder], ['車の状態', c.drivable], ['アルコールチェック', c.alcohol]]
+    : [['現場名', w.site], ['発注者', w.orderer], ['作業内容', w.task], ['使用機械・道具', (w.machines || []).join('・')], ['安全対策', (w.safety || []).join('・')], ['作業者', d.driver]];
+  const S4 = [[car ? '同乗者' : '作業班', (d.members || []).join('、')], ['目撃者', (d.witnesses || []).filter(x => x.name).map(x => x.name + (x.contact ? '（' + x.contact + '）' : '')).join('、')]];
+  const S5 = [];
+  if (d.party === 'other') S5.push(['氏名', o.name], ['電話', o.phone], ['住所', o.address], ['車両', car ? [o.plate, o.carModel].filter(Boolean).join('　') : ''], ['相手の保険会社', v2(o.insurer, o.insurerPhone)], ['仕事中か', o.atWork === '仕事中' ? '仕事中（' + (o.employer || '勤務先不明') + '）' : o.atWork]);
+  if (dm.theirThing) S5.push(['当たった物', o.thing], ['持ち主・管理者', [o.ownerType, o.ownerName, o.ownerContact].filter(Boolean).join('　')]);
+  const S6 = [];
+  if (dm.ownThing) S6.push(['自社の損傷', d.ownDamage]);
+  if (dm.theirThing) S6.push(['相手の物の損傷', d.theirDamage]);
+  if (dm.theirPerson) S6.push(['相手のけが', v2((d.theirInjury || {}).text, (d.theirInjury || {}).hospital ? '病院：' + d.theirInjury.hospital : '')]);
+  if (dm.ownPerson) S6.push(['自社の人のけが', [r.staff, r.commute, r.type, r.part, r.degree, r.hospital ? '病院：' + r.hospital : '', r.visitDate ? '受診：' + r.visitDate : '', r.leave === '休みあり' ? '休み：' + (r.leaveDays || '?') + '日' : r.leave].filter(Boolean).join('　')]);
+  const S7 = [['警察', [po.status, po.station, po.officer ? '担当：' + po.officer : '', po.receiptNo ? '受理番号：' + po.receiptNo : '', po.date ? jaDate(po.date) : '', po.reason ? '（' + po.reason + '）' : ''].filter(Boolean).join('　')], ['救急車', d.ambulance]];
+  return [['事故の区分', S1], ['発生日時・場所', S2], [car ? '車両・移動' : '現場・作業', S3], ['関わった人', S4], ['相手の情報', S5], ['損害・けが', S6], ['警察・救急', S7]].map(([t, rows]) => [t, rows.filter(x => x[1])]).filter(x => x[1].length);
+}
+function checkItems(c) {
+  const d = c.data || {}, b = c.boss || {}, dm = d.damage || {}, out = [];
+  if (d.kind === 'car') out.push(['police', '警察への届け出', (d.police || {}).status === '届け出た']);
+  out.push(['firstCall', '保険会社へ第一報', !!(b.insurerCall || {}).at]);
+  out.push(['pdf', '詳細報告書（PDF）を提出', !!b.pdfSentAt]);
+  if (dm.theirThing) out.push(['owner', '持ち主・道路管理者へ連絡', false]);
+  if ((d.car || {}).recorder === 'あり・まだ保存していない') out.push(['recorder', 'ドラレコの映像を保存', false]);
+  if (dm.ownThing || dm.theirThing) out.push(['repair', '修理の見積', !!(b.repair || {}).estimate]);
+  if (dm.ownPerson) out.push(['rousai', '労災の書類', ['書類提出', '休業補償の申請', '職場復帰'].includes(b.rousaiStage)]);
+  out.push(['share', 'みんなに共有（再発防止）', b.shared === true]);
+  return out.map(([k, t, auto]) => ({ k, t, done: auto || !!(b.checks || {})[k], at: (b.checks || {})[k] || '', auto }));
+}
+function renderCase(id) {
+  const c = caseById(id);
+  setHeader('事故の記録', true); setBottom(''); $('#tabs').hidden = true;
+  if (!c) { $('#main').innerHTML = '<div class="empty">この事故は見られないか、まだ読み込まれていません。<br><button class="btn" onclick="refresh(false)">読み込み直す</button></div>'; return; }
+  const d = c.data || {}, b = c.boss || {}, role = c.role, stIdx = STAGES_DEF.indexOf(c.stage || '報告受付');
+  let h = `<div class="card"><div style="display:flex;align-items:center;gap:8px"><b style="font-size:17px;flex:1">${esc(c.no || '')}　${esc(jaDate(d.date))}</b>${c.state === '完了' ? '<span class="tag done">完了</span>' : ''}</div>
+    <div style="margin:4px 0">${caseKindTags(d, c)}</div>`;
+  if (role !== 'staff') h += `<div class="prog">${STAGES_DEF.map((s, i) => `<i class="${i < stIdx ? 'on' : i === stIdx ? 'cur' : ''}"></i>`).join('')}</div><div class="hint" style="margin:0">進み具合：<b style="color:var(--leaf)">${esc(c.stage || '報告受付')}</b>（${stIdx + 1}/${STAGES_DEF.length}）・更新 ${esc(c.updatedAt || '')}</div>`;
+  h += `</div>`;
+
+  if (role === 'staff') {
+    h += `<div class="card"><h2>何が起きたか</h2><p style="white-space:pre-wrap;margin:0">${esc(b.shareText || '')}</p>${b.cause ? `<h3>原因</h3><p style="white-space:pre-wrap;margin:0">${esc(b.cause)}</p>` : ''}${b.prevention ? `<h3>再発防止</h3><p style="white-space:pre-wrap;margin:0">${esc(b.prevention)}</p>` : ''}
+      ${(c.photos || []).length ? `<div class="thumbs" style="margin-top:10px">${c.photos.map(p => thumbHtml(p)).join('')}</div>` : ''}</div>`;
+    $('#main').innerHTML = h; loadThumbs(); bindCasePhotos(c); return;
+  }
+  if (role === 'boss') {
+    h += `<div class="row2" style="margin-bottom:12px"><button class="btn tape" id="callBtn">📞 第一報の要点</button><button class="btn primary" id="pdfBtn">📄 報告書PDF</button></div>`;
+    h += `<div class="card"><h2>✅ やること</h2><div class="checklist">${checkItems(c).map(x => `<div class="ci${x.done ? ' done' : ''}"><button type="button" data-ck="${x.k}"${x.auto ? ' data-auto="1"' : ''}>✓</button><span>${esc(x.t)}</span><small>${x.at ? esc(mdDate(x.at)) : ''}</small></div>`).join('')}</div></div>`;
+    h += bossPanel(c);
+  } else if (role === 'party' || role === 'office') {
+    const ck = checkItems(c);
+    h += `<div class="card"><h2>✅ 対応の状況</h2><div class="checklist">${ck.map(x => `<div class="ci${x.done ? ' done' : ''}"><button type="button" disabled>✓</button><span>${esc(x.t)}</span></div>`).join('')}</div></div>`;
+    if (role === 'office') h += officePanel(c);
+    if (b.cause || b.prevention) h += `<div class="card"><h2>原因・再発防止</h2>${b.cause ? `<p style="white-space:pre-wrap;margin:0 0 6px"><b>原因：</b>${esc(b.cause)}</p>` : ''}${b.prevention ? `<p style="white-space:pre-wrap;margin:0"><b>再発防止：</b>${esc(b.prevention)}</p>` : ''}</div>`;
+  }
+  /* 経過記録 */
+  const logs = (c.logs || []).slice().sort((x, y) => String(y.at) > String(x.at) ? 1 : -1);
+  h += `<div class="card"><h2>🗒 経過記録</h2>${logs.length ? logs.map(l => `<div class="log">${isBoss() && l.kind !== '自動' ? `<button class="x" data-logdel="${esc(l.logId)}">×</button>` : ''}<div style="white-space:pre-wrap">${esc(l.text)}</div><div class="m">${esc(l.at)}・${esc(l.by)}${isBoss() ? (l.showParty ? '・当事者にも見せる' : '・親方だけ') : ''}</div></div>`).join('') : '<div class="hint">まだありません</div>'}
+    ${role === 'boss' || isOffice() ? `<label class="lbl">記録を足す</label><textarea id="logText" rows="2" placeholder="例：保険会社から相手に連絡済み。来週見積が出る"></textarea>
+      ${isBoss() ? '<label style="display:flex;gap:6px;align-items:center;font-size:14px;margin-top:6px"><input type="checkbox" id="logShow"> 当事者にも見せる</label>' : ''}
+      <button class="btn sm primary" id="logAdd" style="margin-top:8px">記録する</button>` : ''}</div>`;
+  /* 報告の中身 */
+  if (role !== 'office' || true) {
+    h += `<div class="card"><div style="display:flex;align-items:center"><h2 style="flex:1;margin:0">📋 報告の中身</h2>${(role === 'boss' || role === 'party') && c.state !== '完了' || isBoss() ? '<button class="btn sm" id="editBtn">✏️ 内容を直す</button>' : ''}</div>
+      <p class="hint">報告者：${esc(d.reporter || '')}・報告 ${esc(c.createdAt || '')}</p>`;
+    reportRows(d).forEach(([t, rows]) => { h += `<div class="secline">${esc(t)}</div><dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`; });
+    if (d.story) h += `<div class="secline">事故の経緯</div><p style="white-space:pre-wrap;margin:0;font-size:14px">${esc(d.story)}</p>`;
+    if (d.aiRaw && d.aiRaw.story) h += `<details style="margin-top:6px;font-size:13.5px"><summary class="hint" style="cursor:pointer">🤖 AIでまとめる前の、本人が書いた文を見る</summary><p style="white-space:pre-wrap;margin:6px 0 0;color:var(--bark)">${esc(d.aiRaw.story)}</p></details>`;
+    const ps = photosOf(c.id);
+    if (ps.length) h += `<div class="secline">写真（${ps.length}枚）</div><div class="thumbs">${ps.map(p => thumbHtml(p, { label: 1, pdf: role === 'boss' })).join('')}</div>${role === 'boss' ? '<p class="hint">薄い写真はPDFに入れません（PDFの画面で選べます）</p>' : ''}`;
+    if (role === 'party' || role === 'boss') h += `<div class="row2" style="margin-top:8px"><button class="btn sm" data-addph="cam">📷 写真を足す</button><button class="btn sm" data-addph="lib">🖼 選んで足す</button></div>`;
+    h += `</div>`;
+  }
+  if (isBoss()) h += `<div style="text-align:center;margin:16px 0"><button class="btn sm line-danger" id="delCase">この報告を消す</button></div>`;
+  $('#main').innerHTML = h;
+  loadThumbs(); bindCase(c);
+}
+function bindCasePhotos(c) { document.querySelectorAll('.th[data-pid]').forEach(el => el.onclick = () => photoMenu(el.dataset.pid, c.id, () => renderCase(c.id))); }
+function bossPanel(c) {
+  const b = c.boss || {}, ic = b.insurerCall || {}, rp = b.repair || {}, dm = (c.data || {}).damage || {};
+  const defIns = defaultInsurer(c);
+  const sChips = (k, list, cur) => `<div class="chips">${list.map(s => `<button type="button" class="chip${cur === s ? ' on' : ''}" data-bk="${k}" data-v="${esc(s)}">${esc(s)}</button>`).join('')}</div>`;
+  const bi = (k, v, ph = '', type = 'text') => `<input type="${type}" data-bi="${k}" value="${esc(v == null ? '' : v)}" placeholder="${esc(ph)}">`;
+  return `<div class="card"><h2>📊 進み具合</h2>${sChips('stage', STAGES_DEF, c.stage || '報告受付')}
+    <h3>保険会社への第一報</h3><div class="row2"><div>${bi('insurerCall.insurer', ic.insurer || '', defIns || '保険会社')}</div><div>${bi('insurerCall.at', ic.at || '', '連絡した日', 'date')}</div></div>
+    <div class="row2" style="margin-top:6px"><div>${bi('insurerCall.receiptNo', ic.receiptNo, '事故受付番号')}</div><div>${bi('insurerCall.person', ic.person, '担当者')}</div></div>
+    <h3>保険の使い方</h3>${sChips('insUse', ['保険を使う', '自費で直す', 'まだ決めていない'], b.insUse)}
+    <p class="hint">小さな損傷は、等級が下がるより自費の方が安いことがあります</p>
+    ${dm.ownThing || dm.theirThing ? `<h3>修理・お金</h3><div class="row2"><div>${bi('repair.shop', rp.shop, '修理先')}</div><div>${bi('repair.estimate', rp.estimate, '見積額（円）', 'number')}</div></div>
+      <div class="row2" style="margin-top:6px"><div>${bi('repair.deductible', rp.deductible, '免責額（円）', 'number')}</div><div>${bi('repair.paid', rp.paid, '支払った額（円）', 'number')}</div></div>
+      <div class="row2" style="margin-top:6px"><div>${bi('repair.payout', rp.payout, '保険金の入金（円）', 'number')}</div><div></div></div>` : ''}
+    ${(c.data || {}).party === 'other' ? `<h3>過失割合・示談</h3>${bi('fault', b.fault, '例：こちら8：相手2')}<textarea data-bi="settlement" rows="2" placeholder="示談の内容" style="margin-top:6px">${esc(b.settlement || '')}</textarea>` : ''}
+    ${dm.ownPerson ? `<h3>労災の進み具合</h3>${sChips('rousaiStage', ROUSAI_STAGES, b.rousaiStage)}` : ''}
+    <h3>次にやること</h3><div class="row2"><div>${bi('nextTodo', b.nextTodo, '例：見積をもらう')}</div><div style="flex:0 0 40%">${bi('nextDue', b.nextDue, '', 'date')}</div></div>
+    <h3>原因・再発防止（当事者にも見えます）</h3><textarea data-bi="cause" rows="2" placeholder="原因">${esc(b.cause || '')}</textarea><textarea data-bi="prevention" rows="2" placeholder="再発防止策" style="margin-top:6px">${esc(b.prevention || '')}</textarea>
+    <h3>みんなに共有</h3><label style="display:flex;gap:8px;align-items:center;font-size:14.5px"><input type="checkbox" data-bc="shared"${b.shared === true ? ' checked' : ''}> ほかのスタッフにも見せる（名前・相手の情報は伏せます）</label>
+    <textarea data-bi="shareText" rows="3" placeholder="みんなに見せる文（何が起きたか）。例：処分場へ向かう途中、左折時に後輪側をポールにこすった" style="margin-top:6px">${esc(b.shareText || '')}</textarea>
+    <h3>親方メモ（親方だけ）</h3><textarea data-bi="memo" rows="2" placeholder="本人への指導など">${esc(b.memo || '')}</textarea>
+    <button class="btn primary block" id="bossSave" style="margin-top:12px">親方の記録を保存</button></div>`;
+}
+function officePanel(c) {
+  const b = c.boss || {}, rp = b.repair || {}, dm = (c.data || {}).damage || {};
+  const bi = (k, v, ph = '', type = 'text') => `<input type="${type}" data-bi="${k}" value="${esc(v == null ? '' : v)}" placeholder="${esc(ph)}">`;
+  return `<div class="card"><h2>💴 事務の記録</h2>
+    <p class="hint" style="margin-top:0">保険の使い方：<b>${esc(b.insUse || '未定')}</b></p>
+    ${dm.ownThing || dm.theirThing ? `<h3>修理・お金</h3><div class="row2"><div>${bi('repair.shop', rp.shop, '修理先')}</div><div>${bi('repair.estimate', rp.estimate, '見積額（円）', 'number')}</div></div>
+      <div class="row2" style="margin-top:6px"><div>${bi('repair.paid', rp.paid, '支払った額（円）', 'number')}</div><div>${bi('repair.payout', rp.payout, '保険金の入金（円）', 'number')}</div></div>` : ''}
+    ${dm.ownPerson ? `<h3>労災の進み具合</h3><div class="chips">${ROUSAI_STAGES.map(s => `<button type="button" class="chip${b.rousaiStage === s ? ' on' : ''}" data-bk="rousaiStage" data-v="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
+    <button class="btn primary block" id="bossSave" style="margin-top:12px">保存</button></div>`;
+}
+function defaultInsurer(c) {
+  const d = c.data || {}, st = S.settings || {}, ins = st.insurance || {};
+  if (d.kind === 'car') { const v = (st.vehicles || {})[(d.car || {}).vehicleId] || {}; return v.insurer || (ins.auto || {}).name || ''; }
+  return (ins.work || {}).name || '';
+}
+function bindCase(c) {
+  const edit = clone(c.boss || {});
+  const m = $('#main');
+  bindCasePhotos(c);
+  m.querySelectorAll('[data-bk]').forEach(el => el.onclick = () => { const k = el.dataset.bk, v = el.dataset.v; edit[k] = edit[k] === v ? '' : v; m.querySelectorAll(`[data-bk="${k}"]`).forEach(z => z.classList.toggle('on', z.dataset.v === edit[k])); });
+  m.querySelectorAll('[data-bi]').forEach(el => el.oninput = () => setP(edit, el.dataset.bi, el.value));
+  m.querySelectorAll('[data-bc]').forEach(el => el.onchange = () => setP(edit, el.dataset.bc, el.checked));
+  m.querySelectorAll('[data-ck]').forEach(el => el.onclick = async () => {
+    if (el.dataset.auto) { toast('これは入力から自動で付きます'); return; }
+    const k = el.dataset.ck; edit.checks = edit.checks || {}; edit.checks[k] = edit.checks[k] ? '' : today();
+    await saveBoss(c, edit, true);
+  });
+  const sv = $('#bossSave'); if (sv) sv.onclick = () => saveBoss(c, edit);
+  const eb = $('#editBtn'); if (eb) eb.onclick = () => editCase(c.id);
+  const cb = $('#callBtn'); if (cb) cb.onclick = () => firstCall(c);
+  const pb = $('#pdfBtn'); if (pb) pb.onclick = () => openPdf(c);
+  const la = $('#logAdd'); if (la) la.onclick = async () => {
+    const t = $('#logText').value.trim(); if (!t) { toast('内容を書いてください'); return; }
+    la.disabled = true;
+    try { const j = await api('log', { caseId: c.id, text: t, showParty: $('#logShow') ? $('#logShow').checked : true }); if (!j.ok) throw new Error(j.error); upsertCase(j.case); renderCase(c.id); toast('記録しました'); }
+    catch (e) { toast(e.message, 4000); la.disabled = false; }
+  };
+  m.querySelectorAll('[data-logdel]').forEach(el => el.onclick = async () => {
+    if (!confirm('この記録を消しますか？')) return;
+    try { const j = await api('log', { caseId: c.id, logId: el.dataset.logdel, remove: true }); if (!j.ok) throw new Error(j.error); upsertCase(j.case); renderCase(c.id); } catch (e) { toast(e.message); }
+  });
+  m.querySelectorAll('[data-addph]').forEach(el => el.onclick = () => pickPhoto('other', el.dataset.addph === 'cam', c.id, () => { renderCase(c.id); toast('写真を足しました。「枠」は写真をタップして変えられます'); }));
+  const dl = $('#delCase'); if (dl) dl.onclick = async () => {
+    if (!confirm('この報告を消しますか？（スプレッドシートには「削除」として残ります）')) return;
+    try { const j = await api('delete', { caseId: c.id }); if (!j.ok) throw new Error(j.error); S.cases = S.cases.filter(x => x.id !== c.id); back(); toast('消しました'); } catch (e) { toast(e.message); }
+  };
+}
+async function saveBoss(c, edit, quiet) {
+  if (!navigator.onLine) { toast('電波があるときに保存してください'); return; }
+  const b = $('#bossSave'); if (b) { b.disabled = true; b.innerHTML = '<span class="loading"></span> 保存しています'; }
+  try {
+    const j = await api('save', { case: { id: c.id, data: c.data, boss: edit }, base: c.updatedAt });
+    if (!j.ok) { if (j.conflict) { upsertCase(j.case); renderCase(c.id); } throw new Error(j.error); }
+    upsertCase(j.case); renderCase(c.id); updateBadges(); toast(quiet ? '記録しました' : '保存しました');
+  } catch (e) { toast(e.message, 4500); if (b) { b.disabled = false; b.textContent = '保存'; } }
+}
+
+/* --- 第一報の要点（電話しながら読み上げる） --- */
+function firstCall(c) {
+  const d = c.data || {}, car = d.kind === 'car', cr = d.car || {}, o = d.other || {}, dm = d.damage || {}, ic = (c.boss || {}).insurerCall || {};
+  const whatHappened = [car ? '車両事故' : '作業事故', d.party === 'other' ? '相手あり' : '単独', d.party === 'other' ? ({ we: 'こちらが当てた', they: '当てられた', unknown: '双方・不明' }[d.who] || '') : '', cr.scene, (d.work || {}).task].filter(Boolean).join('・');
+  const injury = [dm.ownPerson ? '自社の人：' + ((d.rousai || {}).staff || '') + ' ' + ((d.rousai || {}).type || '') : '', dm.theirPerson ? '相手：' + ((d.theirInjury || {}).text || 'あり') : ''].filter(Boolean).join('\n') || 'なし';
+  const row = (k, v) => v ? `<dt>${k}</dt><dd style="white-space:pre-wrap">${esc(v)}</dd>` : '';
+  openModal(`<h3>📞 第一報の要点</h3><dl class="bigsum">
+    ${row('いつ', v2(jaDate(d.date), d.time))}${row('どこで', [d.place && d.place.address, d.place && d.place.note].filter(Boolean).join('　'))}
+    ${row(car ? '運転者・車' : '作業者・現場', car ? [d.driver, cr.vehicle, cr.plate].filter(Boolean).join('　') : [d.driver, (d.work || {}).site].filter(Boolean).join('　'))}
+    ${row('何が起きた', whatHappened)}${row('経緯', String(d.story || '').slice(0, 160) + (String(d.story || '').length > 160 ? '…' : ''))}
+    ${row('けが', injury)}${row('警察', [(d.police || {}).status, (d.police || {}).station].filter(Boolean).join('　'))}
+    ${car ? row('車', cr.drivable) + row('積荷', cr.loadOn === '荷物あり' ? ((cr.load || {}).kinds || []).join('・') + ' ' + ((cr.load || {}).spill || '') : cr.loadOn) : ''}
+    ${row('相手', d.party === 'other' ? [o.name, o.phone, o.plate, o.insurer ? '保険：' + o.insurer : ''].filter(Boolean).join('　') : (dm.theirThing ? [o.thing, o.ownerType, o.ownerName].filter(Boolean).join('　') : ''))}
+  </dl>
+  <div class="card" style="margin-top:12px"><h2>第一報を記録</h2>
+    <label class="lbl">保険会社</label><input type="text" id="fcIns" value="${esc(ic.insurer || defaultInsurer(c))}">
+    <div class="row2"><div><label class="lbl">事故受付番号</label><input type="text" id="fcNo" value="${esc(ic.receiptNo || '')}"></div><div><label class="lbl">担当者</label><input type="text" id="fcPer" value="${esc(ic.person || '')}"></div></div>
+    <button class="btn primary block" id="fcSave" style="margin-top:12px">第一報をした（記録する）</button></div>
+  <button class="btn block" onclick="closeModal()" style="margin-top:8px">閉じる</button>`);
+  $('#fcSave').onclick = async () => {
+    const edit = clone(c.boss || {});
+    edit.insurerCall = Object.assign({}, edit.insurerCall, { insurer: $('#fcIns').value.trim(), receiptNo: $('#fcNo').value.trim(), person: $('#fcPer').value.trim(), at: (edit.insurerCall || {}).at || today() });
+    if (STAGES_DEF.indexOf(edit.stage || '報告受付') < 1) edit.stage = '保険会社へ第一報';
+    closeModal(); await saveBoss(c, edit, true);
+    api('log', { caseId: c.id, text: '保険会社' + (edit.insurerCall.insurer ? '（' + edit.insurerCall.insurer + '）' : '') + 'へ第一報' + (edit.insurerCall.receiptNo ? '。事故受付番号 ' + edit.insurerCall.receiptNo : ''), showParty: true, kind: '親方' }).then(j => { if (j.ok) { upsertCase(j.case); if (S.view && S.view.id === c.id) renderCase(c.id); } }).catch(() => {});
+  };
+}
+
+/* =========================================================
+   一覧・進捗
+   ========================================================= */
+function renderList() {
+  const seg = S.listSeg;
+  const list = S.cases.filter(c => seg === 'all' ? true : seg === 'done' ? c.state === '完了' : c.state !== '完了');
+  const stale = S.cases.filter(c => c.role !== 'staff' && c.state !== '完了' && daysSince(c.updatedAt) >= 7).length;
+  let h = `<div class="pend" id="pendBox" hidden></div>`;
+  if (isBoss() || isOffice()) {
+    const open = S.cases.filter(c => c.state !== '完了');
+    h += `<div class="card"><h2>いまの状況</h2><div class="row2" style="text-align:center">
+      <div><div style="font-size:26px;font-weight:800;color:var(--leaf)">${open.length}</div><div class="hint" style="margin:0">対応中</div></div>
+      <div><div style="font-size:26px;font-weight:800;color:${open.filter(c => !c.stage || c.stage === '報告受付').length ? 'var(--danger)' : 'var(--leaf)'}">${open.filter(c => !c.stage || c.stage === '報告受付').length}</div><div class="hint" style="margin:0">第一報まだ</div></div>
+      <div><div style="font-size:26px;font-weight:800;color:${stale ? '#B8860B' : 'var(--leaf)'}">${stale}</div><div class="hint" style="margin:0">7日以上止まっている</div></div></div></div>`;
+  }
+  h += `<div class="seg">${[['open', '対応中'], ['done', '完了'], ['all', 'すべて']].map(([k, t]) => `<button class="${seg === k ? 'on' : ''}" data-seg="${k}">${t}</button>`).join('')}</div>`;
+  h += list.length ? list.map(caseItem).join('') : `<div class="empty">${seg === 'open' ? '対応中の事故はありません' : 'ありません'}</div>`;
+  if (!isBoss() && !isOffice()) h += `<p class="hint">自分が関わった事故と、親方がみんなに共有した事故（名前は伏せています）が出ます。</p>`;
+  h += `<div style="text-align:center;margin-top:10px"><button class="btn sm" onclick="refresh(false)">↻ 読み込み直す</button></div>`;
+  $('#main').innerHTML = h;
+  document.querySelectorAll('[data-seg]').forEach(b => b.onclick = () => { S.listSeg = b.dataset.seg; renderList(); });
+  document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openItem(b.dataset.open));
+  updateNet();
+}
+
+/* =========================================================
+   ヒヤリハット
+   ========================================================= */
+function renderHiyari() {
+  const pend = S.hyOut.filter(h => (h.mode || 'hiyari') === 'hiyari' && !h.body.remove).map(h => Object.assign({ pending: true, mine: true, by: h.body.item.anon ? '' : S.me.disp }, h.body.item));
+  const list = pend.concat(S.hiyari.filter(x => !pend.some(p => p.id === x.id)));
+  let h = `<div class="pend" id="pendBox" hidden></div>
+    <button class="btn tape block" id="hyNew" style="min-height:56px;font-size:16.5px">⚠️ ヒヤリハットを送る（30秒）</button>
+    <p class="hint" style="text-align:center">事故にならなかった「危なかった」を残すと、みんなの事故防止になります。名前なしでも送れます</p>`;
+  if (isBoss() && S.hiyari.length) h += hyChart();
+  h += `<div class="card"><h2>みんなのヒヤリハット</h2>${list.length ? list.map(hyItem).join('') : '<div class="empty">まだありません</div>'}</div>`;
+  $('#main').innerHTML = h;
+  $('#hyNew').onclick = () => hyForm();
+  document.querySelectorAll('[data-hy]').forEach(b => b.onclick = () => hyAction(b.dataset.hy, b.dataset.id));
+  loadThumbs();
+  document.querySelectorAll('.hy .th[data-pid]').forEach(el => el.onclick = () => { photoUrl(el.dataset.pid).then(u => openModal(`<img src="${u}" style="width:100%;border-radius:10px" alt=""><button class="btn block" style="margin-top:10px" onclick="closeModal()">閉じる</button>`)); });
+  updateNet();
+}
+function hyChart() {
+  const months = []; const d = new Date(); for (let i = 5; i >= 0; i--) { const x = new Date(d.getFullYear(), d.getMonth() - i, 1); months.push(x.getFullYear() + '-' + pad(x.getMonth() + 1)); }
+  const cnt = months.map(m => S.hiyari.filter(h => String(h.date).startsWith(m)).length), max = Math.max(1, ...cnt);
+  const kinds = {}; S.hiyari.filter(h => String(h.date) >= months[0]).forEach(h => kinds[h.kind || 'その他'] = (kinds[h.kind || 'その他'] || 0) + 1);
+  const top = Object.entries(kinds).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  return `<div class="card"><h2>月ごとの件数（6か月）</h2><div class="bars">${cnt.map(n => `<div style="height:${Math.round(n / max * 100)}%;background:${n ? 'var(--leaf)' : 'var(--leaf-soft)'}"><span>${n || ''}</span></div>`).join('')}</div>
+    <div class="barx">${months.map(m => `<span>${+m.slice(5)}月</span>`).join('')}</div>
+    ${top.length ? `<h3>多い種類</h3><div class="chips">${top.map(([k, n]) => `<span class="tag">${esc(k)} ${n}件</span>`).join('')}</div><p class="hint">朝礼・安全教育の話題にどうぞ</p>` : ''}</div>`;
+}
+function hyItem(x) {
+  const canEdit = x.mine || isBoss();
+  return `<div class="hy"><div style="margin-bottom:2px">${x.kind ? `<span class="tag red">${esc(x.kind)}</span>` : ''}${x.activity ? `<span class="tag">${esc(x.activity)}</span>` : ''}${x.status === '対策済み' ? '<span class="tag stage">対策済み</span>' : ''}${x.pending ? '<span class="tag wait">未送信</span>' : ''}</div>
+    <div class="t">${esc(x.text)}</div>${x.prevent ? `<div class="t" style="color:var(--leaf)">→ ${esc(x.prevent)}</div>` : ''}
+    ${(x.photoIds || []).length ? `<div class="thumbs">${x.photoIds.map(id => thumbHtml({ photoId: id })).join('')}</div>` : ''}
+    <div class="m">${esc([mdDate(x.date) + ' ' + (x.time || ''), x.site, x.by || '名前なし'].filter(Boolean).join('・'))}</div>
+    ${x.comment ? `<div class="cm">💬 ${esc(x.comment)}<span class="hint">（${esc(x.commentBy || '')}）</span></div>` : ''}
+    ${!x.pending && (canEdit || isBoss()) ? `<div class="chips" style="margin-top:6px">${isBoss() ? `<button class="chip" data-hy="comment" data-id="${esc(x.id)}">💬 コメント</button><button class="chip${x.status === '対策済み' ? ' on' : ''}" data-hy="done" data-id="${esc(x.id)}">✓ 対策済み</button>` : ''}${canEdit && !x.caseId ? `<button class="chip" data-hy="toCase" data-id="${esc(x.id)}">🚨 事故報告にする</button>` : ''}${canEdit ? `<button class="chip" data-hy="del" data-id="${esc(x.id)}">消す</button>` : ''}</div>` : ''}</div>`;
+}
+function hyForm() {
+  const item = { id: newId('H'), date: today(), time: nowTime(), site: '', activity: '', kind: '', text: '', prevent: '', photoIds: [], anon: false };
+  const draw = () => {
+    openModal(`<h3>⚠️ ヒヤリハット</h3>
+      <div class="row2"><div><label class="lbl">日付</label><input type="date" id="hyDate" value="${esc(item.date)}"></div><div><label class="lbl">時刻</label><input type="time" id="hyTime" value="${esc(item.time)}"></div></div>
+      <label class="lbl">現場・場所</label><input type="text" id="hySite" list="hyDl" value="${esc(item.site)}" placeholder="現場名や場所"><datalist id="hyDl">${S.sites.map(s => `<option value="${esc(s.name)}">`).join('')}</datalist>
+      <label class="lbl">何をしていた時？</label><div class="chips">${HY_ACT.map(a => `<button type="button" class="chip${item.activity === a ? ' on' : ''}" data-ha="${esc(a)}">${esc(a)}</button>`).join('')}</div>
+      <label class="lbl">何が起きそうだった？<span class="req">必須</span></label><div class="chips">${HY_KINDS.map(a => `<button type="button" class="chip${item.kind === a ? ' on' : ''}" data-hk="${esc(a)}">${esc(a)}</button>`).join('')}</div>
+      <textarea id="hyText" rows="3" style="margin-top:8px" placeholder="ひとこと。例：はしごの足が土にめり込んで傾いた">${esc(item.text)}</textarea>
+      <div class="row2" style="margin-top:6px"><button type="button" class="btn sm" id="hyMic">🎤 話して入れる</button><button type="button" class="btn sm" id="hyAi">🤖 AIでまとめる</button></div>
+      <div id="hyAiOut"></div>${item.textRaw ? '<p class="hint">AIでまとめた文を使っています。<button type="button" class="btn sm" id="hyRevert">元の文に戻す</button></p>' : ''}
+      <label class="lbl">こうすれば防げる（任意）</label><input type="text" id="hyPrev" value="${esc(item.prevent)}" placeholder="例：はしごの下に板を敷く">
+      <label class="lbl">写真（任意）</label><div class="thumbs" id="hyThumbs">${item.photoIds.map(id => thumbHtml({ photoId: id, local: true })).join('')}</div>
+      <div class="row2"><button type="button" class="btn sm" id="hyCam">📷 撮る</button><button type="button" class="btn sm" id="hyLib">🖼 選ぶ</button></div>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:14.5px"><input type="checkbox" id="hyAnon"${item.anon ? ' checked' : ''}> 名前を出さずに送る</label>
+      <div class="row2" style="margin-top:14px"><button type="button" class="btn" id="hyCancel">やめる</button><button type="button" class="btn primary" id="hySend">送る</button></div>`);
+    const keep = () => { item.date = $('#hyDate').value; item.time = $('#hyTime').value; item.site = $('#hySite').value; item.text = $('#hyText').value; item.prevent = $('#hyPrev').value; item.anon = $('#hyAnon').checked; };
+    document.querySelectorAll('[data-ha]').forEach(b => b.onclick = () => { keep(); item.activity = item.activity === b.dataset.ha ? '' : b.dataset.ha; draw(); });
+    document.querySelectorAll('[data-hk]').forEach(b => b.onclick = () => { keep(); item.kind = item.kind === b.dataset.hk ? '' : b.dataset.hk; draw(); });
+    const addPh = cam => { keep(); pickPhoto('hiyari', cam, item.id, () => { item.photoIds = S.localPhotos.filter(p => p.caseId === item.id).map(p => p.photoId); draw(); }); };
+    $('#hyCam').onclick = () => addPh(true); $('#hyLib').onclick = () => addPh(false);
+    $('#hyMic').onclick = () => toggleMic('', $('#hyMic'), $('#hyText'));
+    if ($('#hyRevert')) $('#hyRevert').onclick = () => { keep(); item.text = item.textRaw; delete item.textRaw; draw(); };
+    $('#hyAi').onclick = async () => {
+      keep(); const t = item.text.trim();
+      if (!t) { toast('先に書くか、🎤で話してください'); return; }
+      if (!navigator.onLine) { toast('AIは電波があるときに使えます'); return; }
+      const b = $('#hyAi'); b.disabled = true; b.innerHTML = '<span class="loading"></span> まとめています';
+      try {
+        const j = await api('polish', { text: t, field: 'ヒヤリハット（事故にならなかった危ない場面）', context: [item.activity, item.kind, item.site].filter(Boolean).join('／'), speaker: S.me.disp }, 60000);
+        if (!j.ok) throw new Error(j.error);
+        $('#hyAiOut').innerHTML = `<div class="note green"><b>🤖 AIのまとめ</b><div style="white-space:pre-wrap;background:#fff;border-radius:8px;padding:8px 10px;margin:4px 0">${esc(j.headline ? j.headline + '\n' + j.text : j.text)}</div>
+          <div class="row2"><button type="button" class="btn sm primary" id="hyAiUse">この文を使う</button><button type="button" class="btn sm" id="hyAiNo">使わない</button></div></div>`;
+        $('#hyAiUse').onclick = () => { keep(); item.textRaw = item.textRaw || t; item.text = j.text; draw(); };
+        $('#hyAiNo').onclick = () => { $('#hyAiOut').innerHTML = ''; };
+      } catch (e) { toast(e.message, 4000); }
+      b.disabled = false; b.textContent = '🤖 AIでまとめる';
+    };
+    $('#hyCancel').onclick = async () => { for (const id of item.photoIds) await DB.pdel(id); S.localPhotos = S.localPhotos.filter(p => p.caseId !== item.id); closeModal(); };
+    $('#hySend').onclick = async () => {
+      keep();
+      if (!item.kind && !item.text.trim()) { toast('「何が起きそうだった？」を選ぶか書いてください'); return; }
+      S.hyOut.push({ mode: 'hiyari', body: { item: Object.assign({}, item) } }); await DB.set('hyOut', S.hyOut);
+      closeModal(); renderHiyari(); toast(navigator.onLine ? '送りました。ありがとうございます' : '電波が戻ったら送ります'); sync();
+    };
+    loadThumbs();
+  };
+  draw();
+}
+async function hyAction(act, id) {
+  const x = S.hiyari.find(h => h.id === id); if (!x) return;
+  if (act === 'comment') {
+    openModal(`<h3>💬 コメント</h3><textarea id="hcText" rows="3">${esc(x.comment || '')}</textarea><div class="row2" style="margin-top:10px"><button class="btn" onclick="closeModal()">やめる</button><button class="btn primary" id="hcOk">保存</button></div>`);
+    $('#hcOk').onclick = async () => { const t = $('#hcText').value.trim(); closeModal(); try { const j = await api('hiyariBoss', { id, comment: t }); if (!j.ok) throw new Error(j.error); x.comment = t; x.commentBy = S.me.disp; renderHiyari(); } catch (e) { toast(e.message); } };
+  } else if (act === 'done') {
+    const nv = x.status === '対策済み' ? '' : '対策済み';
+    try { const j = await api('hiyariBoss', { id, status: nv }); if (!j.ok) throw new Error(j.error); x.status = nv; renderHiyari(); } catch (e) { toast(e.message); }
+  } else if (act === 'del') {
+    if (!confirm('このヒヤリハットを消しますか？')) return;
+    try { const j = await api('hiyari', { item: { id }, remove: true }); if (!j.ok) throw new Error(j.error); S.hiyari = S.hiyari.filter(h => h.id !== id); renderHiyari(); } catch (e) { toast(e.message); }
+  } else if (act === 'toCase') {
+    if (!confirm('このヒヤリハットの内容で、事故報告を書き始めますか？')) return;
+    const cid = newId('J');
+    const preset = { _id: cid, kind: x.activity === '運転' ? 'car' : 'work', date: x.date || today(), time: x.time || nowTime(), place: { address: x.site || '' }, story: [x.kind, x.text].filter(Boolean).join('：'), fromHiyari: x.id };
+    if (preset.kind === 'work') preset.work = { site: x.site || '' };
+    S.hyOut.push({ mode: 'hiyari', body: { item: Object.assign({}, x, { caseId: cid }) } }); await DB.set('hyOut', S.hyOut);
+    S.tab = 'home'; startDraft(false, preset); sync();
+  }
+}
+
+/* =========================================================
+   設定（親方）
+   ========================================================= */
+function renderSettings() {
+  if (!isBoss()) { back(); return; }
+  setHeader('⚙ 事故報告の設定', true); $('#tabs').hidden = true;
+  const st = clone((S.settings || {}).full || {});
+  st.company = Object.assign({}, COMPANY_DEFAULT, st.company || {}); st.contacts = st.contacts || {}; st.insurance = st.insurance || {}; st.vehicles = st.vehicles || {}; st.licenses = st.licenses || {};
+  ['auto', 'work', 'rousai', 'machine'].forEach(k => st.insurance[k] = st.insurance[k] || {});
+  const si = (path, ph = '', type = 'text') => `<input type="${type}" data-s="${path}" value="${esc(getP(st, path) || '')}" placeholder="${esc(ph)}">`;
+  const licSel = (path, cur, need) => `<select data-s="${path}"><option value="">${need ? '必要な免許（わからなければ空欄）' : '免許の種類'}</option>${LICENSES.map(l => `<option${cur === l[0] ? ' selected' : ''}>${esc(l[0])}</option>`).join('')}</select>`;
+  $('#main').innerHTML = `
+    <div class="card"><h2>🏢 会社（PDFに載ります）</h2>${si('company.name', '会社名')}<div style="height:6px"></div>${si('company.address', '住所')}<div style="height:6px"></div>${si('company.phone', '電話番号', 'tel')}</div>
+    <div class="card"><h2>📞 連絡先・お知らせ</h2><label class="lbl">親方の携帯（事故直後の画面に「親方に電話」が出ます）</label>${si('contacts.bossPhone', '090-…', 'tel')}
+      <label class="lbl">新しい報告を知らせるメールの宛先</label>${si('contacts.notifyEmail', '空欄なら、GASの持ち主のアドレス', 'email')}</div>
+    <div class="card"><h2>🛡 会社の保険</h2>
+      ${[['auto', '自動車保険（代理店・保険会社）'], ['work', '請負業者賠償責任保険'], ['rousai', '労災の上乗せ保険'], ['machine', '動産・機械の保険']].map(([k, t]) => `<h3>${t}</h3><div class="row2"><div>${si('insurance.' + k + '.name', '保険会社・代理店')}</div><div>${si('insurance.' + k + '.phone', '電話', 'tel')}</div></div><div style="height:6px"></div>${si('insurance.' + k + '.policy', '証券番号')}`).join('')}</div>
+    <div class="card"><h2>🚚 車ごとの保険・ロードサービス・必要な免許</h2>
+      ${S.vehicles.filter(v => v.category !== '重機（ユンボなど）').map(v => { const p = 'vehicles.' + v.id; const x = st.vehicles[v.id] || {}; return `<h3>${esc(v.name)} <small>${esc(v.plate || '')}</small></h3>
+        <div class="row2"><div>${si(p + '.insurer', '保険会社')}</div><div>${si(p + '.policy', '証券番号')}</div></div>
+        <div class="row2" style="margin-top:6px"><div>${si(p + '.road', 'ロードサービスの電話', 'tel')}</div><div>${si(p + '.insurerPhone', '保険会社の事故受付', 'tel')}</div></div>
+        <div class="row2" style="margin-top:6px"><div><select data-s="${p}.carCov"><option value="">車両保険</option><option${x.carCov === 'あり' ? ' selected' : ''}>あり</option><option${x.carCov === 'なし' ? ' selected' : ''}>なし</option></select></div><div>${licSel(p + '.license', x.license, true)}</div></div>`; }).join('') || '<p class="hint">車両アプリに車が登録されていません</p>'}</div>
+    <div class="card"><h2>🪪 スタッフの免許の種類</h2><p class="hint" style="margin-top:0">車の「必要な免許」と合わないとき、報告の画面に注意を出します</p>
+      ${S.staff.map(s => `<div class="row2" style="align-items:center;margin-bottom:6px"><span>${esc(s.disp)}</span><div>${licSel('licenses.' + s.id, st.licenses[s.id], false)}</div></div>`).join('')}</div>
+    <p class="hint">保存先：Googleドライブ「社内アプリ ＞ 事故報告 ＞ 事故報告データ（社外秘）」。共有はしないでください。</p>`;
+  setBottom(`<div class="st">親方だけが変えられます</div><button class="btn primary" id="setSave">保存</button>`);
+  $('#main').oninput = e => { const el = e.target; if (el.dataset && el.dataset.s) setP(st, el.dataset.s, el.value.trim()); };
+  $('#main').onchange = $('#main').oninput;
+  $('#setSave').onclick = async () => {
+    const b = $('#setSave'); b.disabled = true; b.innerHTML = '<span class="loading"></span>';
+    try { const j = await api('settings', { settings: st }); if (!j.ok) throw new Error(j.error); S.settings = j.settings; toast('保存しました'); back(); }
+    catch (e) { toast(e.message, 4000); b.disabled = false; b.textContent = '保存'; }
+  };
+}
+
+/* =========================================================
+   保険会社提出用PDF（A4縦：事故報告書＋写真台帳）
+   ・社内向けの情報（親方メモ・経過記録・お金・再発防止）は載せない
+   ・常に最新の内容で作り直す（書類には作成日だけ。修正の跡は残さない）
+   ========================================================= */
+const FONT = "'Hiragino Kaku Gothic ProN','Hiragino Sans','Noto Sans JP','Yu Gothic',Meiryo,sans-serif";
+function loadScript(src) { return new Promise((ok, ng) => { if (document.querySelector(`script[src="${src}"]`)) return ok(); const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ng(new Error('部品を読み込めませんでした（電波を確かめてください）')); document.head.appendChild(s); }); }
+function openPdf(c) {
+  const ps = photosOf(c.id).filter(p => p.slot !== 'sketch'), st = S.settings || {}, full = st.full || {}, comp = Object.assign({}, COMPANY_DEFAULT, full.company || st.company || {});
+  const d = c.data || {}, ins = (c.boss || {}).insurerCall || {};
+  const vIns = d.kind === 'car' ? ((full.vehicles || {})[(d.car || {}).vehicleId] || {}) : ((full.insurance || {}).work || {});
+  const sel = {}; ps.forEach(p => sel[p.photoId] = p.inPdf !== false);
+  openModal(`<h3>📄 保険会社に出す事故報告書</h3>
+    <label class="lbl">宛先（保険会社）</label><input type="text" id="pdTo" value="${esc(ins.insurer || defaultInsurer(c))}">
+    <div class="row2"><div><label class="lbl">事故受付番号</label><input type="text" id="pdNo" value="${esc(ins.receiptNo || '')}"></div><div><label class="lbl">証券番号</label><input type="text" id="pdPol" value="${esc(vIns.policy || '')}"></div></div>
+    <div class="row2"><div><label class="lbl">報告者</label><input type="text" id="pdBy" value="${esc(S.me.disp)}"></div><div><label class="lbl">電話</label><input type="tel" id="pdTel" value="${esc(comp.phone || '')}"></div></div>
+    <label class="lbl">載せる写真（タップで外す・戻す）</label>
+    <div class="thumbs" id="pdThumbs">${ps.map(p => thumbHtml(Object.assign({}, p, { inPdf: sel[p.photoId] }), { pdf: 1, label: 1 })).join('') || '<span class="hint">写真がありません</span>'}</div>
+    <p class="hint">載せない情報：親方メモ・経過記録・お金・再発防止・社内の共有設定</p>
+    <div class="row2" style="margin-top:12px"><button class="btn" id="pdPrev">見本を見る</button><button class="btn primary" id="pdMake">PDFを作る</button></div>
+    <div id="pdProg" class="hint"></div><div class="pdfprev" id="pdPrevBox"></div>
+    <button class="btn block" style="margin-top:10px" onclick="closeModal()">閉じる</button>`);
+  loadThumbs();
+  document.querySelectorAll('#pdThumbs .th').forEach(el => el.onclick = () => {
+    const id = el.dataset.pid; sel[id] = !sel[id]; el.classList.toggle('off', !sel[id]);
+    const cp = (c.photos || []).find(x => x.photoId === id); if (cp) cp.inPdf = sel[id];
+    api('photoMeta', { photoId: id, inPdf: sel[id] }).catch(() => {});
+  });
+  const opts = () => ({ to: $('#pdTo').value.trim(), receiptNo: $('#pdNo').value.trim(), policy: $('#pdPol').value.trim(), by: $('#pdBy').value.trim(), tel: $('#pdTel').value.trim(), company: comp, photos: ps.filter(p => sel[p.photoId]) });
+  const prog = t => { const e = $('#pdProg'); if (e) e.textContent = t || ''; };
+  $('#pdPrev').onclick = async () => {
+    try { prog('見本を作っています…'); const pages = await buildPdfPages(c, opts(), prog); const box = $('#pdPrevBox'); box.innerHTML = ''; pages.forEach(p => box.appendChild(p)); prog(pages.length + 'ページ'); }
+    catch (e) { prog(''); toast(e.message, 4000); }
+  };
+  $('#pdMake').onclick = async () => {
+    try {
+      prog('準備しています…');
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+      const pages = await buildPdfPages(c, opts(), prog);
+      const pdf = new window.jspdf.jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+      pages.forEach((cv, i) => { prog(`PDFにしています… ${i + 1} / ${pages.length}`); if (i) pdf.addPage(); pdf.addImage(cv.toDataURL('image/jpeg', 0.88), 'JPEG', 0, 0, 210, 297, undefined, 'FAST'); });
+      const name = `事故報告書_${c.no || ''}_${String(d.date || '').replace(/-/g, '')}.pdf`;
+      const file = new File([pdf.output('blob')], name, { type: 'application/pdf' });
+      prog('できました。送り先を選んでください');
+      await shareFile(file);
+      if (!(c.boss || {}).pdfSentAt) {
+        if (confirm('保険会社に提出しましたか？\n「OK」で「詳細報告書を提出」に進めます')) {
+          const edit = clone(c.boss || {}); edit.pdfSentAt = today();
+          if (STAGES_DEF.indexOf(edit.stage || '報告受付') < 3) edit.stage = '詳細報告書を提出';
+          closeModal(); await saveBoss(c, edit, true);
+          api('log', { caseId: c.id, text: '詳細報告書（PDF）を ' + (opts().to || '保険会社') + ' に提出', showParty: true, kind: '親方' }).then(j => { if (j.ok) { upsertCase(j.case); if (S.view && S.view.id === c.id) renderCase(c.id); } }).catch(() => {});
+        }
+      }
+    } catch (e) { prog(''); toast('PDFを作れませんでした：' + (e.message || e), 4500); }
+  };
+}
+async function shareFile(f) {
+  if (navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: f.name }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+}
+const PW = 1240, PH = 1754, MG = 84, LH = 34, FS = 23;
+function wrapText(x, text, maxW) {
+  const out = [];
+  String(text == null ? '' : text).split('\n').forEach(par => {
+    if (par === '') { out.push(''); return; }
+    let line = '';
+    for (const ch of Array.from(par)) {
+      if (x.measureText(line + ch).width > maxW && line) {
+        if (/^[、。，．）」』！？・ー]$/.test(ch)) { line += ch; out.push(line); line = ''; continue; }   // 句読点を行頭に置かない
+        out.push(line); line = ch;
+      } else line += ch;
+    }
+    out.push(line);
+  });
+  return out;
+}
+async function buildPdfPages(c, o, prog) {
+  const d = c.data || {}, pages = [];
+  let cv, x, y;
+  const newPage = () => { cv = document.createElement('canvas'); cv.width = PW; cv.height = PH; x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, PW, PH); x.textBaseline = 'alphabetic'; x.fillStyle = '#111'; y = MG; pages.push(cv); };
+  const font = (s, b) => x.font = `${b ? 'bold ' : ''}${s}px ${FONT}`;
+  const text = (t, tx, ty, s = FS, o2 = {}) => { font(s, o2.bold); x.fillStyle = o2.color || '#111'; x.textAlign = o2.align || 'left'; x.fillText(t, tx, ty); x.textAlign = 'left'; };
+  const bottom = PH - MG - 40;
+  const ensure = hgt => { if (y + hgt > bottom) { newPage(); text('事故報告書（つづき）　報告番号 ' + (c.no || ''), MG, y + 24, 20, { color: '#555' }); y += 50; } };
+  const LABW = 250, W = PW - MG * 2;
+  const section = t => { ensure(LH * 2 + 20); y += 16; x.fillStyle = '#214A37'; x.fillRect(MG, y, W, 42); text(t, MG + 14, y + 30, 23, { bold: true, color: '#fff' }); y += 42; };
+  const row = (k, v) => {
+    font(FS); const lines = wrapText(x, v, W - LABW - 40), hgt = Math.max(1, lines.length) * LH + 16;
+    if (y + hgt > bottom && lines.length > 3) {   // 長い文は途中で次のページへ
+      let i = 0;
+      while (i < lines.length) {
+        const fit = Math.max(1, Math.floor((bottom - y - 16) / LH)), part = lines.slice(i, i + fit);
+        drawRow(i ? k + '（つづき）' : k, part); i += fit; if (i < lines.length) ensure(LH * 3);
+      }
+      return;
+    }
+    ensure(hgt); drawRow(k, lines);
+  };
+  const drawRow = (k, lines) => {
+    const hgt = Math.max(1, lines.length) * LH + 16;
+    x.fillStyle = '#F1F4F1'; x.fillRect(MG, y, LABW, hgt); x.strokeStyle = '#9AA59C'; x.lineWidth = 1.5; x.strokeRect(MG, y, W, hgt); x.beginPath(); x.moveTo(MG + LABW, y); x.lineTo(MG + LABW, y + hgt); x.stroke();
+    font(21, true); x.fillStyle = '#333'; wrapText(x, k, LABW - 20).forEach((l, i) => x.fillText(l, MG + 12, y + 32 + i * LH));
+    font(FS); x.fillStyle = '#111'; lines.forEach((l, i) => x.fillText(l, MG + LABW + 14, y + 32 + i * LH));
+    y += hgt;
+  };
+
+  /* 1ページ目の頭 */
+  newPage();
+  text('作成日　' + jaDate(today()), PW - MG, y + 22, 21, { align: 'right' });
+  y += 40;
+  text('事 故 報 告 書', PW / 2, y + 52, 52, { bold: true, align: 'center' }); y += 96;
+  if (o.to) { text(o.to + '　御中', MG, y + 30, 30, { bold: true }); x.strokeStyle = '#111'; x.lineWidth = 2; x.beginPath(); x.moveTo(MG, y + 42); x.lineTo(MG + Math.min(620, x.measureText(o.to + '　御中').width + 10), y + 42); x.stroke(); }
+  const comp = o.company || {};
+  const rb = [comp.name, comp.address, o.tel || comp.phone ? 'TEL ' + (o.tel || comp.phone) : '', o.by ? '報告者　' + o.by : ''].filter(Boolean);
+  rb.forEach((l, i) => text(l, PW - MG, y + 26 + i * 32, 21, { align: 'right', bold: i === 0 }));
+  y += Math.max(70, rb.length * 32 + 20);
+  const ids = [['報告番号', c.no || ''], o.receiptNo ? ['事故受付番号', o.receiptNo] : null, o.policy ? ['証券番号', o.policy] : null].filter(Boolean);
+  ids.forEach(([k, v]) => row(k, v));
+  y += 6;
+  text('下記のとおり、事故の状況をご報告いたします。', MG, y + 34, 22); y += 50;
+
+  reportRows(d).forEach(([t, rows]) => { section(t); rows.forEach(([k, v]) => row(k, v)); });
+  if (d.story) { section('事故の経緯'); row('経緯', d.story); }
+
+  /* 略図 */
+  const sk = photosOf(c.id, 'sketch')[0];
+  if (sk) {
+    try {
+      prog && prog('略図を読み込んでいます…');
+      const img = await blobToImg(await photoBlob(sk.photoId));
+      const bw = W, bh = Math.min(620, bw * img.naturalHeight / img.naturalWidth);
+      section('位置関係の略図'); ensure(bh + 20);
+      x.strokeStyle = '#9AA59C'; x.lineWidth = 1.5; x.strokeRect(MG, y, bw, bh + 16); fit(x, img, MG + 8, y + 8, bw - 16, bh); y += bh + 16;
+    } catch (e) {}
+  }
+
+  /* 写真台帳（1ページに2枚） */
+  const ph = o.photos || [];
+  for (let i = 0; i < ph.length; i += 2) {
+    newPage();
+    text('写真台帳　報告番号 ' + (c.no || '') + '　（' + jaDate(d.date) + '）', MG, y + 26, 24, { bold: true }); y += 52;
+    const slotH = (bottom - y) / 2;
+    for (let k = 0; k < 2 && i + k < ph.length; k++) {
+      const p = ph[i + k], top = y + slotH * k, imgH = slotH - 110;
+      prog && prog(`写真を読み込んでいます… ${i + k + 1} / ${ph.length}`);
+      x.strokeStyle = '#9AA59C'; x.lineWidth = 1.5; x.strokeRect(MG, top, W, slotH - 20);
+      try { const img = await blobToImg(await photoBlob(p.photoId)); fit(x, img, MG + 10, top + 10, W - 20, imgH); }
+      catch (e) { text('写真を読み込めませんでした', PW / 2, top + imgH / 2, 22, { align: 'center', color: '#999' }); }
+      const ty = top + imgH + 30;
+      text('No.' + (i + k + 1) + '　' + (SLOT_JA[p.slot] || '写真'), MG + 14, ty + 14, 23, { bold: true });
+      text('撮影 ' + (p.takenAt || ''), PW - MG - 14, ty + 14, 20, { align: 'right', color: '#444' });
+      if (p.caption) { font(21); text(wrapText(x, p.caption, W - 30)[0], MG + 14, ty + 50, 21, { color: '#222' }); }
+    }
+  }
+  /* ページ番号 */
+  pages.forEach((p, i) => { const g = p.getContext('2d'); g.font = `20px ${FONT}`; g.fillStyle = '#666'; g.textAlign = 'center'; g.fillText((i + 1) + ' / ' + pages.length, PW / 2, PH - 44); });
+  return pages;
+}
+function blobToImg(b) { return new Promise((ok, ng) => { const u = URL.createObjectURL(b), i = new Image(); i.onload = () => ok(i); i.onerror = () => ng(new Error('画像')); i.src = u; }); }
+function fit(x, img, bx, by, bw, bh) { const r = Math.min(bw / img.naturalWidth, bh / img.naturalHeight), w = img.naturalWidth * r, h = img.naturalHeight * r; x.drawImage(img, bx + (bw - w) / 2, by + (bh - h) / 2, w, h); }
+
+/* ---------------- はじめ ---------------- */
+updateNet();
+if (S.token) boot(); else renderLogin();
+</script>
+</body>
+</html>

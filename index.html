@@ -169,6 +169,7 @@ const APPS = [
   { name:"現場ノート", desc:"現場の住所・連絡先と、地図・写真つきの注意点", url:"genba_note.html", icon:"pin"  },
   { name:"要点まとめ", desc:"まとまらなくてOK。話すと要点と送る文にまとめる", url:"yoten.html",  icon:"memo"    },
   { name:"タイムカード", desc:"出勤・退勤の打刻と、休みの登録・自分の出勤カレンダー", url:"timecard.html", icon:"clock" },
+  { name:"事故報告", desc:"車両・作業の事故、けが（労災）、ヒヤリハットを報告", url:"jiko.html", icon:"siren" },
 ];
 
 /* 事務・集計用（下の小さいリスト）。ここも同じく1行たすだけ */
@@ -196,6 +197,7 @@ const ICONS = {
   clock:   '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   camera:  '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.5-2.2h5.6L16.3 7h2.2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.8" r="3.3"/>',
   memo:    '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4 3.5V16h-.5A1.5 1.5 0 0 1 4 14.5z"/><path d="M8 8.5h8M8 12h5"/>',
+  siren:   '<path d="M7 17v-5a5 5 0 0 1 10 0v5"/><path d="M4.5 17h15v3h-15z"/><path d="M12 3v2M4.2 6.2l1.4 1.4M19.8 6.2l-1.4 1.4"/><path d="M12 10v4"/>',
   karte:   '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 17v-4"/><path d="M12 13c-2.6 0-4-1.6-4-3.8 1.9 0 3.2.6 4 1.8.8-1.2 2.1-1.8 4-1.8 0 2.2-1.4 3.8-4 3.8Z"/>',
 };
 const svg = key => '<svg viewBox="0 0 24 24">' + (ICONS[key] || ICONS.leaf) + '</svg>';
@@ -237,6 +239,24 @@ function orderedApps(){   // 覚えている並び → まだ並びにない（�
     const add = (href, html) => { const a = mk('a','remind'); a.href = href; a.innerHTML = html + '<span class="go">見る ›</span>'; box.append(a); };
     if (r.unread) add('yoten.html?tab=list&seg=all', '📩 <span><b>' + (r.from && r.from.length ? r.from.join('・') + 'から' : '') + '返事が' + r.unread + '件</b>届いています</span>');
     if (r.waiting) add('yoten.html?tab=list&seg=wait', '🗣 <span>スタッフからの相談・報告が<b>' + r.waiting + '件</b>返事を待っています</span>');
+  } catch (e) { /* 電波がないときは出さない */ }
+})();
+
+/* 事故報告のお知らせ：親方には第一報がまだの事故、事務担当には労災の対応中の事故を、ホームの一番上に出す
+   （タイムカードと同じログインを使う。ログインしていない・電波がないときは何も出さない） */
+(async function jikoRemind(){
+  let token = ''; try { token = JSON.parse(localStorage.getItem('tc_token') || '""') || ''; } catch (e) {}
+  if (!token) return;
+  try {
+    const ac = new AbortController(); setTimeout(() => ac.abort(), 12000);
+    const r = await (await fetch('https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ app: 'jiko', mode: 'badge', token }), signal: ac.signal })).json();
+    if (!r.ok || !(r.n || r.hiyari)) return;
+    const card = document.querySelector('.app[data-url="jiko.html"]');
+    if (card && r.n) { const c = mk('span','cnt'); c.textContent = r.n; card.append(c); }
+    const box = document.getElementById('remind');
+    const add = (href, html) => { const a = mk('a','remind'); a.href = href; a.innerHTML = html + '<span class="go">見る ›</span>'; box.append(a); };
+    if (r.n) add('jiko.html?tab=list', '🚨 <span>事故報告が<b>' + r.n + '件</b>対応を待っています</span>');
+    if (r.hiyari) add('jiko.html?tab=hiyari', '⚠️ <span>新しいヒヤリハットが<b>' + r.hiyari + '件</b>あります</span>');
   } catch (e) { /* 電波がないときは出さない */ }
 })();
 

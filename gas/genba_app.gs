@@ -9,6 +9,7 @@
  *  ・要点まとめ（app=yoten）：まとまらないまま話した内容を、AIで要点・必要な道具・車両・送る文に整理。要点メモに残す
  *  ・タイムカード（app=timecard）：本体は gas/timecard_app.gs（ここでは読み込んで渡すだけ）
  *  ・工事写真（app=shashin）：黒板つきの工事写真。台帳＝現場マスタ（委託名＞現場名）。地図に置いた撮影項目・写真の記録・写真はドライブへ
+ *  ・事故報告（app=jiko）：車両事故・作業事故・労災・ヒヤリハット。専用のスプレッドシート（社外秘）と写真フォルダ。本人確認はタイムカードのログイン
  *  返り値はすべて { ok:true/false, error?:"..." } 形式（社内アプリ共通ルール）
  *
  * ───────── 置き方 ─────────
@@ -332,6 +333,7 @@ function doPost(e) {
   keepFresh_();
   try {
     if (b.app === 'timecard') return tcMod_().doPost(e);   // タイムカード（本体は gas/timecard_app.gs）
+    if (b.app === 'jiko') return out_(jikoPost_(b));       // 事故報告（本人確認はタイムカードのログイン）
     var key = (b.app || '') + ':' + (b.mode || '');
     if (ADMIN_ONLY.indexOf(key) >= 0 && !isAdmin_(b.by)) return out_({ ok: false, error: '削除は' + admins_().join('・') + 'だけができます。消したいときは頼んでください' });
     switch (key) {
@@ -2613,3 +2615,441 @@ function transcribe_(b) {
   return { ok: true, text: String(j.text || '').trim(), unsure: (Array.isArray(j.unsure) ? j.unsure : []).map(String).slice(0, 8) };
 }
 
+
+/* ================================================================
+ *  事故報告（jiko.html）app=jiko
+ *  ・本人確認はタイムカードと同じ（名前＋4桁の暗証番号でログイン）。役割もタイムカードのスタッフ表のまま
+ *     親方（boss）：すべて見る・直す／事務担当（office）：概要・労災・お金の欄
+ *     当事者（報告した人・運転者・作業者・同乗者・けがをした人）：自分の事故の中身と進み具合（お金・親方メモは見えない）
+ *     ほかのスタッフ：親方が「みんなに共有」にした事故の概要だけ（名前は伏せる）。ヒヤリハットは全員が見る
+ *  ・データは専用のスプレッドシート「事故報告データ（社外秘）」（見出しは日本語。1件1行で履歴が残る）
+ *    写真は「社内アプリ ＞ 事故報告 ＞ 事故ごとのフォルダ」。どちらも共有しない（見せる・見せないはアプリが決める）
+ *  ・新しい報告が届いたら親方にメールで知らせる（メールの許可がまだのときは、ホームのお知らせだけ）
+ * ================================================================ */
+var JIKO_SHEET_NAME = '事故報告データ（社外秘）';
+var JIKO_COLS = {
+  cases: { name: '事故報告', cols: [['id', '管理ID'], ['no', '報告番号'], ['state', '状態'], ['stage', '進み具合'], ['kind', '事故の種類'], ['party', '相手'], ['who', 'どちらが'], ['damage', '被害'],
+    ['date', '発生日'], ['time', '時刻'], ['place', '場所'], ['driver', '当事者'], ['members', '同乗者・作業班'], ['reporter', '報告者'], ['vehicle', '車両'], ['site', '現場'], ['route', '移動（目的・出発→目的地）'],
+    ['other', '相手・持ち主'], ['police', '警察'], ['insurer', '保険会社'], ['insReceipt', '事故受付番号'], ['insUse', '保険の使い方'], ['cost', '修理費・支払い'], ['rousai', '労災'], ['shared', 'みんなに共有'],
+    ['createdAt', '報告日時'], ['updatedBy', '更新者'], ['updatedAt', '更新日時'], ['data', '（アプリ用：報告の中身）'], ['boss', '（アプリ用：親方の記録）']] },
+  logs: { name: '経過記録', cols: [['logId', '記録ID'], ['caseId', '管理ID'], ['no', '報告番号'], ['at', '日時'], ['by', '書いた人'], ['text', '内容'], ['showParty', '当事者にも見せる'], ['kind', '種類'], ['state', '状態']] },
+  photos: { name: '事故の写真', cols: [['photoId', '写真ID'], ['caseId', '管理ID'], ['slot', '枠'], ['caption', '説明'], ['takenAt', '撮影日時'], ['lat', '緯度'], ['lng', '経度'], ['by', '撮った人'], ['at', '送った日時'],
+    ['inPdf', 'PDFに入れる'], ['share', 'みんなに見せる'], ['state', '状態'], ['fileId', 'ファイルID'], ['rawFileId', '元データのファイルID'], ['url', 'リンク']] },
+  hiyari: { name: 'ヒヤリハット', cols: [['id', 'ID'], ['date', '日付'], ['time', '時刻'], ['site', '現場・場所'], ['activity', 'していたこと'], ['kind', '種類'], ['text', '何が起きそうだったか'], ['prevent', 'こうすれば防げる'],
+    ['photoIds', '写真'], ['anon', '名前なし'], ['by', '送った人'], ['byId', '送った人ID'], ['at', '送った日時'], ['status', '対策'], ['comment', '親方のコメント'], ['commentBy', 'コメントした人'], ['commentAt', 'コメント日時'], ['caseId', '事故報告にした'], ['state', '状態']] },
+  settings: { name: '設定', cols: [['key', '項目'], ['value', '中身']] }
+};
+var JK_STAGES = ['報告受付', '保険会社へ第一報', '詳細の確認・清書', '詳細報告書を提出', '相手へ連絡済', '対応中', '示談交渉中', '解決', '完了'];
+var JK_PRIVATE_SLOTS = ['docs', 'injury', 'plate'];   // 相手の書類・けが・ナンバー：事務担当・ほかのスタッフには見せない
+var JK_SHARE_SLOTS = ['scene', 'around'];             // みんなに共有するときに最初から見せる写真（全景・周辺）
+
+/* ---------- 置き場所 ---------- */
+function jkFolder_() {
+  var id = prop_('JIKO_FOLDER_ID', '');
+  if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) return f; } catch (e) {} }
+  var p = docsFolder_().getParents(), parent = p.hasNext() ? p.next() : DriveApp.getRootFolder();
+  var folder = subFolder_(parent, '事故報告');
+  PropertiesService.getScriptProperties().setProperty('JIKO_FOLDER_ID', folder.getId());
+  return folder;
+}
+var JK_SS_ = null;
+function jkSs_() {
+  if (JK_SS_) return JK_SS_;
+  var props = PropertiesService.getScriptProperties(), id = prop_('JIKO_SHEET_ID', ''), ss = null;
+  if (id) { try { ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; } }
+  if (!ss) { var it = DriveApp.getFilesByName(JIKO_SHEET_NAME); if (it.hasNext()) ss = SpreadsheetApp.open(it.next()); }
+  if (!ss) {
+    ss = SpreadsheetApp.create(JIKO_SHEET_NAME); ss.setSpreadsheetTimeZone(TZ);
+    try { DriveApp.getFileById(ss.getId()).moveTo(jkFolder_()); } catch (e) {}   // 「社内アプリ ＞ 事故報告」に置く
+  }
+  props.setProperty('JIKO_SHEET_ID', ss.getId());
+  JK_SS_ = ss;
+  Object.keys(JIKO_COLS).forEach(jkSh_);
+  var first = ss.getSheetByName('シート1') || ss.getSheetByName('Sheet1');
+  if (first && ss.getSheets().length > 1 && first.getLastRow() === 0) { try { ss.deleteSheet(first); } catch (e) {} }
+  return ss;
+}
+function jkSh_(key) {
+  var ss = JK_SS_ || jkSs_(), def = JIKO_COLS[key], s = ss.getSheetByName(def.name), labels = def.cols.map(function (c) { return c[1]; });
+  if (!s) { s = ss.insertSheet(def.name); s.appendRow(labels); s.setFrozenRows(1); s.getRange(1, 1, 1, labels.length).setFontWeight('bold').setBackground('#E5EDE7'); return s; }
+  var head = s.getRange(1, 1, 1, Math.max(1, s.getLastColumn())).getValues()[0].map(String), add = labels.filter(function (l) { return head.indexOf(l) < 0; });
+  if (add.length) s.getRange(1, head.filter(Boolean).length + 1, 1, add.length).setValues([add]).setFontWeight('bold').setBackground('#E5EDE7');   // 列が増えたら右に足す（並べ替えても見出しの名前で探す）
+  return s;
+}
+/** 見出しの名前 → 列の番号（人が列を並べ替えても読めるように） */
+function jkHead_(s, key) {
+  var head = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map(String), map = {};
+  JIKO_COLS[key].cols.forEach(function (c) { var i = head.indexOf(c[1]); if (i >= 0) map[c[0]] = i; });
+  return { map: map, width: head.length };
+}
+function jkVal_(v) { if (v instanceof Date) return Utilities.formatDate(v, TZ, 'yyyy-MM-dd HH:mm').replace(/ 00:00$/, ''); return v == null ? '' : v; }
+function jkRows_(key) {
+  var s = jkSh_(key), h = jkHead_(s, key), vals = s.getDataRange().getValues(), out = [];
+  for (var i = 1; i < vals.length; i++) {
+    if (vals[i].join('') === '') continue;
+    var o = { _row: i + 1 };
+    Object.keys(h.map).forEach(function (k) { o[k] = jkVal_(vals[i][h.map[k]]); });
+    out.push(o);
+  }
+  return out;
+}
+function jkUpsert_(key, idKey, obj) {
+  var s = jkSh_(key), h = jkHead_(s, key), vals = s.getDataRange().getValues(), row = 0, ic = h.map[idKey], id = String(obj[idKey] || '');
+  for (var i = 1; i < vals.length; i++) if (String(vals[i][ic]) === id) { row = i + 1; break; }
+  var r = row ? vals[row - 1].slice() : new Array(h.width).fill('');
+  while (r.length < h.width) r.push('');
+  Object.keys(h.map).forEach(function (k) { if (obj.hasOwnProperty(k)) { var v = obj[k]; v = v == null ? '' : (typeof v === 'boolean' ? (v ? '○' : '') : v); if (typeof v === 'string' && /^[=+@]/.test(v)) v = "'" + v; r[h.map[k]] = cell_(v); } });
+  if (row) s.getRange(row, 1, 1, r.length).setValues([r]); else s.appendRow(r);
+  return id;
+}
+function jkJson_(s, d) { if (!s) return d; try { return JSON.parse(s); } catch (e) { return d; } }
+function jkSettings_() { var o = {}; jkRows_('settings').forEach(function (r) { o[r.key] = jkJson_(r.value, r.value); }); return o; }
+function jkSetSetting_(k, v) { jkUpsert_('settings', 'key', { key: k, value: typeof v === 'string' ? v : JSON.stringify(v) }); }
+
+/* ---------- 本人確認（タイムカードのログインを使う） ---------- */
+function jkTc_(body) {
+  var r = tcMod_().doPost({ postData: { contents: JSON.stringify(body) } });
+  return JSON.parse(r.getContent());
+}
+function jkMe_(token) {
+  token = String(token || '');
+  if (!token) { var e0 = new Error('ログインしてください'); e0.auth = true; throw e0; }
+  var c = CacheService.getScriptCache(), k = 'jk_me_' + md5_(token), hit = c.get(k);
+  if (hit) return JSON.parse(hit);
+  var j = jkTc_({ app: 'timecard', action: 'me', token: token });
+  if (!j.ok) { var e = new Error(j.error || 'ログインし直してください'); e.auth = j.code === 'auth' || /ログイン/.test(String(j.error)); throw e; }
+  var r = j.me.role, me = { id: String(j.me.id), disp: String(j.me.disp || j.me.name || ''), name: String(j.me.name || ''), role: r === 'boss' ? 'boss' : (r === 'office' ? 'office' : 'staff') };
+  c.put(k, JSON.stringify(me), 300);
+  return me;
+}
+function jkStaff_() {
+  var c = CacheService.getScriptCache(), hit = c.get('jk_staff');
+  if (hit) return JSON.parse(hit);
+  var j = jkTc_({ app: 'timecard', action: 'names' }), list = (j && j.names) || [];
+  list = list.map(function (s) { return { id: String(s.id), disp: String(s.disp || s.name || ''), name: String(s.name || '') }; });
+  c.put('jk_staff', JSON.stringify(list), 600);
+  return list;
+}
+
+/* ---------- 誰に何を見せるか ---------- */
+function jkCase_(r) { var o = { id: r.id, no: r.no, state: r.state, stage: r.stage, createdAt: r.createdAt, updatedAt: r.updatedAt, updatedBy: r.updatedBy }; o.data = jkJson_(r.data, {}); o.boss = jkJson_(r.boss, {}); return o; }
+function jkPartyIds_(d) {
+  var ids = [d.reporterId, d.driverId].concat(d.memberIds || []);
+  if (d.rousai && d.rousai.staffId) ids.push(d.rousai.staffId);
+  return ids.filter(function (x) { return x != null && x !== ''; }).map(String);
+}
+function jkRole_(c, me) {
+  if (me.role === 'boss') return 'boss';
+  if (jkPartyIds_(c.data).indexOf(me.id) >= 0) return 'party';
+  if (me.role === 'office') return 'office';
+  return 'staff';
+}
+function jkPick_(o, keys) { var r = {}; keys.forEach(function (k) { if (o && o[k] !== undefined) r[k] = o[k]; }); return r; }
+function jkView_(c, me, photos, logs) {
+  var role = jkRole_(c, me), d = c.data || {}, b = c.boss || {};
+  var ph = photos.filter(function (p) { return p.caseId === c.id && p.state !== '削除'; }).map(function (p) {
+    return { photoId: p.photoId, slot: p.slot, caption: p.caption, takenAt: p.takenAt, by: p.by, inPdf: p.inPdf !== '×', share: p.share === '○', hasRaw: !!p.rawFileId, lat: p.lat, lng: p.lng };
+  });
+  var lg = logs.filter(function (l) { return l.caseId === c.id && l.state !== '削除'; }).map(function (l) { return { logId: l.logId, at: l.at, by: l.by, text: l.text, showParty: l.showParty === '○', kind: l.kind }; });
+  var v = { id: c.id, no: c.no, state: c.state, stage: c.stage, createdAt: c.createdAt, updatedAt: c.updatedAt, updatedBy: c.updatedBy, role: role };
+  var pub = jkPick_(b, ['stage', 'checks', 'cause', 'prevention', 'shared', 'rousaiStage']);
+  if (role === 'boss') { v.data = d; v.boss = b; v.photos = ph; v.logs = lg; return v; }
+  if (role === 'party') {
+    v.data = d; v.boss = pub; v.photos = ph;
+    v.logs = lg.filter(function (l) { return l.showParty; });
+    return v;
+  }
+  if (role === 'office') {
+    v.data = jkPick_(d, ['kind', 'party', 'who', 'damage', 'date', 'time', 'weather', 'road', 'place', 'car', 'work', 'driverId', 'driver', 'memberIds', 'members', 'reporterId', 'reporter', 'story', 'ownDamage', 'rousai', 'police', 'ambulance']);
+    if (v.data.car) v.data.car = jkPick_(v.data.car, ['purpose', 'from', 'to', 'relSite', 'vehicleId', 'vehicle', 'plate', 'commute', 'drivable']);
+    v.boss = Object.assign(pub, jkPick_(b, ['insUse', 'repair', 'insurerCall']));
+    v.photos = ph.filter(function (p) { return JK_PRIVATE_SLOTS.indexOf(p.slot) < 0; });
+    v.logs = lg.filter(function (l) { return l.showParty || l.kind === '事務'; });
+    return v;
+  }
+  if (b.shared !== true) return null;   // ほかのスタッフ：親方が共有したものだけ。名前・相手の情報は出さない
+  v.data = { kind: d.kind, party: d.party, who: d.who, damage: d.damage, date: String(d.date || '').slice(0, 7), place: { area: (d.place && (d.place.area || d.place.address) || '').replace(/[0-9０-９\-－−]+.*$/, '') } };
+  v.boss = { shared: true, shareText: b.shareText || '', cause: b.cause || '', prevention: b.prevention || '' };
+  v.photos = ph.filter(function (p) { return p.share; });
+  v.logs = [];
+  return v;
+}
+function jkCanEdit_(c, me) { if (me.role === 'boss') return true; if (c.state === '完了' || c.state === '削除') return false; var r = jkRole_(c, me); return r === 'party' || r === 'office'; }
+
+/* ---------- 一覧に出す日本語（スプレッドシートの列） ---------- */
+var JK_JA = { car: '車両事故', work: '作業事故', solo: '単独', other: '相手あり', we: 'こちらが当てた', they: '当てられた', unknown: '双方・不明' };
+function jkFlat_(c) {
+  var d = c.data || {}, b = c.boss || {}, car = d.car || {}, wk = d.work || {}, dm = d.damage || {}, o = d.other || {}, rs = d.rousai || {}, rp = b.repair || {}, ic = b.insurerCall || {};
+  var dmg = [dm.ownThing ? '自社の物' : '', dm.theirThing ? '相手の物' : '', dm.ownPerson ? '自社の人' : '', dm.theirPerson ? '相手の人' : '', dm.none ? '被害なし' : ''].filter(Boolean).join('・');
+  var pol = d.police || {};
+  return {
+    kind: JK_JA[d.kind] || '', party: JK_JA[d.party] || '', who: d.party === 'other' ? (JK_JA[d.who] || '') : '', damage: dmg,
+    date: d.date || '', time: d.time || '', place: (d.place && d.place.address) || '',
+    driver: d.driver || '', members: (d.members || []).join('、'), reporter: d.reporter || '',
+    vehicle: [car.vehicle, car.plate].filter(Boolean).join(' '), site: wk.site || car.relSite || '',
+    route: d.kind === 'car' ? [car.purpose, [car.from, car.to].filter(Boolean).join('→')].filter(Boolean).join('：') : '',
+    other: [o.name, [o.thing, o.ownerType, o.ownerName].filter(Boolean).join(' ')].filter(Boolean).join('／'),
+    police: [pol.status, pol.station, pol.receiptNo].filter(Boolean).join(' '),
+    insurer: ic.insurer || '', insReceipt: ic.receiptNo || '', insUse: b.insUse || '',
+    cost: [rp.estimate ? '見積' + rp.estimate + '円' : '', rp.paid ? '支払' + rp.paid + '円' : '', rp.payout ? '保険金' + rp.payout + '円' : ''].filter(Boolean).join('・'),
+    rousai: dm.ownPerson ? [rs.staff, rs.type, b.rousaiStage].filter(Boolean).join('・') : '',
+    shared: b.shared === true
+  };
+}
+function jkNextNo_(cases, date) {
+  var y = String(date || ymd_(new Date())).slice(0, 4), max = 0;
+  cases.forEach(function (r) { var m = String(r.no || '').match(/^(\d{4})-(\d+)$/); if (m && m[1] === y) max = Math.max(max, Number(m[2])); });
+  return y + '-' + ('00' + (max + 1)).slice(-3);
+}
+
+/* ---------- 入口 ---------- */
+function jikoPost_(b) {
+  try {
+    var me = jkMe_(b.token), m = String(b.mode || '');
+    switch (m) {
+      case 'init':        return jkInit_(me);
+      case 'badge':       return jkBadge_(me);
+      case 'save':        return withLockRaw_(function () { return jkSave_(b, me); });
+      case 'log':         return withLockRaw_(function () { return jkLog_(b, me); });
+      case 'delete':      return withLockRaw_(function () { return jkDelete_(b, me); });
+      case 'photo':       return jkPhoto_(b, me);
+      case 'photoData':   return jkPhotoData_(b, me);
+      case 'photoMeta':   return withLockRaw_(function () { return jkPhotoMeta_(b, me); });
+      case 'hiyari':      return withLockRaw_(function () { return jkHiyari_(b, me); });
+      case 'hiyariBoss':  return withLockRaw_(function () { return jkHiyariBoss_(b, me); });
+      case 'settings':    return withLockRaw_(function () { return jkSaveSettings_(b, me); });
+      case 'polish':      return jkPolish_(b);
+      case 'address':     return jkAddress_(b);
+      default: return { ok: false, error: 'unknown mode: jiko:' + m };
+    }
+  } catch (err) { return { ok: false, error: err.message || String(err), code: err.auth ? 'auth' : '' }; }
+}
+function jkPublicSettings_(st, me) {
+  var o = { company: st.company || {}, bossPhone: (st.contacts || {}).bossPhone || '', vehicles: {}, licenses: st.licenses || {}, insurance: {} };
+  var vs = st.vehicles || {};
+  Object.keys(vs).forEach(function (id) { var v = vs[id] || {}; o.vehicles[id] = { insurer: v.insurer || '', road: v.road || '', insurerPhone: v.insurerPhone || '', license: v.license || '', carCov: v.carCov || '' }; });
+  var ins = st.insurance || {};
+  o.insurance = { auto: jkPick_(ins.auto || {}, ['name', 'phone']), work: jkPick_(ins.work || {}, ['name', 'phone']) };
+  if (me.role === 'boss') { o.full = st; }
+  return o;
+}
+function jkInit_(me) {
+  var cases = jkRows_('cases').filter(function (r) { return r.state !== '削除'; }).map(jkCase_);
+  var photos = jkRows_('photos'), logs = jkRows_('logs'), st = jkSettings_();
+  var views = [];
+  cases.forEach(function (c) { var v = jkView_(c, me, photos, logs); if (v) views.push(v); });
+  views.sort(function (a, b) { return String(b.data.date || '') + String(b.createdAt) > String(a.data.date || '') + String(a.createdAt) ? 1 : -1; });
+  var hy = jkRows_('hiyari').filter(function (h) { return h.state !== '削除'; }).map(function (h) {
+    var mine = String(h.byId) === me.id;
+    return { id: h.id, date: h.date, time: h.time, site: h.site, activity: h.activity, kind: h.kind, text: h.text, prevent: h.prevent, photoIds: jkJson_(h.photoIds, []),
+      anon: h.anon === '○', by: h.anon === '○' ? '' : h.by, mine: mine, at: h.at, status: h.status, comment: h.comment, commentBy: h.commentBy, caseId: h.caseId };
+  }).sort(function (a, b) { return String(b.date) + String(b.time) > String(a.date) + String(a.time) ? 1 : -1; });
+  var sites = []; try { sites = siteList_().filter(function (s) { return !s.state || !/終了|削除|休止/.test(s.state); }).map(function (s) { return { id: String(s.id || ''), name: s.name, contract: s.contract || '', kind: s.kind || '' }; }); } catch (e) {}
+  var sup = rows_('suppliers').map(function (s) { return { id: s.id, name: s.name, kind: s.kind, address: s.address }; });
+  var veh = rows_('vehicles').filter(function (v) { return !v.status || v.status === '使用中'; }).map(function (v) { return { id: v.id, name: v.name, plate: v.plate, category: v.category || '車・トラック', ownership: v.ownership || '自社', model: v.model }; });
+  return { ok: true, me: me, staff: jkStaff_(), sites: sites, suppliers: sup, vehicles: veh, settings: jkPublicSettings_(st, me), cases: views, hiyari: hy, stages: JK_STAGES, now: now_() };
+}
+function jkBadge_(me) {
+  if (me.role !== 'boss' && me.role !== 'office') return { ok: true, n: 0 };
+  var cases = jkRows_('cases').filter(function (r) { return r.state !== '削除' && r.state !== '完了'; }).map(jkCase_), n = 0;
+  cases.forEach(function (c) {
+    if (me.role === 'boss') { if (!c.stage || c.stage === '報告受付') n++; }
+    else if ((c.data.damage || {}).ownPerson && c.boss.rousaiStage !== '職場復帰') n++;
+  });
+  var hy = me.role === 'boss' ? jkRows_('hiyari').filter(function (h) { return h.state !== '削除' && !h.comment && !h.status; }).length : 0;
+  return { ok: true, n: n, hiyari: hy };
+}
+/** 報告を保存する。新しい報告は誰でも。直すのは当事者・事務（労災とお金）・親方（すべて） */
+function jkSave_(b, me) {
+  var inc = b.case || {}, id = String(inc.id || '').trim();
+  if (!/^J-[\w-]{6,40}$/.test(id)) return { ok: false, error: '報告のIDがおかしいです' };
+  var all = jkRows_('cases'), row = null;
+  all.forEach(function (r) { if (r.id === id) row = r; });
+  var now = now_(), c, isNew = !row;
+  if (isNew) {
+    var d0 = inc.data || {};
+    d0.reporterId = me.id; d0.reporter = me.disp;
+    c = { id: id, no: jkNextNo_(all, d0.date), state: '対応中', stage: '報告受付', createdAt: now, data: d0, boss: me.role === 'boss' && inc.boss ? inc.boss : { stage: '報告受付' } };
+  } else {
+    c = jkCase_(row);
+    if (c.state === '削除') return { ok: false, error: 'この報告は消されています' };
+    if (!jkCanEdit_(c, me)) return { ok: false, error: c.state === '完了' ? '完了した報告は親方だけが直せます' : 'この報告を直す権限がありません' };
+    if (b.base && String(b.base) !== String(row.updatedAt)) {
+      return { ok: false, conflict: true, error: 'ほかの人が先に直していました。最新の内容を読み込んだので、もう一度直してください', case: jkView_(c, me, jkRows_('photos'), jkRows_('logs')) };
+    }
+    var role = jkRole_(c, me), d = inc.data || {};
+    if (role === 'boss' || role === 'party') {
+      d.reporterId = c.data.reporterId; d.reporter = c.data.reporter;
+      c.data = d;
+    } else if (role === 'office') {
+      if (d.rousai) c.data.rousai = d.rousai;
+    }
+    if (role === 'boss' && inc.boss) c.boss = inc.boss;
+    else if ((role === 'office' || me.role === 'office') && inc.boss) { ['insUse', 'repair', 'rousaiStage'].forEach(function (k) { if (inc.boss[k] !== undefined) c.boss[k] = inc.boss[k]; }); }
+  }
+  if (c.boss.stage && JK_STAGES.indexOf(c.boss.stage) >= 0) c.stage = c.boss.stage;
+  c.state = c.stage === '完了' ? '完了' : '対応中';
+  var dataStr = JSON.stringify(c.data), bossStr = JSON.stringify(c.boss);
+  if (dataStr.length > 48000 || bossStr.length > 48000) return { ok: false, error: '文章が長すぎて保存できません。経緯などを短くしてください' };
+  var rec = Object.assign({ id: c.id, no: c.no, state: c.state, stage: c.stage, createdAt: c.createdAt, updatedBy: me.disp, updatedAt: now, data: dataStr, boss: bossStr }, jkFlat_(c));
+  jkUpsert_('cases', 'id', rec);
+  if (isNew) {
+    jkUpsert_('logs', 'logId', { logId: 'G' + Date.now().toString(36), caseId: c.id, no: c.no, at: now, by: me.disp, text: '報告を受け付けました', showParty: true, kind: '自動' });
+    jkNotify_(c);
+  }
+  c.updatedAt = now; c.updatedBy = me.disp;
+  return { ok: true, case: jkView_(c, me, jkRows_('photos'), jkRows_('logs')) };
+}
+function jkFind_(id) { var hit = null; jkRows_('cases').forEach(function (r) { if (r.id === String(id)) hit = r; }); return hit ? jkCase_(hit) : null; }
+function jkLog_(b, me) {
+  var c = jkFind_(b.caseId); if (!c) return { ok: false, error: '報告が見つかりません' };
+  if (b.logId && b.remove) {
+    if (me.role !== 'boss') return { ok: false, error: '記録を消せるのは親方だけです' };
+    jkUpsert_('logs', 'logId', { logId: String(b.logId), state: '削除' });
+  } else {
+    var role = jkRole_(c, me);
+    if (role !== 'boss' && me.role !== 'office') return { ok: false, error: '経過記録を書けるのは親方と事務担当です' };
+    var text = String(b.text || '').trim(); if (!text) return { ok: false, error: '内容がありません' };
+    jkUpsert_('logs', 'logId', { logId: 'G' + Date.now().toString(36) + Math.floor(Math.random() * 1e3), caseId: c.id, no: c.no, at: String(b.at || now_()), by: me.disp, text: text.slice(0, 2000),
+      showParty: me.role === 'boss' ? !!b.showParty : true, kind: me.role === 'boss' ? (b.kind || '親方') : '事務' });
+  }
+  return { ok: true, case: jkView_(c, me, jkRows_('photos'), jkRows_('logs')) };
+}
+function jkDelete_(b, me) {
+  if (me.role !== 'boss') return { ok: false, error: '報告を消せるのは親方だけです' };
+  var c = jkFind_(b.caseId); if (!c) return { ok: false, error: '報告が見つかりません' };
+  jkUpsert_('cases', 'id', { id: c.id, state: '削除', updatedBy: me.disp, updatedAt: now_() });
+  return { ok: true };
+}
+
+/* ---------- 写真（事故：J- ／ ヒヤリハット：H-） ---------- */
+function jkPhotoFolder_(ownerId) { return subFolder_(jkFolder_(), shashinClean_(ownerId)); }
+var JK_SLOT_JA = { scene: '全景', own_far: '自社の損傷（引き）', own_near: '自社の損傷（寄り）', their_far: '相手側（引き）', their_near: '相手側（寄り）', detail: '損傷の詳細', plate: '相手のナンバー',
+  around: '周辺の状況', load: '積荷の状態', docs: '相手の書類', injury: 'けがの状況', sketch: '略図', machine: '使っていた機械', other: 'そのほか', hiyari: 'ヒヤリハット' };
+function jkPhoto_(b, me) {
+  var p = b.photo || {}, owner = String(p.caseId || '');
+  if (!p.photoId || !b.data) return { ok: false, error: '写真がありません' };
+  if (!/^[JH]-[\w-]{6,40}$/.test(owner)) return { ok: false, error: '写真の行き先がおかしいです' };
+  var had = null; jkRows_('photos').forEach(function (r) { if (r.photoId === String(p.photoId)) had = r; });
+  if (had) return { ok: true, dup: true };
+  if (owner.charAt(0) === 'J') { var c = jkFind_(owner); if (c && !jkCanEdit_(c, me)) return { ok: false, error: 'この報告に写真を足す権限がありません' }; }
+  var folder; withLockRaw_(function () { folder = jkPhotoFolder_(owner); });
+  var label = JK_SLOT_JA[p.slot] || '写真', stamp = String(p.takenAt || now_()).replace(/[^\d]/g, '').slice(0, 12);
+  var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), 'image/jpeg', label + '_' + stamp + '_' + String(p.photoId).slice(-4) + '.jpg'));
+  var rawId = '';
+  if (b.raw) {
+    var mime = String(b.rawMime || 'image/jpeg'), ext = /png/.test(mime) ? '.png' : (/heic|heif/.test(mime) ? '.heic' : '.jpg');
+    try { rawId = subFolder_(folder, '元データ').createFile(Utilities.newBlob(Utilities.base64Decode(b.raw), mime, label + '_' + stamp + '_元データ' + ext)).getId(); } catch (e) { rawId = ''; }
+  }
+  return withLockRaw_(function () {
+    var again = false; jkRows_('photos').forEach(function (r) { if (r.photoId === String(p.photoId)) again = true; });
+    if (again) { try { file.setTrashed(true); } catch (e) {} return { ok: true, dup: true }; }
+    if (p.slot === 'sketch') jkRows_('photos').forEach(function (r) { if (r.caseId === owner && r.slot === 'sketch' && r.state !== '削除') jkUpsert_('photos', 'photoId', { photoId: r.photoId, state: '削除' }); });   // 略図は1枚だけ（描き直したら前のものは消す）
+    jkUpsert_('photos', 'photoId', { photoId: String(p.photoId), caseId: owner, slot: p.slot || 'other', caption: String(p.caption || '').slice(0, 200), takenAt: p.takenAt || '', lat: p.lat == null ? '' : p.lat, lng: p.lng == null ? '' : p.lng,
+      by: me.disp, at: now_(), inPdf: p.slot === 'sketch' ? '×' : '○', share: JK_SHARE_SLOTS.indexOf(p.slot) >= 0, state: '', fileId: file.getId(), rawFileId: rawId, url: file.getUrl() });
+    return { ok: true, fileId: file.getId() };
+  });
+}
+function jkPhotoData_(b, me) {
+  var hit = null; jkRows_('photos').forEach(function (r) { if (r.photoId === String(b.photoId)) hit = r; });
+  if (!hit || hit.state === '削除') return { ok: false, error: '写真が見つかりません' };
+  if (hit.caseId.charAt(0) === 'J') {
+    var c = jkFind_(hit.caseId); if (!c) return { ok: false, error: '報告が見つかりません' };
+    var v = jkView_(c, me, [hit], []);
+    if (!v || !v.photos.length) return { ok: false, error: 'この写真を見る権限がありません' };
+  }
+  var fid = b.raw && hit.rawFileId ? hit.rawFileId : hit.fileId, blob = DriveApp.getFileById(fid).getBlob();
+  return { ok: true, data: Utilities.base64Encode(blob.getBytes()), mime: blob.getContentType() || 'image/jpeg', name: blob.getName() };
+}
+function jkPhotoMeta_(b, me) {
+  var hit = null; jkRows_('photos').forEach(function (r) { if (r.photoId === String(b.photoId)) hit = r; });
+  if (!hit) return { ok: false, error: '写真が見つかりません' };
+  var patch = { photoId: hit.photoId };
+  if (hit.caseId.charAt(0) === 'J') {
+    var c = jkFind_(hit.caseId); if (!c) return { ok: false, error: '報告が見つかりません' };
+    if (!jkCanEdit_(c, me)) return { ok: false, error: '直す権限がありません' };
+    if (me.role === 'boss') { if (b.inPdf !== undefined) patch.inPdf = b.inPdf ? '○' : '×'; if (b.share !== undefined) patch.share = !!b.share; }
+  } else if (me.role !== 'boss' && hit.by !== me.disp) return { ok: false, error: '直す権限がありません' };
+  if (b.caption !== undefined) patch.caption = String(b.caption).slice(0, 200);
+  if (b.slot !== undefined && JK_SLOT_JA[b.slot]) patch.slot = b.slot;
+  if (b.remove) patch.state = '削除';
+  jkUpsert_('photos', 'photoId', patch);
+  return { ok: true };
+}
+
+/* ---------- ヒヤリハット ---------- */
+function jkHiyari_(b, me) {
+  var h = b.item || {}, id = String(h.id || '');
+  if (!/^H-[\w-]{6,40}$/.test(id)) return { ok: false, error: 'IDがおかしいです' };
+  var old = null; jkRows_('hiyari').forEach(function (r) { if (r.id === id) old = r; });
+  if (old && me.role !== 'boss' && String(old.byId) !== me.id) return { ok: false, error: '送った人と親方だけが直せます' };
+  if (b.remove) { if (!old) return { ok: true }; jkUpsert_('hiyari', 'id', { id: id, state: '削除' }); return { ok: true }; }
+  var anon = !!h.anon;
+  jkUpsert_('hiyari', 'id', { id: id, date: h.date || ymd_(new Date()), time: h.time || '', site: String(h.site || '').slice(0, 100), activity: h.activity || '', kind: h.kind || '', text: String(h.text || '').slice(0, 2000),
+    prevent: String(h.prevent || '').slice(0, 1000), photoIds: JSON.stringify(h.photoIds || []), anon: anon, by: anon ? '' : me.disp, byId: me.id, at: old ? old.at : now_(), caseId: h.caseId || (old && old.caseId) || '', state: '' });
+  return { ok: true };
+}
+function jkHiyariBoss_(b, me) {
+  if (me.role !== 'boss') return { ok: false, error: '親方だけができます' };
+  var patch = { id: String(b.id) };
+  if (b.comment !== undefined) { patch.comment = String(b.comment).slice(0, 1000); patch.commentBy = me.disp; patch.commentAt = now_(); }
+  if (b.status !== undefined) patch.status = String(b.status);
+  jkUpsert_('hiyari', 'id', patch);
+  return { ok: true };
+}
+
+/* ---------- 設定（親方） ---------- */
+function jkSaveSettings_(b, me) {
+  if (me.role !== 'boss') return { ok: false, error: '設定は親方だけが変えられます' };
+  var s = b.settings || {};
+  ['company', 'contacts', 'insurance', 'vehicles', 'licenses'].forEach(function (k) { if (s[k] !== undefined) jkSetSetting_(k, s[k]); });
+  return { ok: true, settings: jkPublicSettings_(jkSettings_(), me) };
+}
+
+/* ---------- 知らせ・AI・住所 ---------- */
+function jkNotify_(c) {
+  try {
+    var st = jkSettings_(), to = String(((st.contacts || {}).notifyEmail) || '').trim();
+    if (!to) { try { to = Session.getEffectiveUser().getEmail(); } catch (e) { to = ''; } }
+    if (!to) return;
+    var f = jkFlat_(c), d = c.data || {};
+    var body = '事故報告が届きました。\n\n' +
+      '報告番号：' + c.no + '\n種類：' + [f.kind, f.party, f.who].filter(Boolean).join('・') + '\n被害：' + (f.damage || '—') + '\n' +
+      '日時：' + [f.date, f.time].filter(Boolean).join(' ') + '\n場所：' + (f.place || '—') + '\n当事者：' + (f.driver || '—') + '\n報告者：' + (d.reporter || '') + '\n' +
+      (f.route ? '移動：' + f.route + '\n' : '') + (f.site ? '現場：' + f.site + '\n' : '') +
+      '警察：' + (f.police || '—') + '\n\n' +
+      '詳しくはアプリで確認してください：\nhttps://tomohikomochida-debug.github.io/kouenhoukoku/jiko.html?case=' + encodeURIComponent(c.id) + '\n';
+    MailApp.sendEmail({ to: to, subject: '【事故報告】' + c.no + ' ' + [f.kind, f.date].filter(Boolean).join(' ') + (f.driver ? '（' + f.driver + '）' : ''), body: body, name: '社内アプリ（事故報告）' });
+  } catch (e) { /* メールの許可がまだのときは送らない（ホームのお知らせには出る） */ }
+}
+function jkPolish_(b) {   // 要点まとめアプリと同じ考え方：まとまらないまま話した・書いた説明を、要点と報告書の文に整える（使うかどうかは本人が選ぶ）
+  var text = String(b.text || '').trim(); if (!text) return { ok: false, error: '文がありません' };
+  var field = String(b.field || '事故の経緯');
+  var prompt =
+    'あなたは造園会社（植木屋）の、話を聞いてまとめる係です。言葉にするのが苦手なスタッフが、事故の直後で混乱したまま、順番もばらばらに話した・書いた「' + field + '」を、保険会社や親方にすぐ伝わる形に整理してください。\n' +
+    '話した人：' + (b.speaker || 'スタッフ') + '（「私」「俺」「自分」はこの人）\n' +
+    'ルール：\n' +
+    '・書いてある事実だけを使う。推測で足さない・盛らない・言い訳や評価を足さない。分からない所は missing に回す\n' +
+    '・「えー」「あの」「なんか」、同じ話のくり返し、言いよどみは取り除く。言い直し（「右、いや左」）は後の発言を採用する\n' +
+    '・過失を認める言い方（「全部こちらが悪い」など）に勝手に変えない。過失の評価は書かず、起きた事実だけにする\n' +
+    '・headline：何が起きたかを一言で（30字くらい）\n' +
+    '・points：起きた順番の要点を、短い箇条で3〜7個（「いつ・どこで」「何をしていて」「どうなった」「その後どうした」の順）\n' +
+    '・text：報告書に載せる文。起きた順に「〜した。」の言い切りの短い文でつなぐ。数字は半角\n' +
+    '・missing：保険会社や親方によく聞かれるのに、話に出てこない点を3つまで（例：速度、相手の動き、けがの有無）\n' +
+    'JSONだけ返す：{"headline":"","points":[""],"text":"","missing":[""]}\n\n' +
+    (b.context ? '事故の情報（入力済みの項目）：' + String(b.context).slice(0, 800) + '\n\n' : '') +
+    '話した・書いた内容：\n' + text.slice(0, 5000);
+  var j = gemini_(prompt, { fast: true });
+  var pts = (Array.isArray(j.points) ? j.points : []).map(String).filter(Boolean).slice(0, 8);
+  return { ok: true, headline: String(j.headline || '').trim(), points: pts, text: String(j.text || '').trim() || text, missing: (Array.isArray(j.missing) ? j.missing : []).map(String).slice(0, 3) };
+}
+function jkAddress_(b) {
+  var lat = Number(b.lat), lng = Number(b.lng);
+  if (!isFinite(lat) || !isFinite(lng)) return { ok: false, error: '位置がありません' };
+  try {
+    var r = Maps.newGeocoder().setLanguage('ja').reverseGeocode(lat, lng), res = (r && r.results) || [];
+    if (!res.length) return { ok: false, error: '住所が見つかりませんでした' };
+    var a = String(res[0].formatted_address || '').replace(/^日本、?\s*/, '').replace(/〒\d{3}-\d{4}\s*/, '').trim();
+    return { ok: true, address: a };
+  } catch (e) { return { ok: false, error: '住所を調べられませんでした' }; }
+}
