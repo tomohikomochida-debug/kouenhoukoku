@@ -2242,7 +2242,7 @@ let SHOTS=null, shotMarks=lsGet('park_shot_marks')!=='off';
 async function loadShots(){
   if(!state.cloudId||!navigator.onLine) return;
   try{ const j=await fetch(PARK_GAS+'?app=shashin&action=parkShots&rec='+encodeURIComponent(state.cloudId),{cache:'no-store'}).then(r=>r.json());
-    if(j&&j.ok){ SHOTS={stages:j.stages||[],shots:j.shots||{},rule:j.rule||null}; draw(); renderShotSum(); } }catch(e){}
+    if(j&&j.ok){ SHOTS={stages:j.stages||[],shots:j.shots||{},rule:j.rule||null,free:j.free||{},site:j.site||''}; draw(); renderShotSum(); } }catch(e){}
 }
 function drawShotMark(f,x,y,r){
   if(!SHOTS||!shotMarks) return; const got=SHOTS.shots[featFid(f)]; if(!got||!got.length) return;
@@ -2279,11 +2279,15 @@ async function openShotList(){
     const got=(SHOTS.shots[featFid(f)]||[]).filter(s=>!SHOTS.stages.length||SHOTS.stages.includes(s)).length;
     g.cnt++; if(got>=n) g.all++; else if(got>0) g.part++;
   });
+  // 図面の木を選ばずに撮った写真（ほかの人が黒板を選んで撮ったものなど）も、工種・規格が合えば数える
+  Object.entries(SHOTS.free||{}).forEach(([k,st])=>{ if((SHOTS.stages||[]).some(x=>!st.includes(x))) return; const [ko,ki]=k.split('|');
+    const g=Object.values(G).find(g=>ko.indexOf(g.cat)===0&&(ki===g.sub||ko.indexOf(g.sub)>=0)); if(g) g.free=(g.free||0)+1; });
+  Object.values(G).forEach(g=>{ if(g.free) g.all=Math.min(g.cnt,g.all+g.free); });
   const L=Object.values(G).sort((a,b)=>a.cat.localeCompare(b.cat,'ja')||a.sub.localeCompare(b.sub,'ja',{numeric:true}));
   let rest=0;
   const rows=L.map(g=>{ const need=ruleNeed(SHOTS.rule,g.cat,g.rank||g.kind,g.cnt), left=Math.max(0,need-g.all); rest+=left;
     return `<tr class="${left?'ng':'ok'}"><td>${g.cat}<small>${g.sub}</small></td><td>${g.cnt}${g.unit}</td><td>${need}</td><td>${g.all}${g.part?`<small>途中${g.part}</small>`:''}</td><td>${left?`<b>${left}</b>`:'✓'}</td></tr>`; }).join('');
-  box.innerHTML=`<div class="slTop">${rest?`<b class="ngT">まだ ${rest} 本・か所 撮る必要があります</b>`:'<b class="okT">決まりの数はすべて撮れています</b>'}<small>撮り方：${(SHOTS.stages||[]).join('・')}（そろった＝全部撮れた数）${SHOTS.rule?'':'　※撮る本数の決まりが未設定なので全数で数えています（工事写真の「案件の情報」で設定）'}</small></div>
+  box.innerHTML=`<div class="slTop">${rest?`<b class="ngT">まだ ${rest} 本・か所 撮る必要があります</b>`:'<b class="okT">決まりの数はすべて撮れています</b>'}<small>${SHOTS.site?'工事写真の現場：'+SHOTS.site+'　':'⚠ 工事写真の現場が見つかりません（公園名を現場マスタと同じに）　'}撮り方：${(SHOTS.stages||[]).join('・')}（そろった＝全部撮れた数。図面の木を選ばずに撮った写真も工種・規格で数えます）${SHOTS.rule?'':'　※撮る本数の決まりが未設定なので全数で数えています（工事写真の「案件の情報」で設定）'}</small></div>
     <table class="slTbl"><tr><th>工種・規格</th><th>図面</th><th>撮る</th><th>そろった</th><th>残り</th></tr>${rows||'<tr><td colspan="5">図面に工種の図形がありません</td></tr>'}</table>`;
 }
 $('shotListBtn').onclick=openShotList;

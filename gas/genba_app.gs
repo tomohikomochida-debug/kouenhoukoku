@@ -1369,20 +1369,37 @@ function shashinSite_(siteId) {
    あわせて、その案件の撮り方（前・中・後）と「何本に1本撮るか」の決まり */
 function shashinParkShots_(p) {
   var rec = String(p.rec || ''); if (!rec) return { ok: false, error: '記録がありません' };
-  var its = rows_('shashinItems').filter(function (r) { return String(r.parkRec) === rec && r.state !== '削除' && r.parkFid; });
+  // どの現場か：公園報告の記録の公園名（と委託名）を現場マスタで探す。なければ、その記録から撮った項目の現場
+  var norm = function (s) { return String(s || '').replace(/[\s　]/g, ''); };
+  var pr = parkRow_(rec), sites = siteList_(), s = null;
+  if (pr) {
+    var c = sites.filter(function (x) { return norm(x.name) === norm(pr.park); });
+    if (c.length > 1 && pr.contract) { var c2 = c.filter(function (x) { return norm(x.contract).indexOf(norm(pr.contract)) >= 0 || norm(pr.contract).indexOf(norm(x.contract)) >= 0; }); if (c2.length) c = c2; }
+    s = c[0] || null;
+  }
+  var allItems = rows_('shashinItems').filter(function (r) { return r.state !== '削除'; });
+  if (!s) { var it0 = allItems.filter(function (r) { return String(r.parkRec) === rec; })[0]; if (it0) s = sites.filter(function (x) { return String(x.id) === String(it0.siteId); })[0] || null; }
+  var siteId = s ? String(s.id) : '';
+  // 木・範囲の目印（parkFid）ごとに撮った状況。記録を保存し直して別の記録になっても、同じ現場・同じ目印ならつながる（撮る人と図面を作る人がちがっても同じ）
+  var its = allItems.filter(function (r) { return r.parkFid && (siteId ? String(r.siteId) === siteId : String(r.parkRec) === rec); });
   var byItem = {}; its.forEach(function (r) { byItem[r.itemId] = r; });
-  var shots = {};
+  var shots = {}, free = {};
   rows_('shashinPhotos').forEach(function (r) {
-    if (r.state) return; var it = byItem[r.itemId]; if (!it || !r.stage) return;
-    var l = shots[it.parkFid] = shots[it.parkFid] || []; if (l.indexOf(r.stage) < 0) l.push(r.stage);
+    if (r.state || !r.stage) return;
+    var it = byItem[r.itemId];
+    if (it) { var l = shots[it.parkFid] = shots[it.parkFid] || []; if (l.indexOf(r.stage) < 0) l.push(r.stage); return; }
+    if (siteId && String(r.siteId) === siteId) {   // 図面の木を選ばずに撮った写真（黒板の 工種・規格・測点 ごと）
+      var k = [r.koshu || '', String(r.kikaku || '').replace(/^C=/, ''), r.sokuten || ''].join('|'), f = free[k] = free[k] || [];
+      if (f.indexOf(r.stage) < 0) f.push(r.stage);
+    }
   });
-  var siteId = its.length ? its[0].siteId : '', stages = [], rule = null, s = siteId ? siteList_().filter(function (x) { return String(x.id) === String(siteId); })[0] : null;
+  var stages = [], rule = null;
   if (s) {
     var d = new Date(), fy = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1, key = s.contract ? 'C|' + s.contract + '|' + fy : 'S|' + s.id;
     var inf = rows_('shashinInfo').filter(function (r) { return r.key === key; })[0];
     if (inf) { stages = shashinJson_(inf.stages, []); var o = shashinJson_(inf.opts, {}); rule = o.photoRule || null; }
   }
-  return { ok: true, siteId: siteId, stages: stages.length ? stages : ['作業前', '作業中', '作業後'], rule: rule, shots: shots };
+  return { ok: true, siteId: siteId, site: s ? s.name : '', stages: stages.length ? stages : ['作業前', '作業中', '作業後'], rule: rule, shots: shots, free: free };
 }
 /* ---- 遠隔撮影：iPadの公園報告で木をタップ → iPhoneの工事写真のカメラが開く ----
    部屋番号（4〜6けた）ごとに、最近の指示を CacheService に置く（6時間）。電波が切れても、つながった時に最新の指示を受け取れる */

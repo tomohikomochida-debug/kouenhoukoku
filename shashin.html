@@ -1198,7 +1198,7 @@ function openAlbum(id,key,opt){
   $('#albumBanner').innerHTML = cur.publicKoji
     ? `<div class="banner warn"><b>公共工事の現場です。</b>電子黒板の写真は納品写真として認められない可能性が高いため、黒板は<b>オフ</b>で始まります。実物の黒板を写し込むか、納品写真はミライ工事で撮影してください。</div>`
     : '';
-  mapFittedFor=null; placing=null; ZV.fitted=null; if(ZV.on) showZumen(false); drawParkBanner(); go('album'); switchTab('photos'); renderItems();
+  mapFittedFor=null; placing=null; ZV.fitted=null; if(ZV.on) showZumen(false); drawParkBanner(); go('album'); discoverParkRec(s); switchTab('photos'); renderItems();
   if(!opt||opt.camera!==false){   // 案件をえらんだら、すぐ撮影モード（黒板は左下。タップで中身を入れる）
     curItem=null; const st=curStages(), b=boards[cur.id];
     if(!st.includes(b.stage)){ curStage=st[0]; setStageOnBoard(b,curStage); } else curStage=b.stage;
@@ -1653,11 +1653,24 @@ function setCaseOpt(fn){
   const pend=LS.get('shashin_infos_pending',{}); pend[cur.infoKey]=inf; LS.set('shashin_infos_pending',pend);
   clearTimeout(setCaseOpt._t); setCaseOpt._t=setTimeout(pushInfos,1200);
 }
-const parkRecOf = siteId => ((curOpts().parkRec||{})[siteId]) || (items.find(i=>i.siteId===siteId&&i.parkRec)||{}).parkRec || '';
-function setParkRec(siteId,rec){ if(!rec||parkRecOf(siteId)===rec) return; setCaseOpt(o=>{ o.parkRec=Object.assign({},o.parkRec||{},{[siteId]:rec}); }); }
+const parkRecOf = siteId => ((curOpts().parkRec||{})[siteId]) || LS.get('shashin_parkrec_'+siteId,'') || (items.find(i=>i.siteId===siteId&&i.parkRec)||{}).parkRec || '';
+/* 公園報告の図面をさがす：図面を作る人と写真を撮る人がちがっても、公園名（と委託名）が同じ記録のうち いちばん新しいものにつなぐ */
+async function discoverParkRec(s){
+  if(!s||!canSync()) return;
+  try{
+    const l=await gasGetApp('park',{action:'list'}); if(!l.ok) return;
+    const norm=x=>String(x||'').replace(/[\s　]/g,'');
+    let c=(l.items||[]).filter(r=>norm(r.park)===norm(s.name));
+    if(c.length>1&&s.contract){ const c2=c.filter(r=>norm(r.contract)&&(norm(s.contract).includes(norm(r.contract))||norm(r.contract).includes(norm(s.contract)))); if(c2.length) c=c2; }
+    if(!c.length) return;
+    const best=c.sort((a,b)=>String(b.updated).localeCompare(String(a.updated)))[0];
+    if(best.id!==parkRecOf(s.id)){ LS.set('shashin_parkrec_'+s.id,best.id); if(cur&&cur.id===s.id){ setParkRec(s.id,best.id); if(ZV.on) showZumen(true); if($('#check').classList.contains('on')) renderCheck(); } }
+  }catch(e){}
+}
+function setParkRec(siteId,rec){ if(!rec) return; LS.set('shashin_parkrec_'+siteId,rec); if(((curOpts().parkRec||{})[siteId])===rec) return; setCaseOpt(o=>{ o.parkRec=Object.assign({},o.parkRec||{},{[siteId]:rec}); }); }
 /* 図面の木 → 撮影項目（無ければ作る。No.は同じ工種・規格の中で次の番号） */
 function itemForTree(siteId,rec,f){
-  const fid=treeFid(f); let it=items.find(i=>i.siteId===siteId&&i.parkFid===fid&&(!rec||!i.parkRec||i.parkRec===rec));
+  const fid=treeFid(f); let it=items.find(i=>i.siteId===siteId&&i.parkFid===fid);   // 図面を保存し直して別の記録になっても、同じ目印なら同じ項目
   if(it) return it;
   const tree=!f.type||f.type==='tree', ar=Number(f.area)||0;
   const kikaku = tree ? (f.rank?'C='+f.rank:'') : (ar?`${Math.round(ar*10)/10}㎡`:'');
@@ -1726,17 +1739,17 @@ function mkGeo(g){
   };
 }
 /* 項目の地図上の位置：手で置いた位置 → 図面の位置を地図に合わせた位置 */
-function itemPx(i){ const R=i.parkRec&&parkCache[i.parkRec], f=R&&R.byFid[i.parkFid]; if(f) return featPos(f); return (i.px==null||i.px==='')?null:{x:+i.px,y:+i.py}; }   // 公園報告で動かした木にもついていく
+function itemPx(i){ const R=(parkCache[parkRecOf(i.siteId)]||(i.parkRec&&parkCache[i.parkRec])), f=R&&i.parkFid&&R.byFid[i.parkFid]; if(f) return featPos(f); return (i.px==null||i.px==='')?null:{x:+i.px,y:+i.py}; }   // 公園報告で動かした木にもついていく
 function itemLL(i){ if(i.lat!=null&&i.lng!=null&&i.lat!=='') return {lat:+i.lat,lng:+i.lng}; const p=itemPx(i); if(!p) return null; const g=geoOf(i.siteId); return g?g.px2ll(p.x,p.y):null; }
 
 /* ---- 図面の表示 ---- */
 const parkCache={};
 async function loadParkRec(id){
-  if(parkCache[id]) return parkCache[id];
+  if(parkCache[id]&&Date.now()-parkCache[id].t<10*60*1000) return parkCache[id];   // 10分たったら読み直す（図面を作る人が直していることがある）
   const j=await gasGetApp('park',{action:'get',id}); if(!j.ok) throw new Error(j.error||'読み込めませんでした');
   const d=JSON.parse(j.data), img=d.imgData?await new Promise(res=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>res(null); i.src=d.imgData; }):null;
   const F=(d.features||[]).filter(f=>f.pt||Array.isArray(f.pts)), byFid={}; F.forEach(f=>{ byFid[treeFid(f)]=f; });
-  return parkCache[id]={ d, img, byFid, trees:F.filter(f=>f.type==='tree'&&f.pt), areas:F.filter(f=>f.type!=='tree'&&Array.isArray(f.pts)), feats:F.filter(f=>f.cat) };
+  return parkCache[id]={ t:Date.now(), d, img, byFid, trees:F.filter(f=>f.type==='tree'&&f.pt), areas:F.filter(f=>f.type!=='tree'&&Array.isArray(f.pts)), feats:F.filter(f=>f.cat) };
 }
 const ZV={ on:false, rec:null, k:1, ox:0, oy:0, fitted:null };
 let ALN=null;   // 地図と合わせている途中 {pairs:[], pick:{f}}
@@ -1749,7 +1762,7 @@ async function showZumen(on){
     : mapLegend();
   if(!on){ setTimeout(renderMap,30); return; }
   const rec=parkRecOf(cur.id);
-  if(!rec){ drawZumenMsg('公園報告の図面がまだつながっていません。<br>公園報告アプリで木をタップ →「📷 この木の写真を撮る」、または 情報 → ③ 読み込む →「公園報告の図面から」でつながります。'); return; }
+  if(!rec){ drawZumenMsg('この現場の公園報告の図面が見つかりません。<br>公園報告アプリで、公園名を現場マスタと同じにして「☁️ クラウドに保存」すると、だれが作った図面でも自動でここに出ます。'); discoverParkRec(siteOf(cur.id)).then(()=>{ if(parkRecOf(cur.id)&&ZV.on) showZumen(true); }); return; }
   if(!canSync()&&!parkCache[rec]){ drawZumenMsg('電波のある所で開いてください'); return; }
   try{ drawZumenMsg('図面を読み込んでいます…'); const R=await loadParkRec(rec); ZV.rec=rec; $('#zumenMsg').style.display='none'; if(ZV.fitted!==rec) fitZumen(R); drawZumen();
     const auto=R.d.geo&&R.d.geo.kind==='wm'; $('#mtAlign').style.display=auto?'none':''; $('#mtAlign').textContent=geoOf(cur.id)?'📍 地図と合わせ直す':'📍 地図と合わせる'; }
@@ -2550,6 +2563,10 @@ function needTableHTML(){
   const st=curStages(), FS=fidShots(), rule=curOpts().photoRule, G={};
   R.feats.forEach(f=>{ const sub=f.rank||f.kind||'', k=f.cat+'|'+sub, g=G[k]=G[k]||{cat:f.cat,sub,unit:f.type==='tree'?'本':'か所',cnt:0,all:0,part:0};
     const got=FS[treeFid(f)], n=got?st.filter(s=>got.has(s)).length:0; g.cnt++; if(n>=st.length) g.all++; else if(n>0) g.part++; });
+  // 図面の木を選ばずに撮った写真（黒板の 工種・規格 で）も数える
+  targets().forEach(t=>{ if(t.item&&t.item.parkFid) return; if(!st.every(s=>t.done[s]>0)) return; const b=(t.photos[0]||{}).board||{}, ko=String(b.koshu||t.label||''), ki=String(b.kikaku||'').replace(/^C=/,'');
+    const g=Object.values(G).find(g=>ko.indexOf(g.cat)===0&&(ki===g.sub||ko.includes(g.sub))); if(g) g.free=(g.free||0)+1; });
+  Object.values(G).forEach(g=>{ if(g.free) g.all=Math.min(g.cnt,g.all+g.free); });
   const L=Object.values(G).sort((a,b)=>COLL.compare(a.cat,b.cat)||COLL.compare(a.sub,b.sub)); let rest=0;
   const rows=L.map(g=>{ const need=ruleNeed(rule,g.cat,g.sub,g.cnt), left=Math.max(0,need-g.all); rest+=left;
     return `<tr class="${left?'ng':'ok'}"><td>${esc(g.cat)}<small>${esc(g.sub)}</small></td><td>${g.cnt}${g.unit}</td><td>${need}</td><td>${g.all}${g.part?`<small>途中${g.part}</small>`:''}</td><td>${left||'✓'}</td></tr>`; }).join('');
