@@ -170,6 +170,25 @@ const API = {
     return res;
   },
 
+  /** 今日の出勤状況（日報アプリの「今日の出勤」欄）。親方・事務担当は全員、スタッフは自分だけ */
+  today: b => {
+    const me = auth_(b);
+    const admin = isAdminRole_(me.role);
+    const date = today_();
+    const staff = (admin ? staffAll_() : [me]).filter(s => s.active && s.punch && !(s.join && s.join > date));
+    const ids = staff.map(s => s.id);
+    const days = {};
+    dataTable_('days').rows.forEach(r => { if (r.date === date && ids.includes(r.staffId) && hasContent_(r)) days[r.staffId] = dayPublic_(r); });
+    let rests = {};
+    try { readCalRests_(date, date).forEach(r => { if (ids.includes(r.staffId)) rests[r.staffId] = r.title || '休み'; }); } catch (x) { rests = {}; }
+    const st = settings_();
+    return {
+      date, now: fmt_(new Date(), 'HH:mm'), admin,
+      off: calendarOff_(fyOf_(date)).includes(date), start: st.start,
+      rows: staff.map(s => ({ id: s.id, disp: s.disp || s.name, pay: s.pay, day: days[s.id] || null, calRest: rests[s.id] || '' })),
+    };
+  },
+
   /** 出勤調整カレンダーに入っている休み（画面を出したあとに、裏で読む） */
   calRests: b => {
     const me = auth_(b);
