@@ -486,21 +486,29 @@ const API = {
   }),
 };
 
-/** 事務担当のスタッフ保存：今いる人は生年月日だけ直せる。足りない人は追加できる（権限はスタッフか打刻なしまで） */
+/** 事務担当のスタッフ保存：名前・表示名・freee番号・勤務設定・給与・打刻・入社日・在籍・生年月日を直せて、人を足せる。
+    ただし権限は「スタッフ」「打刻なし」の間だけ。親方・事務担当の人の権限と在籍は変えられない（自分を親方にする・親方を外すのを防ぐ）。
+    送られてこなかった人は消さない */
 function staffSaveOffice_(me, incoming) {
-  const t = dataTable_('staff'), byId = {};
+  const t = dataTable_('staff'), byId = {}, low = r => r === 'staff' || r === 'none';
   t.rows.forEach(r => { byId[String(r.id)] = r; });
   let changed = 0, added = 0;
   incoming.forEach(s => {
-    const id = String(s.id || '').trim(), birth = normDate_(s.birth) || '';
-    if (id && byId[id]) { if ((byId[id].birth || '') !== birth) { t.update(byId[id], { birth }); changed++; } return; }
-    const name = String(s.name || '').trim(); if (id || !name) return;
-    t.append({ id: 's' + Date.now().toString(36) + Math.floor(Math.random() * 1000), name, disp: String(s.disp || '').trim() || name.split(/[\s　]/)[0],
-      freeeNo: String(s.freeeNo || '').trim(), setting: String(s.setting || '').trim(), pay: s.pay === 'hourly' ? 'hourly' : 'monthly',
-      role: s.role === 'none' ? 'none' : 'staff', punch: s.punch ? 'TRUE' : 'FALSE', join: normDate_(s.join) || '', active: 'TRUE', birth });
+    const id = String(s.id || '').trim(), name = String(s.name || '').trim();
+    const v = { name, disp: String(s.disp || '').trim() || name.split(/[\s　]/)[0], freeeNo: String(s.freeeNo || '').trim(), setting: String(s.setting || '').trim(),
+      pay: s.pay === 'hourly' ? 'hourly' : 'monthly', punch: s.punch ? 'TRUE' : 'FALSE', join: normDate_(s.join) || '', birth: normDate_(s.birth) || '' };
+    if (id && byId[id]) {
+      const r = byId[id];
+      if (!name) return;
+      if (low(r.role || 'staff')) { v.active = s.active === false ? 'FALSE' : 'TRUE'; if (low(s.role)) v.role = s.role; }
+      if (Object.keys(v).some(k => String(r[k] || '') !== String(v[k]))) { t.update(r, v); changed++; }
+      return;
+    }
+    if (id || !name) return;
+    t.append(Object.assign({ id: 's' + Date.now().toString(36) + Math.floor(Math.random() * 1000), role: s.role === 'none' ? 'none' : 'staff', active: 'TRUE' }, v));
     added++;
   });
-  if (changed || added) addHistory_(me.disp, '', '', 'スタッフ', '', [changed ? '生年月日' + changed + '人' : '', added ? '追加' + added + '人' : ''].filter(Boolean).join('・'), 'スタッフの設定を保存（事務担当）');
+  if (changed || added) addHistory_(me.disp, '', '', 'スタッフ', '', [changed ? '変更' + changed + '人' : '', added ? '追加' + added + '人' : ''].filter(Boolean).join('・'), 'スタッフの設定を保存（事務担当）');
   return { staff: staffAll_().map(staffPublic_) };
 }
 
