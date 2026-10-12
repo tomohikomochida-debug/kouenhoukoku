@@ -313,6 +313,8 @@ const S = {
 const isBoss = () => S.me && S.me.role === 'boss';
 const isOffice = () => S.me && S.me.role === 'office';
 const staffName = id => { const s = S.staff.find(x => String(x.id) === String(id)); return s ? s.disp : ''; };
+/* 報告書・PDFに載せる名前はフルネーム（スタッフの一覧の「氏名」。無ければ呼び名のまま） */
+const fullName = (id, fallback) => { const s = S.staff.find(x => String(x.id) === String(id)); return (s && (s.name || s.disp)) || fallback || ''; };
 const vehicleById = id => S.vehicles.find(v => String(v.id) === String(id));
 const caseById = id => S.cases.find(c => c.id === id);
 const birthOf = id => ((S.settings || {}).births || {})[String(id || '')] || '';
@@ -1335,11 +1337,11 @@ function reportRows(d) {
   const pl = d.place || {};
   const S2 = [['日時', v2(jaDate(d.date), d.time)], ['天気・路面', v2(d.weather, d.road)], ['場所', [pl.address, pl.note ? '（目印：' + pl.note + '）' : '', pl.type].filter(Boolean).join('\n')],
     ['座標（緯度・経度）', pl.lat ? pl.lat + ', ' + pl.lng + (pl.confirmed ? '' : '（地図で未確認）') : '']];
-  const S3 = car ? [['移動の目的', c.purpose], ...(c.purpose === ONSITE ? [['現場名', c.site], ['現場でしていたこと', c.onsite]] : [['出発地→目的地', [c.from, c.to].filter(Boolean).join(' → ')], ['関連する現場', c.relSite]]), ['車両', [c.vehicle, c.plate].filter(Boolean).join('　')], ...(c.vehicleId === '__other' ? [['車の区分', '会社に登録していない車' + (c.otherType ? '（' + c.otherType + '）' : '')], ['借りた先・持ち主', [c.lender, c.lenderTel].filter(Boolean).join('　')], ['その車の保険', c.lenderIns], ['借りた条件', c.lendNote]] : []), ['運転者', withBirth(d.driver, d.driverBirth, d.date)],
+  const S3 = car ? [['移動の目的', c.purpose], ...(c.purpose === ONSITE ? [['現場名', c.site], ['現場でしていたこと', c.onsite]] : [['出発地→目的地', [c.from, c.to].filter(Boolean).join(' → ')], ['関連する現場', c.relSite]]), ['車両', [c.vehicle, c.plate].filter(Boolean).join('　')], ...(c.vehicleId === '__other' ? [['車の区分', '会社に登録していない車' + (c.otherType ? '（' + c.otherType + '）' : '')], ['借りた先・持ち主', [c.lender, c.lenderTel].filter(Boolean).join('　')], ['その車の保険', c.lenderIns], ['借りた条件', c.lendNote]] : []), ['運転者', withBirth(fullName(d.driverId, d.driver), d.driverBirth, d.date)],
     ['業務中・通勤中', c.commute], ['積載物', c.loadOn === '荷物あり' ? [(ld.kinds || []).join('・'), ld.amount, ld.cover, ld.spill ? '積荷：' + ld.spill : ''].filter(Boolean).join('　') : c.loadOn],
     ['事故の形', [c.scene, c.signal, c.speed ? '速度：' + c.speed : ''].filter(Boolean).join('　')], ['ドライブレコーダー', c.recorder], ['車の状態', c.drivable], ['アルコールチェック', c.alcohol]]
-    : [['現場名', w.site], ['発注者', w.orderer], ['作業内容', w.task], ['使用機械・道具', (w.machines || []).join('・')], ['安全対策', (w.safety || []).join('・')], ['作業者', withBirth(d.driver, d.driverBirth, d.date)]];
-  const S4 = [[car ? '同乗者' : '作業班', (d.members || []).join('、')], ['目撃者', (d.witnesses || []).filter(x => x.name).map(x => x.name + (x.contact ? '（' + x.contact + '）' : '')).join('、')]];
+    : [['現場名', w.site], ['発注者', w.orderer], ['作業内容', w.task], ['使用機械・道具', (w.machines || []).join('・')], ['安全対策', (w.safety || []).join('・')], ['作業者', withBirth(fullName(d.driverId, d.driver), d.driverBirth, d.date)]];
+  const S4 = [[car ? '同乗者' : '作業班', (d.memberIds || []).length ? d.memberIds.map((id, i) => fullName(id, (d.members || [])[i])).join('、') : (d.members || []).join('、')], ['目撃者', (d.witnesses || []).filter(x => x.name).map(x => x.name + (x.contact ? '（' + x.contact + '）' : '')).join('、')]];
   const S5 = [];
   if (d.party === 'other') S5.push(['氏名', o.name], ['電話', o.phone], ['住所', o.address], ['車両', car ? [o.plate, o.carModel].filter(Boolean).join('　') : ''], ['相手の保険会社', v2(o.insurer, o.insurerPhone)], ['仕事中か', o.atWork === '仕事中' ? '仕事中（' + (o.employer || '勤務先不明') + '）' : o.atWork]);
   if (dm.theirThing) S5.push(['当たった物', o.thing], ['持ち主・管理者', [o.ownerType, o.ownerName, o.ownerContact].filter(Boolean).join('　')]);
@@ -1347,7 +1349,7 @@ function reportRows(d) {
   if (dm.ownThing) S6.push(['自社の損傷', d.ownDamage]);
   if (dm.theirThing) S6.push(['相手の物の損傷', d.theirDamage]);
   if (dm.theirPerson) S6.push(['相手のけが', v2((d.theirInjury || {}).text, (d.theirInjury || {}).hospital ? '病院：' + d.theirInjury.hospital : '')]);
-  if (dm.ownPerson) S6.push(['自社の人のけが', [withBirth(r.staff, r.birth, d.date), r.commute, r.type, r.part, r.degree, r.hospital ? '病院：' + r.hospital : '', r.visitDate ? '受診：' + r.visitDate : '', r.leave === '休みあり' ? '休み：' + (r.leaveDays || '?') + '日' : r.leave].filter(Boolean).join('　')]);
+  if (dm.ownPerson) S6.push(['自社の人のけが', [withBirth(fullName(r.staffId, r.staff), r.birth, d.date), r.commute, r.type, r.part, r.degree, r.hospital ? '病院：' + r.hospital : '', r.visitDate ? '受診：' + r.visitDate : '', r.leave === '休みあり' ? '休み：' + (r.leaveDays || '?') + '日' : r.leave].filter(Boolean).join('　')]);
   const mach = (d.mach || {}).acc || [];
   if (mach.length && !mach.includes('none')) S6.push(['機械・設備の事故', mach.map(k => (MACH_ACC.find(x => x[0] === k) || [0, k])[1]).join('・') + ((d.mach || {}).crane05 ? '（つり上げ荷重：' + d.mach.crane05 + '）' : '')]);
   const S7 = [['警察への届け出', [po.status, po.reason ? '（' + po.reason + '）' : ''].filter(Boolean).join('　')], ['届け出た警察署', [po.station, po.stationTel].filter(Boolean).join('　')], ['届け出た日時', [po.date ? jaDate(po.date) : '', po.time].filter(Boolean).join('　')],
@@ -1529,7 +1531,7 @@ function firstCall(c) {
   openModal(`<h3>📞 第一報の要点</h3><dl class="bigsum">
     ${row('いつ', v2(jaDate(d.date), d.time))}${row('どこで', [d.place && d.place.address, d.place && d.place.note].filter(Boolean).join('　'))}
     ${car && cr.vehicleId === '__other' ? row('借りた車', [cr.otherType, cr.lender, cr.lenderTel, cr.lenderIns ? '保険：' + cr.lenderIns : ''].filter(Boolean).join('　')) : ''}
-    ${row(car ? '運転者・車' : '作業者・現場', car ? [withBirth(d.driver, d.driverBirth, d.date), cr.vehicle, cr.plate, cr.purpose === ONSITE ? '（現場の中：' + [cr.site, cr.onsite].filter(Boolean).join('・') + '）' : ''].filter(Boolean).join('　') : [withBirth(d.driver, d.driverBirth, d.date), (d.work || {}).site].filter(Boolean).join('　'))}
+    ${row(car ? '運転者・車' : '作業者・現場', car ? [withBirth(fullName(d.driverId, d.driver), d.driverBirth, d.date), cr.vehicle, cr.plate, cr.purpose === ONSITE ? '（現場の中：' + [cr.site, cr.onsite].filter(Boolean).join('・') + '）' : ''].filter(Boolean).join('　') : [withBirth(fullName(d.driverId, d.driver), d.driverBirth, d.date), (d.work || {}).site].filter(Boolean).join('　'))}
     ${row('何が起きた', whatHappened)}${row('経緯', String(d.story || '').slice(0, 160) + (String(d.story || '').length > 160 ? '…' : ''))}
     ${row('けが', injury)}${row('警察', [(d.police || {}).status, (d.police || {}).station, (d.police || {}).officer ? '担当：' + [(d.police || {}).section, d.police.officer].filter(Boolean).join(' ') : '', (d.police || {}).type, (d.police || {}).receiptNo ? '受理番号：' + d.police.receiptNo : ''].filter(Boolean).join('　'))}
     ${car ? row('車', cr.drivable) + row('積荷', cr.loadOn === '荷物あり' ? ((cr.load || {}).kinds || []).join('・') + ' ' + ((cr.load || {}).spill || '') : cr.loadOn) : ''}

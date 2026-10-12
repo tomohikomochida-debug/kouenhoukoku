@@ -3545,17 +3545,22 @@ function jkFlat_(c) {
     kind: JK_JA[d.kind] || '', party: JK_JA[d.party] || '', who: d.party === 'other' ? (JK_JA[d.who] || '') : '', damage: dmg,
     date: d.date || '', time: d.time || '', place: (d.place && d.place.address) || '', lat: (d.place && d.place.lat) || '', lng: (d.place && d.place.lng) || '',
     placeOk: d.place && d.place.confirmed ? (d.place.method || '地図で確認') : (d.place && d.place.lat ? '未確認' : ''),
-    driver: d.driver || '', driverBirth: d.driverBirth || '', members: (d.members || []).join('、'), reporter: d.reporter || '',
+    driver: jkFull_(d.driverId, d.driver), driverBirth: d.driverBirth || '', members: (d.memberIds || []).length ? d.memberIds.map(function (id, i) { return jkFull_(id, (d.members || [])[i]); }).join('、') : (d.members || []).join('、'), reporter: jkFull_(d.reporterId, d.reporter),
     vehicle: [car.vehicle, car.plate, car.vehicleId === '__other' ? '（' + ['登録外', car.otherType, car.lender].filter(Boolean).join('・') + '）' : ''].filter(Boolean).join(' '), site: wk.site || car.site || car.relSite || '',
     route: d.kind === 'car' ? (car.purpose === '現場の中' ? ['現場の中', car.onsite].filter(Boolean).join('：') : [car.purpose, [car.from, car.to].filter(Boolean).join('→')].filter(Boolean).join('：')) : '',
     other: [o.name, [o.thing, o.ownerType, o.ownerName].filter(Boolean).join(' ')].filter(Boolean).join('／'),
     police: [pol.status, pol.station, pol.officer ? '担当：' + [pol.section, pol.officer].filter(Boolean).join(' ') : '', pol.type, pol.receiptNo ? '受理番号：' + pol.receiptNo : ''].filter(Boolean).join(' '),
     insurer: ic.insurer || '', insReceipt: ic.receiptNo || '', insUse: b.insUse || '',
     cost: [rp.estimate ? '見積' + rp.estimate + '円' : '', rp.paid ? '支払' + rp.paid + '円' : '', rp.payout ? '保険金' + rp.payout + '円' : ''].filter(Boolean).join('・'),
-    rousai: dm.ownPerson ? [rs.staff, rs.type, b.rousaiStage].filter(Boolean).join('・') : '',
+    rousai: dm.ownPerson ? [jkFull_(rs.staffId, rs.staff), rs.type, b.rousaiStage].filter(Boolean).join('・') : '',
     lso: [d.lso || '', (b.checks || {}).lso ? '報告済 ' + b.checks.lso : ''].filter(Boolean).join('・'),
     shared: b.shared === true
   };
+}
+/* スタッフのフルネーム（タイムカードのスタッフ表の「氏名」。無ければ呼び名のまま） */
+function jkFull_(id, fallback) {
+  if (!id) return fallback || '';
+  try { var hit = jkStaff_().filter(function (s) { return String(s.id) === String(id); })[0]; return (hit && (hit.name || hit.disp)) || fallback || ''; } catch (e) { return fallback || ''; }
 }
 function jkNextNo_(cases, date) {
   var y = String(date || ymd_(new Date())).slice(0, 4), max = 0;
