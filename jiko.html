@@ -315,6 +315,16 @@ const isOffice = () => S.me && S.me.role === 'office';
 const staffName = id => { const s = S.staff.find(x => String(x.id) === String(id)); return s ? s.disp : ''; };
 const vehicleById = id => S.vehicles.find(v => String(v.id) === String(id));
 const caseById = id => S.cases.find(c => c.id === id);
+const birthOf = id => ((S.settings || {}).births || {})[String(id || '')] || '';
+/* 生年月日と、ある日（事故の日）の年齢 */
+function ageAt(birth, on) {
+  const b = String(birth || '').match(/^(\d{4})-(\d{2})-(\d{2})$/), o = String(on || today()).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!b || !o) return '';
+  let a = +o[1] - +b[1]; if (+o[2] < +b[2] || (+o[2] === +b[2] && +o[3] < +b[3])) a--;
+  return a >= 0 && a < 120 ? a : '';
+}
+const birthText = (birth, on) => birth ? jaDate(birth) + '生' + (ageAt(birth, on) !== '' ? '（' + ageAt(birth, on) + '歳）' : '') : '';
+const withBirth = (name, birth, on) => name ? name + (birth ? '（' + jaDate(birth) + '生' + (ageAt(birth, on) !== '' ? '・' + ageAt(birth, on) + '歳' : '') + '）' : '') : '';
 
 /* =========================================================
    画面の切り替え（戻るボタン・スワイプで戻れるように履歴を使う）
@@ -725,6 +735,7 @@ function renderForm() {
     /* ④ 人 */
     h += `<div class="card"><h2>👷 関わった人</h2>
       ${lbl(car ? '運転していた人' : '作業していた人（当事者）', 1)}<select data-k="driverId" data-re="1">${staffOpts(d.driverId)}</select>
+      ${birthBox('driverBirth', d.driverId, d.driverBirth, d.date)}
       <p class="hint">本人がけが・動転している時は、代わりに書いてかまいません（報告者はあなたになります）</p>
       ${lbl(car ? '同乗者' : '一緒に作業していた人')}<div class="chips">${S.staff.filter(s => String(s.id) !== String(d.driverId)).map(s => chip('memberIds', String(s.id), esc(s.disp), { multi: true })).join('')}</div>
       ${lbl('目撃者（いれば）')}<div id="witList">${(d.witnesses || []).map((w, i) => `<div class="wit"><input type="text" data-k="witnesses.${i}.name" value="${esc(w.name || '')}" placeholder="名前"><input type="tel" data-k="witnesses.${i}.contact" value="${esc(w.contact || '')}" placeholder="連絡先"><button type="button" class="btn sm" data-witdel="${i}">×</button></div>`).join('')}</div>
@@ -778,6 +789,7 @@ function renderForm() {
       h += `<div class="card"><h2>🩹 自社の人のけが（労災）</h2>
         <div class="note red"><b>病院では「仕事中のけがです」と伝える</b>健康保険証は使わないでください（あとで切り替えが面倒になります）。</div>
         ${lbl('けがをした人', 1)}<select data-k="rousai.staffId" data-re="1">${staffOpts(r.staffId)}</select>
+        ${birthBox('rousai.birth', r.staffId, r.birth, d.date)}
         ${lbl('業務中・通勤中')}${chips('rousai.commute', ['業務中', '通勤中'])}
         ${lbl('けがの種類')}${chips('rousai.type', ROUSAI_TYPES)}
         ${lbl('けがの部位')}${inp('rousai.part', '例：左手の指')}
@@ -828,6 +840,15 @@ function renderForm() {
   bindForm();
   loadThumbs();
 }
+/* 人を選んだあとに生年月日を出す。登録がなければ、その場で入れられる（本人の分は次から自動で出る） */
+function birthBox(path, staffId, cur, on) {
+  if (!staffId) return '';
+  const reg = birthOf(staffId), b = reg || cur;
+  if (b) return `<div class="note green" style="margin:6px 0"><b>生年月日　${esc(birthText(b, on))}</b>${reg ? '親方の設定に登録されている生年月日です' : 'この報告で入れた生年月日です'}${reg ? '' : ` <button type="button" class="btn sm" data-birthclear="${esc(path)}" style="margin-left:6px">直す</button>`}</div>`;
+  const mine = String(staffId) === String(S.me.id), canSee = isBoss() || isOffice() || mine;
+  return `${lbl('生年月日' + (mine ? '（あなたの）' : ''))}<input type="date" data-k="${esc(path)}" data-re="1" value="" max="${today()}">
+    <p class="hint">${canSee ? '入れると次からは自動で出ます（保険会社・労災の書類に使います）' : 'わからなければ空欄で大丈夫です（親方の設定に登録があれば、送ったあと自動で入ります）'}</p>`;
+}
 function licWarn(d) {
   const c = d.car || {}, vs = (S.settings.vehicles || {})[c.vehicleId] || {}, need = licRank(vs.license);
   const have = licRank((S.settings.licenses || {})[d.driverId]);
@@ -862,6 +883,7 @@ function bindForm() {
     const th = e.target.closest('.th[data-pid]'); if (th && !e.target.closest('.pm-arrow')) return photoMenu(th.dataset.pid, dr.id);   // 写真をタップ → 大きく見る・説明
     const t = e.target.closest('button'); if (!t) return;
     if (t.id === 'geoBtn') return openMapPicker(dr.id, { fromGps: true });
+    if (t.dataset.birthclear) { setP(dr.data, t.dataset.birthclear, ''); touchDraft(); renderForm(); return; }
     if (t.id === 'witAdd') { (dr.data.witnesses = dr.data.witnesses || []).push({ name: '', contact: '' }); touchDraft(); renderForm(); return; }
     if (t.dataset.witdel != null) { dr.data.witnesses.splice(+t.dataset.witdel, 1); touchDraft(); renderForm(); return; }
     if (t.dataset.cam) return pickPhoto(t.dataset.cam, true);
@@ -878,8 +900,8 @@ function bindForm() {
   m.oninput = e => {
     const el = e.target; if (!el.dataset || !el.dataset.k) return;
     setP(dr.data, el.dataset.k, el.value);
-    if (el.dataset.k === 'driverId') dr.data.driver = staffName(el.value);
-    if (el.dataset.k === 'rousai.staffId') dr.data.rousai.staff = staffName(el.value);
+    if (el.dataset.k === 'driverId') { dr.data.driver = staffName(el.value); dr.data.driverBirth = birthOf(el.value); }
+    if (el.dataset.k === 'rousai.staffId') { dr.data.rousai.staff = staffName(el.value); dr.data.rousai.birth = birthOf(el.value); }
     if (el.dataset.k === 'car.vehicleId') { const v = vehicleById(el.value); if (v) { dr.data.car.vehicle = v.name; dr.data.car.plate = v.plate || ''; ['otherType', 'lender', 'lenderTel', 'lenderIns', 'lendNote'].forEach(k => delete dr.data.car[k]); } else { dr.data.car.vehicle = ''; dr.data.car.plate = ''; } }
     if (el.dataset.k === 'place.address') dr.data.place.addressAuto = false;
     if (el.dataset.k === 'work.site') { const s = S.sites.find(x => x.name === el.value); dr.data.work.siteId = s ? s.id : ''; }
@@ -1313,10 +1335,10 @@ function reportRows(d) {
   const pl = d.place || {};
   const S2 = [['日時', v2(jaDate(d.date), d.time)], ['天気・路面', v2(d.weather, d.road)], ['場所', [pl.address, pl.note ? '（目印：' + pl.note + '）' : '', pl.type].filter(Boolean).join('\n')],
     ['座標（緯度・経度）', pl.lat ? pl.lat + ', ' + pl.lng + (pl.confirmed ? '' : '（地図で未確認）') : '']];
-  const S3 = car ? [['移動の目的', c.purpose], ...(c.purpose === ONSITE ? [['現場名', c.site], ['現場でしていたこと', c.onsite]] : [['出発地→目的地', [c.from, c.to].filter(Boolean).join(' → ')], ['関連する現場', c.relSite]]), ['車両', [c.vehicle, c.plate].filter(Boolean).join('　')], ...(c.vehicleId === '__other' ? [['車の区分', '会社に登録していない車' + (c.otherType ? '（' + c.otherType + '）' : '')], ['借りた先・持ち主', [c.lender, c.lenderTel].filter(Boolean).join('　')], ['その車の保険', c.lenderIns], ['借りた条件', c.lendNote]] : []), ['運転者', d.driver],
+  const S3 = car ? [['移動の目的', c.purpose], ...(c.purpose === ONSITE ? [['現場名', c.site], ['現場でしていたこと', c.onsite]] : [['出発地→目的地', [c.from, c.to].filter(Boolean).join(' → ')], ['関連する現場', c.relSite]]), ['車両', [c.vehicle, c.plate].filter(Boolean).join('　')], ...(c.vehicleId === '__other' ? [['車の区分', '会社に登録していない車' + (c.otherType ? '（' + c.otherType + '）' : '')], ['借りた先・持ち主', [c.lender, c.lenderTel].filter(Boolean).join('　')], ['その車の保険', c.lenderIns], ['借りた条件', c.lendNote]] : []), ['運転者', withBirth(d.driver, d.driverBirth, d.date)],
     ['業務中・通勤中', c.commute], ['積載物', c.loadOn === '荷物あり' ? [(ld.kinds || []).join('・'), ld.amount, ld.cover, ld.spill ? '積荷：' + ld.spill : ''].filter(Boolean).join('　') : c.loadOn],
     ['事故の形', [c.scene, c.signal, c.speed ? '速度：' + c.speed : ''].filter(Boolean).join('　')], ['ドライブレコーダー', c.recorder], ['車の状態', c.drivable], ['アルコールチェック', c.alcohol]]
-    : [['現場名', w.site], ['発注者', w.orderer], ['作業内容', w.task], ['使用機械・道具', (w.machines || []).join('・')], ['安全対策', (w.safety || []).join('・')], ['作業者', d.driver]];
+    : [['現場名', w.site], ['発注者', w.orderer], ['作業内容', w.task], ['使用機械・道具', (w.machines || []).join('・')], ['安全対策', (w.safety || []).join('・')], ['作業者', withBirth(d.driver, d.driverBirth, d.date)]];
   const S4 = [[car ? '同乗者' : '作業班', (d.members || []).join('、')], ['目撃者', (d.witnesses || []).filter(x => x.name).map(x => x.name + (x.contact ? '（' + x.contact + '）' : '')).join('、')]];
   const S5 = [];
   if (d.party === 'other') S5.push(['氏名', o.name], ['電話', o.phone], ['住所', o.address], ['車両', car ? [o.plate, o.carModel].filter(Boolean).join('　') : ''], ['相手の保険会社', v2(o.insurer, o.insurerPhone)], ['仕事中か', o.atWork === '仕事中' ? '仕事中（' + (o.employer || '勤務先不明') + '）' : o.atWork]);
@@ -1325,7 +1347,7 @@ function reportRows(d) {
   if (dm.ownThing) S6.push(['自社の損傷', d.ownDamage]);
   if (dm.theirThing) S6.push(['相手の物の損傷', d.theirDamage]);
   if (dm.theirPerson) S6.push(['相手のけが', v2((d.theirInjury || {}).text, (d.theirInjury || {}).hospital ? '病院：' + d.theirInjury.hospital : '')]);
-  if (dm.ownPerson) S6.push(['自社の人のけが', [r.staff, r.commute, r.type, r.part, r.degree, r.hospital ? '病院：' + r.hospital : '', r.visitDate ? '受診：' + r.visitDate : '', r.leave === '休みあり' ? '休み：' + (r.leaveDays || '?') + '日' : r.leave].filter(Boolean).join('　')]);
+  if (dm.ownPerson) S6.push(['自社の人のけが', [withBirth(r.staff, r.birth, d.date), r.commute, r.type, r.part, r.degree, r.hospital ? '病院：' + r.hospital : '', r.visitDate ? '受診：' + r.visitDate : '', r.leave === '休みあり' ? '休み：' + (r.leaveDays || '?') + '日' : r.leave].filter(Boolean).join('　')]);
   const mach = (d.mach || {}).acc || [];
   if (mach.length && !mach.includes('none')) S6.push(['機械・設備の事故', mach.map(k => (MACH_ACC.find(x => x[0] === k) || [0, k])[1]).join('・') + ((d.mach || {}).crane05 ? '（つり上げ荷重：' + d.mach.crane05 + '）' : '')]);
   const S7 = [['警察への届け出', [po.status, po.reason ? '（' + po.reason + '）' : ''].filter(Boolean).join('　')], ['届け出た警察署', [po.station, po.stationTel].filter(Boolean).join('　')], ['届け出た日時', [po.date ? jaDate(po.date) : '', po.time].filter(Boolean).join('　')],
@@ -1507,7 +1529,7 @@ function firstCall(c) {
   openModal(`<h3>📞 第一報の要点</h3><dl class="bigsum">
     ${row('いつ', v2(jaDate(d.date), d.time))}${row('どこで', [d.place && d.place.address, d.place && d.place.note].filter(Boolean).join('　'))}
     ${car && cr.vehicleId === '__other' ? row('借りた車', [cr.otherType, cr.lender, cr.lenderTel, cr.lenderIns ? '保険：' + cr.lenderIns : ''].filter(Boolean).join('　')) : ''}
-    ${row(car ? '運転者・車' : '作業者・現場', car ? [d.driver, cr.vehicle, cr.plate, cr.purpose === ONSITE ? '（現場の中：' + [cr.site, cr.onsite].filter(Boolean).join('・') + '）' : ''].filter(Boolean).join('　') : [d.driver, (d.work || {}).site].filter(Boolean).join('　'))}
+    ${row(car ? '運転者・車' : '作業者・現場', car ? [withBirth(d.driver, d.driverBirth, d.date), cr.vehicle, cr.plate, cr.purpose === ONSITE ? '（現場の中：' + [cr.site, cr.onsite].filter(Boolean).join('・') + '）' : ''].filter(Boolean).join('　') : [withBirth(d.driver, d.driverBirth, d.date), (d.work || {}).site].filter(Boolean).join('　'))}
     ${row('何が起きた', whatHappened)}${row('経緯', String(d.story || '').slice(0, 160) + (String(d.story || '').length > 160 ? '…' : ''))}
     ${row('けが', injury)}${row('警察', [(d.police || {}).status, (d.police || {}).station, (d.police || {}).officer ? '担当：' + [(d.police || {}).section, d.police.officer].filter(Boolean).join(' ') : '', (d.police || {}).type, (d.police || {}).receiptNo ? '受理番号：' + d.police.receiptNo : ''].filter(Boolean).join('　'))}
     ${car ? row('車', cr.drivable) + row('積荷', cr.loadOn === '荷物あり' ? ((cr.load || {}).kinds || []).join('・') + ' ' + ((cr.load || {}).spill || '') : cr.loadOn) : ''}
@@ -1665,7 +1687,7 @@ function renderSettings() {
   if (!isBoss()) { back(); return; }
   setHeader('⚙ 事故報告の設定', true); $('#tabs').hidden = true;
   const st = clone((S.settings || {}).full || {});
-  st.company = Object.assign({}, COMPANY_DEFAULT, st.company || {}); st.contacts = st.contacts || {}; st.insurance = st.insurance || {}; st.vehicles = st.vehicles || {}; st.licenses = st.licenses || {};
+  st.company = Object.assign({}, COMPANY_DEFAULT, st.company || {}); st.contacts = st.contacts || {}; st.insurance = st.insurance || {}; st.vehicles = st.vehicles || {}; st.licenses = st.licenses || {}; st.births = st.births || {};
   ['auto', 'work', 'rousai', 'machine'].forEach(k => st.insurance[k] = st.insurance[k] || {});
   const si = (path, ph = '', type = 'text') => `<input type="${type}" data-s="${path}" value="${esc(getP(st, path) || '')}" placeholder="${esc(ph)}">`;
   const licSel = (path, cur, need) => `<select data-s="${path}"><option value="">${need ? '必要な免許（わからなければ空欄）' : '免許の種類'}</option>${LICENSES.map(l => `<option${cur === l[0] ? ' selected' : ''}>${esc(l[0])}</option>`).join('')}</select>`;
@@ -1683,8 +1705,8 @@ function renderSettings() {
       ${S.vehicles.filter(v => v.category !== '重機（ユンボなど）').map(v => { const p = 'vehicles.' + v.id; const x = st.vehicles[v.id] || {}; return `<h3>${esc(v.name)} <small>${esc(v.plate || '')}</small></h3>
         <label class="lbl">フリートの明細番号（わかれば）</label>${si(p + '.fleetNo', '')}
         <div class="row2" style="margin-top:6px"><div><select data-s="${p}.carCov"><option value="">車両保険</option><option${x.carCov === 'あり' ? ' selected' : ''}>あり</option><option${x.carCov === 'なし' ? ' selected' : ''}>なし</option></select></div><div>${licSel(p + '.license', x.license, true)}</div></div>`; }).join('') || '<p class="hint">車両アプリに車が登録されていません</p>'}</div>
-    <div class="card"><h2>🪪 スタッフの免許の種類</h2><p class="hint" style="margin-top:0">車の「必要な免許」と合わないとき、報告の画面に注意を出します</p>
-      ${S.staff.map(s => `<div class="row2" style="align-items:center;margin-bottom:6px"><span>${esc(s.disp)}</span><div>${licSel('licenses.' + s.id, st.licenses[s.id], false)}</div></div>`).join('')}</div>
+    <div class="card"><h2>🪪 スタッフの免許の種類・生年月日</h2><p class="hint" style="margin-top:0">免許：車の「必要な免許」と合わないとき、報告の画面に注意を出します。<br>生年月日：事故の当事者・けがをした人を選ぶと出て、報告書PDFに年齢と一緒に載ります。見られるのは親方・事務担当と本人だけです</p>
+      ${S.staff.map(s => `<div style="border-top:1px solid var(--line);padding:8px 0"><b>${esc(s.disp)}</b><div class="row2" style="margin-top:4px"><div><span class="hint">免許</span>${licSel('licenses.' + s.id, st.licenses[s.id], false)}</div><div><span class="hint">生年月日</span><input type="date" data-s="births.${esc(s.id)}" value="${esc((st.births || {})[s.id] || '')}" max="${today()}" aria-label="生年月日"></div></div></div>`).join('')}</div>
     <div class="card"><h2>📁 保存先</h2><p class="hint" style="margin-top:0">Googleドライブ「社内アプリ ＞ 事故報告」。履歴のスプレッドシート「事故報告データ（社外秘）」と、事故ごとのフォルダ（写真・報告書PDF）、ヒヤリハットの写真が入ります。</p>
       ${S.folder ? `<a class="btn sm" href="${esc(S.folder.url)}" target="_blank" rel="noopener">📁 事故報告のフォルダを開く</a>
       ${S.folder.limited ? '<div class="note green"><b>✓ スタッフはドライブから開けない設定です</b>社内アプリのフォルダは共有していますが、事故報告のフォルダだけは親方しか開けません（アプリからはふだん通り使えます）。</div>'

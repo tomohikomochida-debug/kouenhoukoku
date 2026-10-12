@@ -3333,7 +3333,7 @@ function transcribe_(b) {
 var JIKO_SHEET_NAME = '事故報告データ（社外秘）';
 var JIKO_COLS = {
   cases: { name: '事故報告', cols: [['id', '管理ID'], ['no', '報告番号'], ['state', '状態'], ['stage', '進み具合'], ['kind', '事故の種類'], ['party', '相手'], ['who', 'どちらが'], ['damage', '被害'],
-    ['date', '発生日'], ['time', '時刻'], ['place', '場所'], ['lat', '緯度'], ['lng', '経度'], ['placeOk', '場所の確認'], ['driver', '当事者'], ['members', '同乗者・作業班'], ['reporter', '報告者'], ['vehicle', '車両'], ['site', '現場'], ['route', '移動（目的・出発→目的地）'],
+    ['date', '発生日'], ['time', '時刻'], ['place', '場所'], ['lat', '緯度'], ['lng', '経度'], ['placeOk', '場所の確認'], ['driver', '当事者'], ['driverBirth', '当事者の生年月日'], ['members', '同乗者・作業班'], ['reporter', '報告者'], ['vehicle', '車両'], ['site', '現場'], ['route', '移動（目的・出発→目的地）'],
     ['other', '相手・持ち主'], ['police', '警察'], ['insurer', '保険会社'], ['insReceipt', '事故受付番号'], ['insUse', '保険の使い方'], ['cost', '修理費・支払い'], ['rousai', '労災'], ['lso', '労働基準監督署'], ['shared', 'みんなに共有'],
     ['createdAt', '報告日時'], ['updatedBy', '更新者'], ['updatedAt', '更新日時'], ['folderUrl', 'フォルダ'], ['folderId', 'フォルダID'], ['data', '（アプリ用：報告の中身）'], ['boss', '（アプリ用：親方の記録）']] },
   logs: { name: '経過記録', cols: [['logId', '記録ID'], ['caseId', '管理ID'], ['no', '報告番号'], ['at', '日時'], ['by', '書いた人'], ['text', '内容'], ['showParty', '当事者にも見せる'], ['kind', '種類'], ['state', '状態']] },
@@ -3509,12 +3509,17 @@ function jkView_(c, me, photos, logs) {
   var pub = jkPick_(b, ['stage', 'checks', 'cause', 'prevention', 'shared', 'rousaiStage']);
   if (role === 'boss') { v.data = d; v.boss = b; v.photos = ph; v.logs = lg; v.folderUrl = c.folderUrl || ''; return v; }
   if (role === 'party') {
+    if (me.role !== 'office' && (String(d.driverId) !== me.id || (d.rousai && d.rousai.birth && String(d.rousai.staffId) !== me.id))) {   // 生年月日は本人の分だけ（同乗者・報告者には見せない）
+      d = JSON.parse(JSON.stringify(d));
+      if (String(d.driverId) !== me.id) delete d.driverBirth;
+      if (d.rousai && String(d.rousai.staffId) !== me.id) delete d.rousai.birth;
+    }
     v.data = d; v.boss = pub; v.photos = ph.filter(function (p) { return p.slot !== 'doc' || me.role === 'office'; });   // 書類（見積書・示談書など）は親方と事務担当だけ
     v.logs = lg.filter(function (l) { return l.showParty; });
     return v;
   }
   if (role === 'office') {
-    v.data = jkPick_(d, ['kind', 'party', 'who', 'damage', 'date', 'time', 'weather', 'road', 'place', 'car', 'work', 'driverId', 'driver', 'memberIds', 'members', 'reporterId', 'reporter', 'story', 'ownDamage', 'rousai', 'police', 'ambulance']);
+    v.data = jkPick_(d, ['kind', 'party', 'who', 'damage', 'date', 'time', 'weather', 'road', 'place', 'car', 'work', 'driverId', 'driver', 'driverBirth', 'memberIds', 'members', 'reporterId', 'reporter', 'story', 'ownDamage', 'rousai', 'police', 'ambulance']);
     if (v.data.car) v.data.car = jkPick_(v.data.car, ['purpose', 'from', 'to', 'relSite', 'vehicleId', 'vehicle', 'plate', 'commute', 'drivable']);
     v.boss = Object.assign(pub, jkPick_(b, ['insUse', 'repair', 'insurerCall']));
     v.photos = ph.filter(function (p) { return JK_PRIVATE_SLOTS.indexOf(p.slot) < 0; });
@@ -3540,7 +3545,7 @@ function jkFlat_(c) {
     kind: JK_JA[d.kind] || '', party: JK_JA[d.party] || '', who: d.party === 'other' ? (JK_JA[d.who] || '') : '', damage: dmg,
     date: d.date || '', time: d.time || '', place: (d.place && d.place.address) || '', lat: (d.place && d.place.lat) || '', lng: (d.place && d.place.lng) || '',
     placeOk: d.place && d.place.confirmed ? (d.place.method || '地図で確認') : (d.place && d.place.lat ? '未確認' : ''),
-    driver: d.driver || '', members: (d.members || []).join('、'), reporter: d.reporter || '',
+    driver: d.driver || '', driverBirth: d.driverBirth || '', members: (d.members || []).join('、'), reporter: d.reporter || '',
     vehicle: [car.vehicle, car.plate, car.vehicleId === '__other' ? '（' + ['登録外', car.otherType, car.lender].filter(Boolean).join('・') + '）' : ''].filter(Boolean).join(' '), site: wk.site || car.site || car.relSite || '',
     route: d.kind === 'car' ? (car.purpose === '現場の中' ? ['現場の中', car.onsite].filter(Boolean).join('：') : [car.purpose, [car.from, car.to].filter(Boolean).join('→')].filter(Boolean).join('：')) : '',
     other: [o.name, [o.thing, o.ownerType, o.ownerName].filter(Boolean).join(' ')].filter(Boolean).join('／'),
@@ -3588,8 +3593,24 @@ function jkPublicSettings_(st, me) {
   Object.keys(vs).forEach(function (id) { var v = vs[id] || {}; o.vehicles[id] = { insurer: v.insurer || '', road: v.road || '', insurerPhone: v.insurerPhone || '', license: v.license || '', carCov: v.carCov || '', fleetNo: v.fleetNo || '' }; });
   var ins = st.insurance || {};
   o.insurance = { auto: jkPick_(ins.auto || {}, ['name', 'phone', 'road', 'policy']), work: jkPick_(ins.work || {}, ['name', 'phone']) };   // 会社の車はフリート契約で共通（事故直後の画面のロードサービス・証券番号に使う）
+  var births = st.births || {};   // スタッフの生年月日（社外秘）：親方・事務担当は全員分、ほかの人は自分の分だけ
+  o.births = {};
+  Object.keys(births).forEach(function (id) { if (me.role === 'boss' || me.role === 'office' || String(id) === me.id) o.births[id] = births[id]; });
   if (me.role === 'boss') { o.full = st; }
   return o;
+}
+/* 当事者・けがをした人の生年月日を、設定（スタッフの生年月日）から報告に入れる。本人が入れた自分の生年月日は設定にも覚える */
+function jkFillBirth_(d, me) {
+  var st = jkSettings_(), births = st.births || {}, changed = false;
+  var fill = function (id, cur) {
+    id = String(id || ''); if (!id) return cur || '';
+    if (births[id]) return births[id];
+    if (cur && /^\d{4}-\d{2}-\d{2}$/.test(cur) && (id === me.id || me.role === 'boss' || me.role === 'office')) { births[id] = cur; changed = true; }
+    return cur || '';
+  };
+  d.driverBirth = fill(d.driverId, d.driverBirth);
+  if (d.rousai && d.rousai.staffId) d.rousai.birth = fill(d.rousai.staffId, d.rousai.birth);
+  if (changed) jkSetSetting_('births', births);
 }
 function jkInit_(me) {
   var cases = jkRows_('cases').filter(function (r) { return r.state !== '削除'; }).map(jkCase_);
@@ -3628,6 +3649,7 @@ function jkSave_(b, me) {
   if (isNew) {
     var d0 = inc.data || {};
     d0.reporterId = me.id; d0.reporter = me.disp;
+    try { jkFillBirth_(d0, me); } catch (e) {}
     c = { id: id, no: jkNextNo_(all, d0.date), state: '対応中', stage: '報告受付', createdAt: now, data: d0, boss: me.role === 'boss' && inc.boss ? inc.boss : { stage: '報告受付' } };
   } else {
     c = jkCase_(row);
@@ -3639,6 +3661,7 @@ function jkSave_(b, me) {
     var role = jkRole_(c, me), d = inc.data || {};
     if (role === 'boss' || role === 'party') {
       d.reporterId = c.data.reporterId; d.reporter = c.data.reporter;
+      try { jkFillBirth_(d, me); } catch (e) {}
       c.data = d;
     } else if (role === 'office') {
       if (d.rousai) c.data.rousai = d.rousai;
@@ -3810,7 +3833,7 @@ function jkHiyariBoss_(b, me) {
 function jkSaveSettings_(b, me) {
   if (me.role !== 'boss') return { ok: false, error: '設定は親方だけが変えられます' };
   var s = b.settings || {};
-  ['company', 'contacts', 'insurance', 'vehicles', 'licenses'].forEach(function (k) { if (s[k] !== undefined) jkSetSetting_(k, s[k]); });
+  ['company', 'contacts', 'insurance', 'vehicles', 'licenses', 'births'].forEach(function (k) { if (s[k] !== undefined) jkSetSetting_(k, s[k]); });
   return { ok: true, settings: jkPublicSettings_(jkSettings_(), me) };
 }
 
