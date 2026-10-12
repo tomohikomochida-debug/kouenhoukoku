@@ -34,7 +34,7 @@ const PIN_LOCK_MIN = 15;
 const CODE_MIN = { qr: 10, temp: 60 * 24 };
 
 const SHEETS = {
-  staff:    ['id', 'name', 'disp', 'freeeNo', 'setting', 'pay', 'role', 'punch', 'join', 'active'],
+  staff:    ['id', 'name', 'disp', 'freeeNo', 'setting', 'pay', 'role', 'punch', 'join', 'active', 'birth'],   // birth：生年月日（親方・事務担当と本人だけに見せる）
   days:     ['key', 'staffId', 'date', 'kind', 'half', 'pay', 'leaveBy', 'in', 'out', 'brk', 'site', 'src', 'by', 'lag', 'bio', 'gps', 'lat', 'lng', 'acc', 'checked', 'updatedAt', 'dist', 'away', 'direct', 'outSite', 'outDist'],
   punches:  ['receivedAt', 'staffId', 'type', 'pressedAt', 'date', 'time', 'lat', 'lng', 'acc', 'site', 'clientId', 'bio', 'device'],
   history:  ['at', 'by', 'staffId', 'date', 'field', 'before', 'after', 'reason'],
@@ -50,7 +50,7 @@ const AUTH_SHEETS = {
 const DEFAULT_SETTINGS = { start: '07:30', end: '17:10', break: '100', useFrom: '',
   // 朝の出勤は事務所で押す。事務所（川崎市高津区向ケ丘94-2）から離れて出勤を押したら知らせる
   officeLat: '35.594349', officeLng: '139.595978', officeR: '150', officeCheck: '1' };
-const DATE_COLS = { date: 1, join: 1, useFrom: 1 };
+const DATE_COLS = { date: 1, join: 1, useFrom: 1, birth: 1 };
 const TIME_COLS = { in: 1, out: 1, start: 1, end: 1 };
 const KINDS = ['出勤', '休日出勤', '休み', '振休', '代休', '雨天中止（半日）', '雨天中止（全日）', '公休'];
 const REASONS = ['打ち忘れ', '電池切れ', '電波なし', '時刻の間違い', '暗証番号忘れ', 'その他'];
@@ -426,13 +426,14 @@ const API = {
   /** スタッフ（設定画面） */
   staffList: b => { adminAuth_(b); return { staff: staffAll_().map(staffPublic_), settings: settings_() }; },
   staffSave: b => withLock_(() => {
-    const me = bossAuth_(b);
+    const me = adminAuth_(b);
+    if (me.role !== 'boss') return staffSaveOffice_(me, b.staff || []);   // 事務担当：生年月日と、足りない人の追加だけ
     const list = (b.staff || []).map(s => ({
       id: String(s.id || '').trim() || 's' + Date.now().toString(36) + Math.floor(Math.random() * 1000),
       name: String(s.name || '').trim(), disp: String(s.disp || '').trim(), freeeNo: String(s.freeeNo || '').trim(),
       setting: String(s.setting || '').trim(), pay: s.pay === 'hourly' ? 'hourly' : 'monthly',
       role: ['boss', 'office', 'staff', 'none'].includes(s.role) ? s.role : 'staff',
-      punch: s.punch ? 'TRUE' : 'FALSE', join: normDate_(s.join) || '', active: s.active === false ? 'FALSE' : 'TRUE',
+      punch: s.punch ? 'TRUE' : 'FALSE', join: normDate_(s.join) || '', active: s.active === false ? 'FALSE' : 'TRUE', birth: normDate_(s.birth) || '',
     })).filter(s => s.name);
     if (!list.some(s => s.role === 'boss' && s.active === 'TRUE')) throw err_('親方が1人もいなくなります');
     const t = dataTable_('staff');
@@ -484,6 +485,24 @@ const API = {
     return r;
   }),
 };
+
+/** 事務担当のスタッフ保存：今いる人は生年月日だけ直せる。足りない人は追加できる（権限はスタッフか打刻なしまで） */
+function staffSaveOffice_(me, incoming) {
+  const t = dataTable_('staff'), byId = {};
+  t.rows.forEach(r => { byId[String(r.id)] = r; });
+  let changed = 0, added = 0;
+  incoming.forEach(s => {
+    const id = String(s.id || '').trim(), birth = normDate_(s.birth) || '';
+    if (id && byId[id]) { if ((byId[id].birth || '') !== birth) { t.update(byId[id], { birth }); changed++; } return; }
+    const name = String(s.name || '').trim(); if (id || !name) return;
+    t.append({ id: 's' + Date.now().toString(36) + Math.floor(Math.random() * 1000), name, disp: String(s.disp || '').trim() || name.split(/[\s　]/)[0],
+      freeeNo: String(s.freeeNo || '').trim(), setting: String(s.setting || '').trim(), pay: s.pay === 'hourly' ? 'hourly' : 'monthly',
+      role: s.role === 'none' ? 'none' : 'staff', punch: s.punch ? 'TRUE' : 'FALSE', join: normDate_(s.join) || '', active: 'TRUE', birth });
+    added++;
+  });
+  if (changed || added) addHistory_(me.disp, '', '', 'スタッフ', '', [changed ? '生年月日' + changed + '人' : '', added ? '追加' + added + '人' : ''].filter(Boolean).join('・'), 'スタッフの設定を保存（事務担当）');
+  return { staff: staffAll_().map(staffPublic_) };
+}
 
 /* ===================== 本人確認 ===================== */
 
@@ -788,11 +807,11 @@ function staffAll_() {
   return dataTable_('staff').rows.map(r => ({
     id: String(r.id), name: r.name, disp: r.disp, freeeNo: String(r.freeeNo || ''), setting: r.setting,
     pay: r.pay === 'hourly' ? 'hourly' : 'monthly', role: r.role || 'staff',
-    punch: String(r.punch).toUpperCase() === 'TRUE', join: r.join || '', active: String(r.active).toUpperCase() !== 'FALSE',
+    punch: String(r.punch).toUpperCase() === 'TRUE', join: r.join || '', active: String(r.active).toUpperCase() !== 'FALSE', birth: r.birth || '',
   }));
 }
 function staffById_(id) { return staffAll_().find(s => s.id === String(id)); }
-function staffPublic_(s) { return { id: s.id, name: s.name, disp: s.disp, freeeNo: s.freeeNo, setting: s.setting, pay: s.pay, role: s.role, punch: s.punch, join: s.join, active: s.active }; }
+function staffPublic_(s) { return { id: s.id, name: s.name, disp: s.disp, freeeNo: s.freeeNo, setting: s.setting, pay: s.pay, role: s.role, punch: s.punch, join: s.join, active: s.active, birth: s.birth || '' }; }
 function mePayload_(s) { return Object.assign(staffPublic_(s), { admin: isAdminRole_(s.role) }); }
 /** 事務所からの距離（m）と、離れているか。位置がないとき・ずれが大きすぎるときは決めない */
 function officeCheck_(lat, lng, acc) {

@@ -413,7 +413,7 @@ var TC_BACKUP_NAME = 'タイムカード_本体の控え（自動・消さない
 var TC_MOD_ = null;
 function tcMod_() {
   if (TC_MOD_) return TC_MOD_;
-  TC_MOD_ = new Function(tcSrc_() + '\nreturn { doGet: doGet, doPost: doPost, setup: setup };')();
+  TC_MOD_ = new Function(tcSrc_() + '\nreturn { doGet: doGet, doPost: doPost, setup: setup, staffAll: (typeof staffAll_ === "function" ? staffAll_ : null) };')();
   return TC_MOD_;
 }
 function tcClear_() { var c = CacheService.getScriptCache(); c.remove('tc_src_n'); c.remove('src_chk'); TC_MOD_ = null; }
@@ -3476,6 +3476,13 @@ function jkMe_(token) {
   c.put(k, JSON.stringify(me), 300);
   return me;
 }
+/* スタッフの生年月日：タイムカードのスタッフ表（親方・事務担当が登録）を本物にし、無い人は事故報告の設定で入れた分を使う */
+function jkBirths_(st) {
+  var out = {}, own = (st && st.births) || {};
+  Object.keys(own).forEach(function (id) { if (own[id]) out[id] = own[id]; });
+  try { var m = tcMod_(); if (m.staffAll) m.staffAll().forEach(function (s) { if (s.birth) out[String(s.id)] = s.birth; }); } catch (e) {}
+  return out;
+}
 function jkStaff_() {
   var c = CacheService.getScriptCache(), hit = c.get('jk_staff');
   if (hit) return JSON.parse(hit);
@@ -3598,7 +3605,7 @@ function jkPublicSettings_(st, me) {
   Object.keys(vs).forEach(function (id) { var v = vs[id] || {}; o.vehicles[id] = { insurer: v.insurer || '', road: v.road || '', insurerPhone: v.insurerPhone || '', license: v.license || '', carCov: v.carCov || '', fleetNo: v.fleetNo || '' }; });
   var ins = st.insurance || {};
   o.insurance = { auto: jkPick_(ins.auto || {}, ['name', 'phone', 'road', 'policy']), work: jkPick_(ins.work || {}, ['name', 'phone']) };   // 会社の車はフリート契約で共通（事故直後の画面のロードサービス・証券番号に使う）
-  var births = st.births || {};   // スタッフの生年月日（社外秘）：親方・事務担当は全員分、ほかの人は自分の分だけ
+  var births = jkBirths_(st);   // スタッフの生年月日（社外秘）：親方・事務担当は全員分、ほかの人は自分の分だけ
   o.births = {};
   Object.keys(births).forEach(function (id) { if (me.role === 'boss' || me.role === 'office' || String(id) === me.id) o.births[id] = births[id]; });
   if (me.role === 'boss') { o.full = st; }
@@ -3606,16 +3613,16 @@ function jkPublicSettings_(st, me) {
 }
 /* 当事者・けがをした人の生年月日を、設定（スタッフの生年月日）から報告に入れる。本人が入れた自分の生年月日は設定にも覚える */
 function jkFillBirth_(d, me) {
-  var st = jkSettings_(), births = st.births || {}, changed = false;
+  var st = jkSettings_(), births = jkBirths_(st), own = st.births || {}, changed = false;
   var fill = function (id, cur) {
     id = String(id || ''); if (!id) return cur || '';
     if (births[id]) return births[id];
-    if (cur && /^\d{4}-\d{2}-\d{2}$/.test(cur) && (id === me.id || me.role === 'boss' || me.role === 'office')) { births[id] = cur; changed = true; }
+    if (cur && /^\d{4}-\d{2}-\d{2}$/.test(cur) && (id === me.id || me.role === 'boss' || me.role === 'office')) { own[id] = cur; changed = true; }
     return cur || '';
   };
   d.driverBirth = fill(d.driverId, d.driverBirth);
   if (d.rousai && d.rousai.staffId) d.rousai.birth = fill(d.rousai.staffId, d.rousai.birth);
-  if (changed) jkSetSetting_('births', births);
+  if (changed) jkSetSetting_('births', own);
 }
 function jkInit_(me) {
   var cases = jkRows_('cases').filter(function (r) { return r.state !== '削除'; }).map(jkCase_);

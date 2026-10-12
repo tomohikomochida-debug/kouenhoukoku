@@ -1083,27 +1083,31 @@ function exportView(){
 
 /* ---------- 設定 ---------- */
 function settingsView(){
-  const boss = isBoss();
+  const boss = isBoss(), admin = boss || (S.me && S.me.role === 'office');
   if (!S.staffEdit) S.staffEdit = S.staff.map(s => Object.assign({}, s));
   if (!S.setEdit) S.setEdit = Object.assign({}, S.settings);
   const se = S.setEdit;
   const roleSel = (i, v) => `<select data-sf="${i}" data-k="role" ${boss?'':'disabled'}>${Object.keys(ROLE_LABEL).map(r => `<option value="${r}" ${v===r?'selected':''}>${ROLE_LABEL[r]}</option>`).join('')}</select>`;
-  const rows = S.staffEdit.map((s,i) => `<tr>
-    <td><input data-sf="${i}" data-k="name" value="${esc(s.name)}" ${boss?'':'disabled'} style="width:8em"></td>
-    <td><input data-sf="${i}" data-k="disp" value="${esc(s.disp)}" ${boss?'':'disabled'} style="width:5em"></td>
-    <td><input data-sf="${i}" data-k="freeeNo" value="${esc(s.freeeNo)}" ${boss?'':'disabled'} style="width:4em"></td>
-    <td><input data-sf="${i}" data-k="setting" value="${esc(s.setting)}" ${boss?'':'disabled'} style="width:14em"></td>
-    <td><select data-sf="${i}" data-k="pay" ${boss?'':'disabled'}><option value="monthly" ${s.pay!=='hourly'?'selected':''}>月給</option><option value="hourly" ${s.pay==='hourly'?'selected':''}>時給</option></select></td>
+  const rows = S.staffEdit.map((s,i) => { const ed = boss || (admin && !s.id);   // 事務担当は、足した人（まだ保存していない行）だけ全部入れられる
+    return `<tr>
+    <td><input data-sf="${i}" data-k="name" value="${esc(s.name)}" ${ed?'':'disabled'} style="width:8em"></td>
+    <td><input data-sf="${i}" data-k="disp" value="${esc(s.disp)}" ${ed?'':'disabled'} style="width:5em"></td>
+    <td><input type="date" data-sf="${i}" data-k="birth" value="${esc(s.birth||'')}" ${admin?'':'disabled'} max="${today()}"></td>
+    <td><input data-sf="${i}" data-k="freeeNo" value="${esc(s.freeeNo)}" ${ed?'':'disabled'} style="width:4em"></td>
+    <td><input data-sf="${i}" data-k="setting" value="${esc(s.setting)}" ${ed?'':'disabled'} style="width:14em"></td>
+    <td><select data-sf="${i}" data-k="pay" ${ed?'':'disabled'}><option value="monthly" ${s.pay!=='hourly'?'selected':''}>月給</option><option value="hourly" ${s.pay==='hourly'?'selected':''}>時給</option></select></td>
     <td>${roleSel(i, s.role)}</td>
-    <td style="text-align:center"><input type="checkbox" data-sf="${i}" data-k="punch" ${s.punch?'checked':''} ${boss?'':'disabled'}></td>
-    <td><input type="date" data-sf="${i}" data-k="join" value="${esc(s.join)}" ${boss?'':'disabled'}></td>
+    <td style="text-align:center"><input type="checkbox" data-sf="${i}" data-k="punch" ${s.punch?'checked':''} ${ed?'':'disabled'}></td>
+    <td><input type="date" data-sf="${i}" data-k="join" value="${esc(s.join)}" ${ed?'':'disabled'}></td>
     <td style="text-align:center"><input type="checkbox" data-sf="${i}" data-k="active" ${s.active!==false?'checked':''} ${boss?'':'disabled'}></td>
-    <td>${s.id && (boss || !['boss','office'].includes(s.role)) ? `<button class="btn" data-act="code" data-arg="${esc(s.id)}">登録コード</button>` : ''}</td></tr>`).join('');
+    <td>${s.id && (boss || !['boss','office'].includes(s.role)) ? `<button class="btn" data-act="code" data-arg="${esc(s.id)}">登録コード</button>` : (!s.id ? `<button class="btn" data-act="staffDrop" data-arg="${i}">取り消す</button>` : '')}</td></tr>`; }).join('');
+  const noBirth = S.staffEdit.filter(s => s.id && s.active !== false && !s.birth).map(s => s.disp || s.name);
   return `
   <section class="panel"><h2>スタッフ</h2>
-    <div class="small muted">表示名は日報と同じ呼び方（苗字）にします。出勤調整カレンダーの予定名にも使います。${boss ? '' : '変更は親方だけができます。'}</div>
-    <div class="tablewrap"><table><thead><tr><th>氏名（freeeと同じ）</th><th>表示名</th><th>freee番号</th><th>勤務・賃金設定（freeeと同じ）</th><th>給与</th><th>権限</th><th>打刻する</th><th>入社日</th><th>在籍</th><th>スマホの登録</th></tr></thead><tbody>${rows}</tbody></table></div>
-    ${boss ? '<div class="row"><button class="btn" data-act="staffAdd">＋ 人を足す</button><span class="grow"></span><button class="btn primary" data-act="staffSave">スタッフを保存する</button></div>' : ''}
+    <div class="small muted">表示名は日報と同じ呼び方（苗字）にします。出勤調整カレンダーの予定名にも使います。${boss ? '' : '事務担当は、生年月日の登録と、足りない人の追加ができます。それ以外の変更は親方だけができます。'}</div>
+    <div class="small muted">生年月日は事故報告（保険会社・労災の書類）に使います。見られるのは親方・事務担当と本人だけです。${noBirth.length ? `<b style="color:var(--danger)">未登録：${esc(noBirth.join('・'))}</b>` : ''}</div>
+    <div class="tablewrap"><table><thead><tr><th>氏名（freeeと同じ）</th><th>表示名</th><th>生年月日</th><th>freee番号</th><th>勤務・賃金設定（freeeと同じ）</th><th>給与</th><th>権限</th><th>打刻する</th><th>入社日</th><th>在籍</th><th>スマホの登録</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${admin ? '<div class="row"><button class="btn" data-act="staffAdd">＋ 人を足す</button><button class="btn" data-act="staffUndo">変更を元に戻す</button><span class="grow"></span><button class="btn primary" data-act="staffSave">スタッフを保存する</button></div>' : ''}
   </section>
   <section class="panel"><h2>勤務時間</h2>
     <div class="fields">
@@ -1439,7 +1443,9 @@ document.addEventListener('click', async e => {
       return;
     }
     // 設定
-    case 'staffAdd': S.staffEdit.push({ id:'', name:'', disp:'', freeeNo:'', setting:'', pay:'monthly', role:'staff', punch:true, join:'', active:true }); render(); return;
+    case 'staffAdd': S.staffEdit.push({ id:'', name:'', disp:'', freeeNo:'', setting:'', pay:'monthly', role:'staff', punch:true, join:'', active:true, birth:'' }); render(); return;
+    case 'staffDrop': S.staffEdit.splice(Number(arg), 1); render(); return;
+    case 'staffUndo': S.staffEdit = null; render(); toast('保存していない変更を元に戻しました'); return;
     case 'staffSave': run(async () => { const r = await api('staffSave', { staff: S.staffEdit }); S.staff = r.staff; S.staffEdit = null; toast('スタッフを保存しました'); }); return;
     case 'ofHere': run(async () => {
       S.office.msg = '位置を確かめています…'; render();
