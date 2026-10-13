@@ -43,7 +43,9 @@ var SHEETS = {
   cards:     { name: '段取りカード', head: ['cardId', 'date', 'site', 'eventId', 'meetTime', 'staff', 'vehicle', 'stops', 'items', 'steps', 'notes', 'rawText', 'createdBy', 'updatedAt', 'kind', 'title', 'dateNote', 'doneAt', 'doneBy'] },
   nicknames: { name: '呼び名',       head: ['name', 'nickname', 'addedBy', 'addedAt'] },
   suppliers: { name: '取引先',       head: ['id', 'name', 'kana', 'kind', 'aliases', 'phone', 'address', 'contact', 'items', 'memo', 'updatedBy', 'updatedAt'] },
-  vehicles:  { name: '車両',         head: ['id', 'name', 'aliases', 'ownership', 'plate', 'model', 'shakenDate', 'insuranceDate', 'rentalShop', 'rentalFrom', 'rentalTo', 'photoUrl', 'photoId', 'status', 'memo', 'updatedBy', 'updatedAt', 'docFolderId', 'category', 'waste', 'inspectDate', 'firstReg'] },
+  vehicles:  { name: '車両',         head: ['id', 'name', 'aliases', 'ownership', 'plate', 'model', 'shakenDate', 'insuranceDate', 'rentalShop', 'rentalFrom', 'rentalTo', 'photoUrl', 'photoId', 'status', 'memo', 'updatedBy', 'updatedAt', 'docFolderId', 'category', 'waste', 'inspectDate', 'firstReg', 'license'] },   // license：運転に必要な免許（事故報告の注意に使う）
+  insContract:{ name: '車の保険（契約）', head: ['id', 'insurer', 'agent', 'agentPhone', 'policyNo', 'estimateNo', 'periodFrom', 'periodTo', 'phone', 'road', 'coverage', 'memo', 'files', 'updatedBy', 'updatedAt'] },   // 会社の車のフリート契約（1件）。見るのはログインした人だけ（URLだけで読める data には載せない）
+  insVehicles:{ name: '車の保険（車ごと）', head: ['vehicleId', 'contractId', 'plate', 'car', 'rowNo', 'use', 'carCov', 'carAmount', 'memo', 'updatedBy', 'updatedAt'] },   // 明細番号・車両保険
   vehicleLog:{ name: '車両の記録',   head: ['logId', 'vehicleId', 'date', 'type', 'content', 'shop', 'cost', 'odometer', 'by', 'at'] },
   toolRepair:{ name: '修理履歴',     head: ['logId', 'toolId', 'date', 'type', 'content', 'shop', 'cost', 'by', 'at'] },
   vehicleDocs:{ name: '車両の書類',  head: ['docId', 'vehicleId', 'type', 'name', 'mime', 'fileId', 'url', 'note', 'by', 'at', 'batch', 'state', 'validUntil', 'page'] },
@@ -190,6 +192,7 @@ var AI_ROUTES = [
   ['事故_説明整理',       '事故報告：起きたことの説明を、要点と報告書の文に整える',       'opus',         30],
   ['黒板のひな型読み取り', '工事写真：黒板の写真から項目の並びを読み、ひな型にする',       'sonnet',       30],
   ['車検証読み取り',      '車両：車検証からナンバー・車名・満了日を読む',                 'sonnet',       30],
+  ['保険明細読み取り',    '車両：フリート契約の証券・見積書・明細書から、契約と車ごとの明細を読む', 'opus',     20],
   ['点検記録読み取り',    '車両：年次点検の記録表・シールから検査日を読む',               'sonnet',       30],
   ['伝票読み取り',        '残材処分：計量票・伝票から日付・重さ・金額を読む',             'sonnet',       100],
   ['請求書読み取り',      '取引先：請求書・名刺などから会社の情報を読む',                 'sonnet',       50],
@@ -414,7 +417,7 @@ var TC_BACKUP_NAME = 'タイムカード_本体の控え（自動・消さない
 var TC_MOD_ = null;
 function tcMod_() {
   if (TC_MOD_) return TC_MOD_;
-  TC_MOD_ = new Function(tcSrc_() + '\nreturn { doGet: doGet, doPost: doPost, setup: setup, staffAll: (typeof staffAll_ === "function" ? staffAll_ : null) };')();
+  TC_MOD_ = new Function(tcSrc_() + '\nreturn { doGet: doGet, doPost: doPost, setup: setup, staffAll: (typeof staffAll_ === "function" ? staffAll_ : null), fillBirths: (typeof fillBirths_ === "function" ? fillBirths_ : null) };')();
   return TC_MOD_;
 }
 function tcClear_() { var c = CacheService.getScriptCache(); c.remove('tc_src_n'); c.remove('src_chk'); TC_MOD_ = null; }
@@ -558,6 +561,7 @@ function doPost(e) {
     if (b.app === 'timecard') return tcMod_().doPost(e);   // タイムカード（本体は gas/timecard_app.gs）
     if (b.app === 'jiko') return out_(jikoPost_(b));       // 事故報告（本人確認はタイムカードのログイン）
     if (b.app === 'shikaku') return out_(shikakuPost_(b)); // 資格・免許（本人は自分の分、親方・事務担当は全員分）
+    if (b.app === 'sharyo' && /^ins/.test(String(b.mode || ''))) return out_(vinsPost_(b));   // 車の保険（ログインした人だけ）
     var key = (b.app || '') + ':' + (b.mode || '');
     if (ADMIN_ONLY.indexOf(key) >= 0 && !isAdmin_(b.by)) return out_({ ok: false, error: '削除は' + admins_().join('・') + 'だけができます。消したいときは頼んでください' });
     switch (key) {
@@ -711,6 +715,7 @@ function saveVehicle_(item, image, by) {
   item = item || {};
   if (!item.id && !String(item.name || '').trim()) return { ok: false, error: '車両の名前がありません' };
   var r = upsert_('vehicles', 'id', 'V', item, by);
+  try { CacheService.getScriptCache().remove('jk_apps'); } catch (e) {}   // 事故報告が読む「必要な免許」を新しくする
   if (image) { var p = savePhoto_(image, r.id); upsert_('vehicles', 'id', 'V', { id: r.id, photoUrl: p.url, photoId: p.id }, by); r.photoUrl = p.url; }
   return r;
 }
@@ -3601,12 +3606,42 @@ function jikoPost_(b) {
     }
   } catch (err) { return { ok: false, error: err.message || String(err), code: err.auth ? 'auth' : '' }; }
 }
+/* 一元管理：車の保険・車の必要な免許は車両アプリ、スタッフの免許は資格・免許アプリが本物。ここではそれを読むだけ（無いところは事故報告の前の設定を使う） */
+var JK_LIC_RANK = { '普通': 1, '準中型（5t限定）': 2, '準中型': 3, '中型（8t限定）': 4, '中型': 5, '大型': 6 };
+function jkFromApps_() {
+  var c = CacheService.getScriptCache(), hit = c.get('jk_apps');
+  if (hit) return JSON.parse(hit);
+  var out = { auto: null, vehicles: {}, licenses: {}, licExp: {}, src: { ins: false, lic: 0 } };
+  try {
+    var g = vinsGet_(), k = g.contract;
+    if (k && (k.insurer || k.policyNo)) { out.auto = { name: k.insurer || '', policy: k.policyNo || '', phone: k.phone || '', road: k.road || '', agent: k.agent || '', agentPhone: k.agentPhone || '', from: k.periodFrom || '', to: k.periodTo || '' }; out.src.ins = true; }
+    rows_('vehicles').forEach(function (v) { var x = g.vehicles[String(v.id)] || {}; out.vehicles[String(v.id)] = { license: v.license || '', fleetNo: x.rowNo || '', carCov: x.carCov || '', carAmount: x.carAmount || '' }; });
+  } catch (e) {}
+  try {
+    skRows_('items').forEach(function (r) {
+      if (r.state === '削除' || r.kind !== '運転免許') return;
+      var best = '', rank = 0;
+      String(r.grade || '').split(/[・、,\s]+/).forEach(function (t) { var n = JK_LIC_RANK[t] || 0; if (n > rank) { rank = n; best = t; } });
+      var id = String(r.staffId), cur = JK_LIC_RANK[out.licenses[id]] || 0;
+      if (rank && rank >= cur) { out.licenses[id] = best; out.licExp[id] = r.expires || ''; out.src.lic++; }
+      else if (!out.licExp[id] && r.expires) out.licExp[id] = r.expires;
+    });
+  } catch (e) {}
+  try { c.put('jk_apps', JSON.stringify(out), 120); } catch (e) {}
+  return out;
+}
 function jkPublicSettings_(st, me) {
-  var o = { company: st.company || {}, bossPhone: (st.contacts || {}).bossPhone || '', vehicles: {}, licenses: st.licenses || {}, insurance: {} };
-  var vs = st.vehicles || {};
-  Object.keys(vs).forEach(function (id) { var v = vs[id] || {}; o.vehicles[id] = { insurer: v.insurer || '', road: v.road || '', insurerPhone: v.insurerPhone || '', license: v.license || '', carCov: v.carCov || '', fleetNo: v.fleetNo || '' }; });
-  var ins = st.insurance || {};
-  o.insurance = { auto: jkPick_(ins.auto || {}, ['name', 'phone', 'road', 'policy']), work: jkPick_(ins.work || {}, ['name', 'phone']) };   // 会社の車はフリート契約で共通（事故直後の画面のロードサービス・証券番号に使う）
+  var app = jkFromApps_();
+  var o = { company: st.company || {}, bossPhone: (st.contacts || {}).bossPhone || '', vehicles: {}, licenses: Object.assign({}, st.licenses || {}, app.licenses), licExp: app.licExp, src: app.src, insurance: {} };
+  var vs = st.vehicles || {}, ids = {};
+  Object.keys(vs).concat(Object.keys(app.vehicles)).forEach(function (id) { ids[id] = 1; });
+  Object.keys(ids).forEach(function (id) {
+    var v = vs[id] || {}, a = app.vehicles[id] || {};
+    o.vehicles[id] = { insurer: v.insurer || '', road: v.road || '', insurerPhone: v.insurerPhone || '', license: a.license || v.license || '', carCov: a.carCov || v.carCov || '', carAmount: a.carAmount || '', fleetNo: a.fleetNo || v.fleetNo || '' };
+  });
+  var ins = st.insurance || {}, auto = jkPick_(ins.auto || {}, ['name', 'phone', 'road', 'policy']);
+  if (app.auto) ['name', 'phone', 'road', 'policy', 'agent', 'agentPhone', 'from', 'to'].forEach(function (k) { if (app.auto[k]) auto[k] = app.auto[k]; });
+  o.insurance = { auto: auto, work: jkPick_(ins.work || {}, ['name', 'phone']) };   // 会社の車はフリート契約で共通（事故直後の画面のロードサービス・証券番号に使う）
   var births = jkBirths_(st);   // スタッフの生年月日（社外秘）：親方・事務担当は全員分、ほかの人は自分の分だけ
   o.births = {};
   Object.keys(births).forEach(function (id) { if (me.role === 'boss' || me.role === 'office' || String(id) === me.id) o.births[id] = births[id]; });
@@ -3847,6 +3882,7 @@ function jkHiyariBoss_(b, me) {
 function jkSaveSettings_(b, me) {
   if (me.role !== 'boss') return { ok: false, error: '設定は親方だけが変えられます' };
   var s = b.settings || {};
+  if (s.insurance && !s.insurance.auto) { var cur = jkSettings_().insurance || {}; if (cur.auto) s.insurance.auto = cur.auto; }   // 車の保険は車両アプリが本物。前にここで入れた分は控えとして残す
   ['company', 'contacts', 'insurance', 'vehicles', 'licenses', 'births'].forEach(function (k) { if (s[k] !== undefined) jkSetSetting_(k, s[k]); });
   return { ok: true, settings: jkPublicSettings_(jkSettings_(), me) };
 }
@@ -3912,6 +3948,8 @@ var SK_COLS = {
   items: { name: '資格・免許', cols: [['id', 'ID'], ['staffId', 'スタッフID'], ['staff', '氏名'], ['kind', '区分'], ['name', '資格・免許の名前'], ['number', '番号'], ['grade', '種類・等級'],
     ['issued', '取得日'], ['expires', '有効期限'], ['issuer', '発行・講習機関'], ['memo', 'メモ'], ['photos', '写真'], ['status', '確認'], ['checkedBy', '確認した人'], ['checkedAt', '確認日'],
     ['by', '登録した人'], ['at', '登録日時'], ['updatedBy', '更新者'], ['updatedAt', '更新日時'], ['state', '状態']] },
+  reg: { name: '会社の登録・許可', cols: [['id', 'ID'], ['orderer', '発注者・許可先'], ['number', '業者番号・許可番号'], ['kubun', '区分'], ['gyoshu', '業種（ランク）'], ['from', '有効期限（開始）'], ['to', '有効期限（終了）'],
+    ['userId', '電子申請ユーザID'], ['memo', '備考'], ['files', '書類'], ['by', '登録した人'], ['at', '登録日時'], ['updatedBy', '更新者'], ['updatedAt', '更新日時'], ['state', '状態']] },   // 入札参加資格・建設業許可・収集運搬の許可など（親方・事務担当だけ）
   photos: { name: '写真', cols: [['photoId', '写真ID'], ['itemId', '資格ID'], ['staffId', 'スタッフID'], ['side', '面'], ['fileId', 'ファイルID'], ['url', 'リンク'], ['by', '撮った人'], ['at', '日時'], ['state', '状態']] }
 };
 var SK_SS_ = null;
@@ -4000,6 +4038,12 @@ function shikakuPost_(b) {
       case 'photoData': return skPhotoData_(b, me);
       case 'photoDel':  return withLockRaw_(function () { return skPhotoDel_(b, me); });
       case 'import':    return skImport_(b, me);
+      case 'regSave':   return withLockRaw_(function () { return skRegSave_(b, me); });
+      case 'regDelete': return withLockRaw_(function () { return skRegDelete_(b, me); });
+      case 'regImport': return skRegImport_(b, me);
+      case 'regFile':   return skRegFile_(b, me);
+      case 'regFileData': return skRegFileData_(b, me);
+      case 'birthImport': return skBirthImport_(b, me);
       default: return { ok: false, error: 'unknown mode: shikaku:' + m };
     }
   } catch (err) { return { ok: false, error: err.message || String(err), code: err.auth ? 'auth' : '' }; }
@@ -4008,7 +4052,8 @@ function skInit_(me) {
   var admin = skAdmin_(me), items = skRows_('items').filter(function (r) { return r.state !== '削除' && (admin || String(r.staffId) === me.id); }).map(skItem_);
   var staff = jkStaff_(); if (!admin) staff = staff.filter(function (s) { return s.id === me.id; });
   var folder = null; if (admin) { try { var f = skFolder_(); folder = { url: f.getUrl(), limited: prop_('SK_LIMITED', '') === f.getId() }; } catch (e) {} }
-  return { ok: true, me: me, admin: admin, staff: staff, items: items, kinds: SK_KINDS, folder: folder, now: now_() };
+  var regs = admin ? skRows_('reg').filter(function (r) { return r.state !== '削除'; }).map(skReg_) : [];
+  return { ok: true, me: me, admin: admin, staff: staff, items: items, regs: regs, kinds: SK_KINDS, folder: folder, now: now_() };
 }
 function skBadge_(me) {
   var today = ymd_(new Date()), soon = addDays_(today, 60), admin = skAdmin_(me), n = 0, wait = 0;
@@ -4017,7 +4062,9 @@ function skBadge_(me) {
     if (r.expires && String(r.expires) <= soon) n++;
     if (admin && r.status === '確認待ち') wait++;
   });
-  return { ok: true, n: n, wait: wait };
+  var reg = 0, soon90 = addDays_(today, 90);   // 会社の登録・許可：終わりの日まで90日を切ったもの（更新の申請に時間がかかるため早めに）
+  if (admin) skRows_('reg').forEach(function (r) { if (r.state !== '削除' && r.to && String(r.to) <= soon90) reg++; });
+  return { ok: true, n: n, wait: wait, reg: reg };
 }
 function skFind_(id) { var hit = null; skRows_('items').forEach(function (r) { if (r.id === String(id)) hit = r; }); return hit; }
 function skSave_(b, me) {
@@ -4035,12 +4082,14 @@ function skSave_(b, me) {
   if (!old) { rec.by = me.disp; rec.at = now_(); rec.status = admin ? '確認済' : '確認待ち'; if (admin) { rec.checkedBy = me.disp; rec.checkedAt = ymd_(new Date()); } }
   else if (!admin) { rec.status = '確認待ち'; rec.checkedBy = ''; rec.checkedAt = ''; }   // 本人が直したら、もう一度確かめてもらう
   skUpsert_('items', 'id', rec);
+  try { CacheService.getScriptCache().remove('jk_apps'); } catch (e) {}   // 事故報告が読む免許の種類を新しくする
   return { ok: true, item: skItem_(Object.assign({}, old || {}, rec)) };
 }
 function skDelete_(b, me) {
   var old = skFind_(b.id); if (!old) return { ok: false, error: '見つかりません' };
   if (!skAdmin_(me) && String(old.staffId) !== me.id) return { ok: false, error: '消す権限がありません' };
   skUpsert_('items', 'id', { id: old.id, state: b.undo ? '' : '削除', updatedBy: me.disp, updatedAt: now_() });   // 「元に戻す」で戻せる
+  try { CacheService.getScriptCache().remove('jk_apps'); } catch (e) {}
   return { ok: true };
 }
 function skCheck_(b, me) {
@@ -4113,4 +4162,197 @@ function skImport_(b, me) {
     });
   }
   return { ok: true, added: added, skipped: skipped, people: cols.map(function (x) { return x.st.disp; }), preview: preview, dry: dry };
+}
+
+/* ================================================================
+ *  車の保険（フリート契約）…置き場所は車両アプリ。事故報告はここを読む（一元管理）
+ *  ・契約（保険会社・代理店・期間・証券番号・事故受付とロードサービスの電話・共通の補償）と、車ごと（明細番号・車両保険）
+ *  ・見る：タイムカードでログインしている人（事故のときに使うので、スタッフも電話・証券番号・明細番号まで見られる）
+ *  ・直す・証券／見積書の読み取り：親方・事務担当。URLだけで誰でも読める「data」には載せない（アプリのURLは公開のため）
+ * ================================================================ */
+var VINS_ID = 'FLEET';
+function vinsGet_() {
+  var c = rows_('insContract').filter(function (r) { return String(r.id) === VINS_ID; })[0] || null;
+  if (c) c.files = jkJson_(c.files, []);
+  var vs = {};
+  rows_('insVehicles').forEach(function (r) { if (r.vehicleId) vs[String(r.vehicleId)] = r; });
+  return { contract: c, vehicles: vs };
+}
+function vinsPost_(b) {
+  try {
+    var me = jkMe_(b.token), admin = me.role === 'boss' || me.role === 'office', m = String(b.mode || '');
+    if (m === 'insGet') {
+      var g = vinsGet_();
+      if (!admin && g.contract) { delete g.contract.files; delete g.contract.memo; }
+      if (!admin) Object.keys(g.vehicles).forEach(function (k) { delete g.vehicles[k].memo; });
+      return { ok: true, admin: admin, me: me, contract: g.contract, vehicles: g.vehicles };
+    }
+    if (!admin) return { ok: false, error: '保険を直せるのは親方と事務担当だけです' };
+    if (m === 'insRead') return vinsRead_(b, me);
+    if (m === 'insSave') return withLockRaw_(function () { return vinsSave_(b, me); });
+    return { ok: false, error: 'unknown mode: sharyo:' + m };
+  } catch (err) { return { ok: false, error: err.message || String(err), code: err.auth ? 'auth' : '' }; }
+}
+function vinsT_(v, n) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n || 200); }
+function vinsNum_(v) { var n = Number(String(v == null ? '' : v).normalize('NFKC').replace(/[^\d.]/g, '')); return isFinite(n) && n > 0 ? n : ''; }
+/** 証券・見積書・明細書の写真／PDF（1〜6枚）から、契約と車ごとの明細を読む。ナンバーで車両アプリの車と突き合わせて返す（登録はまだしない） */
+function vinsRead_(b, me) {
+  var files = (b.files || []).filter(function (f) { return f && f.data; }).slice(0, 6);
+  if (!files.length) return { ok: false, error: '写真がありません' };
+  var prompt = 'これは日本の自動車保険の「フリート契約」の保険証券・契約内容のお知らせ・お見積書・明細書の写真かPDFです（複数枚なら同じ契約の続き）。次の項目を読み取り、JSONだけ返してください。' +
+    '{"docType":"書類の種類（保険証券・お見積書・明細書 など）","insurer":"保険会社名","agent":"代理店名","agentPhone":"代理店の電話","policyNo":"証券番号（見積書で書かれていなければ空）","estimateNo":"見積書番号（あれば）",' +
+    '"periodFrom":"保険期間の始まり YYYY-MM-DD","periodTo":"保険期間の終わり YYYY-MM-DD","phone":"事故の受付の電話（書いてあれば）","road":"ロードサービスの電話（書いてあれば）",' +
+    '"coverage":"全車に共通の補償の要点を短く1行（例：対人 無制限・対物 無制限・人身傷害 3000万円）",' +
+    '"rows":[{"rowNo":"明細番号（車ごとの通し番号）","plate":"登録番号・車両番号（ナンバー。例：川崎 400 つ 678）","car":"車名","use":"用途車種（例：自家用小型貨物）","carCov":"車両保険が付いていれば「あり」、付いていなければ「なし」","carAmount":"車両保険金額（円の数値。なしなら空）","note":"その車だけの特記（運転者の限定・免責金額など。短く。無ければ空）"}]}' +
+    '。令和n年＝2018+n年。rows は書類に載っている車を全部、明細番号の順に。保険料（お金を払う額）は読まない。読めない項目は空文字。推測で埋めない。';
+  var parts = files.map(function (f) { return { inline_data: { mime_type: f.mime || 'image/jpeg', data: f.data } }; });
+  parts.push({ text: prompt });
+  var j = ai_('保険明細読み取り', parts) || {};
+  var veh = rows_('vehicles'), seen = {};
+  var rows = (Array.isArray(j.rows) ? j.rows : []).map(function (r) {
+    var pk = plateKey_(r.plate), hit = pk ? veh.filter(function (v) { return plateKey_(v.plate) === pk; })[0] : null;
+    if (hit && seen[hit.id]) hit = null; if (hit) seen[hit.id] = 1;
+    var amt = vinsNum_(r.carAmount), cov = /なし|無|不担保/.test(String(r.carCov || '')) ? 'なし' : (/あり|有/.test(String(r.carCov || '')) || amt ? 'あり' : '');
+    return { rowNo: vinsT_(r.rowNo, 20), plate: vinsT_(r.plate, 40), car: vinsT_(r.car, 40), use: vinsT_(r.use, 40), carCov: cov, carAmount: cov === 'なし' ? '' : amt, note: vinsT_(r.note, 120),
+      vehicleId: hit ? String(hit.id) : '', vehicleName: hit ? hit.name : '' };
+  }).filter(function (r) { return r.plate || r.car; });
+  var saved = [];   // 読んだ書類の写しを「車両の書類 ＞ フリート契約の保険」に残す
+  try {
+    var folder = subFolder_(docsFolder_(), 'フリート契約の保険'), stamp = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+    files.forEach(function (f, i) {
+      var mime = f.mime || 'image/jpeg', name = shashinClean_(vinsT_(j.docType, 30) || '保険の書類') + '_' + stamp + (files.length > 1 ? '_' + (i + 1) : '') + (mime === 'application/pdf' ? '.pdf' : '.jpg');
+      var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(f.data), mime, name));
+      saved.push({ name: name, url: file.getUrl(), id: file.getId() });
+    });
+  } catch (e) {}
+  return { ok: true, files: saved, rows: rows, data: { docType: vinsT_(j.docType, 30), insurer: vinsT_(j.insurer, 60), agent: vinsT_(j.agent, 80), agentPhone: vinsT_(j.agentPhone, 30),
+    policyNo: vinsT_(j.policyNo, 40), estimateNo: vinsT_(j.estimateNo, 40), periodFrom: warekiYmd_(j.periodFrom), periodTo: warekiYmd_(j.periodTo),
+    phone: vinsT_(j.phone, 30), road: vinsT_(j.road, 30), coverage: vinsT_(j.coverage, 200) } };
+}
+/** 契約と車ごとの明細をまとめて置き換える。
+    vehicles：[{vehicleId（'__new' なら車両アプリに新しく足す）, plate, car, rowNo, use, carCov, carAmount, memo}]
+    setInsDate：保険の期限（車両アプリの「保険満了」）を契約の終わりの日にそろえる
+    元に戻す用に、前の中身（prev）を返す。戻すときは prev をそのまま送る（removeVehicles：このとき足した車を消す・insDates：前の保険満了） */
+function vinsSave_(b, me) {
+  var prev = vinsGet_(), c = b.contract, list = Array.isArray(b.vehicles) ? b.vehicles : [];
+  var veh = rows_('vehicles'), byId = {}; veh.forEach(function (v) { byId[String(v.id)] = v; });
+  var created = [], oldDates = {};
+  list.forEach(function (x) {
+    if (x.vehicleId !== '__new') return;
+    var r = upsert_('vehicles', 'id', 'V', { name: vinsT_(x.car, 40) || vinsT_(x.plate, 40) || '車', plate: vinsT_(x.plate, 40), ownership: '自社', category: '車・トラック', status: '使用中', memo: 'フリート契約の明細から登録' }, me.disp);
+    x.vehicleId = r.id; created.push(r.id);
+  });
+  list = list.filter(function (x) { return x.vehicleId && (byId[String(x.vehicleId)] || created.indexOf(x.vehicleId) >= 0); });
+  // 契約
+  var cs = sh_('insContract');
+  if (c) {
+    upsert_('insContract', 'id', 'F', { id: VINS_ID, insurer: vinsT_(c.insurer, 60), agent: vinsT_(c.agent, 80), agentPhone: vinsT_(c.agentPhone, 30), policyNo: vinsT_(c.policyNo, 40), estimateNo: vinsT_(c.estimateNo, 40),
+      periodFrom: warekiYmd_(c.periodFrom), periodTo: warekiYmd_(c.periodTo), phone: vinsT_(c.phone, 30), road: vinsT_(c.road, 30), coverage: vinsT_(c.coverage, 200), memo: vinsT_(c.memo, 500),
+      files: JSON.stringify((Array.isArray(c.files) ? c.files : []).slice(0, 20).map(function (f) { return { name: vinsT_(f.name, 80), url: vinsT_(f.url, 300), id: vinsT_(f.id, 80) }; })) }, me.disp);
+  } else remove_('insContract', VINS_ID);
+  // 車ごと（全部書き直す）
+  var vs = sh_('insVehicles'), head = SHEETS.insVehicles.head;
+  if (vs.getLastRow() > 1) vs.getRange(2, 1, vs.getLastRow() - 1, Math.max(head.length, vs.getLastColumn())).clearContent();
+  var out = list.map(function (x) {
+    var o = { vehicleId: String(x.vehicleId), contractId: VINS_ID, plate: vinsT_(x.plate, 40), car: vinsT_(x.car, 40), rowNo: vinsT_(x.rowNo, 20), use: vinsT_(x.use, 40),
+      carCov: x.carCov === 'あり' || x.carCov === 'なし' ? x.carCov : '', carAmount: vinsNum_(x.carAmount), memo: vinsT_(x.memo || x.note, 200), updatedBy: me.disp, updatedAt: now_() };
+    return head.map(function (h) { return cell_(o[h] == null ? '' : String(o[h])); });
+  });
+  if (out.length) vs.getRange(2, 1, out.length, head.length).setValues(out);
+  // 車両アプリの「保険満了」
+  var dates = b.insDates || null, to = c ? warekiYmd_(c.periodTo) : '';
+  if (dates) Object.keys(dates).forEach(function (id) { if (byId[id]) { oldDates[id] = byId[id].insuranceDate || ''; upsert_('vehicles', 'id', 'V', { id: id, insuranceDate: dates[id] || '' }, me.disp); } });
+  else if (b.setInsDate !== false && to) list.forEach(function (x) { var id = String(x.vehicleId), v = byId[id]; if (v && String(v.insuranceDate || '') !== to) { oldDates[id] = v.insuranceDate || ''; upsert_('vehicles', 'id', 'V', { id: id, insuranceDate: to }, me.disp); } else if (!v) upsert_('vehicles', 'id', 'V', { id: id, insuranceDate: to }, me.disp); });
+  (Array.isArray(b.removeVehicles) ? b.removeVehicles : []).forEach(function (id) { if (byId[String(id)]) remove_('vehicles', String(id)); });
+  try { CacheService.getScriptCache().remove('jk_apps'); } catch (e) {}
+  var undo = { contract: prev.contract, vehicles: Object.keys(prev.vehicles).map(function (k) { return prev.vehicles[k]; }), insDates: oldDates, removeVehicles: created };
+  var now = vinsGet_();
+  return { ok: true, contract: now.contract, vehicles: now.vehicles, created: created, undo: undo };
+}
+
+/* ---------- 会社の登録・許可（入札参加資格・業者登録など。親方・事務担当だけ） ---------- */
+function skReg_(r) {
+  return { id: r.id, orderer: r.orderer, number: String(r.number || ''), kubun: r.kubun, gyoshu: r.gyoshu, from: r.from, to: r.to, userId: String(r.userId || ''), memo: r.memo,
+    files: jkJson_(r.files, []), by: r.by, at: r.at, updatedBy: r.updatedBy, updatedAt: r.updatedAt };
+}
+function skRegFind_(id) { var hit = null; skRows_('reg').forEach(function (r) { if (r.id === String(id)) hit = r; }); return hit; }
+function skRegSave_(b, me) {
+  if (!skAdmin_(me)) return { ok: false, error: '親方と事務担当だけができます' };
+  var it = b.item || {}, id = String(it.id || '');
+  if (!/^R-[\w-]{6,40}$/.test(id)) return { ok: false, error: 'IDがおかしいです' };
+  var orderer = vinsT_(it.orderer, 60); if (!orderer) return { ok: false, error: '発注者・許可先を入れてください' };
+  var old = skRegFind_(id);
+  var rec = { id: id, orderer: orderer, number: vinsT_(it.number, 40), kubun: vinsT_(it.kubun, 40), gyoshu: vinsT_(it.gyoshu, 120), from: warekiYmd_(it.from), to: warekiYmd_(it.to),
+    userId: vinsT_(it.userId, 60), memo: String(it.memo || '').slice(0, 500), files: JSON.stringify((Array.isArray(it.files) ? it.files : []).slice(0, 10).map(function (f) { return { fileId: vinsT_(f.fileId, 80), name: vinsT_(f.name, 80), mime: vinsT_(f.mime, 60) }; })),
+    updatedBy: me.disp, updatedAt: now_(), state: '' };
+  if (!old) { rec.by = me.disp; rec.at = now_(); }
+  skUpsert_('reg', 'id', rec);
+  return { ok: true, item: skReg_(Object.assign({}, old || {}, rec)) };
+}
+function skRegDelete_(b, me) {
+  if (!skAdmin_(me)) return { ok: false, error: '親方と事務担当だけができます' };
+  var old = skRegFind_(b.id); if (!old) return { ok: false, error: '見つかりません' };
+  skUpsert_('reg', 'id', { id: old.id, state: b.undo ? '' : '削除', updatedBy: me.disp, updatedAt: now_() });   // 「元に戻す」で戻せる
+  return { ok: true };
+}
+/** 登録・許可の書類（通知書・許可証のPDFや写真）を「社員の資格・免許 ＞ 会社の登録・許可」に置く（アクセス制限のフォルダの中） */
+function skRegFile_(b, me) {
+  if (!skAdmin_(me)) return { ok: false, error: '親方と事務担当だけができます' };
+  if (!b.data) return { ok: false, error: 'ファイルがありません' };
+  var mime = String(b.mime || 'image/jpeg'); if (!/^(image\/|application\/pdf)/.test(mime)) return { ok: false, error: '写真かPDFにしてください' };
+  var folder; withLockRaw_(function () { folder = subFolder_(skFolder_(), '会社の登録・許可'); });
+  var name = shashinClean_(vinsT_(b.name, 60) || '登録・許可の書類') + '_' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd_HHmm') + (mime === 'application/pdf' ? '.pdf' : '.jpg');
+  var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), mime, name));
+  return { ok: true, file: { fileId: file.getId(), name: name, mime: mime } };
+}
+function skRegFileData_(b, me) {
+  if (!skAdmin_(me)) return { ok: false, error: '親方と事務担当だけが見られます' };
+  var ok = false; skRows_('reg').forEach(function (r) { if (jkJson_(r.files, []).some(function (f) { return f.fileId === String(b.fileId); })) ok = true; });
+  if (!ok) return { ok: false, error: '書類が見つかりません' };
+  var blob = DriveApp.getFileById(String(b.fileId)).getBlob();
+  return { ok: true, data: Utilities.base64Encode(blob.getBytes()), mime: blob.getContentType() || 'application/octet-stream', name: blob.getName() };
+}
+function skOpenSheet_(b, name) {
+  var m = String(b.url || '').match(/\/d\/([\w-]{20,})/), id = m ? m[1] : String(b.url || '').trim();
+  if (!id) throw new Error('スプレッドシートのURLを入れてください');
+  var ss; try { ss = SpreadsheetApp.openById(id); } catch (e) { throw new Error('スプレッドシートを開けませんでした（URLと、持ち主かどうかを確かめてください）'); }
+  var sh = ss.getSheetByName(String(b.sheet || name)); if (!sh) throw new Error('「' + (b.sheet || name) + '」というシートがありません');
+  return sh.getDataRange().getDisplayValues();   // 見えているまま読む（業者番号の頭の0や日付の形を崩さない）
+}
+/** 今の「業者登録」シート（発注者・業者番号・業者区分・業種（ランク）・有効期限（開始）・（終了）・電子申請ユーザID・備考）を取り込む。同じ発注者・番号・区分があれば飛ばす */
+function skRegImport_(b, me) {
+  if (!skAdmin_(me)) return { ok: false, error: '親方と事務担当だけができます' };
+  var vals; try { vals = skOpenSheet_(b, '業者登録'); } catch (e) { return { ok: false, error: e.message }; }
+  var key = function (s) { return String(s || '').normalize('NFKC').replace(/[\s　]/g, ''); };
+  var head = (vals[0] || []).map(key), col = function (re) { for (var i = 0; i < head.length; i++) if (re.test(head[i])) return i; return -1; };
+  var c = { orderer: col(/^発注者|許可先/), number: col(/業者番号|許可番号/), kubun: col(/区分/), gyoshu: col(/業種/), from: col(/開始/), to: col(/終了/), userId: col(/ユーザ|ID$/i), memo: col(/備考|メモ/) };
+  if (c.orderer < 0) return { ok: false, error: '1行目に「発注者」の列がありません' };
+  var have = {}; skRows_('reg').forEach(function (r) { if (r.state !== '削除') have[key(r.orderer) + '|' + key(r.number) + '|' + key(r.kubun)] = 1; });
+  var added = [], skipped = 0, dry = !!b.dry, get = function (row, k) { return c[k] >= 0 ? String(row[c[k]] || '').trim() : ''; };
+  for (var i = 1; i < vals.length; i++) {
+    var row = vals[i], o = { orderer: get(row, 'orderer'), number: get(row, 'number'), kubun: get(row, 'kubun'), gyoshu: get(row, 'gyoshu'), from: warekiYmd_(get(row, 'from')), to: warekiYmd_(get(row, 'to')), userId: get(row, 'userId'), memo: get(row, 'memo') };
+    if (!o.orderer) continue;
+    var k = key(o.orderer) + '|' + key(o.number) + '|' + key(o.kubun);
+    if (have[k]) { skipped++; continue; }
+    have[k] = 1;
+    o.id = 'R-' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd') + '-' + Math.random().toString(36).slice(2, 8);
+    if (!dry) withLockRaw_(function () { skUpsert_('reg', 'id', Object.assign({ files: '[]', by: me.disp, at: now_(), updatedBy: me.disp, updatedAt: now_(), state: '' }, o)); });
+    added.push(o);
+  }
+  return { ok: true, dry: dry, added: added.map(function (o) { return { id: o.id, orderer: o.orderer, kubun: o.kubun, gyoshu: o.gyoshu, to: o.to }; }), skipped: skipped };
+}
+/** 今の「名簿」シート（氏名・生年月日）の生年月日を、タイムカードのスタッフ表へ入れる。空いている人だけ（入っている人は変えない）。名前が同じ人に入れる */
+function skBirthImport_(b, me) {
+  if (!skAdmin_(me)) return { ok: false, error: '親方と事務担当だけができます' };
+  var tc = tcMod_(); if (!tc.fillBirths) return { ok: false, error: 'タイムカードの更新がまだです（数分で反映されます）' };
+  if (Array.isArray(b.undo)) { var u = tc.fillBirths([], me.disp, { undo: b.undo }); return { ok: true, cleared: u.cleared }; }
+  var vals; try { vals = skOpenSheet_(b, '名簿'); } catch (e) { return { ok: false, error: e.message }; }
+  var key = function (s) { return String(s || '').normalize('NFKC').replace(/[\s　]/g, ''); };
+  var head = (vals[0] || []).map(key), cn = head.indexOf('氏名'), cb = -1;
+  head.forEach(function (h, i) { if (cb < 0 && /生年月日/.test(h)) cb = i; });
+  if (cn < 0 || cb < 0) return { ok: false, error: '1行目に「氏名」と「生年月日」の列がありません' };
+  var list = [];
+  for (var i = 1; i < vals.length; i++) { var n = String(vals[i][cn] || '').trim(), d = warekiYmd_(vals[i][cb]); if (n && d) list.push({ name: n, birth: d }); }
+  var r = tc.fillBirths(list, me.disp, { dry: !!b.dry });
+  return { ok: true, dry: !!b.dry, filled: r.filled, already: r.already, unmatched: r.unmatched };
 }

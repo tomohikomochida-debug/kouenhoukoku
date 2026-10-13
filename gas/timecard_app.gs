@@ -512,6 +512,32 @@ function staffSaveOffice_(me, incoming) {
   return { staff: staffAll_().map(staffPublic_) };
 }
 
+/** 名簿などの生年月日を、スタッフ表の空いている人だけに入れる（共通GASの資格・免許アプリから呼ぶ。親方・事務担当の確認はそちらで済ませる）
+    list：[{name, birth}]。名前（空白を除いて同じ）で照合。opt.dry：入れずに結果だけ。opt.undo：[{id, birth}] 入れた分を空に戻す（その後に直されていたら触らない） */
+function fillBirths_(list, by, opt) {
+  opt = opt || {};
+  const key = s => String(s || '').normalize('NFKC').replace(/[\s　]/g, '');
+  return withLock_(() => {
+    const t = dataTable_('staff'), out = { filled: [], already: [], unmatched: [], cleared: 0 };
+    if (Array.isArray(opt.undo)) {
+      opt.undo.forEach(u => { const r = t.rows.find(x => String(x.id) === String(u.id)); if (r && String(r.birth || '') === String(u.birth || '')) { t.update(r, { birth: '' }); out.cleared++; } });
+      if (out.cleared) addHistory_(by, '', '', 'スタッフ', '', '生年月日の取り込みを取り消し（' + out.cleared + '人）', '資格・免許アプリから');
+      return out;
+    }
+    (list || []).forEach(x => {
+      const b = normDate_(String(x.birth || '').replace(/\//g, '-')), k = key(x.name);
+      if (!k || !b) return;
+      const r = t.rows.find(s => key(s.name) === k);
+      if (!r) { out.unmatched.push(String(x.name)); return; }
+      if (r.birth) { out.already.push({ name: r.name, same: String(r.birth) === b }); return; }
+      if (!opt.dry) t.update(r, { birth: b });
+      out.filled.push({ id: String(r.id), name: r.name, birth: b });
+    });
+    if (!opt.dry && out.filled.length) addHistory_(by, '', '', 'スタッフ', '', '生年月日を名簿から入れた（' + out.filled.length + '人）', '資格・免許アプリから');
+    return out;
+  });
+}
+
 /* ===================== 本人確認 ===================== */
 
 function auth_(b) {

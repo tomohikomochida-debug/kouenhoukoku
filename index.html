@@ -318,13 +318,14 @@ function orderedApps(){   // 覚えている並び → まだ並びにない（�
   try {
     const ac = new AbortController(); setTimeout(() => ac.abort(), 12000);
     const r = await (await fetch('https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ app: 'shikaku', mode: 'badge', token }), signal: ac.signal })).json();
-    if (!r.ok || !(r.n || r.wait)) return;
+    if (!r.ok || !(r.n || r.wait || r.reg)) return;
     const card = document.querySelector('.app[data-url="shikaku.html"]');
-    if (card) { const c = mk('span','cnt'); c.textContent = (r.n || 0) + (r.wait || 0); card.append(c); }
+    if (card) { const c = mk('span','cnt'); c.textContent = (r.n || 0) + (r.wait || 0) + (r.reg || 0); card.append(c); }
     const box = document.getElementById('remind');
     const add = (html) => { const a = mk('a','remind'); a.href = 'shikaku.html'; a.innerHTML = html + '<span class="go">見る ›</span>'; box.append(a); };
     if (r.n) add('🪪 <span>免許・資格の<b>期限が近い・切れているもの</b>が' + r.n + '件あります</span>');
     if (r.wait) add('🪪 <span>資格・免許の<b>確認待ち</b>が' + r.wait + '件あります</span>');
+    if (r.reg) add('🏢 <span>会社の登録・許可（入札参加資格など）の<b>更新が近い・切れているもの</b>が' + r.reg + '件あります</span>');
   } catch (e) { /* 電波がないときは出さない */ }
 })();
 

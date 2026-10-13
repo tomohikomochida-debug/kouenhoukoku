@@ -117,6 +117,12 @@ main{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 .due.over{background:#FBE3DE;color:var(--danger);font-weight:700}
 .alert{background:#FFF8E6;border:1px solid #F0DDB0;border-left:6px solid #D9A21B;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px}
 .alert b{display:block;margin-bottom:4px}
+.ins{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:#EEF3FA;border:1px solid #CFDCEC;border-left:6px solid #3B6FB0;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px;cursor:pointer}
+.ins b{display:block;margin-bottom:2px}.ins .hint{display:block;margin:2px 0 0}
+.instbl{width:100%;border-collapse:collapse;font-size:13px;margin:4px 0 10px}.instbl th,.instbl td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left;vertical-align:top}.instbl th{color:var(--bark);font-weight:600;font-size:12px}
+.insrow{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:13px}.insrow .r{display:flex;gap:6px;align-items:center;margin-top:6px}.insrow select,.insrow input{font-size:14px;padding:6px 8px}
+.pgs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.pgs img,.pgs .pdf{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;background:#fff}
+.telrow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px}.telrow a{text-decoration:none}
 .unm{background:#F1F4F8;border:1px solid #D5DDE8;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px}
 .unm .r{display:flex;align-items:center;gap:6px;padding:5px 0;border-top:1px solid #E3E8EF}
 .unm .r:first-of-type{border-top:0}
@@ -332,7 +338,7 @@ function render() {
   const active = VEH.filter(v => !v.status || v.status === '使用中'), gone = VEH.filter(v => v.status && v.status !== '使用中');
   let h = groups.map(([t, f]) => { const l = active.filter(f); return l.length ? '<div class="sec-title">' + esc(t) + '（' + l.length + '台）</div>' + l.map(vehHtml).join('') : ''; }).join('');
   if (gone.length) h += '<div class="sec-title">返却済・廃車</div>' + gone.map(vehHtml).join('');
-  $('list').innerHTML = (h || '<div class="empty">まだ車両がありません。<br>右下の「＋ 車両を追加」から、会社の車とレンタルの車を登録してください。</div>') +
+  $('list').innerHTML = insCardHtml() + (h || '<div class="empty">まだ車両がありません。<br>右下の「＋ 車両を追加」から、会社の車とレンタルの車を登録してください。</div>') +
     (canDelete() && !DEMO ? '<button type="button" class="btn block" id="importBtn" style="margin:18px 0 70px;flex-direction:column">📥 「庭乃持田園情報管理」から取り込む<br><small style="font-weight:400;color:var(--bark)">車両の表と車検証・検査証のスキャンから、足りない分を登録</small></button>' : '');
 }
 
@@ -423,6 +429,8 @@ function openVeh(id) {
     (v.ownership === 'レンタル' ? '<dt>借りた店</dt><dd>' + esc(v.rentalShop || '—') + '</dd><dt>期間</dt><dd>' + (v.rentalFrom ? md(v.rentalFrom) : '?') + ' 〜 ' + (v.rentalTo ? md(v.rentalTo) : '?') + '</dd>' : '') +
     '<dt>車検満了</dt><dd>' + (v.shakenDate ? md(v.shakenDate) : '—') + '</dd>' +
     '<dt>保険満了</dt><dd>' + (v.insuranceDate ? md(v.insuranceDate) : '—') + '</dd>' +
+    '<dt>保険</dt><dd>' + insLine(v) + '</dd>' +
+    '<dt>必要な免許</dt><dd>' + esc(v.license || '—') + (v.license ? '<br><small class="hint" style="margin:0">事故報告で、運転した人の免許と合わないときに注意が出ます</small>' : '') + '</dd>' +
     '<dt>メモ</dt><dd style="white-space:pre-wrap">' + esc(v.memo || '—') + '</dd></dl>' +
     docsHtml(v) + usageHtml(v) +
     '<div class="sec-title" style="display:flex;align-items:center;justify-content:space-between">🔧 点検・修理の記録<button class="btn sm" data-act="log">＋記録を足す</button></div>' +
@@ -436,6 +444,7 @@ function openVeh(id) {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.act === 'close') return closeModal();
       if (b.dataset.act === 'edit') return openEdit(v);
+      if (b.dataset.act === 'ins') return openIns(v.id);
       if (b.dataset.act === 'log') return chooseName(false, () => openLog(v));
       if (b.dataset.adddoc != null) return chooseName(false, () => openDocAdd(v, b.dataset.adddoc || (missingOf(v)[0] || '車検証')));
       if (b.dataset.until) return openUntil(id, b.dataset.until);
@@ -568,10 +577,165 @@ function pickDoc(camera, cb) {   // 書類は文字が読めるよう、写真�
 }
 function shopList(kinds) { return '<datalist id="shopList">' + SUP.filter(s => !kinds || kinds.includes(s.kind)).map(s => '<option value="' + esc(s.name) + '">').join('') + '</datalist>'; }
 
+/* ============ 会社の車の保険（フリート契約） ============
+   置き場所はここ（車両アプリ）。事故報告アプリはここを読む。
+   見る：タイムカードでログインしている人（事故のときの電話・証券番号）。直す・証券／明細書の読み取り：親方・事務担当 */
+const LICENSES = ['普通', '準中型（5t限定）', '準中型', '中型（8t限定）', '中型', '大型', '大型特殊'];
+let INS = { state: 'none' };   // none（まだ）／ok／login（ログインしていない）／err
+const tcToken = () => { try { return JSON.parse(localStorage.getItem('tc_token') || '""') || ''; } catch (e) { return ''; } };
+const telOf = t => String(t || '').replace(/[^\d+]/g, '');
+const fullDate = s => { if (!s) return ''; const d = parseYmd(s); return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日'; };
+async function insApi(mode, body) {
+  const r = await postJSON(Object.assign({ mode, token: tcToken() }, body || {}));
+  if (!r.ok && r.code === 'auth') { INS = { state: 'login' }; render(); }
+  if (!r.ok) throw new Error(/unknown mode/.test(r.error || '') ? '共通GASの更新がまだです（数分で反映されます）' : (r.error || NET_ERR));
+  return r;
+}
+async function loadIns() {
+  if (DEMO || !tcToken()) { INS = { state: 'login' }; render(); return; }
+  try {
+    const r = await insApi('insGet');
+    INS = { state: 'ok', admin: !!r.admin, contract: r.contract || null, vehicles: r.vehicles || {}, undo: INS.undo || null };
+    lsSet('sharyo_ins', { state: 'ok', admin: INS.admin, contract: INS.contract, vehicles: INS.vehicles });   // 電波がない所（事故の現場）でも電話番号を出せるように
+  } catch (e) {
+    const c = lsGet('sharyo_ins', null);
+    INS = INS.state === 'login' ? INS : (c ? Object.assign(c, { stale: true }) : { state: 'err', error: e.message || NET_ERR });
+  }
+  render();
+}
+function insCardHtml() {
+  if (INS.state === 'none') return '';
+  if (INS.state === 'login') return '<div class="ins" style="cursor:default"><b>🛡 会社の車の保険</b><span class="hint">タイムカードでログインすると、保険会社・ロードサービスの電話や、車ごとの明細が見られます。<a href="timecard.html">ログインする ›</a></span></div>';
+  if (INS.state === 'err') return '<div class="ins" style="cursor:default"><b>🛡 会社の車の保険</b><span class="hint">読み込めませんでした（' + esc(INS.error || NET_ERR) + '）</span></div>';
+  const c = INS.contract;
+  if (!c) return INS.admin ? '<button type="button" class="ins" id="insBtn"><b>🛡 会社の車の保険（フリート契約）</b><span class="hint">まだ登録されていません。保険証券か見積書・明細書を撮ると、AIが読んで車ごとに入れます ›</span></button>' : '';
+  return '<button type="button" class="ins" id="insBtn"><b>🛡 会社の車の保険（フリート契約）</b><span>' + esc([c.insurer, c.periodTo ? md(c.periodTo) + 'まで' : ''].filter(Boolean).join('・')) + '</span><span class="hint">事故受付・ロードサービスの電話、車ごとの明細' + (INS.stale ? '（前回の内容）' : '') + ' ›</span></button>';
+}
+function insLine(v) {
+  if (INS.state === 'login') return '<span class="hint" style="margin:0">タイムカードでログインすると見られます</span>';
+  if (INS.state !== 'ok') return '—';
+  const x = INS.vehicles[v.id], c = INS.contract;
+  if (!c) return '—';
+  if (!x) return esc(v.ownership === 'レンタル' ? 'レンタル会社の保険' : 'フリート契約の明細にありません') + ' <button type="button" class="btn sm" data-act="ins">契約を見る</button>';
+  return esc([c.insurer, x.rowNo ? '明細 ' + x.rowNo : '', '車両保険 ' + (x.carCov || '？') + (x.carCov === 'あり' && x.carAmount ? '（' + yen(x.carAmount) + '）' : '')].filter(Boolean).join('・')) + ' <button type="button" class="btn sm" data-act="ins">契約を見る</button>';
+}
+const insVehList = () => VEH.filter(v => (!v.status || v.status === '使用中') && v.ownership !== 'レンタル' && v.category !== '重機（ユンボなど）' || INS.vehicles && INS.vehicles[v.id]);
+function openIns(fromVid) {
+  if (INS.state !== 'ok') { toast(INS.state === 'login' ? 'タイムカードでログインしてください' : '保険を読み込めていません'); return; }
+  const c = INS.contract || {}, has = !!INS.contract, rows = insVehList();
+  const tel = (t, label, cls) => telOf(t) ? '<a class="btn sm' + (cls ? ' ' + cls : '') + '" href="tel:' + esc(telOf(t)) + '">📞 ' + esc(label) + '</a>' : '';
+  const undo = INS.undo ? '<div class="tip" style="display:flex;align-items:center;gap:8px">✓ 保存しました<button type="button" class="btn sm" data-act="undo" style="margin-left:auto">↩ 元に戻す</button></div>' : '';
+  openModal('<h3>🛡 会社の車の保険（フリート契約）</h3>' + undo +
+    (has ? '<div class="telrow">' + tel(c.phone, '事故受付', 'primary') + tel(c.road, 'ロードサービス') + tel(c.agentPhone, '代理店') + '</div>' +
+      (!telOf(c.phone) && !telOf(c.road) ? '<p class="hint">事故受付・ロードサービスの電話が入っていません' + (INS.admin ? '（「手で直す」から入れてください。保険証券や車に置いてある案内に書いてあります）' : '。わからなければ親方へ') + '</p>' : '') +
+      '<dl class="kv"><dt>保険会社</dt><dd>' + esc(c.insurer || '—') + '</dd>' +
+      '<dt>証券番号</dt><dd>' + esc(c.policyNo || '—') + (!c.policyNo && c.estimateNo && INS.admin ? '<br><small class="hint" style="margin:0">見積書（' + esc(c.estimateNo) + '）から登録しています。証券が届いたら撮り直すと証券番号が入ります</small>' : '') + '</dd>' +
+      '<dt>期間</dt><dd>' + (c.periodFrom || c.periodTo ? esc(fullDate(c.periodFrom)) + ' 〜 ' + esc(fullDate(c.periodTo)) : '—') + '</dd>' +
+      '<dt>代理店</dt><dd>' + esc(c.agent || '—') + (c.agentPhone ? '<br>' + esc(c.agentPhone) : '') + '</dd>' +
+      (c.coverage ? '<dt>補償</dt><dd>' + esc(c.coverage) + '</dd>' : '') +
+      (INS.admin && c.memo ? '<dt>メモ</dt><dd style="white-space:pre-wrap">' + esc(c.memo) + '</dd>' : '') + '</dl>' +
+      '<div class="sec-title">🚚 車ごとの明細</div>' +
+      '<table class="instbl"><tr><th>明細</th><th>車</th><th>車両保険</th></tr>' + rows.map(v => { const x = INS.vehicles[v.id] || {}; return '<tr><td>' + esc(x.rowNo || '—') + '</td><td>' + esc(v.name) + '<br><small class="hint" style="margin:0">' + esc(v.plate || '') + (x.use ? '・' + esc(x.use) : '') + '</small></td><td>' + (INS.vehicles[v.id] ? esc(x.carCov || '？') + (x.carCov === 'あり' && x.carAmount ? '<br><small>' + esc(yen(x.carAmount)) + '</small>' : '') + (x.memo && INS.admin ? '<br><small class="hint" style="margin:0">' + esc(x.memo) + '</small>' : '') : '<span class="hint" style="margin:0">明細になし</span>') + '</td></tr>'; }).join('') + '</table>' +
+      (INS.admin && (c.files || []).length ? '<div class="sec-title">📄 読み取った書類</div>' + c.files.map(f => '<div><a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + esc(f.name) + '</a></div>').join('') : '')
+      : '<p>まだ登録されていません。</p>') +
+    '<p class="hint">事故報告アプリは、ここの保険会社・証券番号・ロードサービス・明細番号・車両保険を使います。</p>' +
+    (INS.admin ? '<div class="row2" style="margin-top:12px"><button class="btn primary" data-act="read">📷 証券・明細書を読み取る</button><button class="btn" data-act="edit">✏️ 手で直す</button></div>' : '<p class="hint">直せるのは親方と事務担当です。</p>') +
+    '<button class="btn block" style="margin-top:8px" data-act="close">' + (fromVid ? '戻る' : '閉じる') + '</button>',
+    async e => {
+      const b = e.target.closest('[data-act]'); if (!b) return;
+      if (b.dataset.act === 'close') return fromVid ? openVeh(fromVid) : closeModal();
+      if (b.dataset.act === 'read') return openInsRead([], fromVid);
+      if (b.dataset.act === 'edit') return openInsEdit(null, fromVid);
+      if (b.dataset.act === 'undo') {
+        if (!confirm('さっきの保存の前の状態に戻しますか？' + (INS.undo.removeVehicles.length ? '（このとき足した車 ' + INS.undo.removeVehicles.length + '台も消えます）' : ''))) return;
+        b.disabled = true;
+        try { const u = INS.undo; await insApi('insSave', { contract: u.contract, vehicles: u.vehicles, insDates: u.insDates, removeVehicles: u.removeVehicles }); INS.undo = null; await load(); await loadIns(); openIns(fromVid); toast('元に戻しました'); }
+        catch (err) { toast(err.message); b.disabled = false; }
+      }
+    });
+}
+/* 証券・見積書・明細書を撮る（何枚でも。6枚まで）→ AIが読む → 確かめてから登録 */
+function openInsRead(pages, fromVid) {
+  openModal('<h3>📷 証券・明細書を読み取る</h3>' +
+    '<p class="hint">保険証券・契約内容のお知らせ・見積書の、<b>車の一覧（明細）が載っているページ</b>を撮ってください。何枚でも続けて撮れます（6枚まで）。保険料は読みません。</p>' +
+    '<div class="pgs">' + pages.map((p, i) => p.thumb ? '<img src="' + p.thumb + '" alt="' + (i + 1) + '枚目">' : '<div class="pdf">PDF</div>').join('') + '</div>' +
+    (pages.length < 6 ? '<div class="row2"><button class="btn" data-act="cam">📷 ' + (pages.length ? 'もう1枚撮る' : '撮る') + '</button><button class="btn" data-act="file">📁 写真・PDF</button></div>' : '') +
+    (pages.length ? '<button class="btn block" data-act="drop" style="margin-top:6px">最後の1枚を取り消す</button>' : '') +
+    '<div class="row2" style="margin-top:14px"><button class="btn" data-act="back">戻る</button><button class="btn primary" data-act="go"' + (pages.length ? '' : ' disabled') + '>読み取る（' + pages.length + '枚）</button></div>',
+    async e => {
+      const b = e.target.closest('[data-act]'); if (!b) return;
+      if (b.dataset.act === 'back') return openIns(fromVid);
+      if (b.dataset.act === 'cam' || b.dataset.act === 'file') return pickDoc(b.dataset.act === 'cam', p => openInsRead(pages.concat(p), fromVid));
+      if (b.dataset.act === 'drop') return openInsRead(pages.slice(0, -1), fromVid);
+      if (b.dataset.act !== 'go') return;
+      openModal('<h3>📷 読み取っています…</h3><p class="hint">AIが契約と車ごとの明細を読んでいます。30秒〜1分ほどかかります。画面を閉じずにお待ちください。</p>', null, true);
+      try { const r = await insApi('insRead', { files: pages.map(p => ({ data: p.b64, mime: p.mime })) }); openInsEdit(r, fromVid); }
+      catch (err) { openModal('<h3>読み取れませんでした</h3><p>' + esc(err.message) + '</p><div class="row2"><button class="btn" data-act="back">戻る</button><button class="btn primary" data-act="again">もう一度</button></div>', ev => { const x = ev.target.closest('[data-act]'); if (!x) return; if (x.dataset.act === 'back') openInsRead(pages, fromVid); else openInsRead(pages, fromVid); }); }
+    });
+}
+/* 確かめて直す画面（読み取った結果、または今の登録）。保存するまでは何も変わらない */
+function openInsEdit(read, fromVid) {
+  const cur = INS.contract || {}, rd = (read && read.data) || {};
+  const pick = k => rd[k] || cur[k] || '';   // 読めなかった欄は今の登録のまま
+  const c = { insurer: pick('insurer'), policyNo: rd.policyNo || (rd.estimateNo ? '' : cur.policyNo || ''), estimateNo: read ? (rd.estimateNo || '') : (cur.estimateNo || ''), agent: pick('agent'), agentPhone: pick('agentPhone'),
+    periodFrom: pick('periodFrom'), periodTo: pick('periodTo'), phone: pick('phone'), road: pick('road'), coverage: pick('coverage'), memo: cur.memo || '', files: (cur.files || []).concat((read && read.files) || []) };
+  const vlist = VEH.filter(v => !v.status || v.status === '使用中');
+  let rows, setDate = true;
+  if (read) {
+    rows = (read.rows || []).map(r => Object.assign({}, r, { vehicleId: r.vehicleId || '__new' }));
+    Object.keys(INS.vehicles).forEach(id => { if (!rows.some(r => r.vehicleId === id) && VEH.some(v => v.id === id)) { const x = INS.vehicles[id]; rows.push(Object.assign({}, x, { vehicleId: id, keep: true })); } });
+  } else rows = insVehList().map(v => Object.assign({ vehicleId: v.id, plate: v.plate, car: v.name }, INS.vehicles[v.id] || {}, { manual: true }));
+  const fld = (k, label, type, ph) => '<div><label class="lbl">' + label + '</label><input type="' + (type || 'text') + '" data-c="' + k + '" value="' + esc(c[k]) + '" placeholder="' + esc(ph || '') + '"></div>';
+  const vehSel = (r, i) => '<select data-r="' + i + '" data-k="vehicleId"><option value="">入れない</option>' + (r.manual ? '' : '<option value="__new"' + (r.vehicleId === '__new' ? ' selected' : '') + '>＋ 車両アプリに新しく足す</option>') +
+    vlist.map(v => '<option value="' + esc(v.id) + '"' + (v.id === r.vehicleId ? ' selected' : '') + '>' + esc(v.name + (v.plate ? '（' + v.plate + '）' : '')) + '</option>').join('') + '</select>';
+  const draw = () => openModal('<h3>' + (read ? '📷 読み取った内容を確かめる' : '✏️ 保険を直す') + '</h3>' +
+    (read ? '<p class="hint">AIの読み取りです。<b>数字と車の組み合わせを確かめてから</b>登録してください。保存するまでは何も変わりません。</p>' : '') +
+    (read && rd.docType ? '<p class="hint" style="margin:0 0 6px">書類：' + esc(rd.docType) + '</p>' : '') +
+    '<div class="row2">' + fld('insurer', '保険会社') + fld('policyNo', '証券番号', 'text', c.estimateNo ? '見積書なのでまだ無し' : '') + '</div>' +
+    '<div class="row2">' + fld('periodFrom', '保険期間（始め）', 'date') + fld('periodTo', '保険期間（終わり）', 'date') + '</div>' +
+    '<div class="row2">' + fld('phone', '事故受付の電話', 'tel') + fld('road', 'ロードサービスの電話', 'tel') + '</div>' +
+    '<div class="row2">' + fld('agent', '代理店') + fld('agentPhone', '代理店の電話', 'tel') + '</div>' +
+    '<div class="row2">' + fld('estimateNo', '見積書番号（あれば）') + fld('coverage', '共通の補償（短く）', 'text', '対人 無制限・対物 無制限') + '</div>' +
+    '<label class="lbl">メモ（親方・事務担当だけに見えます）</label><textarea data-c="memo">' + esc(c.memo) + '</textarea>' +
+    '<div class="sec-title">🚚 車ごとの明細（' + rows.filter(r => r.vehicleId).length + '台）</div>' +
+    (read ? '<p class="hint" style="margin-top:0">ナンバーで車両アプリの車と合わせました。合わなかった車は「＋ 車両アプリに新しく足す」になっています（会社の車はみんなこの契約のため）。足さない車は「入れない」に。</p>' : '') +
+    rows.map((r, i) => '<div class="insrow"' + (r.vehicleId ? '' : ' style="opacity:.55"') + '><b>' + esc(r.car || '') + '</b> ' + esc(r.plate || '') + (r.keep ? ' <small class="hint" style="margin:0">（今回の書類になし・前の明細のまま）</small>' : '') + (r.use ? '<br><small class="hint" style="margin:0">' + esc(r.use) + '</small>' : '') +
+      (r.manual ? '' : '<div class="r"><span style="flex:none">この車：</span>' + vehSel(r, i) + '</div>') +
+      '<div class="r"><span style="flex:none">明細</span><input data-r="' + i + '" data-k="rowNo" value="' + esc(r.rowNo || '') + '" style="width:64px;flex:none"><span style="flex:none">車両保険</span><select data-r="' + i + '" data-k="carCov"><option value="">？</option><option' + (r.carCov === 'あり' ? ' selected' : '') + '>あり</option><option' + (r.carCov === 'なし' ? ' selected' : '') + '>なし</option></select><input data-r="' + i + '" data-k="carAmount" inputmode="numeric" placeholder="金額（円）" value="' + esc(r.carAmount || '') + '"></div>' +
+      '<div class="r"><input data-r="' + i + '" data-k="memo" placeholder="その車だけの特記（運転者の限定など）" value="' + esc(r.memo || r.note || '') + '"></div></div>').join('') +
+    (rows.length ? '' : '<p class="hint">車の明細を読み取れませんでした。</p>') +
+    '<label style="display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:10px 0"><input type="checkbox" id="insDateChk"' + (setDate ? ' checked' : '') + ' style="margin-top:4px"><span>この契約に入れた車の「保険満了日」を、契約の終わりの日にそろえる</span></label>' +
+    '<div class="row2" style="margin-top:12px"><button class="btn" data-act="back">' + (read ? 'やめる' : '戻る') + '</button><button class="btn primary" data-act="save" style="flex:2">' + (read ? '登録する' : '保存') + '</button></div>',
+    async e => {
+      const b = e.target.closest('[data-act]'); if (!b) return;
+      if (b.dataset.act === 'back') return openIns(fromVid);
+      if (b.dataset.act !== 'save') return;
+      const list = rows.filter(r => r.vehicleId).map(r => ({ vehicleId: r.vehicleId, plate: r.plate, car: r.car, rowNo: r.rowNo, use: r.use, carCov: r.carCov, carAmount: r.carAmount, memo: r.memo || r.note || '' }));
+      const ids = list.map(r => r.vehicleId).filter(id => id !== '__new');
+      if (ids.some((id, i) => ids.indexOf(id) !== i)) return toast('同じ車が2回選ばれています');
+      if (!c.insurer) return toast('保険会社を入れてください');
+      b.disabled = true; b.innerHTML = '<span class="loading"></span> 保存中…';
+      try {
+        const r = await insApi('insSave', { contract: c, vehicles: list, setInsDate: setDate });
+        INS = Object.assign(INS, { state: 'ok', contract: r.contract, vehicles: r.vehicles || {}, undo: r.undo });
+        await load(); openIns(fromVid); toast(r.created && r.created.length ? '登録しました（車を' + r.created.length + '台足しました）' : '登録しました');
+      } catch (err) { toast(err.message); b.disabled = false; b.textContent = read ? '登録する' : '保存'; }
+    });
+  const bind = () => {
+    $('modal').oninput = $('modal').onchange = e => {
+      const el = e.target;
+      if (el.dataset.c) c[el.dataset.c] = el.value.trim();
+      if (el.id === 'insDateChk') setDate = el.checked;
+      if (el.dataset.r != null && el.dataset.k) { rows[+el.dataset.r][el.dataset.k] = el.value.trim(); if (el.dataset.k === 'vehicleId' && e.type === 'change') { const y = $('modal').scrollTop; draw(); bind(); $('modal').scrollTop = y; } }
+    };
+  };
+  draw(); bind();
+}
+
 /* ============ 追加・直す ============ */
 let PHOTO = null;
 function openEdit(src) {
-  const v = Object.assign({ id: '', name: '', aliases: '', ownership: '自社', category: '車・トラック', waste: '', inspectDate: '', firstReg: '', plate: '', model: '', shakenDate: '', insuranceDate: '', rentalShop: '', rentalFrom: '', rentalTo: '', status: '使用中', memo: '' }, src || {});
+  const v = Object.assign({ id: '', name: '', aliases: '', ownership: '自社', category: '車・トラック', waste: '', inspectDate: '', firstReg: '', license: '', plate: '', model: '', shakenDate: '', insuranceDate: '', rentalShop: '', rentalFrom: '', rentalTo: '', status: '使用中', memo: '' }, src || {});
   PHOTO = null; let SHAKEN = null, FIRST = v.firstReg || '';   // 読み取った車検証（保存のとき書類にも入れる）
   const draw = () => {
     const own = $('fOwn') ? $('fOwn').value : v.ownership, cat = $('fCat') ? $('fCat').value : v.category;
@@ -606,6 +770,8 @@ function openEdit(src) {
     '<div id="rentBox"><label class="lbl" style="margin-top:12px">借りた店</label><input type="text" id="fShop" value="' + esc(v.rentalShop) + '" list="shopList">' + shopList(['レンタル', '機械・修理']) +
     '<div class="row2" style="margin-top:12px"><div><label class="lbl">借りた日</label><input type="date" id="fFrom" value="' + esc(v.rentalFrom) + '"></div><div><label class="lbl">返す日</label><input type="date" id="fTo" value="' + esc(v.rentalTo) + '"></div></div>' +
     '<p class="hint">返す日の' + RENT_SOON + '日前から知らせます。</p></div>' +
+    '<label class="lbl" style="margin-top:12px">運転に必要な免許</label><select id="fLicense"><option value="">わからない・決めない</option>' + LICENSES.map(l => '<option' + (l === v.license ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>' +
+    '<p class="hint">車検証の車両総重量・最大積載量で決まります（例：車両総重量3.5t以上は準中型）。事故報告で、運転した人の免許（資格・免許アプリ）と合わないときに注意が出ます。</p>' +
     '<label class="lbl" style="margin-top:12px">状態</label><select id="fStatus">' + STATUS.map(s => '<option' + (s === (v.status || '使用中') ? ' selected' : '') + '>' + esc(s) + '</option>').join('') + '</select>' +
     '<p class="hint" style="margin-top:10px">前・後ろなどの写真は、保存したあと「📄 書類・写真」から撮ります。</p>' +
     '<label class="lbl" style="margin-top:12px">メモ</label><textarea id="fMemo" placeholder="例：鍵は事務所の箱、ETCカードあり">' + esc(v.memo) + '</textarea>' +
@@ -621,7 +787,7 @@ function openEdit(src) {
         shakenDate: own === 'レンタル' ? '' : $('fShaken').value, insuranceDate: own === 'レンタル' ? '' : $('fIns').value,
         rentalShop: own === 'レンタル' ? $('fShop').value.trim() : '', rentalFrom: own === 'レンタル' ? $('fFrom').value : '', rentalTo: own === 'レンタル' ? $('fTo').value : '',
         status: $('fStatus').value, memo: $('fMemo').value.trim(), category: $('fCat').value, waste: !$('wasteBox').hidden && $('fWaste').checked ? '1' : '',
-        inspectDate: $('inspBox').hidden ? '' : $('fInsp').value, firstReg: FIRST };
+        inspectDate: $('inspBox').hidden ? '' : $('fInsp').value, firstReg: FIRST, license: $('fLicense').value };
       if (!item.name) return toast('名前を入れてください');
       b.disabled = true; b.innerHTML = '<span class="loading"></span> 保存中…';
       try {
@@ -710,13 +876,13 @@ function drawName() {
 }
 function onStaff() {}
 let modalHandler = null, modalLocked = false;
-function openModal(html, handler, locked) { $('modal').innerHTML = html; modalHandler = handler; modalLocked = !!locked; $('modalBg').classList.add('show'); $('modal').scrollTop = 0; }
+function openModal(html, handler, locked) { $('modal').oninput = $('modal').onchange = null; $('modal').innerHTML = html; modalHandler = handler; modalLocked = !!locked; $('modalBg').classList.add('show'); $('modal').scrollTop = 0; }
 function closeModal() { $('modalBg').classList.remove('show'); $('modal').innerHTML = ''; modalHandler = null; }
 $('modal').addEventListener('click', e => { if (modalHandler) modalHandler(e); });
 $('modalBg').addEventListener('click', e => { if (e.target === $('modalBg') && !modalLocked) closeModal(); });
 
 /* ============ イベント・起動 ============ */
-$('list').addEventListener('click', e => { if (e.target.closest('#importBtn')) return chooseName(false, importInfo); const b = e.target.closest('[data-id]'); if (b) openVeh(b.dataset.id); });
+$('list').addEventListener('click', e => { if (e.target.closest('#importBtn')) return chooseName(false, importInfo); if (e.target.closest('#insBtn')) return openIns(); const b = e.target.closest('[data-id]'); if (b) openVeh(b.dataset.id); });
 $('alerts').addEventListener('click', e => {
   const n = e.target.closest('[data-unm-new]'); if (n) return chooseName(false, () => openEdit({ name: n.dataset.unmNew, aliases: n.dataset.unmNew }));
   const a = e.target.closest('[data-unm-alias]'); if (a) return chooseName(false, () => openAliasPick(a.dataset.unmAlias));
@@ -729,7 +895,8 @@ $('meBtn').addEventListener('click', () => chooseName(true));
   $('demoBar').hidden = !DEMO;
   if (me()) $('meBtn').textContent = '👤 ' + me();
   if (showCached()) syncing(true);
-  load().finally(() => syncing(false)).then(() => { if (p.get('id')) openVeh(p.get('id')); });
+  load().finally(() => syncing(false)).then(() => { if (p.get('id')) openVeh(p.get('id')); if (p.get('ins')) openIns(); });
+  loadIns();
   fetchStaff();
 })();
 </script>

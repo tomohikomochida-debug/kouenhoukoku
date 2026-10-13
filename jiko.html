@@ -852,6 +852,8 @@ function birthBox(path, staffId, cur, on) {
     <p class="hint">${canSee ? '入れると次からは自動で出ます（保険会社・労災の書類に使います）' : 'わからなければ空欄で大丈夫です（親方の設定に登録があれば、送ったあと自動で入ります）'}</p>`;
 }
 function licWarn(d) {
+  const exp = (S.settings.licExp || {})[d.driverId], on = d.date || today();
+  if (d.driverId && exp && exp < on) return `${staffName(d.driverId)}さんの運転免許は、資格・免許アプリの登録では${jaDate(exp)}で有効期限が切れています。更新していれば、資格・免許アプリで新しい免許証を登録してください。`;
   const c = d.car || {}, vs = (S.settings.vehicles || {})[c.vehicleId] || {}, need = licRank(vs.license);
   const have = licRank((S.settings.licenses || {})[d.driverId]);
   if (!need || !have || have >= need) return '';
@@ -1692,23 +1694,23 @@ function renderSettings() {
   st.company = Object.assign({}, COMPANY_DEFAULT, st.company || {}); st.contacts = st.contacts || {}; st.insurance = st.insurance || {}; st.vehicles = st.vehicles || {}; st.licenses = st.licenses || {}; st.births = st.births || {};
   ['auto', 'work', 'rousai', 'machine'].forEach(k => st.insurance[k] = st.insurance[k] || {});
   const si = (path, ph = '', type = 'text') => `<input type="${type}" data-s="${path}" value="${esc(getP(st, path) || '')}" placeholder="${esc(ph)}">`;
-  const licSel = (path, cur, need) => `<select data-s="${path}"><option value="">${need ? '必要な免許（わからなければ空欄）' : '免許の種類'}</option>${LICENSES.map(l => `<option${cur === l[0] ? ' selected' : ''}>${esc(l[0])}</option>`).join('')}</select>`;
+  const pub = S.settings || {}, fa = (pub.insurance || {}).auto || {}, pv = pub.vehicles || {}, pl = pub.licenses || {}, pe = pub.licExp || {};   // 車両アプリ・資格・免許アプリから読んだもの（ここでは直さない）
   $('#main').innerHTML = `
     <div class="card"><h2>🏢 会社（PDFに載ります）</h2>${si('company.name', '会社名')}<div style="height:6px"></div>${si('company.address', '住所')}<div style="height:6px"></div>${si('company.phone', '電話番号', 'tel')}</div>
     <div class="card"><h2>📞 連絡先・お知らせ</h2><label class="lbl">親方の携帯（事故直後の画面に「親方に電話」が出ます）</label>${si('contacts.bossPhone', '090-…', 'tel')}
       <label class="lbl">新しい報告を知らせるメールの宛先</label>${si('contacts.notifyEmail', '空欄なら、GASの持ち主のアドレス', 'email')}</div>
-    <div class="card"><h2>🚗 会社の車の保険（フリート契約）</h2><p class="hint" style="margin-top:0">会社の車は全部この契約で入っている前提です。報告書PDFの証券番号・事故直後の画面のロードサービスに使います</p>
-      <div class="row2"><div><label class="lbl">保険会社</label>${si('insurance.auto.name', '例：○○海上')}</div><div><label class="lbl">証券番号</label>${si('insurance.auto.policy', '')}</div></div>
-      <div class="row2"><div><label class="lbl">事故受付の電話</label>${si('insurance.auto.phone', '', 'tel')}</div><div><label class="lbl">ロードサービスの電話</label>${si('insurance.auto.road', '', 'tel')}</div></div>
-      <div class="row2"><div><label class="lbl">代理店</label>${si('insurance.auto.agent', '')}</div><div><label class="lbl">代理店の電話</label>${si('insurance.auto.agentPhone', '', 'tel')}</div></div></div>
+    <div class="card"><h2>🚗 会社の車の保険（フリート契約）</h2><p class="hint" style="margin-top:0">置き場所は<b>車両アプリ</b>です（証券・明細書を撮るとAIが読んで車ごとに入ります）。ここではそれを読んで、報告書PDFの証券番号・事故直後の画面のロードサービスに使います。</p>
+      ${pub.src && pub.src.ins ? '' : '<div class="note"><b>車両アプリにまだ登録がありません</b>前にここで入れた内容を使っています。</div>'}
+      <dl class="kv"><dt>保険会社</dt><dd>${esc(fa.name || '—')}</dd><dt>証券番号</dt><dd>${esc(fa.policy || '—')}</dd><dt>事故受付</dt><dd>${esc(fa.phone || '—')}</dd><dt>ロードサービス</dt><dd>${esc(fa.road || '—')}</dd>${fa.to ? `<dt>期間</dt><dd>${esc(jaDate(fa.from || ''))} 〜 ${esc(jaDate(fa.to))}</dd>` : ''}</dl>
+      <a class="btn sm" href="sharyo.html?ins=1">🚚 車両アプリで見る・直す</a></div>
     <div class="card"><h2>🛡 そのほかの会社の保険</h2>
       ${[['work', '請負業者賠償責任保険'], ['rousai', '労災の上乗せ保険'], ['machine', '動産・機械の保険']].map(([k, t]) => `<h3>${t}</h3><div class="row2"><div>${si('insurance.' + k + '.name', '保険会社・代理店')}</div><div>${si('insurance.' + k + '.phone', '電話', 'tel')}</div></div><div style="height:6px"></div>${si('insurance.' + k + '.policy', '証券番号')}`).join('')}</div>
-    <div class="card"><h2>🚚 車ごとの設定</h2><p class="hint" style="margin-top:0">保険はフリート契約で共通なので、車ごとに違うところだけ入れます</p>
-      ${S.vehicles.filter(v => v.category !== '重機（ユンボなど）').map(v => { const p = 'vehicles.' + v.id; const x = st.vehicles[v.id] || {}; return `<h3>${esc(v.name)} <small>${esc(v.plate || '')}</small></h3>
-        <label class="lbl">フリートの明細番号（わかれば）</label>${si(p + '.fleetNo', '')}
-        <div class="row2" style="margin-top:6px"><div><select data-s="${p}.carCov"><option value="">車両保険</option><option${x.carCov === 'あり' ? ' selected' : ''}>あり</option><option${x.carCov === 'なし' ? ' selected' : ''}>なし</option></select></div><div>${licSel(p + '.license', x.license, true)}</div></div>`; }).join('') || '<p class="hint">車両アプリに車が登録されていません</p>'}</div>
-    <div class="card"><h2>🪪 スタッフの免許の種類・生年月日</h2><p class="hint" style="margin-top:0">免許：車の「必要な免許」と合わないとき、報告の画面に注意を出します。<br>生年月日：事故の当事者・けがをした人を選ぶと出て、報告書PDFに年齢と一緒に載ります。見られるのは親方・事務担当と本人だけです。<b>登録・直すのはタイムカードの⚙設定の「スタッフ」の表</b>です（事務担当もできます）。<a href="timecard.html">タイムカードを開く</a></p>
-      ${S.staff.map(s => `<div style="border-top:1px solid var(--line);padding:8px 0"><b>${esc(s.disp)}</b><div class="row2" style="margin-top:4px"><div><span class="hint">免許</span>${licSel('licenses.' + s.id, st.licenses[s.id], false)}</div><div><span class="hint">生年月日</span><div style="padding:10px 2px">${birthOf(s.id) ? esc(jaDate(birthOf(s.id))) : '<span style="color:var(--danger)">未登録</span>'}</div></div></div></div>`).join('')}</div>
+    <div class="card"><h2>🚚 車ごと（明細番号・車両保険・必要な免許）</h2><p class="hint" style="margin-top:0">置き場所は<b>車両アプリ</b>です。必要な免許は、車の「直す」で入れます。</p>
+      ${S.vehicles.filter(v => v.category !== '重機（ユンボなど）').map(v => { const x = pv[v.id] || {}; return `<div style="border-top:1px solid var(--line);padding:6px 0"><b>${esc(v.name)}</b> <small>${esc(v.plate || '')}</small><div class="hint" style="margin:2px 0 0">明細 ${esc(x.fleetNo || '—')}・車両保険 ${esc(x.carCov || '—')}・必要な免許 ${esc(x.license || '—')}</div></div>`; }).join('') || '<p class="hint">車両アプリに車が登録されていません</p>'}
+      <a class="btn sm" href="sharyo.html" style="margin-top:6px">🚚 車両アプリを開く</a></div>
+    <div class="card"><h2>🪪 スタッフの免許の種類・生年月日</h2><p class="hint" style="margin-top:0">免許の種類は<b>資格・免許アプリ</b>（本人が免許証を撮って登録）から読みます。車の「必要な免許」と合わないとき・有効期限が切れているとき、報告の画面に注意を出します。<br>生年月日は<b>タイムカードの⚙設定の「スタッフ」の表</b>から読みます（事務担当も登録できます）。見られるのは親方・事務担当と本人だけです。</p>
+      ${S.staff.map(s => `<div style="border-top:1px solid var(--line);padding:6px 0"><b>${esc(fullName(s.id, s.disp))}</b><div class="hint" style="margin:2px 0 0">免許 ${pl[s.id] ? esc(pl[s.id]) + (pe[s.id] ? (pe[s.id] < today() ? `<span style="color:var(--danger)">（${esc(jaDate(pe[s.id]))}で期限切れ）</span>` : `（${esc(jaDate(pe[s.id]))}まで）`) : '') : '<span style="color:var(--danger)">未登録</span>'}・生年月日 ${birthOf(s.id) ? esc(jaDate(birthOf(s.id))) : '<span style="color:var(--danger)">未登録</span>'}</div></div>`).join('')}
+      <div class="row2" style="margin-top:6px"><a class="btn sm" href="shikaku.html">🪪 資格・免許アプリ</a><a class="btn sm" href="timecard.html">⏱ タイムカード</a></div></div>
     <div class="card"><h2>📁 保存先</h2><p class="hint" style="margin-top:0">Googleドライブ「社内アプリ ＞ 事故報告」。履歴のスプレッドシート「事故報告データ（社外秘）」と、事故ごとのフォルダ（写真・報告書PDF）、ヒヤリハットの写真が入ります。</p>
       ${S.folder ? `<a class="btn sm" href="${esc(S.folder.url)}" target="_blank" rel="noopener">📁 事故報告のフォルダを開く</a>
       ${S.folder.limited ? '<div class="note green"><b>✓ スタッフはドライブから開けない設定です</b>社内アプリのフォルダは共有していますが、事故報告のフォルダだけは親方しか開けません（アプリからはふだん通り使えます）。</div>'
@@ -1718,7 +1720,8 @@ function renderSettings() {
   $('#main').onchange = $('#main').oninput;
   $('#setSave').onclick = async () => {
     const b = $('#setSave'); b.disabled = true; b.innerHTML = '<span class="loading"></span>';
-    try { const j = await api('settings', { settings: st }); if (!j.ok) throw new Error(j.error); S.settings = j.settings; toast('保存しました'); back(); }
+    const out = clone(st); delete out.vehicles; delete out.licenses; delete out.births; if (out.insurance) delete out.insurance.auto;   // 車・免許・生年月日・車の保険は、それぞれのアプリが置き場所なので送らない
+    try { const j = await api('settings', { settings: out }); if (!j.ok) throw new Error(j.error); S.settings = j.settings; toast('保存しました'); back(); }
     catch (e) { toast(e.message, 4000); b.disabled = false; b.textContent = '保存'; }
   };
 }
@@ -1733,7 +1736,7 @@ function loadScript(src) { return new Promise((ok, ng) => { if (document.querySe
 function openPdf(c) {
   const ps = photosOf(c.id).filter(p => !['sketch', 'doc', 'map'].includes(p.slot)), st = S.settings || {}, full = st.full || {}, comp = Object.assign({}, COMPANY_DEFAULT, full.company || st.company || {});
   const d = c.data || {}, ins = (c.boss || {}).insurerCall || {};
-  const vid = (d.car || {}).vehicleId, vSet = (full.vehicles || {})[vid] || {}, fl = (full.insurance || {}).auto || {};
+  const vid = (d.car || {}).vehicleId, vSet = Object.assign({}, (full.vehicles || {})[vid] || {}, (st.vehicles || {})[vid] || {}), fl = Object.assign({}, (full.insurance || {}).auto || {}, (st.insurance || {}).auto || {});   // 車両アプリの保険を優先
   const vIns = d.kind === 'car' ? (vid && vid !== '__other' ? { policy: (vSet.policy || fl.policy || '') + (vSet.fleetNo ? '（明細 ' + vSet.fleetNo + '）' : '') } : {}) : ((full.insurance || {}).work || {});
   const sel = {}; ps.forEach(p => sel[p.photoId] = p.inPdf !== false);
   openModal(`<h3>📄 保険会社に出す事故報告書</h3>

@@ -113,6 +113,7 @@ table.matrix td.c.exp{color:var(--danger);font-weight:800;background:#FDF3F0}
   <button type="button" data-tab="table"><span class="ic">📋</span>一覧表</button>
   <button type="button" data-tab="people"><span class="ic">👷</span>人ごと</button>
   <button type="button" data-tab="due"><span class="ic">⏰</span>期限・確認<span class="badge" id="dueBadge" hidden></span></button>
+  <button type="button" data-tab="reg"><span class="ic">🏢</span>会社の登録<span class="badge" id="regBadge" hidden></span></button>
   <button type="button" data-tab="out"><span class="ic">📤</span>取り出す</button>
 </div></nav>
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -218,15 +219,18 @@ function render() {
   document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
   const due = live().filter(it => expState(it) || it.status !== '確認済').length;
   const bd = $('#dueBadge'); bd.hidden = !S.admin || !due; bd.textContent = due;
+  const rn = (S.regs || []).filter(regState).length, rb = $('#regBadge'); rb.hidden = !S.admin || !rn; rb.textContent = rn;
   const v = S.view;
   if (v && v.name === 'edit') return renderEdit(v);
   if (v && v.name === 'item') return renderItem(v.id);
   if (v && v.name === 'person') return renderPerson(v.id);
+  if (v && v.name === 'regEdit' && S.admin) return renderRegEdit(v);
   setHeader('🪪 資格・免許', false);
   if (!S.admin || S.tab === 'mine') return renderPerson(S.me.id, true);
   if (S.tab === 'table') return renderTable();
   if (S.tab === 'people') return renderPeople();
   if (S.tab === 'due') return renderDue();
+  if (S.tab === 'reg') return renderReg();
   if (S.tab === 'out') return renderOut();
 }
 
@@ -260,7 +264,7 @@ async function logout() { try { await post({ app: 'timecard', action: 'logout', 
 async function boot() {
   try {
     const j = await api('init', {}, 45000);
-    S.me = j.me; S.admin = !!j.admin; S.staff = j.staff || []; S.items = j.items || []; S.folder = j.folder; S.loaded = true;
+    S.me = j.me; S.admin = !!j.admin; S.staff = j.staff || []; S.items = j.items || []; S.regs = j.regs || []; S.folder = j.folder; S.loaded = true;
     if (S.admin && S.tab === 'mine' && !lsGet('sk_tab_seen')) { S.tab = 'table'; lsSet('sk_tab_seen', 1); }
     render();
   } catch (e) {
@@ -475,6 +479,115 @@ function renderDue() {
 }
 
 /* =========================================================
+   会社の登録・許可（入札参加資格の業者登録・建設業許可・収集運搬の許可など）…親方・事務担当だけ
+   ========================================================= */
+const REG_SOON = 90;   // 更新の申請に時間がかかるので、90日前から知らせる
+const newRegId = () => { const d = new Date(); return 'R-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + rid(); };
+function regState(r) { if (!r.to) return ''; const d = daysTo(r.to); return d < 0 ? 'exp' : d <= REG_SOON ? 'soon' : ''; }
+function regTag(r) {
+  if (!r.to) return '<span class="tag">期限なし</span>';
+  const d = daysTo(r.to);
+  return d < 0 ? `<span class="tag red">切れています（${esc(jaDate(r.to))}）</span>` : d <= REG_SOON ? `<span class="tag soon">あと${d}日（${esc(jaDate(r.to))}まで）</span>` : `<span class="tag">${esc(jaDate(r.to))}まで</span>`;
+}
+const sheetUrl = () => lsGet('sk_sheet_url', '');
+function renderReg() {
+  const regs = (S.regs || []).slice().sort((a, b) => (a.orderer + a.kubun > b.orderer + b.kubun ? 1 : -1));
+  const groups = []; regs.forEach(r => { let g = groups.find(x => x.k === r.orderer); if (!g) groups.push(g = { k: r.orderer, l: [] }); g.l.push(r); });
+  const warn = regs.filter(regState);
+  $('#main').innerHTML = `<div class="card"><h2>🏢 会社の登録・許可</h2><p class="hint" style="margin-top:0">入札参加資格（業者登録）・建設業許可・収集運搬の許可など。見られるのは親方と事務担当だけです。終わりの日の${REG_SOON}日前からホームに知らせます。</p>
+      ${warn.length ? `<div class="note red"><b>更新が近い・切れているもの ${warn.length}件</b>${warn.map(r => esc(r.orderer + '　' + (r.kubun || '')) + '　' + esc(jaDate(r.to))).join('<br>')}</div>` : ''}
+      <button class="btn primary block" id="regAdd">＋ 登録・許可を足す</button></div>
+    ${groups.map(g => `<h3>${esc(g.k)}（${g.l.length}）</h3>${g.l.map(r => `<button class="item${regState(r) ? ' ' + regState(r) : ''}" data-reg="${esc(r.id)}"><div class="t">${esc(r.kubun || '（区分なし）')}${r.gyoshu ? ` <small style="font-weight:400">${esc(r.gyoshu)}</small>` : ''}</div>
+      <div class="s">${regTag(r)}${r.number ? `<span class="tag">番号 ${esc(r.number)}</span>` : ''}${(r.files || []).length ? `<span class="tag">📄 ${r.files.length}</span>` : '<span class="tag">書類なし</span>'}</div></button>`).join('')}`).join('') || '<div class="empty">まだ登録がありません</div>'}
+    <div class="card"><h2>📥 「業者登録」シートから取り込む</h2><p class="hint" style="margin-top:0">1行目が「発注者・業者番号・業者区分・業種（ランク）・有効期限（開始）・有効期限（終了）・電子申請ユーザID・備考」のシートを取り込みます。同じ発注者・番号・区分は二重になりません。<b>パスワードは取り込みません</b>（アプリにもシートにも置かないでください）</p>
+      <label class="lbl">スプレッドシートのURL</label><input type="url" id="rgUrl" value="${esc(sheetUrl())}" placeholder="https://docs.google.com/spreadsheets/d/…">
+      <label class="lbl">シートの名前</label><input type="text" id="rgSheet" value="業者登録">
+      <div class="row2" style="margin-top:10px"><button class="btn" id="rgDry">試しに見る</button><button class="btn tape" id="rgGo">取り込む</button></div><div id="rgOut"></div></div>`;
+  document.querySelectorAll('[data-reg]').forEach(b => b.onclick = () => go({ name: 'regEdit', id: b.dataset.reg }));
+  $('#regAdd').onclick = () => go({ name: 'regEdit', id: '' });
+  const run = async dry => {
+    const url = $('#rgUrl').value.trim(); if (!url) { toast('URLを入れてください'); return; }
+    lsSet('sk_sheet_url', url);
+    const out = $('#rgOut'); out.innerHTML = '<p class="hint"><span class="loading" style="border-top-color:var(--leaf)"></span> 読んでいます…</p>';
+    try {
+      const j = await api('regImport', { url, sheet: $('#rgSheet').value.trim(), dry }, 120000);
+      const list = j.added.map(a => esc(a.orderer + '　' + (a.kubun || '') + '　' + (a.gyoshu || '')) + (a.to ? '（' + esc(jaDate(a.to)) + 'まで）' : '')).join('<br>');
+      out.innerHTML = `<div class="note ${dry ? '' : 'green'}"><b>${dry ? '取り込むと' : '取り込みました'}：${j.added.length}件（もうあるので飛ばす：${j.skipped}件）</b>${list}</div>`;
+      if (!dry && j.added.length) {
+        await boot(); S.tab = 'reg'; render();
+        toast(j.added.length + '件を取り込みました', 0, { label: '元に戻す', fn: async () => { for (const a of j.added) { try { await api('regDelete', { id: a.id }); } catch (e) {} } await boot(); S.tab = 'reg'; render(); toast('取り込みを取り消しました'); } });
+      }
+    } catch (e) { out.innerHTML = `<div class="note red"><b>取り込めませんでした</b>${esc(e.message)}</div>`; }
+  };
+  $('#rgDry').onclick = () => run(true);
+  $('#rgGo').onclick = () => { if (confirm('取り込みますか？')) run(false); };
+}
+let RG = null;   // 直している登録（保存するまで一覧は変わらない）
+function renderRegEdit(v) {
+  const old = (S.regs || []).find(r => r.id === v.id);
+  const key = v.id || 'new';
+  if (!RG || RG._for !== key) RG = Object.assign(old ? JSON.parse(JSON.stringify(old)) : { id: newRegId(), orderer: '', number: '', kubun: '', gyoshu: '', from: '', to: '', userId: '', memo: '', files: [] }, { _for: key });
+  const e = RG, f = (k, label, type = 'text', ph = '', list = '') => `<label class="lbl">${label}</label><input type="${type}" data-rg="${k}" value="${esc(e[k] || '')}" placeholder="${esc(ph)}"${list ? ` list="${list}"` : ''}>`;
+  const ords = [...new Set((S.regs || []).map(r => r.orderer).filter(Boolean).concat(['川崎市', '横浜市', '神奈川県', '国土交通省']))];
+  setHeader('🏢 ' + (old ? '登録・許可を直す' : '登録・許可を足す'), true);
+  $('#main').innerHTML = `<div class="card">
+      ${f('orderer', '発注者・許可先', 'text', '例：川崎市', 'rgOrd')}<datalist id="rgOrd">${ords.map(o => `<option value="${esc(o)}">`).join('')}</datalist>
+      <div class="row2"><div>${f('kubun', '区分', 'text', '例：工事・委託・物品・建設業許可')}</div><div>${f('number', '業者番号・許可番号')}</div></div>
+      ${f('gyoshu', '業種（ランク）', 'text', '例：土木（D）・造園・舗装（C）')}
+      <div class="row2"><div>${f('from', '有効期限（開始）', 'date')}</div><div>${f('to', '有効期限（終了）', 'date')}</div></div>
+      ${f('userId', '電子申請のユーザID', 'text', 'パスワードは入れないでください')}
+      <label class="lbl">備考</label><textarea data-rg="memo" placeholder="例：令和7・8年度 競争入札参加資格">${esc(e.memo || '')}</textarea>
+      <label class="lbl">書類（通知書・許可証の写真やPDF）</label>
+      <div id="rgFiles">${(e.files || []).map((x, i) => `<div class="pick" style="justify-content:space-between"><button type="button" class="btn sm" data-rgview="${i}">📄 ${esc(x.name)}</button><button type="button" class="btn sm" data-rgdrop="${i}">外す</button></div>`).join('') || '<p class="hint">まだありません</p>'}</div>
+      <div class="row2" style="margin-top:6px"><button class="btn sm" id="rgCam">📷 撮る</button><button class="btn sm" id="rgLib">📁 写真・PDF</button></div><div id="rgProg" class="hint"></div>
+    </div>
+    <div class="row2"><button class="btn" id="rgBack">${old ? '戻る（保存しない）' : 'やめる'}</button><button class="btn primary" id="rgSave">保存</button></div>
+    ${old ? '<button class="btn line-danger block" id="rgDel" style="margin-top:10px">この登録を消す</button>' : ''}`;
+  $('#main').oninput = ev => { const k = ev.target.dataset && ev.target.dataset.rg; if (k) e[k] = ev.target.value; };
+  $('#rgBack').onclick = () => { RG = null; back(); };
+  const pick = cam => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = cam ? 'image/*' : 'image/*,application/pdf'; if (cam) inp.capture = 'environment';
+    inp.onchange = async () => {
+      const file = (inp.files || [])[0]; if (!file) return;
+      $('#rgProg').textContent = '送っています…';
+      try {
+        const pdf = file.type === 'application/pdf'; if (pdf && file.size > 15e6) throw new Error('PDFが大きすぎます（15MBまで）');
+        const blob = pdf ? file : await resizeImage(file, 2200, 0.85);
+        const j = await api('regFile', { data: await blobToB64(blob), mime: pdf ? 'application/pdf' : 'image/jpeg', name: [e.orderer, e.kubun].filter(Boolean).join('_') || '登録・許可' }, 120000);
+        e.files = (e.files || []).concat(j.file); renderRegEdit(v); toast('書類を入れました（保存を押すと登録に付きます）');
+      } catch (err) { $('#rgProg').textContent = ''; toast(err.message, 4000); }
+    };
+    inp.click();
+  };
+  $('#rgCam').onclick = () => pick(true); $('#rgLib').onclick = () => pick(false);
+  document.querySelectorAll('[data-rgdrop]').forEach(b => b.onclick = () => { e.files.splice(+b.dataset.rgdrop, 1); renderRegEdit(v); toast('外しました（保存するまで登録は変わりません）'); });
+  document.querySelectorAll('[data-rgview]').forEach(b => b.onclick = async () => {
+    const x = e.files[+b.dataset.rgview], w = window.open('', '_blank'); b.disabled = true;
+    try { const j = await api('regFileData', { fileId: x.fileId }, 60000); const u = URL.createObjectURL(b64ToBlob(j.data, j.mime)); if (w) w.location = u; else location.href = u; }
+    catch (err) { if (w) w.close(); toast(/見つかりません/.test(err.message) ? '保存してから開けます' : err.message, 4000); }
+    b.disabled = false;
+  });
+  $('#rgSave').onclick = async () => {
+    if (!String(e.orderer || '').trim()) { toast('発注者・許可先を入れてください'); return; }
+    const b = $('#rgSave'); b.disabled = true; b.innerHTML = '<span class="loading"></span>';
+    try {
+      const item = Object.assign({}, e); delete item._for;
+      const j = await api('regSave', { item });
+      const i = (S.regs || []).findIndex(r => r.id === j.item.id); if (i >= 0) S.regs[i] = j.item; else (S.regs = S.regs || []).push(j.item);
+      RG = null; back(); toast('保存しました');
+    } catch (err) { toast(err.message, 4000); b.disabled = false; b.textContent = '保存'; }
+  };
+  const del = $('#rgDel'); if (del) del.onclick = async () => {
+    if (!confirm('「' + e.orderer + ' ' + (e.kubun || '') + '」を消しますか？')) return;
+    del.disabled = true;
+    try {
+      await api('regDelete', { id: e.id }); const gone = S.regs.find(r => r.id === e.id); S.regs = S.regs.filter(r => r.id !== e.id); RG = null; back();
+      toast('消しました', 0, { label: '元に戻す', fn: async () => { try { await api('regDelete', { id: gone.id, undo: true }); S.regs.push(gone); render(); toast('元に戻しました'); } catch (err) { toast(err.message); } } });
+    } catch (err) { toast(err.message, 4000); del.disabled = false; }
+  };
+}
+
+/* =========================================================
    取り出す（写しのPDF・一覧のCSV）と、今のシートからの取り込み
    ========================================================= */
 function renderOut() {
@@ -491,6 +604,9 @@ function renderOut() {
       <label class="lbl">スプレッドシートのURL</label><input type="url" id="imUrl" placeholder="https://docs.google.com/spreadsheets/d/…">
       <label class="lbl">シートの名前</label><input type="text" id="imSheet" value="資格など管理">
       <div class="row2" style="margin-top:10px"><button class="btn" id="imDry">試しに見る</button><button class="btn tape" id="imGo">取り込む</button></div><div id="imOut"></div></div>
+    <div class="card"><h2>🎂 「名簿」の生年月日をタイムカードへ</h2><p class="hint" style="margin-top:0">「氏名」「生年月日」の列がある名簿シートから、タイムカードのスタッフ表に<b>生年月日が空いている人の分だけ</b>入れます（入っている人は変えません）。名前（空白は無視）が同じ人に入れます。事故報告の当事者の生年月日はここから出ます</p>
+      <label class="lbl">シートの名前</label><input type="text" id="bdSheet" value="名簿"><p class="hint">スプレッドシートのURLは、上の欄と同じものを使います</p>
+      <div class="row2" style="margin-top:10px"><button class="btn" id="bdDry">試しに見る</button><button class="btn tape" id="bdGo">入れる</button></div><div id="bdOut"></div></div>
     ${S.folder ? `<div class="card"><h2>📁 保存先</h2><p class="hint" style="margin-top:0">Googleドライブ「社内アプリ ＞ 社員の資格・免許」。一覧のスプレッドシートと、人ごとのフォルダ（写真）が入ります</p>
       <a class="btn sm" href="${esc(S.folder.url)}" target="_blank" rel="noopener">📁 フォルダを開く</a>
       ${S.folder.limited ? '<div class="note green"><b>✓ スタッフはドライブから開けない設定です</b></div>' : '<div class="note red"><b>スタッフがドライブから開ける状態です</b>ドライブで「社員の資格・免許」フォルダを右クリック →「共有」→ アクセスを「制限付き」にしてください。</div>'}</div>` : ''}`;
@@ -512,6 +628,7 @@ function renderOut() {
   };
   const runImport = async dry => {
     const url = $('#imUrl').value.trim(); if (!url) { toast('URLを入れてください'); return; }
+    lsSet('sk_sheet_url', url);
     const out = $('#imOut'); out.innerHTML = '<p class="hint"><span class="loading" style="border-top-color:var(--leaf)"></span> 読んでいます…</p>';
     try {
       const j = await api('import', { url, sheet: $('#imSheet').value.trim(), dry }, 120000);
@@ -519,6 +636,21 @@ function renderOut() {
       if (!dry) { await boot(); S.tab = 'table'; render(); toast(j.added + '件を取り込みました'); }
     } catch (e) { out.innerHTML = `<div class="note red"><b>取り込めませんでした</b>${esc(e.message)}</div>`; }
   };
+  if (!$('#imUrl').value) $('#imUrl').value = sheetUrl();
+  const runBirth = async dry => {
+    const url = $('#imUrl').value.trim(); if (!url) { toast('上の欄にスプレッドシートのURLを入れてください'); return; }
+    lsSet('sk_sheet_url', url);
+    const out = $('#bdOut'); out.innerHTML = '<p class="hint"><span class="loading" style="border-top-color:var(--leaf)"></span> 読んでいます…</p>';
+    try {
+      const j = await api('birthImport', { url, sheet: $('#bdSheet').value.trim(), dry }, 120000);
+      out.innerHTML = `<div class="note ${dry ? '' : 'green'}"><b>${dry ? '入れると' : '入れました'}：${j.filled.length}人</b>${j.filled.map(x => esc(x.name) + '　' + esc(jaDate(x.birth))).join('<br>')}
+        ${j.already.length ? `<div class="hint" style="margin-top:6px">もう入っている（変えない）：${j.already.map(x => esc(x.name) + (x.same ? '' : '（名簿と違う日付です。タイムカードで確かめてください）')).join('、')}</div>` : ''}
+        ${j.unmatched.length ? `<div class="hint" style="margin-top:6px;color:var(--danger)">タイムカードに同じ名前の人がいない：${esc(j.unmatched.join('、'))}（タイムカードの⚙設定で名前を合わせるか、人を足してください）</div>` : ''}</div>`;
+      if (!dry && j.filled.length) toast(j.filled.length + '人の生年月日を入れました', 0, { label: '元に戻す', fn: async () => { try { const u = await api('birthImport', { undo: j.filled.map(x => ({ id: x.id, birth: x.birth })) }); out.innerHTML = ''; toast(u.cleared + '人分を元に戻しました'); } catch (e) { toast(e.message, 4000); } } });
+    } catch (e) { out.innerHTML = `<div class="note red"><b>入れられませんでした</b>${esc(e.message)}</div>`; }
+  };
+  $('#bdDry').onclick = () => runBirth(true);
+  $('#bdGo').onclick = () => { if (confirm('タイムカードのスタッフ表に、空いている人の生年月日を入れますか？')) runBirth(false); };
   $('#imDry').onclick = () => runImport(true);
   $('#imGo').onclick = () => { if (confirm('取り込みますか？（取り込んだものは確認待ちになります）')) runImport(false); };
 }
