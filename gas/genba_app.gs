@@ -192,6 +192,7 @@ var AI_ROUTES = [
   ['事故_説明整理',       '事故報告：起きたことの説明を、要点と報告書の文に整える',       'opus',         30],
   ['黒板のひな型読み取り', '工事写真：黒板の写真から項目の並びを読み、ひな型にする',       'sonnet',       30],
   ['車検証読み取り',      '車両：車検証からナンバー・車名・満了日を読む',                 'sonnet',       30],
+  ['資格証読み取り',      '資格・免許：免許証・修了証の写真から、名前・番号・期限を読む（Claudeだけ）', 'sonnet', 100],
   ['保険明細読み取り',    '車両：フリート契約の証券・見積書・明細書から、契約と車ごとの明細を読む', 'opus',     20],
   ['点検記録読み取り',    '車両：年次点検の記録表・シールから検査日を読む',               'sonnet',       30],
   ['伝票読み取り',        '残材処分：計量票・伝票から日付・重さ・金額を読む',             'sonnet',       100],
@@ -218,7 +219,7 @@ function ai_(use, parts, opt) {
   for (var i = 0; i < chain.length; i++) {
     var key = chain[i], m = aiModel_(key);
     if (m.provider === 'claude' && (!keys.claude || hasAudio)) continue;
-    if (m.provider === 'gemini' && !keys.gemini) continue;
+    if (m.provider === 'gemini' && (!keys.gemini || opt.claudeOnly)) continue;   // claudeOnly：免許証など、Gemini（無料枠は学習に使われることがある）に送らないもの
     if (!first) first = key;
     var t0 = Date.now();
     try {
@@ -234,6 +235,7 @@ function ai_(use, parts, opt) {
     }
   }
   aiLog_(use, first || route.model, by, 0, 0, 0, Date.now() - started, '失敗：' + (last || 'AIのキーが登録されていません'));
+  if (!first && opt.claudeOnly) throw new Error('この読み取りは Claude だけで行います。スクリプト プロパティに ANTHROPIC_API_KEY を登録してください（手で入れることはできます）');
   if (!first) throw new Error('AIのキーが登録されていません（スクリプト プロパティに ANTHROPIC_API_KEY か GEMINI_API_KEY を登録してください）');
   if (/HTTP (429|500|503|529)|overloaded|混み/.test(last)) throw new Error('AIが混み合っていて使えませんでした。少し時間をおいて、もう一度押してください。');
   throw new Error('AIがうまく答えられませんでした。もう一度押してください。（' + last.slice(0, 80) + '）');
@@ -3986,6 +3988,7 @@ var SK_COLS = {
   items: { name: '資格・免許', cols: [['id', 'ID'], ['staffId', 'スタッフID'], ['staff', '氏名'], ['kind', '区分'], ['name', '資格・免許の名前'], ['number', '番号'], ['grade', '種類・等級'],
     ['issued', '取得日'], ['expires', '有効期限'], ['issuer', '発行・講習機関'], ['memo', 'メモ'], ['photos', '写真'], ['status', '確認'], ['checkedBy', '確認した人'], ['checkedAt', '確認日'],
     ['by', '登録した人'], ['at', '登録日時'], ['updatedBy', '更新者'], ['updatedAt', '更新日時'], ['state', '状態']] },
+  catalog: { name: '資格の一覧', cols: [['id', 'ID'], ['kind', '区分'], ['name', '資格・免許の名前'], ['state', '状態'], ['by', '足した人'], ['at', '日時']] },   // 一覧表の行・選ぶときの候補（増えていく）。name が空の行は「区分」そのものを足したもの。状態：空＝出す／隠す
   reg: { name: '会社の登録・許可', cols: [['id', 'ID'], ['orderer', '発注者・許可先'], ['number', '業者番号・許可番号'], ['kubun', '区分'], ['gyoshu', '業種（ランク）'], ['from', '有効期限（開始）'], ['to', '有効期限（終了）'],
     ['userId', '電子申請ユーザID'], ['memo', '備考'], ['files', '書類'], ['by', '登録した人'], ['at', '登録日時'], ['updatedBy', '更新者'], ['updatedAt', '更新日時'], ['state', '状態']] },   // 入札参加資格・建設業許可・収集運搬の許可など（親方・事務担当だけ）
   photos: { name: '写真', cols: [['photoId', '写真ID'], ['itemId', '資格ID'], ['staffId', 'スタッフID'], ['side', '面'], ['fileId', 'ファイルID'], ['url', 'リンク'], ['by', '撮った人'], ['at', '日時'], ['state', '状態']] }
@@ -4076,6 +4079,10 @@ function shikakuPost_(b) {
       case 'photoData': return skPhotoData_(b, me);
       case 'photoDel':  return withLockRaw_(function () { return skPhotoDel_(b, me); });
       case 'import':    return skImport_(b, me);
+      case 'read':      return skRead_(b, me);
+      case 'catAdd':    return withLockRaw_(function () { return skCatAdd_(b, me); });
+      case 'catSet':    return withLockRaw_(function () { return skCatSet_(b, me); });
+      case 'catRename': return withLockRaw_(function () { return skCatRename_(b, me); });
       case 'regSave':   return withLockRaw_(function () { return skRegSave_(b, me); });
       case 'regDelete': return withLockRaw_(function () { return skRegDelete_(b, me); });
       case 'regImport': return skRegImport_(b, me);
@@ -4091,7 +4098,7 @@ function skInit_(me) {
   var staff = jkStaff_(); if (!admin) staff = staff.filter(function (s) { return s.id === me.id; });
   var folder = null; if (admin) { try { var f = skFolder_(); folder = { url: f.getUrl(), limited: prop_('SK_LIMITED', '') === f.getId() }; } catch (e) {} }
   var regs = admin ? skRows_('reg').filter(function (r) { return r.state !== '削除'; }).map(skReg_) : [];
-  return { ok: true, me: me, admin: admin, staff: staff, items: items, regs: regs, kinds: SK_KINDS, folder: folder, now: now_() };
+  return { ok: true, me: me, admin: admin, staff: staff, items: items, regs: regs, kinds: skKinds_(), catalog: skCatalog_(), folder: folder, now: now_() };
 }
 function skBadge_(me) {
   var today = ymd_(new Date()), soon = addDays_(today, 60), admin = skAdmin_(me), n = 0, wait = 0;
@@ -4117,6 +4124,8 @@ function skSave_(b, me) {
     number: String(it.number || '').slice(0, 60), grade: String(it.grade || '').slice(0, 80), issued: String(it.issued || ''), expires: String(it.expires || ''),
     issuer: String(it.issuer || '').slice(0, 80), memo: String(it.memo || '').slice(0, 500), photos: JSON.stringify(Array.isArray(it.photos) ? it.photos.slice(0, 6) : []),
     updatedBy: me.disp, updatedAt: now_(), state: '' };
+  rec.kind = skKinds_().indexOf(it.kind) >= 0 ? it.kind : 'その他';
+  skCatEnsure_(rec.kind, rec.name, me);   // 新しい資格の名前は、一覧（みんなの候補・一覧表の行）にも足す
   if (!old) { rec.by = me.disp; rec.at = now_(); rec.status = admin ? '確認済' : '確認待ち'; if (admin) { rec.checkedBy = me.disp; rec.checkedAt = ymd_(new Date()); } }
   else if (!admin) { rec.status = '確認待ち'; rec.checkedBy = ''; rec.checkedAt = ''; }   // 本人が直したら、もう一度確かめてもらう
   skUpsert_('items', 'id', rec);
@@ -4393,4 +4402,82 @@ function skBirthImport_(b, me) {
   for (var i = 1; i < vals.length; i++) { var n = String(vals[i][cn] || '').trim(), d = warekiYmd_(vals[i][cb]); if (n && d) list.push({ name: n, birth: d }); }
   var r = tc.fillBirths(list, me.disp, { dry: !!b.dry });
   return { ok: true, dry: !!b.dry, filled: r.filled, already: r.already, unmatched: r.unmatched };
+}
+
+/* ---------- 資格の一覧（増えていく）：一覧表の行と、登録するときの候補 ---------- */
+function skCatalog_() { return skRows_('catalog').filter(function (r) { return r.state !== '削除'; }).map(function (r) { return { id: r.id, kind: r.kind, name: r.name, state: r.state }; }); }
+function skKinds_() {
+  var out = SK_KINDS.slice();
+  skRows_('catalog').forEach(function (r) { if (!r.name && r.kind && r.state !== '削除' && r.state !== '隠す' && out.indexOf(r.kind) < 0) out.splice(out.length - 1, 0, r.kind); });   // 「その他」は最後のまま
+  return out;
+}
+function skCatKey_(s) { return String(s || '').normalize('NFKC').replace(/[\s　]/g, ''); }
+function skCatEnsure_(kind, name, me) {
+  if (!name) return;
+  var hit = skRows_('catalog').filter(function (r) { return r.kind === kind && skCatKey_(r.name) === skCatKey_(name) && r.state !== '削除'; })[0];
+  if (hit) { if (hit.state === '隠す') skUpsert_('catalog', 'id', { id: hit.id, state: '' }); return; }
+  skUpsert_('catalog', 'id', { id: 'C-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), kind: kind, name: String(name).slice(0, 80), state: '', by: me.disp, at: now_() });
+}
+function skCatAdd_(b, me) {   // 名前を足す（だれでも。登録するときに自動でも足される）／区分を足す（親方・事務担当）
+  var kind = vinsT_(b.kind, 30), name = vinsT_(b.name, 80);
+  if (!kind) return { ok: false, error: '区分を入れてください' };
+  if (!name) {
+    if (!skAdmin_(me)) return { ok: false, error: '区分を足せるのは親方と事務担当です' };
+    if (skKinds_().indexOf(kind) >= 0) return { ok: false, error: '「' + kind + '」はもうあります' };
+    var id = 'C-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    skUpsert_('catalog', 'id', { id: id, kind: kind, name: '', state: '', by: me.disp, at: now_() });
+    return { ok: true, id: id, kinds: skKinds_(), catalog: skCatalog_() };
+  }
+  if (skKinds_().indexOf(kind) < 0) return { ok: false, error: '区分「' + kind + '」がありません' };
+  skCatEnsure_(kind, name, me);
+  var hit = skRows_('catalog').filter(function (r) { return r.kind === kind && skCatKey_(r.name) === skCatKey_(name) && r.state !== '削除'; })[0];
+  return { ok: true, id: hit && hit.id, kinds: skKinds_(), catalog: skCatalog_() };
+}
+function skCatSet_(b, me) {   // 隠す・出す・消す（「元に戻す」は前の状態を送る）
+  if (!skAdmin_(me)) return { ok: false, error: '親方と事務担当だけができます' };
+  var st = ['', '隠す', '削除'].indexOf(b.state) >= 0 ? b.state : '';
+  var hit = skRows_('catalog').filter(function (r) { return r.id === String(b.id); })[0];
+  if (!hit) { if (!b.kind) return { ok: false, error: '見つかりません' }; skUpsert_('catalog', 'id', { id: String(b.id || ('C-' + Date.now().toString(36))), kind: vinsT_(b.kind, 30), name: vinsT_(b.name, 80), state: st, by: me.disp, at: now_() }); }
+  else skUpsert_('catalog', 'id', { id: hit.id, state: st });
+  return { ok: true, kinds: skKinds_(), catalog: skCatalog_() };
+}
+/** 名前を直す・まとめる（表記ゆれ）：一覧の名前と、その名前で登録された全員分を直す。changed を送り返すと元に戻す */
+function skCatRename_(b, me) {
+  if (!skAdmin_(me)) return { ok: false, error: '親方と事務担当だけができます' };
+  if (Array.isArray(b.undo)) {
+    b.undo.forEach(function (u) { if (u.item) skUpsert_('items', 'id', { id: u.item, name: u.name, kind: u.kind }); if (u.cat) skUpsert_('catalog', 'id', { id: u.cat, name: u.name, kind: u.kind, state: u.state || '' }); });
+    return { ok: true, kinds: skKinds_(), catalog: skCatalog_() };
+  }
+  var kind = vinsT_(b.kind, 30), from = vinsT_(b.from, 80), to = vinsT_(b.to, 80), toKind = vinsT_(b.toKind, 30) || kind;
+  if (!from || !to) return { ok: false, error: '名前を入れてください' };
+  if (skKinds_().indexOf(toKind) < 0) return { ok: false, error: '区分「' + toKind + '」がありません' };
+  var changed = [], cats = skRows_('catalog');
+  skRows_('items').forEach(function (r) { if (r.state !== '削除' && r.kind === kind && skCatKey_(r.name) === skCatKey_(from)) { changed.push({ item: r.id, name: r.name, kind: r.kind }); skUpsert_('items', 'id', { id: r.id, name: to, kind: toKind, updatedBy: me.disp, updatedAt: now_() }); } });
+  var same = cats.filter(function (r) { return r.kind === toKind && skCatKey_(r.name) === skCatKey_(to) && r.state !== '削除'; })[0];
+  cats.forEach(function (r) {
+    if (r.kind !== kind || skCatKey_(r.name) !== skCatKey_(from) || r.state === '削除') return;
+    changed.push({ cat: r.id, name: r.name, kind: r.kind, state: r.state });
+    if (same && same.id !== r.id) skUpsert_('catalog', 'id', { id: r.id, state: '削除' });   // まとめた先がもうあれば、こちらは消す
+    else skUpsert_('catalog', 'id', { id: r.id, name: to, kind: toKind });
+  });
+  if (!changed.some(function (c) { return c.cat; }) && !same) { var nid = 'C-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); skUpsert_('catalog', 'id', { id: nid, kind: toKind, name: to, state: '', by: me.disp, at: now_() }); changed.push({ cat: nid, name: to, kind: toKind, state: '削除' }); }
+  try { CacheService.getScriptCache().remove('jk_apps'); } catch (e) {}
+  return { ok: true, changed: changed, n: changed.filter(function (c) { return c.item; }).length, kinds: skKinds_(), catalog: skCatalog_() };
+}
+/* ---------- 写真から読み取る（免許証・修了証）。Claude だけに送る。住所・生年月日・本籍は読まない ---------- */
+function skRead_(b, me) {
+  if (!b.data) return { ok: false, error: '写真がありません' };
+  var kinds = skKinds_(), names = (Array.isArray(b.names) ? b.names : []).slice(0, 300).map(function (n) { return String(n).slice(0, 80); });
+  var prompt = 'これは日本の運転免許証、または技能講習・特別教育・安全衛生教育の修了証、国家資格の免許証・合格証・登録証の写真です（切り抜いてあります）。' +
+    '次の項目だけを読み取り、JSONだけ返してください。住所・生年月日・本籍・顔写真の様子は読まないで、返さないでください。' +
+    '{"kind":"区分。次から1つ：' + JSON.stringify(kinds) + '","name":"資格・免許の正式な名前。次の候補に同じものがあれば候補の文字のまま：' + JSON.stringify(names) + '。運転免許証なら「自動車運転免許証」",' +
+    '"holder":"資格を持っている人の氏名（書かれたとおり）","number":"免許証番号・修了証番号・登録番号",' +
+    '"grade":"運転免許なら持っている種類を、次の文字で「・」区切り：' + JSON.stringify(['普通', '準中型（5t限定）', '準中型', '中型（8t限定）', '中型', '大型', '大型特殊', '普通二輪', '大型二輪', '牽引']) + '（「準中型で運転できる準中型車は準中型車(5t)に限る」は準中型（5t限定）、「中型車は中型車(8t)に限る」は中型（8t限定））。運転免許以外は、吊り上げ荷重・作業床の高さなどの区分があれば短く。無ければ空",' +
+    '"issued":"交付日・修了日・取得日を西暦 YYYY-MM-DD（平成n年＝1988+n年、令和n年＝2018+n年、昭和n年＝1925+n年）",' +
+    '"expires":"有効期限（「〇年〇月〇日まで有効」）を西暦 YYYY-MM-DD。無ければ空","issuer":"発行した所（〇〇県公安委員会・講習を行った機関の名前など）",' +
+    '"side":"写っている面：表・裏・修了証 のどれか"}。読めない項目は空文字。推測で埋めない。';
+  var j = ai_('資格証読み取り', [{ inline_data: { mime_type: 'image/jpeg', data: b.data } }, { text: prompt }], { claudeOnly: true }) || {};
+  var t = function (v, n) { return vinsT_(v, n || 80); };
+  return { ok: true, data: { kind: kinds.indexOf(j.kind) >= 0 ? j.kind : '', name: t(j.name), holder: t(j.holder, 40), number: t(j.number, 40).normalize('NFKC'), grade: t(j.grade),
+    issued: warekiYmd_(j.issued), expires: warekiYmd_(j.expires), issuer: t(j.issuer), side: ['表', '裏', '修了証'].indexOf(j.side) >= 0 ? j.side : '' } };
 }

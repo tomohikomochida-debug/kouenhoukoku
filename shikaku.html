@@ -45,6 +45,7 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--leaf);outline-of
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{border:1px solid var(--line);background:var(--field);border-radius:999px;padding:8px 14px;font-size:14.5px;cursor:pointer;color:var(--ink);font-family:inherit;line-height:1.3}
 .chip.on{background:var(--leaf);border-color:var(--leaf);color:#fff;font-weight:700}
+.chip.on.aichip{box-shadow:0 0 0 3px #E8C95A}
 .tag{display:inline-block;font-size:11.5px;border-radius:6px;padding:1px 7px;margin:0 4px 2px 0;background:#EEE;color:var(--bark);white-space:nowrap}
 .tag.ok{background:var(--leaf-soft);color:var(--leaf);font-weight:700}
 .tag.wait{background:#FFF1D6;color:#8A5A00;font-weight:700}
@@ -77,6 +78,10 @@ nav.tabs .badge{position:absolute;top:3px;left:calc(50% + 8px);background:var(--
 .btn:not(.primary):not(.tape) .loading{border-color:var(--line);border-top-color:var(--leaf)}
 @keyframes spin{to{transform:rotate(360deg)}}
 .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
+.wd{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.wd select{width:auto;flex:1;min-width:64px;padding:8px 4px}.wd .wdx{font-size:12px;color:var(--bark);min-width:44px}.wd .wdc{border:0;background:none;font-size:16px;color:var(--bark);cursor:pointer;padding:4px}
+.ai input,.ai select,input.ai,.wd.ai select{background:#FFF7D6;border-color:#E8C95A}
+.cropw{width:100%;text-align:center;touch-action:none}.cropw canvas{max-width:100%;touch-action:none;border-radius:6px;background:#222}
+.readbig{display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px;font-size:16px}.readbig small{font-weight:400;color:var(--bark);font-size:12px}.btn.primary.readbig small{color:rgba(255,255,255,.88)}
 .th{position:relative;width:110px;height:78px;border-radius:8px;overflow:hidden;background:var(--leaf-soft);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--bark);border:1px solid var(--line);cursor:pointer}
 .th img{width:100%;height:100%;object-fit:cover;display:block}
 .th .lab{position:absolute;left:3px;bottom:3px;font-size:10.5px;background:rgba(0,0,0,.6);color:#fff;border-radius:4px;padding:0 5px}
@@ -98,6 +103,7 @@ table.matrix td.c.exp{color:var(--danger);font-weight:800;background:#FDF3F0}
 .pick input{width:22px;height:22px}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.matrix td.add{color:#C9C3B5;cursor:pointer;text-align:center}.matrix td.add:hover,.matrix td.add:active{background:#EEF4EF;color:var(--leaf)}
 </style>
 </head>
 <body>
@@ -129,7 +135,7 @@ table.matrix td.c.exp{color:var(--danger);font-weight:800;background:#FDF3F0}
    ・ログインはタイムカードと同じ。サーバーは現場アプリGAS（app=shikaku）
    ========================================================= */
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
-const KINDS = ['運転免許', '技能講習', '特別教育', '安全衛生教育', '国家資格・技能士', 'その他'];
+const KINDS0 = ['運転免許', '技能講習', '特別教育', '安全衛生教育', '国家資格・技能士', 'その他'];   // はじめの区分（親方・事務担当が増やせる）
 /* よく使う資格の名前（選ぶだけで入る。無いものは手で入れる） */
 const CATALOG = {
   '運転免許': ['自動車運転免許証'],
@@ -178,6 +184,99 @@ const blobToB64 = b => new Promise((ok, ng) => { const r = new FileReader(); r.o
 const b64ToBlob = (d, m) => { const bin = atob(d), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type: m || 'image/jpeg' }); };
 function loadScript(src) { return new Promise((ok, ng) => { if (document.querySelector(`script[src="${src}"]`)) return ok(); const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ng(new Error('部品を読み込めませんでした（電波を確かめてください）')); document.head.appendChild(s); }); }
 
+/* ---------------- 和暦（免許証・修了証は和暦で書いてあるので、和暦で選べるように） ---------------- */
+const ERAS = [['令和', 2018, '2019-05-01'], ['平成', 1988, '1989-01-08'], ['昭和', 1925, '1926-12-25']];
+function toWareki(s) {
+  const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); if (!m) return null;
+  const e = ERAS.find(x => s.slice(0, 10) >= x[2]) || ERAS[2];
+  return { era: e[0], y: +m[1] - e[1], m: +m[2], d: +m[3] };
+}
+const wj = s => { const w = toWareki(s); return w ? `${w.era}${w.y === 1 ? '元' : w.y}年${w.m}月${w.d}日（${s.slice(0, 4)}年）` : (s || ''); };
+/* 元号・年・月・日の選ぶ欄。値は西暦 YYYY-MM-DD で data-wd の hidden に入る */
+function wdField(id, val, ai) {
+  const w = toWareki(val) || { era: '', y: '', m: '', d: '' };
+  const opt = (n, from, to, cur, unit) => { let h = `<option value="">${n}</option>`; for (let i = from; i <= to; i++) h += `<option value="${i}"${+cur === i ? ' selected' : ''}>${i === 1 && unit === '年' ? '元' : i}${unit}</option>`; return h; };
+  const maxY = 64;
+  return `<div class="wd${ai ? ' ai' : ''}" data-wd="${id}"><input type="hidden" id="${id}" value="${esc(val || '')}">
+    <select data-wp="era"><option value="">元号</option>${ERAS.map(e => `<option${w.era === e[0] ? ' selected' : ''}>${e[0]}</option>`).join('')}</select>
+    <select data-wp="y">${opt('年', 1, maxY, w.y, '年')}</select><select data-wp="m">${opt('月', 1, 12, w.m, '月')}</select><select data-wp="d">${opt('日', 1, 31, w.d, '日')}</select>
+    <span class="wdx">${val ? esc(val.slice(0, 4)) + '年' : ''}</span>${val ? `<button type="button" class="wdc" data-wclr="${id}" title="空にする">×</button>` : ''}</div>`;
+}
+function bindWd(onChange) {
+  document.querySelectorAll('[data-wd]').forEach(box => {
+    const id = box.dataset.wd, g = k => box.querySelector(`[data-wp="${k}"]`).value;
+    box.onchange = () => {
+      const era = ERAS.find(e => e[0] === g('era')), y = +g('y'), m = +g('m'), d = +g('d');
+      let v = '';
+      if (era && y && m && d) { const yy = era[1] + y; v = yy + '-' + pad(m) + '-' + pad(Math.min(d, new Date(yy, m, 0).getDate())); }
+      $('#' + id).value = v; box.querySelector('.wdx').textContent = v ? v.slice(0, 4) + '年' : '';
+      if (v || !g('era')) onChange && onChange(id, v);
+    };
+  });
+  document.querySelectorAll('[data-wclr]').forEach(b => b.onclick = () => onChange && onChange(b.dataset.wclr, '', true));
+}
+
+/* ---------------- 資格の一覧（増えていく）：はじめからある候補＋みんなが足した名前。親方・事務担当は隠す・名前を直す・まとめる ---------------- */
+let KINDS = KINDS0.slice(), CAT = [];   // CAT：サーバーの「資格の一覧」
+const catKey = s => String(s || '').normalize('NFKC').replace(/[\s　]/g, '');
+function catalogFor(kind, withHidden) {
+  const hidden = new Set(CAT.filter(c => c.kind === kind && c.state === '隠す' && c.name).map(c => catKey(c.name)));
+  const out = [], seen = new Set();
+  (CATALOG[kind] || []).concat(CAT.filter(c => c.kind === kind && c.name && c.state !== '隠す').map(c => c.name)).forEach(n => { const k = catKey(n); if (seen.has(k)) return; seen.add(k); if (withHidden || !hidden.has(k)) out.push(n); });
+  return out;
+}
+const isHidden = (kind, name) => CAT.some(c => c.kind === kind && c.state === '隠す' && catKey(c.name) === catKey(name));
+const allNames = () => KINDS.flatMap(k => catalogFor(k));
+
+/* ---------------- 切り取り（トリミング）：四隅を動かして必要な所だけにする。回す・切らずに使う も ---------------- */
+function openCrop(blob, title) {
+  return new Promise(done => {
+    let img = new Image(), url = URL.createObjectURL(blob), R = null, drag = null, scale = 1;
+    const finish = v => { $('#modal').dataset.lock = ''; URL.revokeObjectURL(url); closeModal(); done(v); };
+    openModal(`<h3>✂ ${esc(title || '必要な所だけに切り取る')}</h3><p class="hint" style="margin-top:0">四隅の丸を動かして、カード・修了証の<b>ふちに合わせて</b>ください。枠の中をなぞると全体が動きます。</p>
+      <div class="cropw"><canvas id="cpC"></canvas></div>
+      <div class="row2" style="margin-top:8px"><button type="button" class="btn sm" id="cpRot">↻ 回す</button><button type="button" class="btn sm" id="cpAll">全体にする</button><button type="button" class="btn sm" id="cpRaw">切らずに使う</button></div>
+      <div class="row2" style="margin-top:10px"><button type="button" class="btn" id="cpNo">やめる</button><button type="button" class="btn primary" id="cpOk" style="flex:2">✂ これで切り取る</button></div>`);
+    $('#modal').dataset.lock = '1';
+    const cv = $('#cpC'), x = cv.getContext('2d');
+    const reset = (full) => { const W = img.naturalWidth, H = img.naturalHeight, m = full ? 0 : 0.05; R = { x: W * m, y: H * m, w: W * (1 - 2 * m), h: H * (1 - 2 * m) }; };
+    const layout = () => { const maxW = $('.cropw').clientWidth || 340, maxH = window.innerHeight * 0.55; scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight); cv.width = Math.round(img.naturalWidth * scale); cv.height = Math.round(img.naturalHeight * scale); draw(); };
+    const draw = () => {
+      x.clearRect(0, 0, cv.width, cv.height); x.drawImage(img, 0, 0, cv.width, cv.height);
+      const r = { x: R.x * scale, y: R.y * scale, w: R.w * scale, h: R.h * scale };
+      x.fillStyle = 'rgba(0,0,0,.5)'; x.fillRect(0, 0, cv.width, r.y); x.fillRect(0, r.y + r.h, cv.width, cv.height - r.y - r.h); x.fillRect(0, r.y, r.x, r.h); x.fillRect(r.x + r.w, r.y, cv.width - r.x - r.w, r.h);
+      x.strokeStyle = '#FFD24A'; x.lineWidth = 2; x.strokeRect(r.x, r.y, r.w, r.h);
+      [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]].forEach(([a, b]) => { x.beginPath(); x.arc(a, b, 11, 0, 7); x.fillStyle = '#FFD24A'; x.fill(); x.strokeStyle = '#333'; x.lineWidth = 1.5; x.stroke(); });
+    };
+    const pos = ev => { const b = cv.getBoundingClientRect(); return { x: (ev.clientX - b.left) / scale * (cv.width / b.width), y: (ev.clientY - b.top) / scale * (cv.height / b.height) }; };
+    cv.onpointerdown = ev => {
+      const p = pos(ev), tol = 30 / scale, cs = [['tl', R.x, R.y], ['tr', R.x + R.w, R.y], ['bl', R.x, R.y + R.h], ['br', R.x + R.w, R.y + R.h]];
+      const c = cs.find(q => Math.abs(q[1] - p.x) < tol && Math.abs(q[2] - p.y) < tol);
+      drag = c ? { mode: c[0] } : (p.x > R.x && p.x < R.x + R.w && p.y > R.y && p.y < R.y + R.h ? { mode: 'move', ox: p.x - R.x, oy: p.y - R.y } : { mode: 'new', sx: p.x, sy: p.y });
+      cv.setPointerCapture(ev.pointerId); ev.preventDefault();
+    };
+    cv.onpointermove = ev => {
+      if (!drag) return; const p = pos(ev), W = img.naturalWidth, H = img.naturalHeight, cl = (v, a, b) => Math.max(a, Math.min(b, v)), min = 40;
+      let x1 = R.x, y1 = R.y, x2 = R.x + R.w, y2 = R.y + R.h;
+      if (drag.mode === 'move') { const nx = cl(p.x - drag.ox, 0, W - R.w), ny = cl(p.y - drag.oy, 0, H - R.h); x2 = nx + R.w; y2 = ny + R.h; x1 = nx; y1 = ny; }
+      else if (drag.mode === 'new') { x1 = cl(Math.min(drag.sx, p.x), 0, W); x2 = cl(Math.max(drag.sx, p.x), 0, W); y1 = cl(Math.min(drag.sy, p.y), 0, H); y2 = cl(Math.max(drag.sy, p.y), 0, H); }
+      else { if (drag.mode[1] === 'l') x1 = cl(p.x, 0, x2 - min); else x2 = cl(p.x, x1 + min, W); if (drag.mode[0] === 't') y1 = cl(p.y, 0, y2 - min); else y2 = cl(p.y, y1 + min, H); }
+      if (x2 - x1 >= min && y2 - y1 >= min) R = { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+      draw(); ev.preventDefault();
+    };
+    cv.onpointerup = cv.onpointercancel = () => { drag = null; };
+    const out = (r) => new Promise(ok => { const k = Math.min(1, 2000 / Math.max(r.w, r.h)), c = document.createElement('canvas'); c.width = Math.round(r.w * k); c.height = Math.round(r.h * k); const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height); c.toBlob(ok, 'image/jpeg', 0.88); });
+    $('#cpRot').onclick = () => { const c = document.createElement('canvas'); c.width = img.naturalHeight; c.height = img.naturalWidth; const g = c.getContext('2d'); g.translate(c.width, 0); g.rotate(Math.PI / 2); g.drawImage(img, 0, 0); c.toBlob(b => { URL.revokeObjectURL(url); url = URL.createObjectURL(b); const n = new Image(); n.onload = () => { img = n; reset(); layout(); }; n.src = url; }, 'image/jpeg', 0.92); };
+    $('#cpAll').onclick = () => { reset(true); draw(); };
+    $('#cpNo').onclick = () => finish(null);
+    $('#cpRaw').onclick = async () => finish(await out({ x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight }));
+    $('#cpOk').onclick = async () => finish(await out(R));
+    img.onload = () => { reset(); layout(); };
+    img.onerror = () => { toast('写真を開けませんでした'); finish(null); };
+    img.src = url;
+  });
+}
+
 /* ---------------- 状態 ---------------- */
 const S = { token: lsGet('tc_token', ''), me: null, admin: false, staff: [], items: [], tab: 'mine', view: null, loaded: false, outSel: { people: [], kinds: [] } };
 const staffById = id => S.staff.find(s => String(s.id) === String(id)) || {};
@@ -225,6 +324,7 @@ function render() {
   if (v && v.name === 'item') return renderItem(v.id);
   if (v && v.name === 'person') return renderPerson(v.id);
   if (v && v.name === 'regEdit' && S.admin) return renderRegEdit(v);
+  if (v && v.name === 'catalog' && S.admin) return renderCatalog();
   setHeader('🪪 資格・免許', false);
   if (!S.admin || S.tab === 'mine') return renderPerson(S.me.id, true);
   if (S.tab === 'table') return renderTable();
@@ -264,7 +364,7 @@ async function logout() { try { await post({ app: 'timecard', action: 'logout', 
 async function boot() {
   try {
     const j = await api('init', {}, 45000);
-    S.me = j.me; S.admin = !!j.admin; S.staff = j.staff || []; S.items = j.items || []; S.regs = j.regs || []; S.folder = j.folder; S.loaded = true;
+    S.me = j.me; S.admin = !!j.admin; S.staff = j.staff || []; S.items = j.items || []; S.regs = j.regs || []; if (j.kinds && j.kinds.length) KINDS = j.kinds; CAT = j.catalog || []; S.folder = j.folder; S.loaded = true;
     if (S.admin && S.tab === 'mine' && !lsGet('sk_tab_seen')) { S.tab = 'table'; lsSet('sk_tab_seen', 1); }
     render();
   } catch (e) {
@@ -291,11 +391,13 @@ function renderPerson(staffId, mine) {
     <p class="hint" style="margin-top:0">修了証や免許証の写真を撮って登録してください。見られるのは、あなたと親方・事務担当だけです。</p>
     ${!lic ? '<div class="note"><b>運転免許証がまだ登録されていません</b>表と裏の写真を撮ってください。</div>' : ''}</div>`;
   else h += `<div class="card"><h2>${esc(nameOf(staffId))}</h2><p class="hint" style="margin:0">${list.length}件　${list.filter(it => it.status !== '確認済').length ? `確認待ち ${list.filter(it => it.status !== '確認済').length}件` : ''}</p></div>`;
+  h += `<button class="btn primary block readbig" id="quickRead" style="margin-bottom:8px">📷 免許証・修了証を撮って登録<small>撮る → 切り取る → AIが読み取って仕分け → 足りない所だけ手で</small></button>`;
   h += `<div class="row2" style="margin-bottom:12px"><button class="btn tape" data-add="運転免許">🪪 運転免許証を登録</button><button class="btn primary" data-add="">＋ 資格を登録</button></div>`;
   h += byKind.length ? byKind.map(([k, l]) => `<h3>${esc(k)}（${l.length}）</h3>${l.map(itemCard).join('')}`).join('') : '<div class="empty">まだ登録がありません</div>';
   $('#main').innerHTML = h;
   document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => go({ name: 'item', id: b.dataset.open }));
   document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => go({ name: 'edit', staffId, kind: b.dataset.add || '' }));
+  $('#quickRead').onclick = () => { ED = null; go({ name: 'edit', staffId, kind: '', t: Date.now() }); pickMode = 'read'; const el = $('#fileCam'); el.value = ''; el.click(); };
 }
 function renderPeople() {
   const ppl = S.staff;
@@ -313,7 +415,7 @@ function renderItem(id) {
   const it = S.items.find(x => x.id === id);
   setHeader('🪪 資格・免許', true);
   if (!it) { $('#main').innerHTML = '<div class="empty">見つかりません</div>'; return; }
-  const rows = [['持っている人', nameOf(it.staffId) || it.staff], ['区分', it.kind], [it.kind === '運転免許' ? '免許の種類' : '種類・等級', it.grade], ['番号', it.number], ['取得日', jaDate(it.issued)], ['有効期限', it.expires ? jaDate(it.expires) : ''], ['発行・講習機関', it.issuer], ['メモ', it.memo], ['登録', [it.by, it.at].filter(Boolean).join('　')], ['確認', it.status === '確認済' ? '確認済（' + [it.checkedBy, jaDate(it.checkedAt)].filter(Boolean).join('・') + '）' : '確認待ち']].filter(r => r[1]);
+  const rows = [['持っている人', nameOf(it.staffId) || it.staff], ['区分', it.kind], [it.kind === '運転免許' ? '免許の種類' : '種類・等級', it.grade], ['番号', it.number], [it.kind === '運転免許' ? '交付日' : '取得日', wj(it.issued)], ['有効期限', it.expires ? wj(it.expires) : ''], ['発行・講習機関', it.issuer], ['メモ', it.memo], ['登録', [it.by, it.at].filter(Boolean).join('　')], ['確認', it.status === '確認済' ? '確認済（' + [it.checkedBy, jaDate(it.checkedAt)].filter(Boolean).join('・') + '）' : '確認待ち']].filter(r => r[1]);
   $('#main').innerHTML = `<div class="card"><h2>${esc(it.name)}</h2><div>${statusTag(it)}${expTag(it)}</div>
     <dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
     <h3>写真</h3>${(it.photos || []).length ? `<div class="thumbs">${it.photos.map((p, i) => `<div class="th" data-ph="${i}"><span>…</span><span class="lab">${esc(p.side || '')}</span></div>`).join('')}</div>` : '<p class="hint">写真がありません</p>'}
@@ -364,22 +466,28 @@ let ED = null;   // 入力中の内容（「やめる」で捨てる・元のも
 function renderEdit(v) {
   if (!ED || ED._key !== JSON.stringify(v)) {
     const old = v.id ? S.items.find(x => x.id === v.id) : null;
-    ED = old ? JSON.parse(JSON.stringify(old)) : { id: newId(), staffId: v.staffId || S.me.id, kind: v.kind || '', name: v.kind === '運転免許' ? '自動車運転免許証' : '', number: '', grade: '', issued: '', expires: '', issuer: v.kind === '運転免許' ? '神奈川県公安委員会' : '', memo: '', photos: [] };
+    ED = old ? JSON.parse(JSON.stringify(old)) : { id: newId(), staffId: v.staffId || S.me.id, kind: v.kind || '', name: v.preName || (v.kind === '運転免許' ? '自動車運転免許証' : ''), number: '', grade: '', issued: '', expires: '', issuer: v.kind === '運転免許' ? '神奈川県公安委員会' : '', memo: '', photos: [] };
     ED._key = JSON.stringify(v); ED._new = !old; ED._uploaded = [];
   }
-  const e = ED, lic = e.kind === '運転免許';
+  const e = ED, lic = e.kind === '運転免許', ai = new Set(e._ai || []), A = k => ai.has(k) ? ' class="ai"' : '';
   setHeader(e._new ? '＋ 登録する' : '✏️ 直す', true);
-  const opts = (CATALOG[e.kind] || []).map(n => `<option value="${esc(n)}">`).join('');
+  const opts = catalogFor(e.kind).map(n => `<option value="${esc(n)}">`).join('');
+  const holderNg = e._holder && catKey(e._holder) !== catKey(nameOf(e.staffId)) && !catKey(nameOf(e.staffId)).startsWith(catKey(e._holder));
   const sides = lic ? ['表', '裏'] : ['修了証', '裏・続き'];
   $('#main').innerHTML = `<div class="card">
     ${S.admin && String(e.staffId) !== String(S.me.id) ? `<div class="note green" style="margin-top:0"><b>${esc(nameOf(e.staffId))}さんの分</b>親方・事務担当が代わりに登録しています</div>` : ''}
+    <button type="button" class="btn primary block readbig" id="rdCam">📷 撮って自動で読み取る<small>撮る → 必要な所だけ切り取る → AIが名前・番号・日付を入れて仕分け → 足りない所だけ手で</small></button>
+    <button type="button" class="btn sm block" id="rdLib" style="margin-top:6px">🖼 撮ってある写真から読み取る</button>
+    <div id="rdMsg">${e._ai && e._ai.length ? `<div class="note green"><b>AIが読み取って入れました（黄色の欄）</b>写真と見比べて、違う所は直してください。空いている所は手で入れてください。</div>` : ''}${e._readErr ? `<div class="note red"><b>読み取れませんでした</b>${esc(e._readErr)}（写真は入っています。手で入れてください）</div>` : ''}
+      ${holderNg ? `<div class="note red"><b>名前が違うかもしれません</b>写真の名前は「${esc(e._holder)}」、登録する人は「${esc(nameOf(e.staffId))}」です。人違いでないか確かめてください。</div>` : ''}</div>
     <label class="lbl">区分<span class="req">必須</span></label><div class="chips">${KINDS.map(k => `<button type="button" class="chip${e.kind === k ? ' on' : ''}" data-kind="${esc(k)}">${esc(k)}</button>`).join('')}</div>
-    <label class="lbl">資格・免許の名前<span class="req">必須</span></label><input type="text" id="fName" list="dlCat" value="${esc(e.name)}" placeholder="${lic ? '自動車運転免許証' : '一覧から選ぶか、手で入れる'}"><datalist id="dlCat">${opts}</datalist>
-    ${lic ? `<label class="lbl">免許の種類（いくつでも）</label><div class="chips">${LICENSE_TYPES.map(t => `<button type="button" class="chip${(e.grade || '').split('・').includes(t) ? ' on' : ''}" data-lt="${esc(t)}">${esc(t)}</button>`).join('')}</div>`
-      : `<label class="lbl">種類・等級（あれば）</label><input type="text" id="fGrade" value="${esc(e.grade)}" placeholder="例：吊り上げ荷重5t未満">`}
-    <label class="lbl">${lic ? '免許証の番号' : '修了証・登録の番号'}</label><input type="text" id="fNumber" value="${esc(e.number)}" inputmode="${lic ? 'numeric' : 'text'}">
-    <div class="row2"><div><label class="lbl">${lic ? '交付日' : '取得日・修了日'}</label><input type="date" id="fIssued" value="${esc(e.issued)}"></div><div><label class="lbl">有効期限${lic ? '<span class="req">必須</span>' : '（あれば）'}</label><input type="date" id="fExpires" value="${esc(e.expires)}"></div></div>
-    <label class="lbl">${lic ? '公安委員会' : '発行・講習機関'}</label><input type="text" id="fIssuer" value="${esc(e.issuer)}" placeholder="${lic ? '神奈川県公安委員会' : '例：○○教習所、建設業労働災害防止協会'}">
+    <label class="lbl">資格・免許の名前<span class="req">必須</span></label><input type="text" id="fName"${A('name')} list="dlCat" value="${esc(e.name)}" placeholder="${lic ? '自動車運転免許証' : '一覧から選ぶか、手で入れる'}"><datalist id="dlCat">${opts}</datalist>
+    ${lic ? `<label class="lbl">免許の種類（いくつでも）</label><div class="chips">${LICENSE_TYPES.map(t => `<button type="button" class="chip${(e.grade || '').split('・').includes(t) ? ' on' : ''}${ai.has('grade') && (e.grade || '').split('・').includes(t) ? ' aichip' : ''}" data-lt="${esc(t)}">${esc(t)}</button>`).join('')}</div>`
+      : `<label class="lbl">種類・等級（あれば）</label><input type="text" id="fGrade"${A('grade')} value="${esc(e.grade)}" placeholder="例：吊り上げ荷重5t未満">`}
+    <label class="lbl">${lic ? '免許証の番号' : '修了証・登録の番号'}</label><input type="text" id="fNumber"${A('number')} value="${esc(e.number)}" inputmode="${lic ? 'numeric' : 'text'}">
+    <p class="hint" style="margin:10px 0 0">日付は免許証・修了証と同じ<b>和暦</b>（令和・平成・昭和）で選べます。右に西暦が出ます。</p>
+    <div class="row2"><div><label class="lbl">${lic ? '交付日' : '取得日・修了日'}</label>${wdField('fIssued', e.issued, ai.has('issued'))}</div><div><label class="lbl">有効期限${lic ? '<span class="req">必須</span>' : '（あれば）'}</label>${wdField('fExpires', e.expires, ai.has('expires'))}</div></div>
+    <label class="lbl">${lic ? '公安委員会' : '発行・講習機関'}</label><input type="text" id="fIssuer"${A('issuer')} value="${esc(e.issuer)}" placeholder="${lic ? '神奈川県公安委員会' : '例：○○教習所、建設業労働災害防止協会'}">
     <label class="lbl">メモ</label><textarea id="fMemo" rows="2">${esc(e.memo)}</textarea>
     <label class="lbl">写真</label><p class="hint" style="margin-top:0">${lic ? '免許証の表と裏を、文字が読めるように明るい所で撮ってください' : '修了証（カード・修了証書）を撮ってください'}</p>
     <div class="thumbs" id="edThumbs">${e.photos.map((p, i) => `<div class="th" data-ph="${i}"><span>…</span><span class="lab">${esc(p.side || '')}</span><button type="button" class="x" data-px="${i}">×</button></div>`).join('')}</div>
@@ -387,10 +495,14 @@ function renderEdit(v) {
     <div class="row2" style="margin-top:16px"><button type="button" class="btn" id="edCancel">やめる</button><button type="button" class="btn primary" id="edSave">保存する</button></div>
   </div>`;
   loadThumbs(e, '#edThumbs [data-ph]');
+  document.querySelectorAll('#edThumbs [data-ph]').forEach(el => el.onclick = ev => { if (ev.target.closest('.x')) return; keep(); recrop(+el.dataset.ph); });   // 直す画面では、写真をタップすると切り取り直せる
+  bindWd((id, val, clr) => { keep(); if (clr) { e[id === 'fIssued' ? 'issued' : 'expires'] = ''; renderEdit(v); } });
+  $('#rdCam').onclick = () => { keep(); pickMode = 'read'; const el = $('#fileCam'); el.value = ''; el.click(); };
+  $('#rdLib').onclick = () => { keep(); pickMode = 'read'; const el = $('#fileLib'); el.value = ''; el.click(); };
   const keep = () => { e.name = $('#fName').value.trim(); if ($('#fGrade')) e.grade = $('#fGrade').value.trim(); e.number = $('#fNumber').value.trim(); e.issued = $('#fIssued').value; e.expires = $('#fExpires').value; e.issuer = $('#fIssuer').value.trim(); e.memo = $('#fMemo').value.trim(); };
   document.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => { keep(); const k = b.dataset.kind; if (k === '運転免許' && !e.name) e.name = '自動車運転免許証'; if (k === '運転免許' && !e.issuer) e.issuer = '神奈川県公安委員会'; e.kind = k; renderEdit(v); });
   document.querySelectorAll('[data-lt]').forEach(b => b.onclick = () => { keep(); const a = (e.grade || '').split('・').filter(Boolean), t = b.dataset.lt, i = a.indexOf(t); if (i >= 0) a.splice(i, 1); else a.push(t); e.grade = LICENSE_TYPES.filter(x => a.includes(x)).join('・'); renderEdit(v); });
-  document.querySelectorAll('[data-cam],[data-lib]').forEach(b => b.onclick = () => { keep(); pickSide = b.dataset.cam || b.dataset.lib; const el = b.dataset.cam ? $('#fileCam') : $('#fileLib'); el.value = ''; el.click(); });
+  document.querySelectorAll('[data-cam],[data-lib]').forEach(b => b.onclick = () => { keep(); pickMode = 'side'; pickSide = b.dataset.cam || b.dataset.lib; const el = b.dataset.cam ? $('#fileCam') : $('#fileLib'); el.value = ''; el.click(); });
   document.querySelectorAll('[data-px]').forEach(b => b.onclick = ev => { ev.stopPropagation(); keep(); const p = e.photos.splice(+b.dataset.px, 1)[0]; if (p && e._uploaded.includes(p.photoId)) api('photoDel', { photoId: p.photoId }).catch(() => {}); renderEdit(v); toast('写真を外しました（保存すると反映）'); });
   $('#edCancel').onclick = () => {
     if (e._uploaded.length) e._uploaded.forEach(id => api('photoDel', { photoId: id }).catch(() => {}));   // やめたら、撮ったばかりの写真も捨てる
@@ -422,14 +534,57 @@ async function resizeImage(file, max = 1600, q = 0.82) {
     return await new Promise(ok => c.toBlob(ok, 'image/jpeg', q));
   } finally { URL.revokeObjectURL(url); }
 }
+let pickMode = 'side';   // side：表・裏などを撮る／read：撮って読み取る
+async function uploadPhoto(blob, side) {
+  const photoId = 'P' + Date.now().toString(36) + rid();
+  await api('photo', { photo: { photoId, itemId: ED.id, staffId: ED.staffId, side, name: ED.name || ED.kind }, data: await blobToB64(blob) }, 120000);
+  ED._uploaded.push(photoId);
+  return { photoId, side, local: URL.createObjectURL(blob) };
+}
+const rerender = () => { if (S.view && S.view.name === 'edit') renderEdit(S.view); };
+/* 読み取った中身を入れる：空いている欄（と、はじめから入っている決まり文句の欄）だけ。もう入れた所は変えない */
+function applyRead(d) {
+  const e = ED, lic0 = e.kind === '運転免許', defs = { name: lic0 ? '自動車運転免許証' : '', issuer: lic0 ? '神奈川県公安委員会' : '' }, got = new Set(e._ai || []);
+  if (d.kind && (!e.kind || (e._new && !e.name))) { e.kind = d.kind; got.add('kind'); }
+  if (e.kind === '運転免許') { if (!e.name || e.name !== '自動車運転免許証') { e.name = '自動車運転免許証'; } if (!e.issuer) e.issuer = '神奈川県公安委員会'; }
+  ['name', 'number', 'grade', 'issued', 'expires', 'issuer'].forEach(k => { if (d[k] && (!e[k] || e[k] === defs[k] || got.has(k))) { e[k] = d[k]; got.add(k); } });
+  if (e.kind === '運転免許' && d.grade) e.grade = LICENSE_TYPES.filter(t => d.grade.split(/[・、,\s]+/).includes(t)).join('・') || e.grade;
+  if (d.holder) e._holder = d.holder;
+  e._ai = [...got];
+}
+async function readFlow(blob) {
+  const e = ED; e._readErr = '';
+  openModal('<h3>🤖 読み取っています…</h3><p class="hint">切り取った写真をAI（Claude）が読んでいます。10〜20秒ほどかかります。住所・生年月日は読みません。</p>'); $('#modal').dataset.lock = '1';
+  let d = null;
+  try { const j = await api('read', { data: await blobToB64(blob), names: allNames() }, 90000); d = j.data || {}; applyRead(d); }
+  catch (err) { e._readErr = err.message; }
+  $('#modal').dataset.lock = ''; closeModal();
+  try {
+    const side = (d && d.side) || (e.kind === '運転免許' ? (e.photos.some(p => p.side === '表') ? '裏' : '表') : (e.photos.some(p => p.side === '修了証') ? '裏・続き' : '修了証'));
+    e.photos.push(await uploadPhoto(blob, side));
+  } catch (err) { toast('写真を送れませんでした：' + err.message, 4500); }
+  rerender();
+  toast(e._readErr ? '読み取れませんでした。手で入れてください' : '読み取りました。黄色の欄を確かめてください', 3500);
+}
+async function recrop(i) {   // 入っている写真を切り取り直す（新しい写真に入れ替え。保存するまで前の写真は残る）
+  const e = ED, p = e.photos[i]; if (!p) return;
+  try {
+    const u = await photoUrl(p), b0 = await (await fetch(u)).blob(), b = await openCrop(b0, (p.side || '写真') + 'を切り取り直す'); if (!b) return;
+    toast('写真を送っています…', 20000);
+    const np = await uploadPhoto(b, p.side); if (e._uploaded.includes(p.photoId)) api('photoDel', { photoId: p.photoId }).catch(() => {});
+    e.photos[i] = np; toast('切り取り直しました（保存すると反映）'); rerender();
+  } catch (err) { toast('切り取り直せませんでした：' + err.message, 4500); }
+}
 ['#fileCam', '#fileLib'].forEach(sel => $(sel).addEventListener('change', async ev => {
   const f = (ev.target.files || [])[0]; if (!f || !ED) return;
-  toast('写真を送っています…', 20000);
   try {
-    const blob = await resizeImage(f), photoId = 'P' + Date.now().toString(36) + rid();
-    await api('photo', { photo: { photoId, itemId: ED.id, staffId: ED.staffId, side: pickSide, name: ED.name || ED.kind }, data: await blobToB64(blob) }, 120000);
-    ED.photos.push({ photoId, side: pickSide, local: URL.createObjectURL(blob) }); ED._uploaded.push(photoId);
-    toast('写真を入れました'); if (S.view && S.view.name === 'edit') renderEdit(S.view);
+    const big = await resizeImage(f, 2600, 0.9);
+    const blob = await openCrop(big, pickMode === 'read' ? '必要な所だけに切り取る（このあとAIが読みます）' : (pickSide || '写真') + 'を切り取る');
+    if (!blob) return;
+    if (pickMode === 'read') return readFlow(blob);
+    toast('写真を送っています…', 20000);
+    ED.photos.push(await uploadPhoto(blob, pickSide));
+    toast('写真を入れました'); rerender();
   } catch (e) { toast('写真を送れませんでした：' + e.message, 4500); }
 }));
 
@@ -439,8 +594,8 @@ async function resizeImage(file, max = 1600, q = 0.82) {
 function renderTable() {
   const ppl = S.staff, names = {};
   live().forEach(it => { const k = it.kind + '|' + it.name; names[k] = names[k] || { kind: it.kind, name: it.name }; });
-  KINDS.forEach(k => (CATALOG[k] || []).forEach(n => { if (k !== 'その他') names[k + '|' + n] = names[k + '|' + n] || { kind: k, name: n }; }));
-  const cell = (pid, n) => { const it = live().find(x => String(x.staffId) === String(pid) && x.kind === n.kind && x.name === n.name); if (!it) return '<td></td>';
+  KINDS.forEach(k => catalogFor(k).forEach(n => { const key = k + '|' + n; if (!Object.values(names).some(x => x.kind === k && catKey(x.name) === catKey(n))) names[key] = { kind: k, name: n }; }));
+  const cell = (pid, n) => { const it = live().find(x => String(x.staffId) === String(pid) && x.kind === n.kind && x.name === n.name); if (!it) return `<td class="c add" data-addc="${esc(pid)}" data-k="${esc(n.kind)}" data-n="${esc(n.name)}" title="タップでこの人のこの資格を登録">＋</td>`;
     const es = expState(it); return `<td class="c ${es === 'exp' ? 'exp' : it.status === '確認済' ? 'ok' : 'wait'}" data-open="${esc(it.id)}" title="${esc(it.status)}">${es === 'exp' ? '✕' : it.status === '確認済' ? '○' : '△'}</td>`; };
   let body = '';
   KINDS.forEach(k => {
@@ -450,9 +605,60 @@ function renderTable() {
     rows.forEach(n => { const cnt = ppl.filter(p => live().some(x => String(x.staffId) === String(p.id) && x.kind === n.kind && x.name === n.name)).length;
       body += `<tr><th class="nm">${esc(n.name)}</th><td>${cnt || ''}</td>${ppl.map(p => cell(p.id, n)).join('')}</tr>`; });
   });
-  $('#main').innerHTML = `<div class="card"><h2>一覧表</h2><p class="hint" style="margin-top:0">○ 確認済　△ 確認待ち（本人が登録・まだ確かめていない）　✕ 期限切れ。印をタップすると中身が見られます</p></div>
+  $('#main').innerHTML = `<div class="card"><h2>一覧表</h2><p class="hint" style="margin-top:0">○ 確認済　△ 確認待ち（本人が登録・まだ確かめていない）　✕ 期限切れ。印をタップすると中身が見られます。<b>空いている枠（＋）をタップすると、その人のその資格の登録画面</b>になります。<br>行（資格の種類）は、だれかが新しい資格を登録すると自動で増えます。</p>
+      <button class="btn sm" id="catBtn">⚙ 資格の一覧を整える（足す・名前を直す・まとめる・隠す）</button></div>
     <div class="matrix-wrap"><table class="matrix"><thead><tr><th class="nm">資格・免許</th><th>人数</th>${ppl.map(p => `<th>${esc(p.disp || p.name)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
   document.querySelectorAll('[data-open]').forEach(td => td.onclick = () => go({ name: 'item', id: td.dataset.open }));
+  $('#catBtn').onclick = () => go({ name: 'catalog' });
+  document.querySelectorAll('[data-addc]').forEach(td => td.onclick = () => { ED = null; go({ name: 'edit', staffId: td.dataset.addc, kind: td.dataset.k, preName: td.dataset.n }); });
+}
+
+/* =========================================================
+   資格の一覧を整える（親方・事務担当）：足す・名前を直す／まとめる・隠す・区分を足す。どれも「元に戻す」できる
+   ========================================================= */
+async function catApi(mode, body, msg, undo) {
+  const j = await api(mode, body); if (j.kinds) KINDS = j.kinds; if (j.catalog) CAT = j.catalog;
+  render(); toast(msg, 0, undo ? { label: '元に戻す', fn: async () => { try { const u = await api(undo.mode, undo.body); if (u.kinds) KINDS = u.kinds; if (u.catalog) CAT = u.catalog; if (undo.after) await undo.after(); render(); toast('元に戻しました'); } catch (e) { toast(e.message, 4000); } } } : null);
+  return j;
+}
+function renderCatalog() {
+  setHeader('⚙ 資格の一覧を整える', true);
+  const cnt = (k, n) => new Set(live().filter(it => it.kind === k && catKey(it.name) === catKey(n)).map(it => it.staffId)).size;
+  const rowsOf = k => { const l = catalogFor(k, true); live().filter(it => it.kind === k).forEach(it => { if (!l.some(n => catKey(n) === catKey(it.name))) l.push(it.name); }); return l.sort((a, b) => a.localeCompare(b, 'ja')); };
+  $('#main').innerHTML = `<div class="card"><h2>⚙ 資格の一覧</h2><p class="hint" style="margin-top:0">一覧表の行と、登録するときの候補です。だれかが新しい名前で登録すると自動で足されます。<br>同じ資格が違う書き方で2つあるときは「名前を直す」で同じ名前にすると、1行にまとまります（登録した人の分も直ります）。</p>
+      <label class="lbl">資格の名前を足す</label><div class="row2"><div><select id="caKind">${KINDS.map(k => `<option>${esc(k)}</option>`).join('')}</select></div><div><input type="text" id="caName" placeholder="例：職長教育"></div></div>
+      <button class="btn primary sm" id="caAdd" style="margin-top:6px">＋ 足す</button>
+      <label class="lbl">区分を足す</label><div class="row2"><div><input type="text" id="ckName" placeholder="例：職長・安全衛生責任者"></div><div><button class="btn sm" id="ckAdd">＋ 区分を足す</button></div></div></div>
+    ${KINDS.map(k => { const l = rowsOf(k); return `<h3>${esc(k)}（${l.length}）</h3>` + (l.map(n => { const h = isHidden(k, n); return `<div class="item" style="display:flex;align-items:center;gap:6px;cursor:default${h ? ';opacity:.5' : ''}"><div style="flex:1"><div class="t">${esc(n)}</div><div class="s">${cnt(k, n) ? `<span class="tag">${cnt(k, n)}人</span>` : '<span class="tag">まだだれもいない</span>'}${h ? '<span class="tag red">隠している</span>' : ''}</div></div>
+        <button class="btn sm" data-cren="${esc(k)}|${esc(n)}">名前を直す</button><button class="btn sm" data-chide="${esc(k)}|${esc(n)}">${h ? '出す' : '隠す'}</button></div>`; }).join('') || '<p class="hint">ありません</p>'); }).join('')}`;
+  $('#caAdd').onclick = async () => { const k = $('#caKind').value, n = $('#caName').value.trim(); if (!n) { toast('名前を入れてください'); return; }
+    try { const j = await catApi('catAdd', { kind: k, name: n }, '「' + n + '」を足しました'); const c = CAT.find(x => x.id === j.id); if (c) toast('「' + n + '」を足しました', 0, { label: '元に戻す', fn: async () => { await catApi('catSet', { id: c.id, state: '削除' }, '元に戻しました'); } }); } catch (e) { toast(e.message, 4000); } };
+  $('#ckAdd').onclick = async () => { const n = $('#ckName').value.trim(); if (!n) { toast('区分の名前を入れてください'); return; }
+    try { const j = await catApi('catAdd', { kind: n }, '区分「' + n + '」を足しました'); toast('区分「' + n + '」を足しました', 0, { label: '元に戻す', fn: async () => { await catApi('catSet', { id: j.id, state: '削除' }, '元に戻しました'); } }); } catch (e) { toast(e.message, 4000); } };
+  document.querySelectorAll('[data-chide]').forEach(b => b.onclick = async () => {
+    const [k, n] = b.dataset.chide.split('|'), h = isHidden(k, n), c = CAT.find(x => x.kind === k && catKey(x.name) === catKey(n) && x.state !== '削除');
+    const id = c ? c.id : 'C-' + Date.now().toString(36) + rid(), prev = c ? (c.state || '') : '削除';
+    try { await catApi('catSet', { id, kind: k, name: n, state: h ? '' : '隠す' }, h ? '「' + n + '」を出しました' : '「' + n + '」を隠しました（登録した人の分は消えません）', { mode: 'catSet', body: { id, kind: k, name: n, state: prev } }); } catch (e) { toast(e.message, 4000); }
+  });
+  document.querySelectorAll('[data-cren]').forEach(b => b.onclick = () => {
+    const [k, n] = b.dataset.cren.split('|');
+    openModal(`<h3>名前を直す・まとめる</h3><p class="hint" style="margin-top:0">「${esc(n)}」を次の名前にします。もうある名前にすると1つにまとまります。この名前で登録した人の分（${cnt(k, n)}人）も直ります。</p>
+      <label class="lbl">区分</label><select id="crKind">${KINDS.map(x => `<option${x === k ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>
+      <label class="lbl">新しい名前</label><input type="text" id="crTo" list="crList" value="${esc(n)}"><datalist id="crList">${allNames().map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+      <div class="row2" style="margin-top:14px"><button class="btn" id="crNo">戻る</button><button class="btn primary" id="crGo">直す</button></div>`);
+    $('#crNo').onclick = closeModal;
+    $('#crGo').onclick = async () => {
+      const to = $('#crTo').value.trim(), toKind = $('#crKind').value; if (!to) { toast('名前を入れてください'); return; }
+      if (to === n && toKind === k) { closeModal(); return; }
+      closeModal();
+      try {
+        const j = await api('catRename', { kind: k, from: n, to, toKind }); if (j.kinds) KINDS = j.kinds; if (j.catalog) CAT = j.catalog;
+        live().forEach(it => { if (it.kind === k && catKey(it.name) === catKey(n)) { it.name = to; it.kind = toKind; } });
+        render();
+        toast('「' + to + '」にしました（' + j.n + '件の登録も直しました）', 0, { label: '元に戻す', fn: async () => { try { const u = await api('catRename', { undo: j.changed }); if (u.kinds) KINDS = u.kinds; if (u.catalog) CAT = u.catalog; j.changed.forEach(c => { if (c.item) { const it = S.items.find(x => x.id === c.item); if (it) { it.name = c.name; it.kind = c.kind; } } }); render(); toast('元に戻しました'); } catch (e) { toast(e.message, 4000); } } });
+      } catch (e) { toast(e.message, 4000); }
+    };
+  });
 }
 
 /* =========================================================
