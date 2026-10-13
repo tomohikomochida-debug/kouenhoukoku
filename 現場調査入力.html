@@ -205,6 +205,21 @@ header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .camtag{display:inline-block;font-size:12px;background:#1E88E5;color:#fff;border-radius:6px;padding:2px 8px;font-weight:700;margin:0 0 6px}
 .addph.cam{border-style:solid;border-color:#1E88E5;color:#1E88E5;font-weight:700;background:#EEF5FD;cursor:pointer;font-family:inherit}
 .addph.cam.on{background:#1E88E5;color:#fff}
+#dlgBoard{border:0;border-radius:14px;padding:18px 16px;max-width:min(96vw,640px);width:100%;background:var(--bg);color:var(--ink)}
+#dlgBoard::backdrop{background:rgba(34,35,31,.5)}
+#dlgBoard h2{font-size:17px;margin:0 0 6px;color:var(--accent)}
+#dlgBoard .hint{font-size:13px;color:var(--sub);margin:6px 0;line-height:1.6}
+#dlgBoard .row{display:flex;gap:8px;align-items:center;margin-top:10px}
+#dlgBoard button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:10px 14px;font-size:14px;color:var(--ink)}
+#dlgBoard button.pri{flex:1;background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700}
+.bprev{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+.bprev table{border-collapse:collapse;width:100%;font-size:12px}
+.bprev th{position:sticky;top:0;background:#8C8C8C;color:#fff;font-weight:700}
+.bprev th,.bprev td{border:1px solid #ddd;padding:4px 6px;white-space:nowrap}
+.bprev td.t{white-space:normal;min-width:180px}
+.bprev td.n{text-align:right}.bprev td.c{text-align:center}
+.bprev tr.h td{background:#EAF1DD}
+.bprev td.empty{background:#FFF7CC}
 #dlgCam{border:0;border-radius:14px;padding:18px 16px;max-width:min(94vw,460px);width:100%;background:var(--bg);color:var(--ink)}
 #dlgCam::backdrop{background:rgba(34,35,31,.5)}
 #dlgCam h2{font-size:17px;margin:0 0 6px;color:var(--accent)}
@@ -427,6 +442,14 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   <p class="hint">位置図には「地図データ ©Google」を自動で入れます（Googleのルールで、この表示は消せません）。位置図にしたあと「📍 目印で地図と合わせる」で建物の角などを2か所合わせると、位置を測った木の番号が自動で置かれます。</p>
   <div class="row"><button type="button" onclick="document.getElementById('dlgGm').close()">閉じる</button></div>
 </dialog>
+<dialog id="dlgBoard">
+  <h2>💴 BOARD用（見積書をBOARDで作る）</h2>
+  <p class="hint">BOARDの見積の明細に、そのまま貼り付けられる形です（行の種類を含むフォーマット）。単価が空の行はBOARDで入れてください。消費税・合計はBOARDが計算します。</p>
+  <div id="boardPrev" class="bprev"></div>
+  <div class="row"><button type="button" class="pri" id="boardCopy" onclick="boardCopy()">📋 コピーする（BOARDに貼り付け）</button></div>
+  <div class="row"><button type="button" onclick="boardCsv()">CSVで保存</button><span style="flex:1"></span><button type="button" onclick="document.getElementById('dlgBoard').close()">閉じる</button></div>
+  <p class="hint">Excel書き出しにも「BOARD取込用」シートが入っています（内訳で単価を入れると連動します）。</p>
+</dialog>
 <dialog id="dlgCam">
   <h2>📱 iPhoneをカメラにする</h2>
   <p class="hint">iPhoneの標準カメラでこのQRコードを読み、開いたページで「カメラへのアクセス」を許可してください。撮った写真は、iPadで青く光っている番号に入ります。番号ごとの「📱 iPhoneでここへ」で送り先を変えられます。</p>
@@ -450,6 +473,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
 <div class="bar noprint">
   <button id="xlsxBtn" class="solid" onclick="exportExcel()">Excel書き出し</button>
   <button id="pdfBtn" onclick="exportPdf()">PDF書き出し</button>
+  <button id="boardBtn" onclick="openBoard()">BOARD用</button>
   <button onclick="exportJSON()">事務所へ書き出し</button>
   <button onclick="document.getElementById('imp').click()">読み込み</button>
   <input id="imp" type="file" accept="application/json" style="display:none" onchange="importJSON(event)">
@@ -474,7 +498,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
 
   // 見積・写真帳・マスター用の共通マッピング
   function nameOf(t) { return ty(t) === "exterior" ? (t.item || "") : ((t.work || "") + "　" + (t.species || "")).trim(); }
-  function specOf(t) { return ty(t) === "exterior" ? (t.memo || "") : ("H=" + (t.h || "") + "m　C=" + (t.c || "") + "cm"); }
+  function specOf(t) { if (ty(t) === "exterior") return t.memo || ""; var a = []; if (String(t.h == null ? "" : t.h).trim()) a.push("H=" + t.h + "m"); if (String(t.c == null ? "" : t.c).trim()) a.push("C=" + t.c + "cm"); return a.join("　"); }
   function qtyOf(t) { return ty(t) === "exterior" ? (t.qty || "") : 1; }
   function unitOf(t) { return ty(t) === "exterior" ? (t.unit || "") : "本"; }
   function kubun(t) { return ty(t) === "exterior" ? "外構" : "樹木"; }
@@ -496,6 +520,22 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     var c = "No." + no + "　" + (t.species || "") + pr + "\n" + (t.work || "") + "\nH=" + (t.h || "") + "m　C=" + (t.c || "") + "cm";
     if (t.memo) c += "\n備考：" + t.memo;
     return c;
+  }
+
+  /* BOARD（見積ソフト）の「行の種類を含むフォーマット」：行の種類｜摘要｜数量｜単位｜単価
+     見出し行＝案件名、通常＝明細（摘要は「No.番号　品名　仕様」）、小計行、経費（運搬費・処分費・諸経費）、計。
+     消費税・合計は BOARD が計算するので入れない。単価が空なら空のまま（BOARD で入れる） */
+  var BOARD_HEAD = ["行の種類", "摘要", "数量", "単位", "単価"];
+  function bnum(v) { return (v !== "" && v != null && !isNaN(v)) ? Number(v) : ""; }
+  function boardText(t, no) { var sp = specOf(t); return "No." + no + "　" + nameOf(t) + (sp ? "　" + sp : ""); }
+  function boardRows(state) {
+    var trees = state.trees || [], exs = state.extras || {};
+    var rows = [{ k: "##見出し行##", v: ["##見出し行##", state.caseName || "現場調査", "", "", ""] }];
+    trees.forEach(function (t, i) { var q = qtyOf(t); rows.push({ k: "item", i: i, v: ["##通常##", boardText(t, noOf(t, i)), bnum(q) === "" ? q : bnum(q), unitOf(t), bnum(t.up)] }); });
+    rows.push({ k: "sub", v: ["##小計行##", "小計", "", "", ""] });
+    [["運搬費", exs.carry], ["処分費", exs.dispose], ["諸経費", exs.misc]].forEach(function (x, j) { rows.push({ k: "ex", j: j, v: ["##通常##", x[0], 1, "式", bnum(x[1])] }); });
+    rows.push({ k: "kei", v: ["##小計行##", "計", "", "", ""] });
+    return rows;
   }
 
   function buildTreeWorkbook(ExcelJS, state, imgs) {
@@ -570,6 +610,40 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     ws.getCell(r, 7).value = { formula: "G" + kei + "+G" + tax }; ws.getCell(r, 7).font = font(12, true); ws.getCell(r, 7).numFmt = "#,##0"; ws.getCell(r, 7).fill = fill(GREY);
     var total = r;
     for (var rr = kei; rr <= total; rr++) for (var cc = 2; cc <= 7; cc++) ws.getCell(rr, cc).border = border();
+    /* ===== BOARD取込用（内訳を参照。内訳で単価を入れると、ここも変わる） ===== */
+    var bd = wb.addWorksheet("BOARD取込用", { views: [{ state: "frozen", ySplit: 1 }] });
+    [14, 48, 7, 7, 12].forEach(function (w, i) { bd.getColumn(i + 1).width = w; });
+    BOARD_HEAD.forEach(function (h, i) {
+      var c = bd.getCell(1, i + 1); c.value = h; c.font = font(11, true, "FFFFFFFF"); c.fill = fill(HEAD);
+      c.alignment = { horizontal: "center", vertical: "middle" }; c.border = border();
+    });
+    var U = "'内訳'!", br = boardRows(state);
+    br.forEach(function (row, n) {
+      var R = n + 2, v = row.v, f = [v[0], v[1], v[2], v[3], v[4]];
+      if (row.k === "##見出し行##") f[1] = { formula: U + "A1", result: v[1] };
+      if (row.k === "item") {
+        var s2 = r0 + row.i;
+        f[1] = { formula: '"No."&' + U + "A" + s2 + '&"　"&' + U + "B" + s2 + "&IF(" + U + "C" + s2 + '="","","　"&' + U + "C" + s2 + ")", result: v[1] };
+      }
+      if (row.k === "ex") f[1] = { formula: U + "B" + ex[row.j], result: v[1] };
+      if (row.k === "item" || row.k === "ex") {
+        var s3 = row.k === "item" ? r0 + row.i : ex[row.j];
+        f[2] = { formula: U + "D" + s3, result: v[2] };
+        f[3] = { formula: U + "E" + s3, result: v[3] };
+        f[4] = { formula: "IF(" + U + "F" + s3 + '="",""' + "," + U + "F" + s3 + ")", result: v[4] };
+      }
+      f.forEach(function (val, k) {
+        var c = bd.getCell(R, k + 1); c.value = val; c.font = font(11); c.border = border();
+        c.alignment = { horizontal: (k === 2 || k === 3) ? "center" : (k === 4 ? "right" : "left"), vertical: "middle" };
+        if (k === 4) c.numFmt = "#,##0";
+        if (row.k !== "item" && row.k !== "ex") c.fill = fill("FFEAF1DD");
+      });
+    });
+    var bEnd = br.length + 1;
+    bd.getCell("G1").value = "BOARDへの貼り付け：A2:E" + bEnd + " をコピーして、BOARDの見積の明細に貼り付け"; bd.getCell("G1").font = font(10, true);
+    bd.getCell("G2").value = "消費税・合計はBOARDが自動で計算します。数字は「内訳」シートと連動（内訳で単価を入れると、ここも変わります）"; bd.getCell("G2").font = font(10);
+    bd.getCell("G3").value = "単価が空の行は、BOARDで入れてください"; bd.getCell("G3").font = font(10);
+
     mi.getCell("B11").value = { formula: "'内訳'!G" + total }; mi.getCell("B11").font = font(16, true); mi.getCell("B11").numFmt = '"¥"#,##0" （税込）"';
 
     /* ===== 調査マスター（番号 区分 品名 仕様 数量 単位 摘要） ===== */
@@ -650,7 +724,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   }
 
   root.buildTreeWorkbook = buildTreeWorkbook;
-  root.surveyText = { nameOf: nameOf, specOf: specOf, qtyOf: qtyOf, unitOf: unitOf, kubun: kubun, caption: caption, PRIO_SETS: PRIO_SETS, setPrio: setPrio, prioName: prioName, memoOf: memoOf };
+  root.surveyText = { boardRows: boardRows, BOARD_HEAD: BOARD_HEAD, nameOf: nameOf, specOf: specOf, qtyOf: qtyOf, unitOf: unitOf, kubun: kubun, caption: caption, PRIO_SETS: PRIO_SETS, setPrio: setPrio, prioName: prioName, memoOf: memoOf };
   if (typeof module !== "undefined" && module.exports) module.exports = { buildTreeWorkbook: buildTreeWorkbook };
 })(typeof window !== "undefined" ? window : globalThis);
 
@@ -4745,6 +4819,36 @@ async function cropCover(durl, tw, th){
     img.src=durl;
   });
 }
+/* ---------- BOARD用：BOARDの見積の明細へ貼り付ける形（行の種類・摘要・数量・単位・単価） ---------- */
+function boardData(){ const st=Object.assign({},state,{ trees:outTrees() }); return window.surveyText.boardRows(st).map(r=>r.v); }
+function openBoard(){
+  state.caseName=document.getElementById('caseName').value;
+  if(!outTrees().length){ alert('出力に選んだ優先度の項目がありません。「出力」で選び直してください。'); return; }
+  if(!checkBeforeExport('BOARD用')) return;
+  const rows=boardData(), fmt=v=>v===""||v==null?"":(typeof v==="number"?v.toLocaleString("ja-JP"):esc(v));
+  const nNo=rows.filter(v=>v[0]==="##通常##"&&v[4]==="").length;
+  document.getElementById("boardPrev").innerHTML='<table><tr>'+window.surveyText.BOARD_HEAD.map(h=>'<th>'+h+'</th>').join("")+'</tr>'+
+    rows.map(v=>'<tr class="'+(v[0]==="##通常##"?"":"h")+'"><td>'+esc(v[0])+'</td><td class="t">'+fmt(v[1])+'</td><td class="c">'+fmt(v[2])+'</td><td class="c">'+fmt(v[3])+'</td><td class="n'+(v[0]==="##通常##"&&v[4]===""?" empty":"")+'">'+fmt(v[4])+'</td></tr>').join("")+'</table>';
+  document.getElementById("boardCopy").textContent="📋 コピーする（BOARDに貼り付け）";
+  document.getElementById("dlgBoard").showModal();
+  if(nNo) toast("単価が空の行が "+nNo+" 行あります（BOARDで入れられます）");
+}
+const boardCell=v=>String(v==null?"":v).replace(/[\t\r\n]+/g," ");
+async function boardCopy(){   // 見出し（1行目）は付けない：BOARDの明細へそのまま貼る
+  const txt=boardData().map(v=>v.map(boardCell).join("\t")).join("\n"), b=document.getElementById("boardCopy");
+  let ok=false; try{ await navigator.clipboard.writeText(txt); ok=true; }catch(e){}
+  if(!ok){ const ta=document.createElement("textarea"); ta.value=txt; ta.setAttribute("readonly",""); ta.style.cssText="position:fixed;left:-9999px;top:0"; document.getElementById("dlgBoard").appendChild(ta); ta.select(); try{ ok=document.execCommand("copy"); }catch(e){} ta.remove(); }
+  if(ok){ b.textContent="✓ コピーしました（BOARDの明細で貼り付け）"; toast("コピーしました。BOARDの見積の明細で貼り付けてください"); }
+  else alert("コピーできませんでした。「CSVで保存」をお使いください。");
+}
+function boardCsv(){   // Excelで開いても文字化けしないように、先頭にBOMを付けた UTF-8
+  const q=v=>{ const t=String(v==null?"":v); return /[",\r\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
+  const csv=[window.surveyText.BOARD_HEAD].concat(boardData()).map(v=>v.map(q).join(",")).join("\r\n")+"\r\n";
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"}));
+  a.download=(state.caseName||'現場調査').replace(/[\/:*?"<>|\\]/g,'_')+'_'+(state.caseDate||'')+outSuffix()+'_BOARD.csv';
+  a.click(); toast("CSVを保存しました");
+}
+
 async function exportExcel(){
   var btn=document.getElementById('xlsxBtn');
   try{
