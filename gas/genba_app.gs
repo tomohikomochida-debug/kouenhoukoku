@@ -564,6 +564,7 @@ function doPost(e) {
     if (b.app === 'jiko') return out_(jikoPost_(b));       // 事故報告（本人確認はタイムカードのログイン）
     if (b.app === 'shikaku') return out_(shikakuPost_(b)); // 資格・免許（本人は自分の分、親方・事務担当は全員分）
     if (b.app === 'sharyo' && /^ins/.test(String(b.mode || ''))) return out_(vinsPost_(b));   // 車の保険（ログインした人だけ）
+    if (b.app === 'sharyo' && b.mode === 'docData') return out_(vehDocData_(b));   // 書類の中身をアプリの中で見る（ログインした人だけ）
     var key = (b.app || '') + ':' + (b.mode || '');
     if (ADMIN_ONLY.indexOf(key) >= 0 && !isAdmin_(b.by)) return out_({ ok: false, error: '削除は' + admins_().join('・') + 'だけができます。消したいときは頼んでください' });
     switch (key) {
@@ -598,6 +599,7 @@ function doPost(e) {
       case 'sharyo:readDoc':   return out_(b.kind === 'inspect' ? readInspect_(b.data, b.mime) : readShaken_(b.data, b.mime));
       /* 残材処分：伝票の読み取り（仮入力用） */
       case 'zaizai:readSlip':  return out_(readSlip_(b.data, b.mime, b.hints));
+      case 'sharyo:docType':   return withLock_(function () { return setDocType_(b.batch, b.type, b.restore); });
       case 'sharyo:docUntil':  return withLock_(function () { return setDocUntil_(b.batch, b.until); });
       case 'sharyo:importInfo': return out_(importVehicleInfo_(b.by, !!b.dry));
       /* 段取り */
@@ -727,7 +729,7 @@ function saveVehicle_(item, image, by) {
    公開リンクにはせず、社内アプリのフォルダを共有しているスタッフだけが Google にログインして開ける */
 var DOCS_FOLDER = '車両の書類';
 var DOCS_FOLDER_DEFAULT_ID = '145jhqHrw_pCMpd97pwDIQcNyzRksAzFM';   // 社内アプリ ＞ 車両の書類
-var DOC_REPLACE = ['車検証', '自賠責保険', '任意保険', '写真（前）', '写真（後ろ）', '写真（側面の表示）', '年次点検の記録', '検査標章（シール）', 'レンタル契約書'];   // 新しいものが入ったら前のものを「過去」へ
+var DOC_REPLACE = ['車検証', '車検証の記録事項', '自賠責保険', '任意保険', '写真（前）', '写真（後ろ）', '写真（側面の表示）', '年次点検の記録', '検査標章（シール）', 'レンタル契約書'];   // 新しいものが入ったら前のものを「過去」へ
 var DOC_INSPECT = ['年次点検の記録', '検査標章（シール）'];
 function docsFolder_() {
   var p = PropertiesService.getScriptProperties();
@@ -789,11 +791,23 @@ function deleteVehicleDoc_(docId) {
   return remove_('vehicleDocs', docId);
 }
 function readShaken_(b64, mime) {   // 車検証の写真・PDFから、ナンバー・車名・車検の満了日を読む
-  var prompt = 'これは日本の自動車検査証（車検証）、または電子車検証の「自動車検査証記録事項」の写真かPDFです。次の項目を読み取り、JSONだけ返してください。' +
-    '{"plate":"自動車登録番号・車両番号（例：川崎 400 あ 12-34）","model":"車名と型式（例：いすゞ エルフ TRG-NJR85AN）","shakenDate":"有効期間の満了する日を西暦 YYYY-MM-DD で（令和n年＝2018+n年）","firstReg":"初度登録年月 YYYY-MM","kind":"自家用・事業用 など"}' +
+  var prompt = 'これは日本の自動車検査証（紙の車検証、または電子車検証のカード）、または電子車検証の「自動車検査証記録事項」の写真かPDFです。次の項目を読み取り、JSONだけ返してください。' +
+    '{"plate":"自動車登録番号・車両番号（例：川崎 400 あ 12-34）","model":"車名と型式（例：いすゞ エルフ TRG-NJR85AN）","shakenDate":"有効期間の満了する日を西暦 YYYY-MM-DD で（令和n年＝2018+n年。電子車検証のカードには書かれていないので空）","firstReg":"初度登録年月 YYYY-MM","kind":"自家用・事業用 など",' +
+    '"gvw":"車両総重量（kgの数値）","maxLoad":"最大積載量（kgの数値。無ければ空）","seats":"乗車定員（数値）"}' +
     '。読めない項目は空文字。推測で埋めない。';
   var j = ai_('車検証読み取り', [{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
-  return { ok: true, data: { plate: j.plate || '', model: j.model || '', shakenDate: /^\d{4}-\d{2}-\d{2}$/.test(j.shakenDate || '') ? j.shakenDate : '', firstReg: j.firstReg || '', kind: j.kind || '' } };
+  var gvw = vinsNum_(j.gvw), load = vinsNum_(j.maxLoad) || 0, seats = vinsNum_(j.seats) || 0;
+  return { ok: true, data: { plate: j.plate || '', model: j.model || '', shakenDate: /^\d{4}-\d{2}-\d{2}$/.test(j.shakenDate || '') ? j.shakenDate : '', firstReg: j.firstReg || '', kind: j.kind || '',
+    gvw: gvw || '', maxLoad: load || '', license: gvw ? needLicense_(gvw, load, seats) : '' } };
+}
+/* 運転に必要な免許（2017年3月12日以降の区分）。車両総重量・最大積載量・乗車定員から一番軽い区分を出す */
+function needLicense_(gvw, load, seats) {
+  if (gvw < 3500 && load < 2000 && seats <= 10) return '普通';
+  if (gvw < 5000 && load < 3000 && seats <= 10) return '準中型（5t限定）';
+  if (gvw < 7500 && load < 4500 && seats <= 10) return '準中型';
+  if (gvw < 8000 && load < 5000 && seats <= 10) return '中型（8t限定）';
+  if (gvw < 11000 && load < 6500 && seats <= 29) return '中型';
+  return '大型';
 }
 function readInspect_(b64, mime) {   // 年次点検（特定自主検査）の記録表・検査標章（シール）から、検査した日と次の期限を読む
   var prompt = 'これは建設機械（ユンボ・バックホウなど）の特定自主検査、またはクレーン付きトラック（ユニック車）の年次自主検査の、検査記録表か検査標章（シール）の写真です。' +
@@ -4480,4 +4494,27 @@ function skRead_(b, me) {
   var t = function (v, n) { return vinsT_(v, n || 80); };
   return { ok: true, data: { kind: kinds.indexOf(j.kind) >= 0 ? j.kind : '', name: t(j.name), holder: t(j.holder, 40), number: t(j.number, 40).normalize('NFKC'), grade: t(j.grade),
     issued: warekiYmd_(j.issued), expires: warekiYmd_(j.expires), issuer: t(j.issuer), side: ['表', '裏', '修了証'].indexOf(j.side) >= 0 ? j.side : '' } };
+}
+
+/* ---------- 車両の書類：アプリの中で見る・種類を直す ---------- */
+function vehDocData_(b) {
+  try { jkMe_(b.token); } catch (e) { return { ok: false, error: 'タイムカードでログインすると、アプリの中で見られます', code: 'auth' }; }
+  var d = rows_('vehicleDocs').filter(function (x) { return String(x.docId) === String(b.docId); })[0];
+  if (!d) return { ok: false, error: '書類が見つかりません' };
+  var blob = DriveApp.getFileById(d.fileId).getBlob(), bytes = blob.getBytes();
+  if (bytes.length > 20e6) return { ok: false, error: '大きすぎてアプリでは開けません（ドライブで開いてください）' };
+  return { ok: true, data: Utilities.base64Encode(bytes), mime: blob.getContentType() || d.mime || 'image/jpeg' };
+}
+/** 同じ回に入れた書類（batch）の種類を直す。直した先の種類に前の最新があれば「過去」へ（restore で戻せる） */
+function setDocType_(batch, type, restore) {
+  type = String(type || '').trim(); if (!type) return { ok: false, error: '種類がありません' };
+  var all = rows_('vehicleDocs'), g = all.filter(function (d) { return String(d.batch || d.docId) === String(batch); });
+  if (!g.length) return { ok: false, error: '書類が見つかりません' };
+  var vid = String(g[0].vehicleId), moved = [];
+  g.forEach(function (d) { upsert_('vehicleDocs', 'docId', 'D', { docId: d.docId, type: type }); });
+  (Array.isArray(restore) ? restore : []).forEach(function (id) { upsert_('vehicleDocs', 'docId', 'D', { docId: String(id), state: '最新' }); });
+  if (!restore && DOC_REPLACE.indexOf(type) >= 0 && g[0].state !== '過去') all.forEach(function (d) {
+    if (String(d.vehicleId) === vid && d.type === type && String(d.batch || d.docId) !== String(batch) && d.state !== '過去') { upsert_('vehicleDocs', 'docId', 'D', { docId: d.docId, state: '過去' }); moved.push(d.docId); }
+  });
+  return { ok: true, moved: moved };
 }
