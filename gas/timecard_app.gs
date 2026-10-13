@@ -526,9 +526,9 @@ function fillBirths_(list, by, opt) {
     }
     (list || []).forEach(x => {
       const b = normDate_(String(x.birth || '').replace(/\//g, '-')), k = key(x.name);
-      if (!k || !b) return;
-      const r = t.rows.find(s => key(s.name) === k);
-      if (!r) { out.unmatched.push(String(x.name)); return; }
+      if ((!k && !x.id) || !b) return;
+      const r = x.id ? t.rows.find(s => String(s.id) === String(x.id)) : t.rows.find(s => key(s.name) === k);   // id があれば id で（事故報告から移すとき）
+      if (!r) { out.unmatched.push(String(x.name || x.id)); return; }
       if (r.birth) { out.already.push({ name: r.name, same: String(r.birth) === b }); return; }
       if (!opt.dry) t.update(r, { birth: b });
       out.filled.push({ id: String(r.id), name: r.name, birth: b });

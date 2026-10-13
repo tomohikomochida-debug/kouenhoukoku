@@ -3485,7 +3485,8 @@ function jkMe_(token) {
 }
 /* スタッフの生年月日：タイムカードのスタッフ表（親方・事務担当が登録）を本物にし、無い人は事故報告の設定で入れた分を使う */
 function jkBirths_(st) {
-  var out = {}, own = (st && st.births) || {};
+  st = st || jkSettings_();
+  var out = {}, own = st.births || {};   // 移せなかった人（タイムカードにいない人）の分だけが残っている
   Object.keys(own).forEach(function (id) { if (own[id]) out[id] = own[id]; });
   try { var m = tcMod_(); if (m.staffAll) m.staffAll().forEach(function (s) { if (s.birth) out[String(s.id)] = s.birth; }); } catch (e) {}
   return out;
@@ -3589,7 +3590,7 @@ function jikoPost_(b) {
     switch (m) {
       case 'init':        return jkInit_(me);
       case 'badge':       return jkBadge_(me);
-      case 'save':        return withLockRaw_(function () { return jkSave_(b, me); });
+      case 'save':        var sv = withLockRaw_(function () { return jkSave_(b, me); }); jkFlushBirths_(me); return sv;
       case 'log':         return withLockRaw_(function () { return jkLog_(b, me); });
       case 'delete':      return withLockRaw_(function () { return jkDelete_(b, me); });
       case 'photo':       return jkPhoto_(b, me);
@@ -3632,36 +3633,73 @@ function jkFromApps_() {
 }
 function jkPublicSettings_(st, me) {
   var app = jkFromApps_();
-  var o = { company: st.company || {}, bossPhone: (st.contacts || {}).bossPhone || '', vehicles: {}, licenses: Object.assign({}, st.licenses || {}, app.licenses), licExp: app.licExp, src: app.src, insurance: {} };
-  var vs = st.vehicles || {}, ids = {};
-  Object.keys(vs).concat(Object.keys(app.vehicles)).forEach(function (id) { ids[id] = 1; });
-  Object.keys(ids).forEach(function (id) {
-    var v = vs[id] || {}, a = app.vehicles[id] || {};
-    o.vehicles[id] = { insurer: v.insurer || '', road: v.road || '', insurerPhone: v.insurerPhone || '', license: a.license || v.license || '', carCov: a.carCov || v.carCov || '', carAmount: a.carAmount || '', fleetNo: a.fleetNo || v.fleetNo || '' };
-  });
-  var ins = st.insurance || {}, auto = jkPick_(ins.auto || {}, ['name', 'phone', 'road', 'policy']);
-  if (app.auto) ['name', 'phone', 'road', 'policy', 'agent', 'agentPhone', 'from', 'to'].forEach(function (k) { if (app.auto[k]) auto[k] = app.auto[k]; });
-  o.insurance = { auto: auto, work: jkPick_(ins.work || {}, ['name', 'phone']) };   // 会社の車はフリート契約で共通（事故直後の画面のロードサービス・証券番号に使う）
+  var o = { company: st.company || {}, bossPhone: (st.contacts || {}).bossPhone || '', vehicles: app.vehicles, licenses: app.licenses, licExp: app.licExp, src: app.src, insurance: {} };   // 車・免許はそれぞれのアプリのものだけ
+  var ins = st.insurance || {};
+  o.insurance = { auto: app.auto || {}, work: jkPick_(ins.work || {}, ['name', 'phone']) };   // 会社の車はフリート契約で共通（事故直後の画面のロードサービス・証券番号に使う）
   var births = jkBirths_(st);   // スタッフの生年月日（社外秘）：親方・事務担当は全員分、ほかの人は自分の分だけ
   o.births = {};
   Object.keys(births).forEach(function (id) { if (me.role === 'boss' || me.role === 'office' || String(id) === me.id) o.births[id] = births[id]; });
   if (me.role === 'boss') { o.full = st; }
   return o;
 }
-/* 当事者・けがをした人の生年月日を、設定（スタッフの生年月日）から報告に入れる。本人が入れた自分の生年月日は設定にも覚える */
+/* 当事者・けがをした人の生年月日を、タイムカードのスタッフ表から報告に入れる。
+   タイムカードに無い人の分を報告で入れたら、事故報告には覚えず、タイムカードの空いている欄へ入れる（置き場所はタイムカードだけ） */
+var JK_BIRTH_PENDING = [];
 function jkFillBirth_(d, me) {
-  var st = jkSettings_(), births = jkBirths_(st), own = st.births || {}, changed = false;
+  var births = jkBirths_(), seen = {};
   var fill = function (id, cur) {
     id = String(id || ''); if (!id) return cur || '';
     if (births[id]) return births[id];
-    if (cur && /^\d{4}-\d{2}-\d{2}$/.test(cur) && (id === me.id || me.role === 'boss' || me.role === 'office')) { own[id] = cur; changed = true; }
+    if (cur && /^\d{4}-\d{2}-\d{2}$/.test(cur) && !seen[id] && (id === me.id || me.role === 'boss' || me.role === 'office')) { seen[id] = 1; JK_BIRTH_PENDING.push({ id: id, birth: cur }); }
     return cur || '';
   };
   d.driverBirth = fill(d.driverId, d.driverBirth);
   if (d.rousai && d.rousai.staffId) d.rousai.birth = fill(d.rousai.staffId, d.rousai.birth);
-  if (changed) jkSetSetting_('births', own);
+}
+function jkFlushBirths_(me) {   // 保存の鍵を外したあとで、タイムカードへ（タイムカードは自分で鍵をかけるため）
+  if (!JK_BIRTH_PENDING.length) return;
+  var list = JK_BIRTH_PENDING; JK_BIRTH_PENDING = [];
+  try { var tc = tcMod_(); if (tc.fillBirths) tc.fillBirths(list, (me && me.disp || '') + '（事故報告から）', {}); } catch (e) {}
+}
+/* 前に事故報告の設定に入れていたもの（車の保険・車ごとの明細・必要な免許・スタッフの免許・生年月日）を、それぞれの置き場所へ一度だけ移して、事故報告からは消す。
+   移す先が空いているところだけ入れる（向こうに入っているものは変えない） */
+function jkMigrate_(me) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('JK_MOVED') === '1') return;
+  var st = jkSettings_(), ins = st.insurance || {}, auto = ins.auto || {}, vs = st.vehicles || {}, lic = st.licenses || {}, births = st.births || {};
+  var left = {};
+  // 生年月日 → タイムカード
+  var bl = Object.keys(births).filter(function (id) { return births[id]; }).map(function (id) { return { id: id, birth: births[id] }; });
+  if (bl.length) { try { var tc = tcMod_(); if (!tc.fillBirths) return; var r = tc.fillBirths(bl, '（事故報告の設定から移す）', {}); (r.unmatched || []).forEach(function (id) { left[id] = births[id]; }); } catch (e) { return; } }
+  withLockRaw_(function () {
+    // 車の保険・車ごとの明細 → 車両アプリ（まだ契約が無いときだけ）
+    var g = vinsGet_();
+    if (!g.contract && (auto.name || auto.policy || auto.phone || auto.road)) {
+      upsert_('insContract', 'id', 'F', { id: VINS_ID, insurer: auto.name || '', policyNo: auto.policy || '', phone: auto.phone || '', road: auto.road || '', agent: auto.agent || '', agentPhone: auto.agentPhone || '', files: '[]' }, '事故報告から移す');
+      var vsh = sh_('insVehicles'), head = SHEETS.insVehicles.head, rows = [];
+      rows_('vehicles').forEach(function (v) { var x = vs[v.id] || {}; if (x.fleetNo || x.carCov) { var o = { vehicleId: String(v.id), contractId: VINS_ID, plate: v.plate || '', car: v.name || '', rowNo: x.fleetNo || '', carCov: x.carCov || '', updatedBy: '事故報告から移す', updatedAt: now_() }; rows.push(head.map(function (h) { return cell_(o[h] == null ? '' : String(o[h])); })); } });
+      if (rows.length) vsh.getRange(vsh.getLastRow() + 1, 1, rows.length, head.length).setValues(rows);
+    }
+    // 車の必要な免許 → 車両アプリ（空いている車だけ）
+    rows_('vehicles').forEach(function (v) { var x = vs[v.id] || {}; if (x.license && !v.license) upsert_('vehicles', 'id', 'V', { id: v.id, license: x.license }, '事故報告から移す'); });
+    // スタッフの免許の種類 → 資格・免許アプリ（運転免許がまだ無い人だけ。確認待ちで入れる）
+    var has = {}; skRows_('items').forEach(function (r) { if (r.state !== '削除' && r.kind === '運転免許') has[String(r.staffId)] = 1; });
+    var staff = jkStaff_();
+    Object.keys(lic).forEach(function (id) {
+      if (!lic[id] || has[id]) return;
+      var s0 = staff.filter(function (s) { return s.id === String(id); })[0]; if (!s0) return;
+      skUpsert_('items', 'id', { id: 'Q-' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd') + '-' + Math.random().toString(36).slice(2, 8), staffId: String(id), staff: s0.name || s0.disp, kind: '運転免許', name: '自動車運転免許証', grade: lic[id],
+        memo: '事故報告の設定から移しました。免許証の写真を撮ってください', photos: '[]', status: '確認待ち', by: '事故報告から移す', at: now_(), updatedBy: '事故報告から移す', updatedAt: now_(), state: '' });
+    });
+    // 事故報告の設定から消す（移せなかった生年月日だけ残す）
+    if (ins.auto) { delete ins.auto; jkSetSetting_('insurance', ins); }
+    jkSetSetting_('vehicles', {}); jkSetSetting_('licenses', {}); jkSetSetting_('births', left);
+  });
+  props.setProperty('JK_MOVED', '1');
+  try { CacheService.getScriptCache().remove('jk_apps'); } catch (e) {}
 }
 function jkInit_(me) {
+  try { jkMigrate_(me); } catch (e) {}
   var cases = jkRows_('cases').filter(function (r) { return r.state !== '削除'; }).map(jkCase_);
   var photos = jkRows_('photos'), logs = jkRows_('logs'), st = jkSettings_();
   var views = [];
@@ -3882,8 +3920,8 @@ function jkHiyariBoss_(b, me) {
 function jkSaveSettings_(b, me) {
   if (me.role !== 'boss') return { ok: false, error: '設定は親方だけが変えられます' };
   var s = b.settings || {};
-  if (s.insurance && !s.insurance.auto) { var cur = jkSettings_().insurance || {}; if (cur.auto) s.insurance.auto = cur.auto; }   // 車の保険は車両アプリが本物。前にここで入れた分は控えとして残す
-  ['company', 'contacts', 'insurance', 'vehicles', 'licenses', 'births'].forEach(function (k) { if (s[k] !== undefined) jkSetSetting_(k, s[k]); });
+  if (s.insurance) delete s.insurance.auto;   // 車の保険・車・免許・生年月日はそれぞれのアプリが置き場所。ここには置かない
+  ['company', 'contacts', 'insurance'].forEach(function (k) { if (s[k] !== undefined) jkSetSetting_(k, s[k]); });
   return { ok: true, settings: jkPublicSettings_(jkSettings_(), me) };
 }
 
