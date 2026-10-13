@@ -170,6 +170,7 @@ const APPS = [
   { name:"要点まとめ", desc:"まとまらなくてOK。話すと要点と送る文にまとめる", url:"yoten.html",  icon:"memo"    },
   { name:"タイムカード", desc:"出勤・退勤の打刻と、休みの登録・自分の出勤カレンダー", url:"timecard.html", icon:"clock" },
   { name:"事故報告", desc:"車両・作業の事故、けが（労災）、ヒヤリハットを報告", url:"jiko.html", icon:"siren" },
+  { name:"資格・免許", desc:"自分の免許証・修了証を写真で登録（見られるのは本人と親方・事務）", url:"shikaku.html", icon:"idcard" },
 ];
 
 /* 事務・集計用（下の小さいリスト）。ここも同じく1行たすだけ */
@@ -197,6 +198,7 @@ const ICONS = {
   clock:   '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   camera:  '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.5-2.2h5.6L16.3 7h2.2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.8" r="3.3"/>',
   memo:    '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4 3.5V16h-.5A1.5 1.5 0 0 1 4 14.5z"/><path d="M8 8.5h8M8 12h5"/>',
+  idcard:  '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="11" r="2.2"/><path d="M5.5 16c.6-1.6 1.7-2.4 3-2.4s2.4.8 3 2.4"/><path d="M14 10h4.5M14 13h4.5"/>',
   siren:   '<path d="M7 17v-5a5 5 0 0 1 10 0v5"/><path d="M4.5 17h15v3h-15z"/><path d="M12 3v2M4.2 6.2l1.4 1.4M19.8 6.2l-1.4 1.4"/><path d="M12 10v4"/>',
   karte:   '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 17v-4"/><path d="M12 13c-2.6 0-4-1.6-4-3.8 1.9 0 3.2.6 4 1.8.8-1.2 2.1-1.8 4-1.8 0 2.2-1.4 3.8-4 3.8Z"/>',
 };
@@ -306,6 +308,23 @@ function orderedApps(){   // 覚えている並び → まだ並びにない（�
     const add = (href, html) => { const a = mk('a','remind'); a.href = href; a.innerHTML = html + '<span class="go">見る ›</span>'; box.append(a); };
     if (r.n) add('jiko.html?tab=list', '🚨 <span>事故報告が<b>' + r.n + '件</b>対応を待っています</span>');
     if (r.hiyari) add('jiko.html?tab=hiyari', '⚠️ <span>新しいヒヤリハットが<b>' + r.hiyari + '件</b>あります</span>');
+  } catch (e) { /* 電波がないときは出さない */ }
+})();
+
+/* 資格・免許のお知らせ：期限が60日以内・切れたもの（本人は自分の分、親方・事務担当は全員分）と、確認待ち（親方・事務担当） */
+(async function shikakuRemind(){
+  let token = ''; try { token = JSON.parse(localStorage.getItem('tc_token') || '""') || ''; } catch (e) {}
+  if (!token) return;
+  try {
+    const ac = new AbortController(); setTimeout(() => ac.abort(), 12000);
+    const r = await (await fetch('https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ app: 'shikaku', mode: 'badge', token }), signal: ac.signal })).json();
+    if (!r.ok || !(r.n || r.wait)) return;
+    const card = document.querySelector('.app[data-url="shikaku.html"]');
+    if (card) { const c = mk('span','cnt'); c.textContent = (r.n || 0) + (r.wait || 0); card.append(c); }
+    const box = document.getElementById('remind');
+    const add = (html) => { const a = mk('a','remind'); a.href = 'shikaku.html'; a.innerHTML = html + '<span class="go">見る ›</span>'; box.append(a); };
+    if (r.n) add('🪪 <span>免許・資格の<b>期限が近い・切れているもの</b>が' + r.n + '件あります</span>');
+    if (r.wait) add('🪪 <span>資格・免許の<b>確認待ち</b>が' + r.wait + '件あります</span>');
   } catch (e) { /* 電波がないときは出さない */ }
 })();
 

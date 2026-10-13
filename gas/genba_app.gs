@@ -9,6 +9,7 @@
  *  ・要点まとめ（app=yoten）：まとまらないまま話した内容を、AIで要点・必要な道具・車両・送る文に整理。要点メモに残す
  *  ・タイムカード（app=timecard）：本体は gas/timecard_app.gs（ここでは読み込んで渡すだけ）
  *  ・工事写真（app=shashin）：黒板つきの工事写真。台帳＝現場マスタ（委託名＞現場名）。地図に置いた撮影項目・写真の記録・写真はドライブへ
+ *  ・資格・免許（app=shikaku）：社員の資格・免許証。本人は自分の分を写真で登録、親方・事務担当は全員分を管理（専用のスプレッドシートと制限付きフォルダ）
  *  ・事故報告（app=jiko）：車両事故・作業事故・労災・ヒヤリハット。専用のスプレッドシート（社外秘）と写真フォルダ。本人確認はタイムカードのログイン
  *  返り値はすべて { ok:true/false, error?:"..." } 形式（社内アプリ共通ルール）
  *
@@ -556,6 +557,7 @@ function doPost(e) {
   try {
     if (b.app === 'timecard') return tcMod_().doPost(e);   // タイムカード（本体は gas/timecard_app.gs）
     if (b.app === 'jiko') return out_(jikoPost_(b));       // 事故報告（本人確認はタイムカードのログイン）
+    if (b.app === 'shikaku') return out_(shikakuPost_(b)); // 資格・免許（本人は自分の分、親方・事務担当は全員分）
     var key = (b.app || '') + ':' + (b.mode || '');
     if (ADMIN_ONLY.indexOf(key) >= 0 && !isAdmin_(b.by)) return out_({ ok: false, error: '削除は' + admins_().join('・') + 'だけができます。消したいときは頼んでください' });
     switch (key) {
@@ -3895,4 +3897,220 @@ function jkAddress_(b) {
     var a = String(res[0].formatted_address || '').replace(/^日本、?\s*/, '').replace(/〒\d{3}-\d{4}\s*/, '').trim();
     return { ok: true, address: a };
   } catch (e) { return { ok: false, error: '住所を調べられませんでした' }; }
+}
+
+/* ================================================================
+ *  資格・免許（shikaku.html）app=shikaku
+ *  ・本人確認はタイムカードと同じ（名前＋4桁の暗証番号）
+ *  ・本人：自分の資格・免許だけ見られて、写真（修了証・免許証の表裏）を撮って登録・直せる
+ *  ・親方・事務担当：全員分を一覧（資格×人）・人ごと・期限で見て、確認済みにしたり、写しのPDFや一覧を取り出せる
+ *  ・データは「社内アプリ ＞ 社員の資格・免許」の「社員の資格・免許（社外秘）」と、人ごとのフォルダ（写真）
+ *    フォルダはアクセスを制限（親方〔持ち主〕だけがドライブから開ける。見せる・見せないはアプリが決める）
+ * ================================================================ */
+var SK_SHEET_NAME = '社員の資格・免許（社外秘）';
+var SK_COLS = {
+  items: { name: '資格・免許', cols: [['id', 'ID'], ['staffId', 'スタッフID'], ['staff', '氏名'], ['kind', '区分'], ['name', '資格・免許の名前'], ['number', '番号'], ['grade', '種類・等級'],
+    ['issued', '取得日'], ['expires', '有効期限'], ['issuer', '発行・講習機関'], ['memo', 'メモ'], ['photos', '写真'], ['status', '確認'], ['checkedBy', '確認した人'], ['checkedAt', '確認日'],
+    ['by', '登録した人'], ['at', '登録日時'], ['updatedBy', '更新者'], ['updatedAt', '更新日時'], ['state', '状態']] },
+  photos: { name: '写真', cols: [['photoId', '写真ID'], ['itemId', '資格ID'], ['staffId', 'スタッフID'], ['side', '面'], ['fileId', 'ファイルID'], ['url', 'リンク'], ['by', '撮った人'], ['at', '日時'], ['state', '状態']] }
+};
+var SK_SS_ = null;
+function skFolder_() {
+  var id = prop_('SK_FOLDER_ID', ''), folder = null;
+  if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) folder = f; } catch (e) {} }
+  if (!folder) {
+    var p = docsFolder_().getParents(), parent = p.hasNext() ? p.next() : DriveApp.getRootFolder();
+    folder = subFolder_(parent, '社員の資格・免許');
+    PropertiesService.getScriptProperties().setProperty('SK_FOLDER_ID', folder.getId());
+  }
+  skRestrict_(folder);
+  return folder;
+}
+function skRestrict_(folder) {   // 事故報告と同じ「アクセスを制限」（社内アプリのフォルダはスタッフと共有しているため）
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('SK_LIMITED') === folder.getId()) return true;
+  var last = Number(props.getProperty('SK_LIMIT_TRY_' + folder.getId()) || 0);
+  if (Date.now() - last < 3600000) return false;
+  props.setProperty('SK_LIMIT_TRY_' + folder.getId(), String(Date.now()));
+  try {
+    var res = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + folder.getId() + '?fields=inheritedPermissionsDisabled', {
+      method: 'patch', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, payload: JSON.stringify({ inheritedPermissionsDisabled: true }) });
+    var ok = res.getResponseCode() === 200 && JSON.parse(res.getContentText()).inheritedPermissionsDisabled === true;
+    if (ok) props.setProperty('SK_LIMITED', folder.getId());
+    return ok;
+  } catch (e) { return false; }
+}
+function skSs_() {
+  if (SK_SS_) return SK_SS_;
+  var props = PropertiesService.getScriptProperties(), id = prop_('SK_SHEET_ID', ''), ss = null;
+  if (id) { try { ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; } }
+  if (!ss) { var it = DriveApp.getFilesByName(SK_SHEET_NAME); if (it.hasNext()) ss = SpreadsheetApp.open(it.next()); }
+  if (!ss) { ss = SpreadsheetApp.create(SK_SHEET_NAME); ss.setSpreadsheetTimeZone(TZ); try { DriveApp.getFileById(ss.getId()).moveTo(skFolder_()); } catch (e) {} }
+  props.setProperty('SK_SHEET_ID', ss.getId());
+  SK_SS_ = ss;
+  Object.keys(SK_COLS).forEach(skSh_);
+  var first = ss.getSheetByName('シート1') || ss.getSheetByName('Sheet1');
+  if (first && ss.getSheets().length > 1 && first.getLastRow() === 0) { try { ss.deleteSheet(first); } catch (e) {} }
+  return ss;
+}
+function skSh_(key) {
+  var ss = SK_SS_ || skSs_(), def = SK_COLS[key], s = ss.getSheetByName(def.name), labels = def.cols.map(function (c) { return c[1]; });
+  if (!s) { s = ss.insertSheet(def.name); s.appendRow(labels); s.setFrozenRows(1); s.getRange(1, 1, 1, labels.length).setFontWeight('bold').setBackground('#E5EDE7'); return s; }
+  var head = s.getRange(1, 1, 1, Math.max(1, s.getLastColumn())).getValues()[0].map(String), add = labels.filter(function (l) { return head.indexOf(l) < 0; });
+  if (add.length) s.getRange(1, head.filter(String).length + 1, 1, add.length).setValues([add]).setFontWeight('bold').setBackground('#E5EDE7');
+  return s;
+}
+function skRows_(key) {
+  var s = skSh_(key), head = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map(String), map = {}, vals = s.getDataRange().getValues(), out = [];
+  SK_COLS[key].cols.forEach(function (c) { var i = head.indexOf(c[1]); if (i >= 0) map[c[0]] = i; });
+  for (var i = 1; i < vals.length; i++) {
+    if (vals[i].join('') === '') continue;
+    var o = {}; Object.keys(map).forEach(function (k) { var v = vals[i][map[k]]; o[k] = v instanceof Date ? Utilities.formatDate(v, TZ, /At$/.test(k) ? 'yyyy-MM-dd HH:mm' : 'yyyy-MM-dd') : (v == null ? '' : v); });
+    out.push(o);
+  }
+  return out;
+}
+function skUpsert_(key, idKey, obj) {
+  var s = skSh_(key), head = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map(String), map = {};
+  SK_COLS[key].cols.forEach(function (c) { var i = head.indexOf(c[1]); if (i >= 0) map[c[0]] = i; });
+  var vals = s.getDataRange().getValues(), row = 0, id = String(obj[idKey] || '');
+  for (var i = 1; i < vals.length; i++) if (String(vals[i][map[idKey]]) === id) { row = i + 1; break; }
+  var r = row ? vals[row - 1].slice() : new Array(head.length).fill('');
+  while (r.length < head.length) r.push('');
+  Object.keys(map).forEach(function (k) { if (obj.hasOwnProperty(k)) { var v = obj[k] == null ? '' : obj[k]; if (typeof v === 'string' && /^[=+@]/.test(v)) v = "'" + v; r[map[k]] = cell_(v); } });
+  if (row) s.getRange(row, 1, 1, r.length).setValues([r]); else s.appendRow(r);
+}
+var SK_KINDS = ['運転免許', '技能講習', '特別教育', '安全衛生教育', '国家資格・技能士', 'その他'];
+function skAdmin_(me) { return me.role === 'boss' || me.role === 'office'; }
+function skItem_(r) {
+  return { id: r.id, staffId: String(r.staffId), staff: r.staff, kind: r.kind, name: r.name, number: r.number, grade: r.grade, issued: r.issued, expires: r.expires, issuer: r.issuer, memo: r.memo,
+    photos: jkJson_(r.photos, []), status: r.status, checkedBy: r.checkedBy, checkedAt: r.checkedAt, by: r.by, at: r.at, updatedBy: r.updatedBy, updatedAt: r.updatedAt };
+}
+function shikakuPost_(b) {
+  try {
+    var me = jkMe_(b.token), m = String(b.mode || '');
+    switch (m) {
+      case 'init':      return skInit_(me);
+      case 'badge':     return skBadge_(me);
+      case 'save':      return withLockRaw_(function () { return skSave_(b, me); });
+      case 'delete':    return withLockRaw_(function () { return skDelete_(b, me); });
+      case 'check':     return withLockRaw_(function () { return skCheck_(b, me); });
+      case 'photo':     return skPhoto_(b, me);
+      case 'photoData': return skPhotoData_(b, me);
+      case 'photoDel':  return withLockRaw_(function () { return skPhotoDel_(b, me); });
+      case 'import':    return skImport_(b, me);
+      default: return { ok: false, error: 'unknown mode: shikaku:' + m };
+    }
+  } catch (err) { return { ok: false, error: err.message || String(err), code: err.auth ? 'auth' : '' }; }
+}
+function skInit_(me) {
+  var admin = skAdmin_(me), items = skRows_('items').filter(function (r) { return r.state !== '削除' && (admin || String(r.staffId) === me.id); }).map(skItem_);
+  var staff = jkStaff_(); if (!admin) staff = staff.filter(function (s) { return s.id === me.id; });
+  var folder = null; if (admin) { try { var f = skFolder_(); folder = { url: f.getUrl(), limited: prop_('SK_LIMITED', '') === f.getId() }; } catch (e) {} }
+  return { ok: true, me: me, admin: admin, staff: staff, items: items, kinds: SK_KINDS, folder: folder, now: now_() };
+}
+function skBadge_(me) {
+  var today = ymd_(new Date()), soon = addDays_(today, 60), admin = skAdmin_(me), n = 0, wait = 0;
+  skRows_('items').forEach(function (r) {
+    if (r.state === '削除' || (!admin && String(r.staffId) !== me.id)) return;
+    if (r.expires && String(r.expires) <= soon) n++;
+    if (admin && r.status === '確認待ち') wait++;
+  });
+  return { ok: true, n: n, wait: wait };
+}
+function skFind_(id) { var hit = null; skRows_('items').forEach(function (r) { if (r.id === String(id)) hit = r; }); return hit; }
+function skSave_(b, me) {
+  var it = b.item || {}, admin = skAdmin_(me), id = String(it.id || '');
+  if (!/^Q-[\w-]{6,40}$/.test(id)) return { ok: false, error: 'IDがおかしいです' };
+  var old = skFind_(id), staffId = String(old ? old.staffId : (it.staffId || me.id));
+  if (!admin && staffId !== me.id) return { ok: false, error: '自分の資格・免許だけ登録できます' };
+  if (old && old.state === '削除') return { ok: false, error: 'この登録は消されています' };
+  var name = String(it.name || '').trim(); if (!name) return { ok: false, error: '資格・免許の名前を入れてください' };
+  var st = jkStaff_().filter(function (s) { return s.id === staffId; })[0] || {};
+  var rec = { id: id, staffId: staffId, staff: st.name || st.disp || '', kind: SK_KINDS.indexOf(it.kind) >= 0 ? it.kind : 'その他', name: name.slice(0, 80),
+    number: String(it.number || '').slice(0, 60), grade: String(it.grade || '').slice(0, 80), issued: String(it.issued || ''), expires: String(it.expires || ''),
+    issuer: String(it.issuer || '').slice(0, 80), memo: String(it.memo || '').slice(0, 500), photos: JSON.stringify(Array.isArray(it.photos) ? it.photos.slice(0, 6) : []),
+    updatedBy: me.disp, updatedAt: now_(), state: '' };
+  if (!old) { rec.by = me.disp; rec.at = now_(); rec.status = admin ? '確認済' : '確認待ち'; if (admin) { rec.checkedBy = me.disp; rec.checkedAt = ymd_(new Date()); } }
+  else if (!admin) { rec.status = '確認待ち'; rec.checkedBy = ''; rec.checkedAt = ''; }   // 本人が直したら、もう一度確かめてもらう
+  skUpsert_('items', 'id', rec);
+  return { ok: true, item: skItem_(Object.assign({}, old || {}, rec)) };
+}
+function skDelete_(b, me) {
+  var old = skFind_(b.id); if (!old) return { ok: false, error: '見つかりません' };
+  if (!skAdmin_(me) && String(old.staffId) !== me.id) return { ok: false, error: '消す権限がありません' };
+  skUpsert_('items', 'id', { id: old.id, state: b.undo ? '' : '削除', updatedBy: me.disp, updatedAt: now_() });   // 「元に戻す」で戻せる
+  return { ok: true };
+}
+function skCheck_(b, me) {
+  if (!skAdmin_(me)) return { ok: false, error: '親方と事務担当だけができます' };
+  var old = skFind_(b.id); if (!old) return { ok: false, error: '見つかりません' };
+  var on = b.on !== false;
+  skUpsert_('items', 'id', { id: old.id, status: on ? '確認済' : '確認待ち', checkedBy: on ? me.disp : '', checkedAt: on ? ymd_(new Date()) : '' });
+  return { ok: true };
+}
+function skStaffFolder_(staffId) {
+  var st = jkStaff_().filter(function (s) { return s.id === String(staffId); })[0] || {};
+  var root = skFolder_(), want = shashinClean_((st.name || st.disp || 'ID' + staffId) + '（' + staffId + '）'), it = root.getFolders();
+  while (it.hasNext()) { var f = it.next(), mm = f.getName().match(/（([^（）]+)）$/); if (mm && mm[1] === String(staffId)) { if (f.getName() !== want) { try { f.setName(want); } catch (e) {} } return f; } }
+  return root.createFolder(want);
+}
+function skPhoto_(b, me) {
+  var p = b.photo || {};
+  if (!p.photoId || !b.data) return { ok: false, error: '写真がありません' };
+  var staffId = String(p.staffId || me.id);
+  if (!skAdmin_(me) && staffId !== me.id) return { ok: false, error: '自分の分だけ撮れます' };
+  var had = null; skRows_('photos').forEach(function (r) { if (r.photoId === String(p.photoId)) had = r; });
+  if (had) return { ok: true, dup: true };
+  var folder; withLockRaw_(function () { folder = skStaffFolder_(staffId); });
+  var name = shashinClean_([p.name || '資格', p.side || '', Utilities.formatDate(new Date(), TZ, 'yyyyMMdd_HHmm')].filter(String).join('_')) + '.jpg';
+  var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), 'image/jpeg', name));
+  withLockRaw_(function () { skUpsert_('photos', 'photoId', { photoId: String(p.photoId), itemId: String(p.itemId || ''), staffId: staffId, side: p.side || '', fileId: file.getId(), url: file.getUrl(), by: me.disp, at: now_(), state: '' }); });
+  return { ok: true };
+}
+function skPhotoData_(b, me) {
+  var hit = null; skRows_('photos').forEach(function (r) { if (r.photoId === String(b.photoId)) hit = r; });
+  if (!hit || hit.state === '削除') return { ok: false, error: '写真が見つかりません' };
+  if (!skAdmin_(me) && String(hit.staffId) !== me.id) return { ok: false, error: 'この写真を見る権限がありません' };
+  var blob = DriveApp.getFileById(hit.fileId).getBlob();
+  return { ok: true, data: Utilities.base64Encode(blob.getBytes()), mime: blob.getContentType() || 'image/jpeg' };
+}
+function skPhotoDel_(b, me) {
+  var hit = null; skRows_('photos').forEach(function (r) { if (r.photoId === String(b.photoId)) hit = r; });
+  if (!hit) return { ok: true };
+  if (!skAdmin_(me) && String(hit.staffId) !== me.id) return { ok: false, error: '消す権限がありません' };
+  skUpsert_('photos', 'photoId', { photoId: hit.photoId, state: '削除' });
+  return { ok: true };
+}
+/* 今使っている「資格など管理」シート（資格×人の表で○）を取り込む。同じ人・同じ資格がもうあれば飛ばす（何回やっても二重にならない） */
+function skImport_(b, me) {
+  if (!skAdmin_(me)) return { ok: false, error: '親方と事務担当だけができます' };
+  var m = String(b.url || '').match(/\/d\/([\w-]{20,})/), id = m ? m[1] : String(b.url || '').trim();
+  if (!id) return { ok: false, error: 'スプレッドシートのURLを入れてください' };
+  var ss; try { ss = SpreadsheetApp.openById(id); } catch (e) { return { ok: false, error: 'スプレッドシートを開けませんでした（URLと、持ち主かどうかを確かめてください）' }; }
+  var sh = ss.getSheetByName(String(b.sheet || '資格など管理')); if (!sh) return { ok: false, error: '「' + (b.sheet || '資格など管理') + '」というシートがありません' };
+  var vals = sh.getDataRange().getValues(), head = vals[0] || [], staff = jkStaff_(), cols = [];
+  var key = function (s) { return String(s || '').replace(/[\s　]/g, ''); };
+  head.forEach(function (h, c) {
+    var k = key(h); if (!k || c < 2) return;
+    var st = staff.filter(function (s) { return key(s.disp) === k || key(s.name).indexOf(k) === 0; })[0];
+    if (st) cols.push({ c: c, st: st }); 
+  });
+  if (!cols.length) return { ok: false, error: '1行目の名前（苗字）がスタッフと合いませんでした' };
+  var kindOf = function (k) { k = String(k || ''); if (/技能講習/.test(k)) return '技能講習'; if (/特別教育/.test(k)) return '特別教育'; if (/安全衛生/.test(k)) return '安全衛生教育'; return '国家資格・技能士'; };
+  var have = {}; skRows_('items').forEach(function (r) { if (r.state !== '削除') have[r.staffId + '|' + key(r.name)] = 1; });
+  var added = 0, skipped = 0, dry = !!b.dry, preview = [];
+  for (var i = 1; i < vals.length; i++) {
+    var name = String(vals[i][1] || '').trim(); if (!name) continue;
+    cols.forEach(function (x) {
+      var v = String(vals[i][x.c] == null ? '' : vals[i][x.c]).trim(); if (!v) return;
+      if (have[x.st.id + '|' + key(name)]) { skipped++; return; }
+      have[x.st.id + '|' + key(name)] = 1; added++;
+      if (dry) { if (preview.length < 200) preview.push({ staff: x.st.disp, name: name, memo: /^[〇○◯]$/.test(v) ? '' : v }); return; }
+      skUpsert_('items', 'id', { id: 'Q-' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd') + '-' + Math.random().toString(36).slice(2, 8), staffId: x.st.id, staff: x.st.name || x.st.disp,
+        kind: kindOf(vals[i][0]), name: name, memo: /^[〇○◯]$/.test(v) ? '' : v, photos: '[]', status: '確認待ち', by: me.disp, at: now_(), updatedBy: me.disp, updatedAt: now_(), state: '' });
+    });
+  }
+  return { ok: true, added: added, skipped: skipped, people: cols.map(function (x) { return x.st.disp; }), preview: preview, dry: dry };
 }

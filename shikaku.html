@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="資格・免許">
+<meta name="theme-color" content="#214A37">
+<title>資格・免許｜庭乃持田園</title>
+<style>
+:root{
+  --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7; --ok:#2E7D55;
+  --tape:#C77C30; --bark:#5B5750; --ink:#22231F; --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F; --danger-soft:#FBE3DE;
+  --radius:10px; --shadow:0 1px 0 rgba(34,35,31,.04), 0 8px 24px -16px rgba(34,35,31,.25);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif;-webkit-text-size-adjust:100%;line-height:1.6}
+header{background:var(--leaf);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:20;padding-top:calc(12px + env(safe-area-inset-top))}
+header .row{max-width:860px;margin:0 auto;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header .me{font-size:13px;background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:999px;padding:5px 12px;font-family:inherit;cursor:pointer}
+.home-btn{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;color:#fff;text-decoration:none;font-family:inherit;font-size:13px;font-weight:700;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.32);border-radius:999px;padding:5px 11px 5px 9px;white-space:nowrap;line-height:1.2;cursor:pointer}
+.home-btn .hb-ic{font-size:15px;line-height:1}
+@media (max-width:400px){ .home-btn .hb-t{display:none} }
+.error-banner{display:none;background:var(--danger);color:#fff;padding:10px 16px;font-size:13px}
+main{max-width:860px;margin:0 auto;padding:14px 16px calc(100px + env(safe-area-inset-bottom))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+h2{font-size:15.5px;margin:2px 0 10px;color:var(--leaf)}
+h3{font-size:14px;margin:14px 0 6px;color:var(--bark)}
+.hint{font-size:12.5px;color:var(--bark);margin:4px 0 0}
+label.lbl{display:block;font-size:13px;font-weight:700;color:var(--bark);margin:12px 0 6px}
+label.lbl .req{color:var(--danger);font-size:11.5px;margin-left:4px}
+input[type=text],input[type=date],input[type=password],input[type=url],textarea,select{width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink)}
+textarea{min-height:70px;resize:vertical}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--leaf);outline-offset:1px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-size:15px;font-weight:700;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:10px 16px;min-height:46px;cursor:pointer;text-decoration:none}
+.btn.primary{background:var(--leaf);color:#fff;border-color:var(--leaf)}
+.btn.tape{background:var(--tape);color:#fff;border-color:var(--tape)}
+.btn.line-danger{color:var(--danger);border-color:var(--danger)}
+.btn.block{width:100%}
+.btn.sm{min-height:36px;padding:6px 12px;font-size:13.5px}
+.btn:disabled{opacity:.45;cursor:default}
+.row2{display:flex;gap:8px}
+.row2>*{flex:1;min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--field);border-radius:999px;padding:8px 14px;font-size:14.5px;cursor:pointer;color:var(--ink);font-family:inherit;line-height:1.3}
+.chip.on{background:var(--leaf);border-color:var(--leaf);color:#fff;font-weight:700}
+.tag{display:inline-block;font-size:11.5px;border-radius:6px;padding:1px 7px;margin:0 4px 2px 0;background:#EEE;color:var(--bark);white-space:nowrap}
+.tag.ok{background:var(--leaf-soft);color:var(--leaf);font-weight:700}
+.tag.wait{background:#FFF1D6;color:#8A5A00;font-weight:700}
+.tag.red{background:var(--danger-soft);color:var(--danger);font-weight:700}
+.tag.soon{background:#FFF1D6;color:#8A5A00;font-weight:700}
+.item{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-bottom:8px;cursor:pointer;box-shadow:var(--shadow)}
+.item .t{font-weight:700;font-size:15px}
+.item .s{font-size:12.5px;color:var(--bark)}
+.item.exp{border-left:5px solid var(--danger)}
+.item.soon{border-left:5px solid #D9A21B}
+.empty{color:var(--bark);text-align:center;padding:20px 10px;font-size:14px}
+.note{background:#FFF8E6;border:1px solid #F0DDB0;border-left:6px solid #D9A21B;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:13.5px}
+.note.red{background:var(--danger-soft);border-color:#EDC2B7;border-left-color:var(--danger)}
+.note.green{background:#EEF4EF;border-color:#CFE0D3;border-left-color:var(--ok)}
+.note b{display:block;margin-bottom:2px}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);z-index:30;padding-bottom:env(safe-area-inset-bottom)}
+nav.tabs .in{max-width:860px;margin:0 auto;display:flex}
+nav.tabs button{flex:1;border:0;background:none;font:inherit;font-size:11.5px;color:var(--bark);padding:8px 0 7px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;position:relative}
+nav.tabs button .ic{font-size:21px;line-height:1.1}
+nav.tabs button.on{color:var(--leaf);font-weight:700}
+nav.tabs .badge{position:absolute;top:3px;left:calc(50% + 8px);background:var(--danger);color:#fff;font-size:10.5px;border-radius:999px;padding:0 6px;min-width:18px}
+.modal-bg{position:fixed;inset:0;background:rgba(34,35,31,.45);z-index:50;display:none;align-items:flex-end;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--paper);width:100%;max-width:680px;max-height:94vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.modal h3{margin:0 0 12px;font-size:17px;color:var(--leaf)}
+.toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;z-index:70;opacity:0;transition:opacity .2s;pointer-events:none;max-width:92%;text-align:center;display:flex;gap:10px;align-items:center}
+.toast.show{opacity:1;pointer-events:auto}
+.toast button{border:0;background:#fff;color:var(--ink);border-radius:999px;padding:4px 12px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.loading{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px}
+.btn:not(.primary):not(.tape) .loading{border-color:var(--line);border-top-color:var(--leaf)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.thumbs{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
+.th{position:relative;width:110px;height:78px;border-radius:8px;overflow:hidden;background:var(--leaf-soft);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--bark);border:1px solid var(--line);cursor:pointer}
+.th img{width:100%;height:100%;object-fit:cover;display:block}
+.th .lab{position:absolute;left:3px;bottom:3px;font-size:10.5px;background:rgba(0,0,0,.6);color:#fff;border-radius:4px;padding:0 5px}
+.th .x{position:absolute;right:3px;top:3px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:13px;line-height:24px;cursor:pointer;padding:0}
+.matrix-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff;max-height:70vh}
+table.matrix{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%}
+table.matrix th,table.matrix td{border-bottom:1px solid var(--line);border-right:1px solid #EEE;padding:6px 8px;white-space:nowrap;text-align:center}
+table.matrix thead th{position:sticky;top:0;background:var(--leaf-soft);z-index:2;color:var(--leaf)}
+table.matrix th.nm{position:sticky;left:0;background:#fff;text-align:left;z-index:1;max-width:220px;white-space:normal;font-weight:600;min-width:170px}
+table.matrix thead th.nm{z-index:3;background:var(--leaf-soft)}
+table.matrix tr.grp th{background:#F4F4F2;text-align:left;color:var(--bark);font-size:12px;position:sticky;left:0}
+table.matrix td.c{cursor:pointer;font-size:16px}
+table.matrix td.c.ok{color:var(--leaf);font-weight:800}
+table.matrix td.c.wait{color:#B8860B;font-weight:800}
+table.matrix td.c.exp{color:var(--danger);font-weight:800;background:#FDF3F0}
+.kv{display:grid;grid-template-columns:96px 1fr;gap:4px 10px;font-size:14px;margin:6px 0}
+.kv dt{color:var(--bark)} .kv dd{margin:0;word-break:break-word}
+.pick{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:14.5px}
+.pick input{width:22px;height:22px}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="error-banner" id="errBanner"></div>
+<header><div class="row">
+  <a class="home-btn" id="homeBtn" href="index.html"><span class="hb-ic">🏠</span><span class="hb-t">ホーム</span></a>
+  <h1 id="title">🪪 資格・免許</h1>
+  <button class="me" id="meBtn" type="button" hidden></button>
+</div></header>
+<main id="main"><div class="empty"><span class="loading" style="border-top-color:var(--leaf)"></span> 読み込んでいます…</div></main>
+<nav class="tabs" id="tabs" hidden><div class="in">
+  <button type="button" data-tab="mine"><span class="ic">🪪</span>自分の分</button>
+  <button type="button" data-tab="table"><span class="ic">📋</span>一覧表</button>
+  <button type="button" data-tab="people"><span class="ic">👷</span>人ごと</button>
+  <button type="button" data-tab="due"><span class="ic">⏰</span>期限・確認<span class="badge" id="dueBadge" hidden></span></button>
+  <button type="button" data-tab="out"><span class="ic">📤</span>取り出す</button>
+</div></nav>
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
+<input type="file" id="fileLib" accept="image/*" hidden>
+
+<script>
+/* =========================================================
+   資格・免許（shikaku.html）
+   ・本人は自分の資格・免許だけを見て、修了証・免許証の写真を撮って登録する
+   ・親方・事務担当は全員分を一覧表・人ごと・期限で見て、確認済みにし、写しのPDFや一覧を取り出す
+   ・ログインはタイムカードと同じ。サーバーは現場アプリGAS（app=shikaku）
+   ========================================================= */
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';
+const KINDS = ['運転免許', '技能講習', '特別教育', '安全衛生教育', '国家資格・技能士', 'その他'];
+/* よく使う資格の名前（選ぶだけで入る。無いものは手で入れる） */
+const CATALOG = {
+  '運転免許': ['自動車運転免許証'],
+  '技能講習': ['高所作業車運転技能講習', '玉掛け技能講習', '不整地運搬車運転技能講習', 'ガス溶接技能講習', '小型移動式クレーン運転技能講習', '車両系建設機械（解体用）運転技能講習', '車両系建設機械（整地・運搬・積込み用及び掘削用）運転技能講習', 'フォークリフト運転技能講習'],
+  '特別教育': ['フルハーネス型墜落制止用器具特別教育', 'チェーンソーによる伐木等特別教育', 'ロープ高所作業者特別教育', 'アーク溶接等の業務に係る特別教育', '小型車両系建設機械（整地・運搬・積込み用及び掘削用）の運転の業務', '高所作業車の運転の業務に係る特別教育(高さ10m未満)', 'フォークリフトの運転の業務に係る特別教育(最大荷重1トン未満)', '林業機械（伐木等機械）運転特別教育', '林業機械（簡易架線集材装置等）運転特別教育', '小型移動式クレーンの運転の業務に係る特別教育（1t未満）', '玉掛けの業務に係る特別教育（1t未満）'],
+  '安全衛生教育': ['振動工具取扱作業者安全衛生教育', '丸のこ等取扱作業従事者安全衛生教育', '職長・安全衛生責任者教育', '刈払機取扱作業者安全衛生教育'],
+  '国家資格・技能士': ['1級造園施工管理技士', '2級造園施工管理技士', '1級造園施工管理技士補', '2級造園施工管理技士補', '1級造園技能士', '2級造園技能士', '3級造園技能士', '樹木医', '樹木医補', '衛生管理者', '第三級アマチュア無線技士'],
+  'その他': []
+};
+const LICENSE_TYPES = ['普通', '準中型（5t限定）', '準中型', '中型（8t限定）', '中型', '大型', '大型特殊', '普通二輪', '大型二輪', '牽引'];
+const SOON_DAYS = 60;
+
+/* ---------------- 小道具 ---------------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const jaDate = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (+m[1]) + '年' + (+m[2]) + '月' + (+m[3]) + '日' : (s || ''); };
+const daysTo = s => Math.round((new Date(s + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 86400000);
+const rid = () => Math.random().toString(36).slice(2, 8);
+const newId = () => { const d = new Date(); return 'Q-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + rid(); };
+const lsGet = (k, d = null) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
+const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+function toast(t, ms = 2600, action) {
+  const e = $('#toast'); e.innerHTML = esc(t) + (action ? ` <button type="button" id="toastAct">${esc(action.label)}</button>` : '');
+  if (action) $('#toastAct').onclick = () => { e.classList.remove('show'); action.fn(); };
+  e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), action ? 7000 : ms);
+}
+function showErr(t) { const b = $('#errBanner'); b.textContent = '⚠ ' + t; b.style.display = 'block'; clearTimeout(showErr.t); showErr.t = setTimeout(() => b.style.display = 'none', 9000); }
+window.addEventListener('error', e => showErr('画面でエラーが起きました：' + (e.message || '')));
+window.addEventListener('unhandledrejection', e => showErr('エラー：' + ((e.reason && e.reason.message) || e.reason || '')));
+function fetchT(url, opt, ms = 30000) { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms); return fetch(url, Object.assign({}, opt, { signal: ac.signal })).finally(() => clearTimeout(t)); }
+async function post(body, ms) {
+  let r; try { r = await fetchT(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }, ms); }
+  catch (e) { throw new Error(e.name === 'AbortError' ? '時間がかかりすぎました。電波の良い所でもう一度' : '送れませんでした（電波を確かめてください）'); }
+  return r.json();
+}
+async function api(mode, body = {}, ms = 45000) {
+  const j = await post(Object.assign({ app: 'shikaku', mode, token: S.token }, body), ms);
+  if (!j.ok && j.code === 'auth') { lsSet('tc_token', null); S.token = ''; renderLogin(j.error); throw new Error(j.error || 'ログインし直してください'); }
+  if (!j.ok) throw new Error(j.error || 'うまくいきませんでした');
+  return j;
+}
+const blobToB64 = b => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = () => ng(r.error); r.readAsDataURL(b); });
+const b64ToBlob = (d, m) => { const bin = atob(d), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type: m || 'image/jpeg' }); };
+function loadScript(src) { return new Promise((ok, ng) => { if (document.querySelector(`script[src="${src}"]`)) return ok(); const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ng(new Error('部品を読み込めませんでした（電波を確かめてください）')); document.head.appendChild(s); }); }
+
+/* ---------------- 状態 ---------------- */
+const S = { token: lsGet('tc_token', ''), me: null, admin: false, staff: [], items: [], tab: 'mine', view: null, loaded: false, outSel: { people: [], kinds: [] } };
+const staffById = id => S.staff.find(s => String(s.id) === String(id)) || {};
+const nameOf = id => { const s = staffById(id); return s.name || s.disp || ''; };
+const dispOf = id => { const s = staffById(id); return s.disp || s.name || ''; };
+const live = () => S.items;
+function expState(it) { if (!it.expires) return ''; const d = daysTo(it.expires); return d < 0 ? 'exp' : d <= SOON_DAYS ? 'soon' : ''; }
+function expTag(it) {
+  if (!it.expires) return '';
+  const d = daysTo(it.expires);
+  return d < 0 ? `<span class="tag red">期限切れ（${esc(jaDate(it.expires))}）</span>` : d <= SOON_DAYS ? `<span class="tag soon">あと${d}日（${esc(jaDate(it.expires))}）</span>` : `<span class="tag">期限 ${esc(jaDate(it.expires))}</span>`;
+}
+const statusTag = it => it.status === '確認済' ? '<span class="tag ok">確認済</span>' : '<span class="tag wait">確認待ち</span>';
+
+/* =========================================================
+   画面の切り替え（戻るボタン・スワイプで戻れるように履歴を使う）
+   ========================================================= */
+function go(view) { S.view = view; history.pushState({ v: view }, ''); render(); window.scrollTo(0, 0); }
+window.addEventListener('popstate', e => { S.view = (e.state && e.state.v) || null; closeModal(); render(); });
+function back() { if (history.state && history.state.v) history.back(); else { S.view = null; render(); } }
+function setHeader(title, backable) {
+  $('#title').textContent = title;
+  const hb = $('#homeBtn');
+  if (backable) { hb.innerHTML = '<span class="hb-ic">‹</span><span class="hb-t">もどる</span>'; hb.onclick = e => { e.preventDefault(); back(); }; }
+  else { hb.innerHTML = '<span class="hb-ic">🏠</span><span class="hb-t">ホーム</span>'; hb.onclick = null; }
+}
+document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.view = null; history.replaceState(null, ''); render(); window.scrollTo(0, 0); });
+function openModal(html) { $('#modal').innerHTML = html; $('#modalBg').classList.add('show'); }
+function closeModal() { $('#modalBg').classList.remove('show'); $('#modal').innerHTML = ''; }
+$('#modalBg').addEventListener('click', e => { if (e.target.id === 'modalBg' && !$('#modal').dataset.lock) closeModal(); });
+$('#meBtn').onclick = () => openModal(`<h3>${esc(S.me.disp)}さん</h3><p class="hint">${S.admin ? '親方・事務担当：全員分を見られます' : '自分の資格・免許だけを見られます'}</p>
+  <div class="row2" style="margin-top:14px"><button class="btn" onclick="closeModal()">閉じる</button><button class="btn line-danger" onclick="logout()">ログアウト</button></div>`);
+
+function render() {
+  if (!S.token) return renderLogin();
+  if (!S.loaded) return;
+  $('#meBtn').hidden = false; $('#meBtn').textContent = S.me.disp;
+  $('#tabs').hidden = !S.admin;
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
+  const due = live().filter(it => expState(it) || it.status !== '確認済').length;
+  const bd = $('#dueBadge'); bd.hidden = !S.admin || !due; bd.textContent = due;
+  const v = S.view;
+  if (v && v.name === 'edit') return renderEdit(v);
+  if (v && v.name === 'item') return renderItem(v.id);
+  if (v && v.name === 'person') return renderPerson(v.id);
+  setHeader('🪪 資格・免許', false);
+  if (!S.admin || S.tab === 'mine') return renderPerson(S.me.id, true);
+  if (S.tab === 'table') return renderTable();
+  if (S.tab === 'people') return renderPeople();
+  if (S.tab === 'due') return renderDue();
+  if (S.tab === 'out') return renderOut();
+}
+
+/* =========================================================
+   ログイン（タイムカードと同じ）
+   ========================================================= */
+async function renderLogin(msg) {
+  $('#tabs').hidden = true; $('#meBtn').hidden = true; setHeader('🪪 資格・免許', false);
+  $('#main').innerHTML = `<div class="card"><h2>ログイン</h2>
+    <p class="hint" style="margin-top:0">タイムカードと同じ、名前と4桁の暗証番号です。${msg ? '<br><b style="color:var(--danger)">' + esc(msg) + '</b>' : ''}</p>
+    <label class="lbl">名前</label><select id="lgWho"><option value="">読み込んでいます…</option></select>
+    <label class="lbl">暗証番号（4桁）</label><input type="password" id="lgPin" inputmode="numeric" maxlength="4" autocomplete="current-password">
+    <button class="btn primary block" id="lgGo" style="margin-top:14px">ログイン</button>
+    <p class="hint" style="margin-top:12px">まだ暗証番号を決めていない人は、先に <a href="timecard.html">タイムカード</a> で登録してください。</p></div>`;
+  try { const j = await post({ app: 'timecard', action: 'names' }, 20000); $('#lgWho').innerHTML = '<option value="">選んでください</option>' + ((j && j.names) || []).map(n => `<option value="${esc(n.id)}">${esc(n.disp || n.name)}</option>`).join(''); }
+  catch (e) { $('#lgWho').innerHTML = '<option value="">名前を読み込めません（電波を確かめてください）</option>'; }
+  $('#lgGo').onclick = async () => {
+    const who = $('#lgWho').value, pin = $('#lgPin').value;
+    if (!who || !/^\d{4}$/.test(pin)) { toast('名前と4桁の暗証番号を入れてください'); return; }
+    const b = $('#lgGo'); b.disabled = true; b.innerHTML = '<span class="loading"></span>';
+    try {
+      const device = (navigator.userAgent.match(/iPhone|iPad|Android[^;)]*|Windows|Macintosh/) || ['端末'])[0];
+      const j = await post({ app: 'timecard', action: 'login', staffId: who, pin, device }, 30000);
+      if (!j.ok) throw new Error(j.error || 'ログインできませんでした');
+      S.token = j.token; lsSet('tc_token', j.token); lsSet('tc_me', j.me); boot();
+    } catch (e) { toast(e.message, 4000); b.disabled = false; b.textContent = 'ログイン'; }
+  };
+}
+async function logout() { try { await post({ app: 'timecard', action: 'logout', token: S.token }, 10000); } catch (e) {} lsSet('tc_token', null); lsSet('tc_me', null); S.token = ''; S.loaded = false; closeModal(); renderLogin(); }
+
+async function boot() {
+  try {
+    const j = await api('init', {}, 45000);
+    S.me = j.me; S.admin = !!j.admin; S.staff = j.staff || []; S.items = j.items || []; S.folder = j.folder; S.loaded = true;
+    if (S.admin && S.tab === 'mine' && !lsGet('sk_tab_seen')) { S.tab = 'table'; lsSet('sk_tab_seen', 1); }
+    render();
+  } catch (e) {
+    if (!S.token) return;
+    $('#main').innerHTML = `<div class="card"><h2>読み込めませんでした</h2><p class="hint">${esc(e.message)}</p><button class="btn primary" onclick="boot()">もう一度</button></div>`;
+  }
+}
+
+/* =========================================================
+   人ごと（自分の分もここ）
+   ========================================================= */
+function itemCard(it) {
+  const es = expState(it);
+  return `<button class="item${es ? ' ' + es : ''}" data-open="${esc(it.id)}"><div class="t">${esc(it.name)}${it.grade ? ` <small style="font-weight:400">（${esc(it.grade)}）</small>` : ''}</div>
+    <div class="s"><span class="tag">${esc(it.kind)}</span>${statusTag(it)}${expTag(it)}${(it.photos || []).length ? `<span class="tag">📷 ${it.photos.length}枚</span>` : '<span class="tag red">写真なし</span>'}</div></button>`;
+}
+function renderPerson(staffId, mine) {
+  if (!mine) setHeader('👷 ' + dispOf(staffId) + 'さん', true);
+  const list = live().filter(it => String(it.staffId) === String(staffId));
+  const byKind = KINDS.map(k => [k, list.filter(it => it.kind === k)]).filter(x => x[1].length);
+  const lic = list.find(it => it.kind === '運転免許');
+  let h = '';
+  if (mine) h += `<div class="card"><h2>${esc(nameOf(staffId) || S.me.disp)}さんの資格・免許</h2>
+    <p class="hint" style="margin-top:0">修了証や免許証の写真を撮って登録してください。見られるのは、あなたと親方・事務担当だけです。</p>
+    ${!lic ? '<div class="note"><b>運転免許証がまだ登録されていません</b>表と裏の写真を撮ってください。</div>' : ''}</div>`;
+  else h += `<div class="card"><h2>${esc(nameOf(staffId))}</h2><p class="hint" style="margin:0">${list.length}件　${list.filter(it => it.status !== '確認済').length ? `確認待ち ${list.filter(it => it.status !== '確認済').length}件` : ''}</p></div>`;
+  h += `<div class="row2" style="margin-bottom:12px"><button class="btn tape" data-add="運転免許">🪪 運転免許証を登録</button><button class="btn primary" data-add="">＋ 資格を登録</button></div>`;
+  h += byKind.length ? byKind.map(([k, l]) => `<h3>${esc(k)}（${l.length}）</h3>${l.map(itemCard).join('')}`).join('') : '<div class="empty">まだ登録がありません</div>';
+  $('#main').innerHTML = h;
+  document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => go({ name: 'item', id: b.dataset.open }));
+  document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => go({ name: 'edit', staffId, kind: b.dataset.add || '' }));
+}
+function renderPeople() {
+  const ppl = S.staff;
+  $('#main').innerHTML = `<div class="card"><h2>人ごと</h2><p class="hint" style="margin-top:0">タップすると、その人の資格・免許を見て、代わりに登録もできます</p></div>` +
+    ppl.map(s => { const l = live().filter(it => String(it.staffId) === String(s.id)), lic = l.find(it => it.kind === '運転免許');
+      const bad = l.filter(it => expState(it) === 'exp').length, soon = l.filter(it => expState(it) === 'soon').length, wait = l.filter(it => it.status !== '確認済').length;
+      return `<button class="item" data-p="${esc(s.id)}"><div class="t">${esc(s.name || s.disp)}</div><div class="s"><span class="tag">${l.length}件</span>${lic ? '' : '<span class="tag red">免許証なし</span>'}${bad ? `<span class="tag red">期限切れ ${bad}</span>` : ''}${soon ? `<span class="tag soon">期限近い ${soon}</span>` : ''}${wait ? `<span class="tag wait">確認待ち ${wait}</span>` : ''}</div></button>`; }).join('');
+  document.querySelectorAll('[data-p]').forEach(b => b.onclick = () => go({ name: 'person', id: b.dataset.p }));
+}
+
+/* =========================================================
+   1件を見る
+   ========================================================= */
+function renderItem(id) {
+  const it = S.items.find(x => x.id === id);
+  setHeader('🪪 資格・免許', true);
+  if (!it) { $('#main').innerHTML = '<div class="empty">見つかりません</div>'; return; }
+  const rows = [['持っている人', nameOf(it.staffId) || it.staff], ['区分', it.kind], [it.kind === '運転免許' ? '免許の種類' : '種類・等級', it.grade], ['番号', it.number], ['取得日', jaDate(it.issued)], ['有効期限', it.expires ? jaDate(it.expires) : ''], ['発行・講習機関', it.issuer], ['メモ', it.memo], ['登録', [it.by, it.at].filter(Boolean).join('　')], ['確認', it.status === '確認済' ? '確認済（' + [it.checkedBy, jaDate(it.checkedAt)].filter(Boolean).join('・') + '）' : '確認待ち']].filter(r => r[1]);
+  $('#main').innerHTML = `<div class="card"><h2>${esc(it.name)}</h2><div>${statusTag(it)}${expTag(it)}</div>
+    <dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+    <h3>写真</h3>${(it.photos || []).length ? `<div class="thumbs">${it.photos.map((p, i) => `<div class="th" data-ph="${i}"><span>…</span><span class="lab">${esc(p.side || '')}</span></div>`).join('')}</div>` : '<p class="hint">写真がありません</p>'}
+    <div class="row2" style="margin-top:12px"><button class="btn primary" id="edBtn">✏️ 直す</button>${S.admin ? `<button class="btn" id="ckBtn">${it.status === '確認済' ? '確認待ちに戻す' : '✓ 確認済にする'}</button>` : ''}</div>
+    <div style="text-align:center;margin-top:16px"><button class="btn sm line-danger" id="delBtn">この登録を消す</button></div></div>`;
+  loadThumbs(it);
+  $('#edBtn').onclick = () => go({ name: 'edit', id: it.id });
+  if ($('#ckBtn')) $('#ckBtn').onclick = async () => { const on = it.status !== '確認済'; try { await api('check', { id: it.id, on }); it.status = on ? '確認済' : '確認待ち'; it.checkedBy = on ? S.me.disp : ''; it.checkedAt = on ? today() : ''; render(); toast(on ? '確認済にしました' : '確認待ちに戻しました'); } catch (e) { toast(e.message, 4000); } };
+  $('#delBtn').onclick = async () => {
+    if (!confirm('「' + it.name + '」の登録を消しますか？（すぐなら元に戻せます）')) return;
+    try { await api('delete', { id: it.id }); S.items = S.items.filter(x => x.id !== it.id); back();
+      toast('消しました', 0, { label: '元に戻す', fn: async () => { try { await api('delete', { id: it.id, undo: true }); S.items.push(it); render(); toast('元に戻しました'); } catch (e) { toast(e.message); } } });
+    } catch (e) { toast(e.message, 4000); }
+  };
+}
+const urlCache = new Map();
+async function photoUrl(p) {
+  if (p.local) return p.local;
+  if (urlCache.has(p.photoId)) return urlCache.get(p.photoId);
+  const j = await api('photoData', { photoId: p.photoId }, 60000);
+  const u = URL.createObjectURL(b64ToBlob(j.data, j.mime)); urlCache.set(p.photoId, u); return u;
+}
+function loadThumbs(it, sel = '[data-ph]') {
+  document.querySelectorAll(sel).forEach(async el => {
+    const p = it.photos[+el.dataset.ph]; if (!p) return;
+    el.onclick = e => { if (e.target.closest('.x')) return; viewPhoto(it, +el.dataset.ph); };
+    try { const u = await photoUrl(p); const sp = el.querySelector('span:not(.lab)'); if (sp) sp.remove(); const im = new Image(); im.src = u; im.alt = ''; el.prepend(im); } catch (e) { const sp = el.querySelector('span:not(.lab)'); if (sp) sp.textContent = '読めません'; }
+  });
+}
+/* 写真を大きく見る（‹ › と左右スワイプで前後） */
+function viewPhoto(it, i) {
+  const ps = it.photos || [], p = ps[i]; if (!p) return;
+  const arrow = (n, d) => `<button type="button" data-go="${n}" style="position:absolute;top:50%;${d < 0 ? 'left:6px' : 'right:6px'};transform:translateY(-50%);width:46px;height:46px;border-radius:50%;border:0;background:rgba(0,0,0,.5);color:#fff;font-size:26px;cursor:pointer${n < 0 || n >= ps.length ? ';visibility:hidden' : ''}">${d < 0 ? '‹' : '›'}</button>`;
+  openModal(`<h3>${esc(it.name)}　${esc(p.side || '')}<span class="hint" style="font-weight:400;margin-left:8px">${i + 1} / ${ps.length}</span></h3>
+    <div style="position:relative" id="pvWrap"><img id="pvImg" style="width:100%;border-radius:10px;background:var(--leaf-soft);min-height:150px;display:block" alt="">${ps.length > 1 ? arrow(i - 1, -1) + arrow(i + 1, 1) : ''}</div>
+    <button class="btn block" style="margin-top:12px" onclick="closeModal()">閉じる</button>`);
+  photoUrl(p).then(u => { const im = $('#pvImg'); if (im) im.src = u; }).catch(() => {});
+  document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => viewPhoto(it, +b.dataset.go));
+  let sx = null; const w = $('#pvWrap');
+  w.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+  w.addEventListener('touchend', e => { if (sx == null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 50) { const n = i + (dx < 0 ? 1 : -1); if (n >= 0 && n < ps.length) viewPhoto(it, n); } });
+}
+
+/* =========================================================
+   登録・直す
+   ========================================================= */
+let ED = null;   // 入力中の内容（「やめる」で捨てる・元のものには触らない）
+function renderEdit(v) {
+  if (!ED || ED._key !== JSON.stringify(v)) {
+    const old = v.id ? S.items.find(x => x.id === v.id) : null;
+    ED = old ? JSON.parse(JSON.stringify(old)) : { id: newId(), staffId: v.staffId || S.me.id, kind: v.kind || '', name: v.kind === '運転免許' ? '自動車運転免許証' : '', number: '', grade: '', issued: '', expires: '', issuer: v.kind === '運転免許' ? '神奈川県公安委員会' : '', memo: '', photos: [] };
+    ED._key = JSON.stringify(v); ED._new = !old; ED._uploaded = [];
+  }
+  const e = ED, lic = e.kind === '運転免許';
+  setHeader(e._new ? '＋ 登録する' : '✏️ 直す', true);
+  const opts = (CATALOG[e.kind] || []).map(n => `<option value="${esc(n)}">`).join('');
+  const sides = lic ? ['表', '裏'] : ['修了証', '裏・続き'];
+  $('#main').innerHTML = `<div class="card">
+    ${S.admin && String(e.staffId) !== String(S.me.id) ? `<div class="note green" style="margin-top:0"><b>${esc(nameOf(e.staffId))}さんの分</b>親方・事務担当が代わりに登録しています</div>` : ''}
+    <label class="lbl">区分<span class="req">必須</span></label><div class="chips">${KINDS.map(k => `<button type="button" class="chip${e.kind === k ? ' on' : ''}" data-kind="${esc(k)}">${esc(k)}</button>`).join('')}</div>
+    <label class="lbl">資格・免許の名前<span class="req">必須</span></label><input type="text" id="fName" list="dlCat" value="${esc(e.name)}" placeholder="${lic ? '自動車運転免許証' : '一覧から選ぶか、手で入れる'}"><datalist id="dlCat">${opts}</datalist>
+    ${lic ? `<label class="lbl">免許の種類（いくつでも）</label><div class="chips">${LICENSE_TYPES.map(t => `<button type="button" class="chip${(e.grade || '').split('・').includes(t) ? ' on' : ''}" data-lt="${esc(t)}">${esc(t)}</button>`).join('')}</div>`
+      : `<label class="lbl">種類・等級（あれば）</label><input type="text" id="fGrade" value="${esc(e.grade)}" placeholder="例：吊り上げ荷重5t未満">`}
+    <label class="lbl">${lic ? '免許証の番号' : '修了証・登録の番号'}</label><input type="text" id="fNumber" value="${esc(e.number)}" inputmode="${lic ? 'numeric' : 'text'}">
+    <div class="row2"><div><label class="lbl">${lic ? '交付日' : '取得日・修了日'}</label><input type="date" id="fIssued" value="${esc(e.issued)}"></div><div><label class="lbl">有効期限${lic ? '<span class="req">必須</span>' : '（あれば）'}</label><input type="date" id="fExpires" value="${esc(e.expires)}"></div></div>
+    <label class="lbl">${lic ? '公安委員会' : '発行・講習機関'}</label><input type="text" id="fIssuer" value="${esc(e.issuer)}" placeholder="${lic ? '神奈川県公安委員会' : '例：○○教習所、建設業労働災害防止協会'}">
+    <label class="lbl">メモ</label><textarea id="fMemo" rows="2">${esc(e.memo)}</textarea>
+    <label class="lbl">写真</label><p class="hint" style="margin-top:0">${lic ? '免許証の表と裏を、文字が読めるように明るい所で撮ってください' : '修了証（カード・修了証書）を撮ってください'}</p>
+    <div class="thumbs" id="edThumbs">${e.photos.map((p, i) => `<div class="th" data-ph="${i}"><span>…</span><span class="lab">${esc(p.side || '')}</span><button type="button" class="x" data-px="${i}">×</button></div>`).join('')}</div>
+    ${sides.map(s => `<div class="row2" style="margin-top:6px"><button type="button" class="btn sm" data-cam="${esc(s)}">📷 ${esc(s)}を撮る</button><button type="button" class="btn sm" data-lib="${esc(s)}">🖼 ${esc(s)}を選ぶ</button></div>`).join('')}
+    <div class="row2" style="margin-top:16px"><button type="button" class="btn" id="edCancel">やめる</button><button type="button" class="btn primary" id="edSave">保存する</button></div>
+  </div>`;
+  loadThumbs(e, '#edThumbs [data-ph]');
+  const keep = () => { e.name = $('#fName').value.trim(); if ($('#fGrade')) e.grade = $('#fGrade').value.trim(); e.number = $('#fNumber').value.trim(); e.issued = $('#fIssued').value; e.expires = $('#fExpires').value; e.issuer = $('#fIssuer').value.trim(); e.memo = $('#fMemo').value.trim(); };
+  document.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => { keep(); const k = b.dataset.kind; if (k === '運転免許' && !e.name) e.name = '自動車運転免許証'; if (k === '運転免許' && !e.issuer) e.issuer = '神奈川県公安委員会'; e.kind = k; renderEdit(v); });
+  document.querySelectorAll('[data-lt]').forEach(b => b.onclick = () => { keep(); const a = (e.grade || '').split('・').filter(Boolean), t = b.dataset.lt, i = a.indexOf(t); if (i >= 0) a.splice(i, 1); else a.push(t); e.grade = LICENSE_TYPES.filter(x => a.includes(x)).join('・'); renderEdit(v); });
+  document.querySelectorAll('[data-cam],[data-lib]').forEach(b => b.onclick = () => { keep(); pickSide = b.dataset.cam || b.dataset.lib; const el = b.dataset.cam ? $('#fileCam') : $('#fileLib'); el.value = ''; el.click(); });
+  document.querySelectorAll('[data-px]').forEach(b => b.onclick = ev => { ev.stopPropagation(); keep(); const p = e.photos.splice(+b.dataset.px, 1)[0]; if (p && e._uploaded.includes(p.photoId)) api('photoDel', { photoId: p.photoId }).catch(() => {}); renderEdit(v); toast('写真を外しました（保存すると反映）'); });
+  $('#edCancel').onclick = () => {
+    if (e._uploaded.length) e._uploaded.forEach(id => api('photoDel', { photoId: id }).catch(() => {}));   // やめたら、撮ったばかりの写真も捨てる
+    ED = null; back();
+  };
+  $('#edSave').onclick = async () => {
+    keep();
+    const miss = []; if (!e.kind) miss.push('区分'); if (!e.name) miss.push('名前'); if (lic && !e.expires) miss.push('有効期限');
+    if (miss.length) { toast('まだ入っていません：' + miss.join('・'), 3500); return; }
+    if (!e.photos.length && !confirm('写真がありません。このまま保存しますか？（あとから足せます）')) return;
+    const b = $('#edSave'); b.disabled = true; b.innerHTML = '<span class="loading"></span> 保存しています';
+    try {
+      const item = { id: e.id, staffId: e.staffId, kind: e.kind, name: e.name, number: e.number, grade: e.grade, issued: e.issued, expires: e.expires, issuer: e.issuer, memo: e.memo, photos: e.photos.map(p => ({ photoId: p.photoId, side: p.side })) };
+      const j = await api('save', { item });
+      const i = S.items.findIndex(x => x.id === e.id); if (i >= 0) S.items[i] = j.item; else S.items.push(j.item);
+      ED = null; toast(S.admin ? '保存しました' : '保存しました。親方・事務担当が確認します');
+      history.replaceState({ v: { name: 'item', id: e.id } }, ''); S.view = { name: 'item', id: e.id }; render();
+    } catch (err) { toast(err.message, 4500); b.disabled = false; b.textContent = '保存する'; }
+  };
+}
+/* 写真：縮めて（長い辺1600px）すぐ送る */
+let pickSide = '';
+async function resizeImage(file, max = 1600, q = 0.82) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, ng) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ng(new Error('画像を開けません')); i.src = url; });
+    const r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.round(img.naturalWidth * r), h = Math.round(img.naturalHeight * r);
+    const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.drawImage(img, 0, 0, w, h);
+    return await new Promise(ok => c.toBlob(ok, 'image/jpeg', q));
+  } finally { URL.revokeObjectURL(url); }
+}
+['#fileCam', '#fileLib'].forEach(sel => $(sel).addEventListener('change', async ev => {
+  const f = (ev.target.files || [])[0]; if (!f || !ED) return;
+  toast('写真を送っています…', 20000);
+  try {
+    const blob = await resizeImage(f), photoId = 'P' + Date.now().toString(36) + rid();
+    await api('photo', { photo: { photoId, itemId: ED.id, staffId: ED.staffId, side: pickSide, name: ED.name || ED.kind }, data: await blobToB64(blob) }, 120000);
+    ED.photos.push({ photoId, side: pickSide, local: URL.createObjectURL(blob) }); ED._uploaded.push(photoId);
+    toast('写真を入れました'); if (S.view && S.view.name === 'edit') renderEdit(S.view);
+  } catch (e) { toast('写真を送れませんでした：' + e.message, 4500); }
+}));
+
+/* =========================================================
+   一覧表（資格 × 人）
+   ========================================================= */
+function renderTable() {
+  const ppl = S.staff, names = {};
+  live().forEach(it => { const k = it.kind + '|' + it.name; names[k] = names[k] || { kind: it.kind, name: it.name }; });
+  KINDS.forEach(k => (CATALOG[k] || []).forEach(n => { if (k !== 'その他') names[k + '|' + n] = names[k + '|' + n] || { kind: k, name: n }; }));
+  const cell = (pid, n) => { const it = live().find(x => String(x.staffId) === String(pid) && x.kind === n.kind && x.name === n.name); if (!it) return '<td></td>';
+    const es = expState(it); return `<td class="c ${es === 'exp' ? 'exp' : it.status === '確認済' ? 'ok' : 'wait'}" data-open="${esc(it.id)}" title="${esc(it.status)}">${es === 'exp' ? '✕' : it.status === '確認済' ? '○' : '△'}</td>`; };
+  let body = '';
+  KINDS.forEach(k => {
+    const rows = Object.values(names).filter(n => n.kind === k).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    if (!rows.length) return;
+    body += `<tr class="grp"><th colspan="${ppl.length + 2}">${esc(k)}</th></tr>`;
+    rows.forEach(n => { const cnt = ppl.filter(p => live().some(x => String(x.staffId) === String(p.id) && x.kind === n.kind && x.name === n.name)).length;
+      body += `<tr><th class="nm">${esc(n.name)}</th><td>${cnt || ''}</td>${ppl.map(p => cell(p.id, n)).join('')}</tr>`; });
+  });
+  $('#main').innerHTML = `<div class="card"><h2>一覧表</h2><p class="hint" style="margin-top:0">○ 確認済　△ 確認待ち（本人が登録・まだ確かめていない）　✕ 期限切れ。印をタップすると中身が見られます</p></div>
+    <div class="matrix-wrap"><table class="matrix"><thead><tr><th class="nm">資格・免許</th><th>人数</th>${ppl.map(p => `<th>${esc(p.disp || p.name)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+  document.querySelectorAll('[data-open]').forEach(td => td.onclick = () => go({ name: 'item', id: td.dataset.open }));
+}
+
+/* =========================================================
+   期限・確認
+   ========================================================= */
+function renderDue() {
+  const exp = live().filter(it => expState(it) === 'exp').sort((a, b) => a.expires > b.expires ? 1 : -1);
+  const soon = live().filter(it => expState(it) === 'soon').sort((a, b) => a.expires > b.expires ? 1 : -1);
+  const wait = live().filter(it => it.status !== '確認済');
+  const card = it => `<button class="item${expState(it) ? ' ' + expState(it) : ''}" data-open="${esc(it.id)}"><div class="t">${esc(dispOf(it.staffId))}　${esc(it.name)}</div><div class="s">${statusTag(it)}${expTag(it)}${(it.photos || []).length ? '' : '<span class="tag red">写真なし</span>'}</div></button>`;
+  $('#main').innerHTML = `
+    <div class="card"><h2>⛔ 期限切れ（${exp.length}）</h2>${exp.map(card).join('') || '<p class="hint" style="margin:0">ありません</p>'}</div>
+    <div class="card"><h2>⏰ ${SOON_DAYS}日以内に期限（${soon.length}）</h2>${soon.map(card).join('') || '<p class="hint" style="margin:0">ありません</p>'}</div>
+    <div class="card"><h2>✓ 確認待ち（${wait.length}）</h2><p class="hint" style="margin-top:0">本人が登録・直したもの。写真と中身を見て「確認済にする」を押してください</p>${wait.map(card).join('') || '<p class="hint" style="margin:0">ありません</p>'}
+      ${wait.length ? '<button class="btn sm" id="ckAll" style="margin-top:6px">写真のあるものを まとめて確認済にする</button>' : ''}</div>`;
+  document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => go({ name: 'item', id: b.dataset.open }));
+  const ca = $('#ckAll'); if (ca) ca.onclick = async () => {
+    const l = wait.filter(it => (it.photos || []).length); if (!l.length) { toast('写真のある確認待ちはありません'); return; }
+    if (!confirm(l.length + '件を確認済にしますか？')) return;
+    ca.disabled = true; let n = 0;
+    for (const it of l) { try { await api('check', { id: it.id, on: true }); it.status = '確認済'; it.checkedBy = S.me.disp; it.checkedAt = today(); n++; } catch (e) {} }
+    render(); toast(n + '件を確認済にしました', 0, { label: '元に戻す', fn: async () => { for (const it of l) { try { await api('check', { id: it.id, on: false }); it.status = '確認待ち'; } catch (e) {} } render(); toast('元に戻しました'); } });
+  };
+}
+
+/* =========================================================
+   取り出す（写しのPDF・一覧のCSV）と、今のシートからの取り込み
+   ========================================================= */
+function renderOut() {
+  const sel = S.outSel;
+  const chosen = live().filter(it => (!sel.people.length || sel.people.includes(String(it.staffId))) && (!sel.kinds.length || sel.kinds.includes(it.kind)));
+  $('#main').innerHTML = `<div class="card"><h2>📤 取り出す</h2><p class="hint" style="margin-top:0">人と区分をしぼって、免許証・修了証の写しをPDFにしたり、一覧をCSV（Excelで開ける）にできます。何も選ばなければ全部です</p>
+      <label class="lbl">人</label><div class="chips">${S.staff.map(s => `<button type="button" class="chip${sel.people.includes(String(s.id)) ? ' on' : ''}" data-sp="${esc(s.id)}">${esc(s.disp || s.name)}</button>`).join('')}</div>
+      <label class="lbl">区分</label><div class="chips">${KINDS.map(k => `<button type="button" class="chip${sel.kinds.includes(k) ? ' on' : ''}" data-sk="${esc(k)}">${esc(k)}</button>`).join('')}</div>
+      <label class="lbl">入れるもの（${chosen.length}件）</label>
+      <div id="pickList" style="max-height:300px;overflow:auto">${chosen.map(it => `<label class="pick"><input type="checkbox" data-pk="${esc(it.id)}" checked><span>${esc(dispOf(it.staffId))}　${esc(it.name)}${(it.photos || []).length ? '' : '　<small style="color:var(--danger)">写真なし</small>'}</span></label>`).join('') || '<p class="hint">ありません</p>'}</div>
+      <div class="row2" style="margin-top:12px"><button class="btn primary" id="outPdf">📄 写しのPDF</button><button class="btn" id="outCsv">📊 一覧のCSV</button></div>
+      <div id="outProg" class="hint"></div></div>
+    <div class="card"><h2>📥 今のシートから取り込む</h2><p class="hint" style="margin-top:0">「資格など管理」のような、1行目に人の苗字・2列目に資格の名前・○が並んだシートを取り込みます。取り込んだものは「確認待ち」になります。同じ人の同じ資格は二重になりません</p>
+      <label class="lbl">スプレッドシートのURL</label><input type="url" id="imUrl" placeholder="https://docs.google.com/spreadsheets/d/…">
+      <label class="lbl">シートの名前</label><input type="text" id="imSheet" value="資格など管理">
+      <div class="row2" style="margin-top:10px"><button class="btn" id="imDry">試しに見る</button><button class="btn tape" id="imGo">取り込む</button></div><div id="imOut"></div></div>
+    ${S.folder ? `<div class="card"><h2>📁 保存先</h2><p class="hint" style="margin-top:0">Googleドライブ「社内アプリ ＞ 社員の資格・免許」。一覧のスプレッドシートと、人ごとのフォルダ（写真）が入ります</p>
+      <a class="btn sm" href="${esc(S.folder.url)}" target="_blank" rel="noopener">📁 フォルダを開く</a>
+      ${S.folder.limited ? '<div class="note green"><b>✓ スタッフはドライブから開けない設定です</b></div>' : '<div class="note red"><b>スタッフがドライブから開ける状態です</b>ドライブで「社員の資格・免許」フォルダを右クリック →「共有」→ アクセスを「制限付き」にしてください。</div>'}</div>` : ''}`;
+  document.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => { const id = b.dataset.sp, a = sel.people, i = a.indexOf(id); if (i >= 0) a.splice(i, 1); else a.push(id); renderOut(); });
+  document.querySelectorAll('[data-sk]').forEach(b => b.onclick = () => { const k = b.dataset.sk, a = sel.kinds, i = a.indexOf(k); if (i >= 0) a.splice(i, 1); else a.push(k); renderOut(); });
+  const picked = () => [...document.querySelectorAll('[data-pk]:checked')].map(x => live().find(it => it.id === x.dataset.pk)).filter(Boolean);
+  $('#outCsv').onclick = () => {
+    const l = picked(); if (!l.length) { toast('入れるものを選んでください'); return; }
+    const head = ['氏名', '区分', '資格・免許', '種類・等級', '番号', '取得日', '有効期限', '発行・講習機関', '確認', '写真の枚数', 'メモ'];
+    const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const csv = '﻿' + [head].concat(l.map(it => [nameOf(it.staffId) || it.staff, it.kind, it.name, it.grade, it.number, it.issued, it.expires, it.issuer, it.status, (it.photos || []).length, it.memo])).map(r => r.map(q).join(',')).join('\r\n');
+    share(new File([csv], `資格・免許一覧_${today()}.csv`, { type: 'text/csv' }));
+  };
+  $('#outPdf').onclick = async () => {
+    const l = picked().filter(it => (it.photos || []).length); if (!l.length) { toast('写真のあるものを選んでください'); return; }
+    const pg = t => { $('#outProg').textContent = t || ''; };
+    try { pg('準備しています…'); await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); const pdf = await makePdf(l, pg); pg('できました。保存先・送り先を選んでください'); share(new File([pdf], `資格・免許の写し_${today()}.pdf`, { type: 'application/pdf' })); }
+    catch (e) { pg(''); toast('PDFを作れませんでした：' + e.message, 4500); }
+  };
+  const runImport = async dry => {
+    const url = $('#imUrl').value.trim(); if (!url) { toast('URLを入れてください'); return; }
+    const out = $('#imOut'); out.innerHTML = '<p class="hint"><span class="loading" style="border-top-color:var(--leaf)"></span> 読んでいます…</p>';
+    try {
+      const j = await api('import', { url, sheet: $('#imSheet').value.trim(), dry }, 120000);
+      out.innerHTML = `<div class="note ${dry ? '' : 'green'}"><b>${dry ? '取り込むと' : '取り込みました'}：${j.added}件（もうあるので飛ばす：${j.skipped}件）</b>合った人：${esc(j.people.join('・'))}${dry && j.preview.length ? `<div style="max-height:200px;overflow:auto;margin-top:6px">${j.preview.map(p => `${esc(p.staff)}　${esc(p.name)}${p.memo ? '（' + esc(p.memo) + '）' : ''}`).join('<br>')}</div>` : ''}</div>`;
+      if (!dry) { await boot(); S.tab = 'table'; render(); toast(j.added + '件を取り込みました'); }
+    } catch (e) { out.innerHTML = `<div class="note red"><b>取り込めませんでした</b>${esc(e.message)}</div>`; }
+  };
+  $('#imDry').onclick = () => runImport(true);
+  $('#imGo').onclick = () => { if (confirm('取り込みますか？（取り込んだものは確認待ちになります）')) runImport(false); };
+}
+async function share(f) {
+  if (navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: f.name }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+}
+/* 写しのPDF：A4縦。1件ごとに見出し（氏名・資格名・番号・期限）と写真（表・裏）を並べ、1ページに2件 */
+const FONT = "'Hiragino Kaku Gothic ProN','Hiragino Sans','Noto Sans JP','Yu Gothic',Meiryo,sans-serif";
+async function makePdf(list, pg) {
+  const PW = 1240, PH = 1754, MG = 80, W = PW - MG * 2, pdf = new window.jspdf.jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+  const blobOf = async p => { const j = await api('photoData', { photoId: p.photoId }, 60000); return b64ToBlob(j.data, j.mime); };
+  const imgOf = b => new Promise((ok, ng) => { const u = URL.createObjectURL(b), i = new Image(); i.onload = () => ok(i); i.onerror = ng; i.src = u; });
+  const fit = (x, img, bx, by, bw, bh) => { const r = Math.min(bw / img.naturalWidth, bh / img.naturalHeight), w = img.naturalWidth * r, h = img.naturalHeight * r; x.drawImage(img, bx + (bw - w) / 2, by + (bh - h) / 2, w, h); };
+  const per = 2, slotH = (PH - MG * 2 - 60) / per;
+  let page = 0;
+  for (let i = 0; i < list.length; i += per) {
+    const c = document.createElement('canvas'); c.width = PW; c.height = PH; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, PW, PH);
+    x.fillStyle = '#111'; x.font = `bold 26px ${FONT}`; x.fillText('資格・免許の写し', MG, MG + 10); x.font = `18px ${FONT}`; x.fillStyle = '#555'; x.textAlign = 'right'; x.fillText('庭乃持田園有限会社　' + jaDate(today()), PW - MG, MG + 10); x.textAlign = 'left';
+    for (let k = 0; k < per && i + k < list.length; k++) {
+      const it = list[i + k], top = MG + 50 + slotH * k;
+      pg && pg(`写真を読み込んでいます… ${i + k + 1} / ${list.length}`);
+      x.strokeStyle = '#9AA59C'; x.lineWidth = 1.5; x.strokeRect(MG, top, W, slotH - 20);
+      x.fillStyle = '#214A37'; x.fillRect(MG, top, W, 44); x.fillStyle = '#fff'; x.font = `bold 22px ${FONT}`;
+      x.fillText(`${nameOf(it.staffId) || it.staff}　${it.name}${it.grade ? '（' + it.grade + '）' : ''}`, MG + 14, top + 30);
+      x.fillStyle = '#333'; x.font = `18px ${FONT}`;
+      x.fillText([it.number ? '番号 ' + it.number : '', it.issued ? '取得 ' + jaDate(it.issued) : '', it.expires ? '有効期限 ' + jaDate(it.expires) : '', it.issuer].filter(Boolean).join('　'), MG + 14, top + 72);
+      const ps = it.photos.slice(0, 2), gap = 16, pw = (W - 28 - gap * (ps.length - 1)) / ps.length, ph = slotH - 20 - 100;
+      for (let j = 0; j < ps.length; j++) {
+        try { const img = await imgOf(await blobOf(ps[j])); fit(x, img, MG + 14 + j * (pw + gap), top + 88, pw, ph); } catch (e) { x.fillStyle = '#999'; x.fillText('写真を読み込めませんでした', MG + 20 + j * (pw + gap), top + 88 + ph / 2); }
+      }
+    }
+    x.fillStyle = '#666'; x.font = `18px ${FONT}`; x.textAlign = 'center'; x.fillText(String(++page), PW / 2, PH - 40); x.textAlign = 'left';
+    if (i) pdf.addPage(); pdf.addImage(c.toDataURL('image/jpeg', 0.88), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+  }
+  return pdf.output('blob');
+}
+
+/* ---------------- はじめ ---------------- */
+if (S.token) boot(); else renderLogin();
+</script>
+</body>
+</html>
