@@ -136,6 +136,10 @@
   .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
   .filters .field{margin-bottom:0}
   .filters select,.filters input{min-width:120px}
+  .filters .fl-case{flex:1 1 100%}
+  .filters .fl-case select{width:100%}
+  .filters .fl-case.on select{border-color:var(--leaf);background:var(--leaf-soft);font-weight:700;color:var(--leaf)}
+  .filters .field.off{opacity:.4}
   .totals{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
   .stat{flex:1;min-width:130px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
     padding:12px 14px;box-shadow:var(--shadow)}
@@ -466,6 +470,7 @@
 <!-- ===== 一覧 ===== -->
 <main id="viewList" style="display:none">
   <div class="filters">
+    <div class="field fl-case"><label>案件でしぼる（年度・月に関係なく全部出す）</label><select id="flCase"></select></div>
     <div class="field"><label>年度（4月始まり）</label><select id="flYear"></select></div>
     <div class="field"><label>月</label><select id="flMonth"></select></div>
     <div class="field" style="flex:1;min-width:150px"><label>現場・処分先でしぼる</label><input type="text" id="flKeyword" placeholder="例：岸邸"></div>
@@ -982,12 +987,12 @@ function resetForm(){ editDenpyo=null; editKey=null; editAuthor=''; slipEdit=[];
   $('#editBadge').classList.remove('show'); $('#pvDelete').style.display='none'; $('#btnDelete').style.display='none'; $('#btnBackList').style.display='none';
   apply({date:todayStr()}); clearDraft(); try{ sessionStorage.removeItem('zaizai_edit'); }catch(e){} }
 /* iPhoneはカメラから戻るとページを読み込み直すことがある → 直していた記録・一覧の絞り込みを覚えておき、開き直す */
-function saveEditSession(){ try{ sessionStorage.setItem('zaizai_edit',JSON.stringify({k:editKey,ret:listReturn,f:{y:$('#flYear').value,m:$('#flMonth').value,kw:$('#flKeyword').value}})); }catch(e){} }
+function saveEditSession(){ try{ sessionStorage.setItem('zaizai_edit',JSON.stringify({k:editKey,ret:listReturn,f:{y:$('#flYear').value,m:$('#flMonth').value,kw:$('#flKeyword').value,c:$('#flCase').value}})); }catch(e){} }
 async function restoreEditSession(){
   let ss=null; try{ ss=JSON.parse(sessionStorage.getItem('zaizai_edit')||'null'); }catch(e){} if(!ss||!ss.k) return;
   switchTab('list'); await loadList(true);
-  const f=ss.f||{}; [['flYear',f.y],['flMonth',f.m]].forEach(([id,v])=>{ const el=$('#'+id); if(v!=null&&[...el.options].some(o=>o.value===v)) el.value=v; });
-  if(f.kw!=null) $('#flKeyword').value=f.kw; renderList();
+  const f=ss.f||{}; [['flYear',f.y],['flMonth',f.m],['flCase',f.c]].forEach(([id,v])=>{ const el=$('#'+id); if(v!=null&&[...el.options].some(o=>o.value===v)) el.value=v; });
+  if(f.kw!=null) $('#flKeyword').value=f.kw; caseUi(); renderList();
   if(!allRecords.some(r=>recKey(r)===ss.k)){ try{ sessionStorage.removeItem('zaizai_edit'); }catch(e){} return; }
   listReturn=ss.ret||null; openEdit(ss.k);
   toast('直していた記録を開き直しました。撮った伝票が入っていなければ、もう一度撮ってください');
@@ -1801,7 +1806,7 @@ $('#sbFile').onchange=async e=>{ const files=[...e.target.files]; e.target.value
     cv.forEach(c=>sb.items.push({canvas:c,rot:0,thumb:thumbOf(c,0),key:'',read:false,err:false})); }catch(er){ toast('読めないファイルがありました：'+f.name,true); } }
   if(!sb.items.length) return;
   $('#sbContract').value=''; $('#sbModal').classList.add('show'); sbRender();
-  const hc=$('#hkContract').value; if(hc&&[...$('#sbContract').options].some(o=>o.value===hc)){ $('#sbContract').value=hc; sbRender(); }
+  const fc=$('#flCase').value; const hc=fc.indexOf('C:')===0?fc.slice(2):$('#hkContract').value; if(hc&&[...$('#sbContract').options].some(o=>o.value===hc)){ $('#sbContract').value=hc; sbRender(); }
   let i=0; const work=async()=>{ while(i<sb.items.length){ const it=sb.items[i++]; await sbReadOne(it); sbAuto(); sbRender(); } };
   await Promise.all([work(),work(),work()]);   // 3枚ずつ同時に読む
   sbAuto(); sbRender();
@@ -2075,12 +2080,32 @@ function fillYearMonth(){
   const arr=[...fys].sort().reverse(); const ySel=$('#flYear'); const cur=ySel.value;
   const def = ySel.options.length>1 ? cur : (cur || arr[0] || '');   // 初期は最新年度（「すべての年度」を選んでいたらそのまま）
   ySel.innerHTML='<option value="">すべての年度</option>'+arr.map(y=>`<option value="${y}" ${y===def?'selected':''}>${y}年度</option>`).join('');
+  fillCase();
   const mSel=$('#flMonth');
   if(mSel.options.length<=1){ mSel.innerHTML='<option value="">すべての月</option>'+Array.from({length:12},(_,i)=>{const m=String(i+1).padStart(2,'0');return `<option value="${m}">${i+1}月</option>`}).join(''); }
 }
-function filteredRows(){ const y=$('#flYear').value,m=$('#flMonth').value,kw=$('#flKeyword').value.trim();
-  return allRecords.filter(r=>{ if(y&&fyOf(r.date)!==y) return false;
-    if(m&&normDate(r.date).slice(5,7)!==m) return false;
+/* 案件でしぼる：委託（公共）か現場を選ぶと、年度・月に関係なくその案件の記録を全部出す */
+function fillCase(){
+  const sel=$('#flCase'), cur=sel.value, last={}, cs=new Set(), ss=new Set();
+  allRecords.forEach(r=>{ const c=String(r.siteContract||'').trim(), t=String(r.site||'').trim(), d=normDate(r.date);
+    if(c){ cs.add(c); if(!last['C:'+c]||d>last['C:'+c]) last['C:'+c]=d; } if(t){ ss.add(t); if(!last['S:'+t]||d>last['S:'+t]) last['S:'+t]=d; } });
+  const byRecent=(pre)=>(a,b)=>String(last[pre+b]||'').localeCompare(String(last[pre+a]||''));   // 最近の案件が上
+  const opt=(pre,n)=>`<option value="${esc(pre+n)}" ${pre+n===cur?'selected':''}>${esc(n)}</option>`;
+  sel.innerHTML='<option value="">しぼらない（年度・月で見る）</option>'+
+    (cs.size?'<optgroup label="委託（公共）">'+[...cs].sort(byRecent('C:')).map(n=>opt('C:',n)).join('')+'</optgroup>':'')+
+    '<optgroup label="現場">'+[...ss].sort(byRecent('S:')).map(n=>opt('S:',n)).join('')+'</optgroup>';
+  if(cur&&sel.value!==cur) sel.value='';
+  caseUi();
+}
+function caseUi(){ const on=!!$('#flCase').value; $('#flCase').closest('.field').classList.toggle('on',on);
+  ['flYear','flMonth'].forEach(id=>$('#'+id).closest('.field').classList.toggle('off',on)); }
+function caseMatch(r){ const v=$('#flCase').value; if(!v) return true; const n=v.slice(2);
+  return v[0]==='C' ? String(r.siteContract||'').trim()===n : String(r.site||'').trim()===n; }
+function inDates(r){ if($('#flCase').value) return true; const y=$('#flYear').value,m=$('#flMonth').value;
+  return (!y||fyOf(r.date)===y)&&(!m||normDate(r.date).slice(5,7)===m); }
+function filteredRows(){ const kw=$('#flKeyword').value.trim();
+  return allRecords.filter(r=>{ if(!inDates(r)) return false;
+    if(!caseMatch(r)) return false;
     if(catFilter && catOf(r)!==catFilter) return false;
     if(unrepOnly && !isUnreported(r)) return false;
     if(kw){ const hay=(r.site+' '+r.siteContract+' '+r.place+' '+r.vehicle+' '+r.type); if(!hay.includes(kw)) return false; } return true; }); }
@@ -2115,8 +2140,7 @@ function catRank(label){ const base=String(label).split(' › ')[0]; const order
   const i=order.indexOf(base); if(i>=0) return i; return base===MIXCAT?900:(base===NOCAT?999:500); }
 function catSort(a,b){ return catRank(a)-catRank(b) || String(a).localeCompare(String(b),'ja'); }
 function renderCatBar(){
-  const y=$('#flYear').value, m=$('#flMonth').value;
-  const inRange=allRecords.filter(r=>(!y||fyOf(r.date)===y)&&(!m||normDate(r.date).slice(5,7)===m));
+  const inRange=allRecords.filter(r=>inDates(r)&&caseMatch(r));
   const cnt={}; inRange.forEach(r=>{ const c=catOf(r); cnt[c]=(cnt[c]||0)+1; });
   if(catFilter && !cnt[catFilter]) cnt[catFilter]=0;
   const cats=Object.keys(cnt).sort(catSort);
@@ -2211,6 +2235,7 @@ function renderBySite(rows){
     drilledFromSite=true; $('#flKeyword').value=el.dataset.site; setListMode('denpyo'); }; });
 }
 ['flYear','flMonth','flKeyword'].forEach(id=>$('#'+id).addEventListener('input',renderList));
+$('#flCase').addEventListener('change',()=>{ caseUi(); renderList(); window.scrollTo(0,$('#viewList').offsetTop-60); });
 $('#flReload').onclick=()=>loadList(true);
 
 /* ===== 編集（伝票単位） ===== */
