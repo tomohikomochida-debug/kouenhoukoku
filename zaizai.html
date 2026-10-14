@@ -496,10 +496,10 @@
 </main>
 
 <main id="viewYudo" style="display:none">
-  <p class="yd-lead">警備会社の伝票（警備報告書）を撮ると、日付・人数・A／B（有資格者かどうか）を読み取ります。委託・路線・指示番号を選んで記録すると、「交通誘導員 使用人数」の表と伝票のPDFを作れます。</p>
+  <p class="yd-lead">警備会社の伝票（警備報告書）を撮ると、日付・人数・A／B（有資格者かどうか）を読み取ります。委託・路線・指示番号を選んで記録すると、「交通誘導員　配置状況」の表と伝票のPDFを作れます。</p>
   <div class="splitmode" style="margin-bottom:12px">
     <label class="mini-btn yd-shot">📷 伝票を撮る・選ぶ<input type="file" id="ydFile" accept="image/*,application/pdf" multiple hidden></label>
-    <button class="mini-btn" id="ydReport" style="margin-left:auto">📑 使用人数の報告（Excel・伝票PDF）</button>
+    <button class="mini-btn" id="ydReport" style="margin-left:auto">📑 配置状況の報告（Excel・伝票PDF）</button>
     <button class="mini-btn" id="ydReload">↻ 更新</button>
   </div>
   <div class="filters"><div class="field" style="flex:1;min-width:200px"><label>委託でしぼる</label><select id="ydFlC"></select></div></div>
@@ -538,8 +538,8 @@
 
 <div class="modal" id="ydRepModal">
   <div class="sheet hk">
-    <h3>交通誘導員 使用人数を作る</h3>
-    <p class="lead">委託と期間を選ぶと、いつもの様式の表（Excel）を作ります。伝票のPDFも同じ順番で作れます（A4に4枚）。</p>
+    <h3>交通誘導員 配置状況を作る</h3>
+    <p class="lead">委託と期間を選ぶと、いつもの様式の「交通誘導員　配置状況」（Excel）を作ります。伝票のPDFも日付順で作れます（A4に4枚）。</p>
     <div class="field"><label>委託（公共）</label><select id="ydrContract"></select></div>
     <div class="hk-row">
       <div class="field"><label>期間（から）</label><input type="date" id="ydrFrom"></div>
@@ -1578,10 +1578,13 @@ let jszipP=null;
 function loadJSZip(){ if(window.JSZip) return Promise.resolve(window.JSZip); if(jszipP) return jszipP;
   jszipP=new Promise((ok,ng)=>{ const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
     sc.onload=()=>ok(window.JSZip); sc.onerror=()=>{ jszipP=null; ng(new Error('jszip')); }; document.head.appendChild(sc); }); return jszipP; }
-async function hkNormalFont(buf){
+async function hkNormalFont(buf,font){
   try{ const JZ=await loadJSZip(), z=await JZ.loadAsync(buf), f=z.file('xl/styles.xml'); if(!f) return buf;
-    const x=await f.async('string'), y=x.replace(/(<fonts[^>]*>)<font>[\s\S]*?<\/font>/,'$1<font><sz val="11"/><color theme="1"/><name val="游ゴシック"/><family val="3"/><charset val="128"/></font>');
-    if(y===x) return buf; z.file('xl/styles.xml',y); return await z.generateAsync({type:'arraybuffer',compression:'DEFLATE'});
+    const x=await f.async('string'), y=x.replace(/(<fonts[^>]*>)<font>[\s\S]*?<\/font>/,'$1<font><sz val="11"/><color theme="1"/><name val="'+(font||'游ゴシック')+'"/><family val="3"/><charset val="128"/></font>');
+    if(y!==x) z.file('xl/styles.xml',y);
+    for(const n of Object.keys(z.files).filter(n=>/^xl\/worksheets\/sheet\d+\.xml$/.test(n))){   // 行の高さは、ひな型と同じく字体に合わせて自動（決め打ちしない）
+      const t=await z.file(n).async('string'), u=t.replace(/(<sheetFormatPr[^>]*?) customHeight="1"/,'$1').replace(/(<sheetFormatPr[^>]*?) x14ac:dyDescent="55"/,'$1'); if(u!==t) z.file(n,u); }
+    return await z.generateAsync({type:'arraybuffer',compression:'DEFLATE'});
   }catch(e){ return buf; } }
 const HK_ROWS=25;   // いつもの様式の表の行数（記録が少なくても空欄の行を残し、合計の位置を上に詰めない。多いときは行を足す）
 function hkStdSheet(wb,c,date){
@@ -1913,7 +1916,7 @@ async function zzSaveOrders(key,items){
   items.filter(x=>x.order).forEach(x=>{ ZZ_ORD.map[key][x.site||'']=x.order; ZZ_ORD.list.push({key,site:x.site,order:x.order,contract:x.contract}); });
 }
 
-/* ===== 交通誘導員：警備会社の伝票を撮る → AIで読む → 委託・路線・指示番号を付けて記録 → 「交通誘導員 使用人数」と伝票PDF =====
+/* ===== 交通誘導員：警備会社の伝票を撮る → AIで読む → 委託・路線・指示番号を付けて記録 → 「交通誘導員　配置状況」と伝票PDF =====
    記録と伝票の画像は共通GAS（app=yudo）。交通誘導員は A＝有資格者（交通誘導警備の検定合格者）、B＝それ以外 */
 let ydItems=[], ydLoaded=false, ydEd=null, ydUndoT=null;
 const ydImgCache={};
@@ -2050,7 +2053,7 @@ $('#ydDel').onclick=async()=>{ const id=ydEd&&ydEd.id; if(!id) return;
   u.querySelector('button').onclick=async()=>{ u.hidden=true; try{ await ydSetState(id,''); ydItems.push(gone); ydRender(); toast('元に戻しました'); }catch(e){ toast('戻せませんでした。電波を確認してください',true); } };
 };
 
-/* ----- 交通誘導員 使用人数（いつもの様式）・伝票PDF ----- */
+/* ----- 交通誘導員　配置状況（いつもの様式）・伝票PDF ----- */
 let ydr={rows:[]};
 $('#ydReport').onclick=()=>{
   const cs=ydContracts().filter(c=>ydItems.some(r=>r.contract===c)); if(!cs.length){ toast('委託を選んだ記録がまだありません',true); return; }
@@ -2059,47 +2062,48 @@ $('#ydReport').onclick=()=>{
   $('#ydRepModal').classList.add('show'); ydrBuild(); };
 $('#ydrClose').onclick=()=>$('#ydRepModal').classList.remove('show');
 ['ydrContract','ydrFrom','ydrTo'].forEach(id=>$('#'+id).addEventListener('change',ydrBuild));
+/* いつもの様式「交通誘導員　配置状況」：日付・人数・路線名・交通誘導員区分。同じ日・同じ区分の伝票は1行にまとめる（人数は足す、路線は「・」でつなぐ） */
 function ydrBuild(){
   const c=$('#ydrContract').value, a=$('#ydrFrom').value, b=$('#ydrTo').value;
   const recs=ydItems.filter(r=>r.contract===c&&(!a||normDate(r.date)>=a)&&(!b||normDate(r.date)<=b))
     .sort((x,y)=>normDate(x.date).localeCompare(normDate(y.date))||String(x.id).localeCompare(String(y.id)));
-  ydr.recs=recs; ydr.rows=[];
-  recs.forEach(r=>{ const rt=ydRoutesOf(r); const list=rt.length?rt:[{site:'',order:''}];
-    list.forEach((x,i)=>ydr.rows.push({ r, first:i===0, span:list.length, order:x.order||'', date:normDate(r.date), site:x.site||'', kind:r.kind||'', count:num(r.count)||'' })); });
+  ydr.recs=recs; ydr.rows=[]; const by={};
+  recs.forEach(r=>{ const d=normDate(r.date), k=d+'|'+(r.kind||''); let x=by[k];
+    if(!x){ x=by[k]={date:d,kind:r.kind||'',count:0,sites:[],miss:false}; ydr.rows.push(x); }
+    x.count+=num(r.count); ydRoutesOf(r).forEach(t=>{ if(t.site&&!x.sites.includes(t.site)) x.sites.push(t.site); });
+    if(!num(r.count)||!r.kind||!ydRoutesOf(r).some(t=>t.site)) x.miss=true; });
   if(!ydr.rows.length){ $('#ydrPrev').innerHTML='<div class="empty" style="padding:20px 0">この条件の記録はありません</div>'; return; }
-  const tot=recs.reduce((s,r)=>s+num(r.count),0), miss=recs.filter(r=>ydMissing(r).length).length;
-  $('#ydrPrev').innerHTML=`<div class="hk-place"><div class="hd">交通誘導員　使用人数<span>${recs.length}枚・のべ ${tot}人</span></div>
-    <table class="hk-tbl"><tr><th>指示番号</th><th>日付</th><th>路線名</th><th>交通誘導員</th><th style="text-align:right">人数</th></tr>`+
-    ydr.rows.map(x=>`<tr><td class="${x.order?'':'yd-miss'}">${esc(x.order||'未入力')}</td><td>${mdJa(x.date)}</td><td class="${x.site?'':'yd-miss'}">${esc(x.site||'未入力')}</td>`+
-      (x.first?`<td rowspan="${x.span}" style="text-align:center">${esc(x.kind||'?')}</td><td rowspan="${x.span}" class="n">${x.count||'?'}</td>`:'')+`</tr>`).join('')+`</table></div>`+
-    (miss?`<div class="hk-note yd-miss">未入力のある伝票が ${miss} 枚あります。「交通誘導員」の一覧からタップして直せます。</div>`:'');
+  const tot=ydr.rows.reduce((s,x)=>s+x.count,0), miss=recs.filter(r=>!num(r.count)||!r.kind||!ydRoutesOf(r).some(t=>t.site)).length;
+  $('#ydrPrev').innerHTML=`<div class="hk-place"><div class="hd">交通誘導員　配置状況<span>${ydr.rows.length}日・のべ ${tot}人</span></div>
+    <table class="hk-tbl"><tr><th>日付</th><th style="text-align:right">人数</th><th>路線名</th><th style="text-align:center">交通誘導員区分</th></tr>`+
+    ydr.rows.map(x=>`<tr><td>${mdJa(x.date)}</td><td class="n">${x.count||'<span class="yd-miss">?</span>'}</td><td class="${x.sites.length?'':'yd-miss'}">${esc(x.sites.join('・')||'未入力')}</td><td style="text-align:center">${esc(x.kind||'?')}</td></tr>`).join('')+`</table></div>`+
+    (miss?`<div class="hk-note yd-miss">人数・路線・A／Bの入っていない伝票が ${miss} 枚あります。「交通誘導員」の一覧からタップして直せます。</div>`:'');
 }
+const YD_ROWS=45;   // 表の行数（少なくても空欄の行を残す。多いときは行を足す）
 $('#ydrXlsx').onclick=async()=>{
   if(!ydr.rows.length){ toast('この条件の記録はありません',true); return; }
   const btn=$('#ydrXlsx'); btn.disabled=true; btn.textContent='作っています…';
   try{
     const EJ=await loadExcelJS(); const wb=new EJ.Workbook(); wb.creator='庭乃持田園 交通誘導員';
     const c=$('#ydrContract').value, a=$('#ydrFrom').value, b=$('#ydrTo').value;
-    const ws=wb.addWorksheet('交通誘導員',{pageSetup:{paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:true,margins:{left:.7,right:.7,top:.75,bottom:.75,header:.3,footer:.3}}});
-    const F='ＭＳ Ｐゴシック', thin={style:'thin'}, box={top:thin,left:thin,bottom:thin,right:thin}, ctr={horizontal:'center',vertical:'middle'};
-    ws.columns=[{width:13.625},{width:14.125},{width:21.875},{width:16.75},{width:10},{width:9}];
-    ws.getRow(6).height=26.25; ws.getRow(7).height=24; ws.getRow(8).height=9; ws.getRow(9).height=21;
-    ws.mergeCells('A7:F7'); ws.getCell('A7').value=c; ws.getCell('A7').font={name:F,size:20}; ws.getCell('A7').alignment=ctr;
-    ws.mergeCells('A9:F9'); ws.getCell('A9').value='交通誘導員　使用人数'; ws.getCell('A9').font={name:F,size:18}; ws.getCell('A9').alignment={horizontal:'center'};
-    const H=12; ['指示番号','日付','路線名','交通誘導員','人数'].forEach((h,i)=>{ const cl=ws.getRow(H).getCell(i+1); cl.value=h; cl.font={name:F,size:16}; cl.alignment=ctr; cl.border=box; });
-    ws.getRow(H).height=21;
-    ydr.rows.forEach((x,i)=>{ const r=H+1+i, row=ws.getRow(r); row.height=21;
-      const d=x.date; row.getCell(1).value=x.order; row.getCell(2).value=d?new Date(Date.UTC(+d.slice(0,4),+d.slice(5,7)-1,+d.slice(8,10))):''; row.getCell(2).numFmt='m"月"d"日"';
-      row.getCell(3).value=x.site; if(x.first){ row.getCell(4).value=x.kind; row.getCell(5).value=x.count===''?'':Number(x.count); }
-      for(let k=1;k<=5;k++){ const cl=row.getCell(k); cl.font={name:F,size:16}; cl.alignment=ctr; cl.border=box; }
-      if(x.first&&x.span>1){ ws.mergeCells(r,4,r+x.span-1,4); ws.mergeCells(r,5,r+x.span-1,5); } });
-    ws.pageSetup.printArea='A1:F'+Math.max(35,H+ydr.rows.length+1);
-    const buf=await wb.xlsx.writeBuffer();
+    const ws=wb.addWorksheet('交通誘導員',{properties:{defaultRowHeight:13.2},pageSetup:{paperSize:9,orientation:'portrait',margins:{left:.7,right:.7,top:.75,bottom:.75,header:.3,footer:.3}}});
+    const F='ＭＳ Ｐゴシック', thin={style:'thin'}, box={top:thin,left:thin,bottom:thin,right:thin};
+    ws.columns=[{width:9.5546875},{width:5.5546875},{width:35},{width:25.109375}];
+    ws.getCell('A1').value='交通誘導員　配置状況'; ws.getCell('A1').font={name:F,size:14}; ws.getCell('A1').alignment={horizontal:'left',vertical:'middle'}; ws.getRow(1).height=16.2;
+    const cellSt=(cl,al)=>{ cl.font={name:F,size:11}; cl.border=box; cl.alignment={horizontal:al,vertical:'middle'}; };
+    ['日付','人数','路線名','交通誘導員区分'].forEach((h,k)=>{ const cl=ws.getRow(3).getCell(k+1); cl.value=h; cellSt(cl,'center'); });
+    const n=Math.max(YD_ROWS,ydr.rows.length);
+    for(let i=0;i<n;i++){ const x=ydr.rows[i], row=ws.getRow(4+i);
+      if(x){ const d=x.date; row.getCell(1).value=d?new Date(Date.UTC(+d.slice(0,4),+d.slice(5,7)-1,+d.slice(8,10))):''; row.getCell(1).numFmt='yyyy/m/d';
+        row.getCell(2).value=x.count||''; row.getCell(3).value=x.sites.join('・'); row.getCell(4).value=x.kind; }
+      cellSt(row.getCell(1),'center'); cellSt(row.getCell(2),'center'); cellSt(row.getCell(3),undefined); cellSt(row.getCell(4),'center'); }
+    ws.pageSetup.printArea='A1:D'+(3+n);
+    const buf=await hkNormalFont(await wb.xlsx.writeBuffer(),'ＭＳ Ｐゴシック');
     const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const el=document.createElement('a'); el.href=URL.createObjectURL(blob); el.download='交通誘導員使用人数_'+String(c).replace(/[\\/:*?"<>|\s]+/g,'')+'_'+a+'〜'+b+'.xlsx'; document.body.appendChild(el); el.click(); el.remove();
+    const el=document.createElement('a'); el.href=URL.createObjectURL(blob); el.download='交通誘導員配置状況_'+String(c).replace(/[\\/:*?"<>|\s]+/g,'')+'_'+a+'〜'+b+'.xlsx'; document.body.appendChild(el); el.click(); el.remove();
     setTimeout(()=>URL.revokeObjectURL(el.href),60000);
-    const miss=ydr.recs.filter(r=>ydMissing(r).length).length;
-    toast('Excelを作りました'+(miss?'（未入力のある伝票 '+miss+'枚）':''),!!miss);
+    const miss=ydr.rows.filter(x=>x.miss).length;
+    toast('Excelを作りました'+(miss?'（未入力のある日 '+miss+'日）':''),!!miss);
   }catch(e){ toast('Excelを作れませんでした。電波を確認して、もう一度お試しください',true); }
   finally{ btn.disabled=false; btn.textContent='Excelを作る'; }
 };
