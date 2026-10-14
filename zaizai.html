@@ -152,6 +152,7 @@
   .rec .sites{margin:5px 0 6px}
   .rec .sline{display:flex;justify-content:space-between;gap:10px;font-size:15px}
   .rec .sline .nm{font-weight:700}
+  .ordtag{font-size:12px;font-weight:700;color:var(--leaf);background:var(--leaf-soft);border-radius:6px;padding:1px 7px;margin-left:4px;white-space:nowrap}
   .rec .sline .sv{color:var(--bark);font-variant-numeric:tabular-nums}
   .rec .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
   .rec .mtag{font-size:12px;background:var(--field);border:1px solid var(--line);border-radius:6px;padding:2px 8px;color:var(--bark)}
@@ -528,6 +529,7 @@
 
 <div class="modal" id="ydZoomModal"><div class="yd-zoom"><img id="ydZoomImg" alt=""><button type="button" id="ydZoomClose">✕ 閉じる</button></div></div>
 
+<datalist id="zzOrderList"></datalist>
 <div class="savebar" id="savebar">
   <div class="sum">集計金額 <b><span class="yen">¥</span><span class="tnum" id="barTotal">0</span></b></div>
   <button class="save danger-btn" id="btnDelete" style="display:none">削除</button>
@@ -807,6 +809,7 @@ function addSite(data){
         <div class="field" style="flex:0 0 auto;min-width:120px"><label>区分</label><select data-cat></select></div>
         <div class="field" data-contract-wrap style="display:none"><label>委託名</label><select data-contract></select></div>
         <div class="field"><label>現場名</label><select data-site></select></div>
+        <div class="field" data-order-wrap style="display:none;flex:0 0 130px;min-width:110px"><label>指示番号</label><input type="text" data-order list="zzOrderList" placeholder="例：第6回"></div>
       </div>
       <div class="addable"><input type="text" data-newsite placeholder="一覧に無い現場を追加"><button class="mini-btn" data-addsite>＋追加</button></div>
       <div class="sc-alloc" data-alloc><label class="lbl">この現場のぶん（スライダーで大まかに）</label>
@@ -825,9 +828,14 @@ function wireSite(id){
   function listSites(){ const g=MASTER.siteGroups[d.cat]; if(!g) return []; return Array.isArray(g)?g:(g[d.contract]||[]); }
   function fillSites(){ siteSel.innerHTML='<option value="">'+(d.cat?'現場を選ぶ…':'先に区分を選ぶ')+'</option>'+listSites().map(s=>`<option ${s===d.site?'selected':''}>${s}</option>`).join(''); }
   function syncTtl(){ ttl.textContent=d.site||d.contract||d.cat||'現場を選ぶ'; }
+  const ordWrap=el.querySelector('[data-order-wrap]'), ordIn=el.querySelector('[data-order]');
+  function syncOrder(){ ordWrap.style.display=d.cat==='公共'?'':'none'; }   // 公共の案件だけ指示番号
+  ordIn.value=d.order||''; syncOrder();
+  ordIn.oninput=()=>{ d.order=ordIn.value.trim(); saveDraft(); };
+  ordIn.onfocus=()=>{ $('#zzOrderList').innerHTML=zzOrdersFor(d.contract).map(x=>`<option value="${esc(x)}">`).join(''); };
   if(d.cat){ if(isContract(d.cat)){ conWrap.style.display=''; fillContracts(); } fillSites(); }
   syncTtl();
-  catSel.onchange=()=>{ d.cat=catSel.value; d.contract=''; d.site='';
+  catSel.onchange=()=>{ d.cat=catSel.value; d.contract=''; d.site=''; syncOrder();
     if(isContract(d.cat)){ conWrap.style.display=''; fillContracts(); siteSel.innerHTML='<option value="">先に委託を選ぶ</option>'; }
     else { conWrap.style.display='none'; fillSites(); } syncTtl(); saveDraft(); };
   conSel.onchange=()=>{ d.contract=conSel.value; d.site=''; fillSites(); syncTtl(); saveDraft(); };
@@ -916,7 +924,7 @@ $('#balanceBtn').onclick=balanceEven;
 
 /* ===== 下書き ===== */
 function collect(){ return { date:$('#f_date').value, unit:qtyUnit, hijuu:$('#f_hijuu').value,
-  sites:siteList().map(s=>({cat:s.cat,contract:s.contract,site:s.site,w:s.w})),
+  sites:siteList().map(s=>({cat:s.cat,contract:s.contract,site:s.site,w:s.w,order:s.order||''})),
   type:chipsOn(pickElems.type), typeOther:$('#typeOther').value.trim(),
   qty:$('#f_qty').value.trim(), amount:$('#f_amount').value.trim(), govqty:$('#f_govqty').value.trim(),
   place:chipsOn(pickElems.place), placeOther:$('#placeOther').value.trim(),
@@ -1418,6 +1426,7 @@ function hkBuild(){
   const g={}; rows.filter(r=>!hk.sites.has(r.site||'(現場未選択)')).forEach(r=>{ const k=recKey(r);
     if(!g[k]) g[k]={k,date:normDate(r.date),place:r.place||'(処分先なし)',vehicle:r.vehicle||'',kg:0,sites:new Set()};
     g[k].kg+=num(r.qty); g[k].sites.add(r.site); });
+  Object.values(g).forEach(e=>{ e.orders=[...e.sites].map(s=>zzOrderOf(e.k,s)).filter(Boolean); });
   const old={}, oldNo={}; hk.entries.forEach(e=>{ if(e.edited) old[e.k]=e.plate; if(e.noEdited) oldNo[e.k]=e.no; });   // 手で直した車番・現場№だけ引きつぐ
   hk.entries=Object.values(g).sort((a,b)=>a.date.localeCompare(b.date)||String(a.k).localeCompare(String(b.k)));
   hk.entries.forEach(e=>{ e.plate = old[e.k]!=null ? old[e.k] : guessPlate(e.vehicle);
@@ -1430,7 +1439,7 @@ function hkRenderStd(){
   const kg=a.reduce((s,e)=>s+e.kg,0);
   $('#hkPrev').innerHTML=`<div class="hk-place"><div class="hd">処分状況報告書<span>${a.length}回・合計 ${yen(kg)}kg</span></div>
     <table class="hk-tbl"><tr><th>回数</th><th>処分場所</th><th>処分日</th><th>現場№</th><th style="text-align:right">重量(kg)</th></tr>`+
-    a.map((e,i)=>`<tr><td>第${zen(i+1)}回</td><td>${esc(e.place)}</td><td>${mdJa(e.date)}<div class="sub">${esc([...e.sites].join('・'))}</div></td>
+    a.map((e,i)=>`<tr><td>第${zen(i+1)}回</td><td>${esc(e.place)}</td><td>${mdJa(e.date)}<div class="sub">${esc([...e.sites].join('・'))}${e.orders&&e.orders.length?'（'+esc(e.orders.join('・'))+'）':''}</div></td>
       <td><input type="text" data-no="${esc(e.k)}" value="${esc(e.no)}" placeholder="№" class="${e.no?'':'miss'}"></td><td class="n">${yen(e.kg)}</td></tr>`).join('')+
     `<tr class="tot"><td colspan="4">合計重量</td><td class="n">${yen(kg)}</td></tr></table></div>`+
     `<div class="hk-note">現場№の空欄（赤）は手で入れてください（2つの現場なら「1・6」のように）。入れた番号は現場ごとに覚えて、次から自動で入ります。</div>`;
@@ -1613,19 +1622,25 @@ $('#pvConfirm').onclick=async()=>{
   let saved=false;
   try{
     // 新規で伝票を付けるときは、保存前の一覧を覚えておき、保存後の差分で新しい一台を見つける
+    const ordItems=siteList().filter(s=>s.cat==='公共').map(s=>({site:s.site,contract:s.contract,order:s.order||''}));
+    const orderWork=ordItems.some(x=>x.order) || !!(editKey&&ZZ_ORD.map[editKey]);
     let beforeKeys=null;
-    if(slipWork && !editKey) beforeKeys=new Set((await fetchRecordKeys()).map(recKey));
+    if((slipWork||orderWork) && !editKey) beforeKeys=new Set((await fetchRecordKeys()).map(recKey));
     const body=editDenpyo?{mode:'update',denpyo:editDenpyo,editor:author,rows}:{rows};
     const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
     const d=await res.json(); if(!d.ok) throw new Error(d.error||'');
     saved=true;
-    let slipMsg='';
+    let slipMsg='', key=null;
+    if(slipWork||orderWork){ try{ key=editKey || d.denpyo || await findNewKey(beforeKeys,rows); }catch(e){ key=null; } }
+    if(orderWork){
+      try{ if(!key) throw new Error('nokey'); await zzSaveOrders(key,ordItems); }
+      catch(e){ slipMsg+='（指示番号を送れませんでした。一覧から開いて入れ直してください）'; }
+    }
     if(slipWork){
       try{
-        const key=editKey || d.denpyo || await findNewKey(beforeKeys,rows);
         if(!key) throw new Error('nokey');
         await sendSlips(key,rows,(n,t)=>{ $('#pvConfirm').textContent='伝票を送信中 '+n+'/'+t; });
-      }catch(e){ slipMsg='（伝票の送信に失敗しました。一覧から開いて付け直してください）'; }
+      }catch(e){ slipMsg+='（伝票の送信に失敗しました。一覧から開いて付け直してください）'; }
     }
     $('#modal').classList.remove('show'); toast((wasEdit?'更新しました':'記録しました')+slipMsg, !!slipMsg);
     resetForm(); allRecords=[]; slipsAll=[]; await loadMasters(); renderCandSuggest();
@@ -1655,6 +1670,21 @@ function switchTab(which){ const input=which==='input', yd=which==='yudo';
   $('#savebar').style.display=input?'flex':'none'; if(!input) loadList(); }
 $('#tabInput').onclick=()=>switchTab('input'); $('#tabList').onclick=()=>switchTab('list'); $('#tabYudo').onclick=()=>switchTab('yudo');
 
+
+/* ===== 指示番号（公共の案件）：残材処分の記録（一台＝key）の現場ごと。共通GASに置く（報告書の印刷には今は出さない） ===== */
+const ZZ_ORD={ map:{}, list:[], ok:false };
+async function zzLoadOrders(){ try{ const r=await fetchT(GENBA_GAS_URL+'?app=zaizai&action=orders',20000); const d=await r.json(); if(!d.ok) return;
+  ZZ_ORD.list=d.orders||[]; ZZ_ORD.map={}; ZZ_ORD.list.forEach(o=>{ (ZZ_ORD.map[o.key]=ZZ_ORD.map[o.key]||{})[o.site]=String(o.order); }); ZZ_ORD.ok=true; }catch(e){} }
+function zzOrderOf(k,site){ const m=ZZ_ORD.map[k]; return m&&m[site||'']||''; }
+function zzOrdersFor(contract){ const a=[]; ZZ_ORD.list.slice().reverse().forEach(o=>{ if((!contract||o.contract===contract)&&o.order&&!a.includes(String(o.order))) a.push(String(o.order)); });
+  (typeof ydItems!=='undefined'?ydItems:[]).forEach(r=>{ if(!contract||r.contract===contract) ydRoutesOf(r).forEach(x=>{ if(x.order&&!a.includes(x.order)) a.push(x.order); }); });
+  return a.slice(0,30); }
+async function zzSaveOrders(key,items){
+  const res=await fetch(GENBA_GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({app:'zaizai',mode:'setOrders',key,items,by:author})});
+  const r=await res.json(); if(!r.ok) throw new Error(r.error||'');
+  ZZ_ORD.map[key]={}; ZZ_ORD.list=ZZ_ORD.list.filter(o=>o.key!==key);
+  items.filter(x=>x.order).forEach(x=>{ ZZ_ORD.map[key][x.site||'']=x.order; ZZ_ORD.list.push({key,site:x.site,order:x.order,contract:x.contract}); });
+}
 
 /* ===== 交通誘導員：警備会社の伝票を撮る → AIで読む → 委託・路線・指示番号を付けて記録 → 「交通誘導員 使用人数」と伝票PDF =====
    記録と伝票の画像は共通GAS（app=yudo）。交通誘導員は A＝有資格者（交通誘導警備の検定合格者）、B＝それ以外 */
@@ -1857,8 +1887,8 @@ async function loadList(force){
   if(GAS_URL==='PASTE_YOUR_GAS_URL_HERE'){ $('#recList').innerHTML='<div class="empty">GAS の URL を設定してください</div>'; return; }
   if(allRecords.length&&!force){ renderList(); return; }
   $('#recList').innerHTML='<div class="empty">読み込み中…</div>';
-  try{ const sp=loadSlipList(), pp=loadParkReports();
-    const res=await fetch(GAS_URL+'?action=list'); const d=await res.json(); await sp; await pp;
+  try{ const sp=loadSlipList(), pp=loadParkReports(), op=zzLoadOrders();
+    const res=await fetch(GAS_URL+'?action=list'); const d=await res.json(); await sp; await pp; await op;
     allRecords=(d.records||[]).slice(); fillYearMonth(); renderList();
   }catch(e){ $('#recList').innerHTML='<div class="empty">電波を確認して、もう一度お試しください</div>'; }
 }
@@ -1963,7 +1993,7 @@ function renderList(){
     const gs=[...new Set(c.g.map(catGroupOf))];
     const up=unitPrice(c.tot,qtyKg);
     const kind=c.g.some(r=>num(r.amount)>0)?'民間':(c.g.some(r=>num(r.govfee)>0)?'公共':'');
-    const slines=c.g.map(r=>`<div class="sline"><span class="nm">${(r.site||'(現場未選択)').replace(/</g,'&lt;')}</span><span class="sv">¥${yen(num(r.total))}</span></div>`).join('');
+    const slines=c.g.map(r=>`<div class="sline"><span class="nm">${(r.site||'(現場未選択)').replace(/</g,'&lt;')}${zzOrderOf(c.k,r.site)?' <span class="ordtag">'+esc(zzOrderOf(c.k,r.site))+'</span>':''}</span><span class="sv">¥${yen(num(r.total))}</span></div>`).join('');
     const qline=`<div class="qline"><span class="qp"><span class="lb">処分量</span>${fmtKg(qtyKg)}</span><span class="qp"><span class="lb">単価</span>${fmtUp(up)}${kind?'（'+kind+'）':''}</span></div>`;
     const tags=[]; if(r0.author) tags.push(`<span class="mtag a">記入 ${String(r0.author).replace(/</g,'&lt;')}</span>`);
     if(r0.type) tags.push(`<span class="mtag t">${r0.type}</span>`);
@@ -2017,7 +2047,7 @@ function openEdit(k){
   const hj=num(r0.hijuu); const m3=hj>0; const conv=kg=> m3?Math.round(num(kg)/hj*100)/100:num(kg);
   const totalKg=g.reduce((a,r)=>a+num(r.qty),0);
   apply({ date:normDate(r0.date), unit:m3?'m3':'kg', hijuu:m3?String(hj):String(DEFAULT_HIJUU),
-    sites:g.map(r=>({cat:r.siteCat,contract:r.siteContract,site:r.site,w:Math.max(1,Math.round(num(r.share)*100))})),
+    sites:g.map(r=>({cat:r.siteCat,contract:r.siteContract,site:r.site,w:Math.max(1,Math.round(num(r.share)*100)),order:zzOrderOf(k,r.site)})),
     type:t.on, typeOther:t.other,
     qty:totalKg? conv(totalKg) : '',
     amount:amount||'', govqty:govqty||'',
