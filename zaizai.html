@@ -163,6 +163,8 @@
   .rec .qline .qp .lb{font-weight:600;color:var(--bark);margin-right:4px}
   .backbtn{width:100%;height:46px;margin-bottom:12px;background:var(--card);color:var(--leaf);border:1px solid var(--leaf);border-radius:var(--radius);font-size:15px;font-weight:700;cursor:pointer}
   .backbtn:hover{background:var(--field)}
+  .rec.back{animation:recback 2.2s ease-out}
+  @keyframes recback{0%,35%{box-shadow:0 0 0 3px var(--leaf);background:var(--leaf-soft)}100%{box-shadow:0 0 0 0 transparent}}
   .empty{text-align:center;color:var(--bark);padding:40px 0}
 
   .overlay{position:fixed;inset:0;z-index:60;background:var(--leaf);display:flex;align-items:center;justify-content:center;padding:24px}
@@ -389,6 +391,7 @@
 
 <!-- ===== 入力 ===== -->
 <main id="viewInput">
+  <button id="btnBackList" class="backbtn" style="display:none;margin-top:10px">← 一覧にもどる（直さずに）</button>
   <div class="sec-head" style="margin-top:8px"><span class="tag">01</span><h2>処分伝票（まず撮る）</h2><span class="rule"></span></div>
   <div class="card">
     <div class="slip-btns">
@@ -973,10 +976,33 @@ function apply(d){ d=d||{};
   setChipsOn(pickElems.place,d.place||[]); $('#placeOther').value=d.placeOther||'';
   setChipsOn(pickElems.vehicle,d.vehicle||[]); $('#vehicleOther').value=d.vehicleOther||'';
   refreshPlaceMode(); normalizeTo100(); syncSliders(); recalc(); }
-function resetForm(){ editDenpyo=null; editKey=null; slipEdit=[]; renderSlips();
+let editAuthor='';   // 直している記録の、もともとの記入者
+function resetForm(){ editDenpyo=null; editKey=null; editAuthor=''; slipEdit=[]; renderSlips();
   if(typeof clearAiMarks==='function'){ clearAiMarks(); slipAiMsg(''); }
-  $('#editBadge').classList.remove('show'); $('#pvDelete').style.display='none'; $('#btnDelete').style.display='none';
-  apply({date:todayStr()}); clearDraft(); }
+  $('#editBadge').classList.remove('show'); $('#pvDelete').style.display='none'; $('#btnDelete').style.display='none'; $('#btnBackList').style.display='none';
+  apply({date:todayStr()}); clearDraft(); try{ sessionStorage.removeItem('zaizai_edit'); }catch(e){} }
+/* iPhoneはカメラから戻るとページを読み込み直すことがある → 直していた記録・一覧の絞り込みを覚えておき、開き直す */
+function saveEditSession(){ try{ sessionStorage.setItem('zaizai_edit',JSON.stringify({k:editKey,ret:listReturn,f:{y:$('#flYear').value,m:$('#flMonth').value,kw:$('#flKeyword').value}})); }catch(e){} }
+async function restoreEditSession(){
+  let ss=null; try{ ss=JSON.parse(sessionStorage.getItem('zaizai_edit')||'null'); }catch(e){} if(!ss||!ss.k) return;
+  switchTab('list'); await loadList(true);
+  const f=ss.f||{}; [['flYear',f.y],['flMonth',f.m]].forEach(([id,v])=>{ const el=$('#'+id); if(v!=null&&[...el.options].some(o=>o.value===v)) el.value=v; });
+  if(f.kw!=null) $('#flKeyword').value=f.kw; renderList();
+  if(!allRecords.some(r=>recKey(r)===ss.k)){ try{ sessionStorage.removeItem('zaizai_edit'); }catch(e){} return; }
+  listReturn=ss.ret||null; openEdit(ss.k);
+  toast('直していた記録を開き直しました。撮った伝票が入っていなければ、もう一度撮ってください');
+}
+/* 一覧から開いた記録を直したら（やめても）、一覧の同じところへもどる（同じ案件を次々に直せるように） */
+let listReturn=null;   // {k, y}：一覧で開いた記録と、そのときの位置
+async function backToList(){
+  const lr=listReturn; listReturn=null; $('#btnBackList').style.display='none';
+  switchTab('list'); if(!lr) return;
+  window.scrollTo(0,lr.y||0);
+  for(let t=0;t<60;t++){ const el=$('#recList').querySelector('.rec[data-k="'+(window.CSS&&CSS.escape?CSS.escape(lr.k):lr.k)+'"]');
+    if(el){ const r=el.getBoundingClientRect(); if(r.top<80||r.bottom>window.innerHeight-20) el.scrollIntoView({block:'center'}); el.classList.remove('back'); void el.offsetWidth; el.classList.add('back'); return; }
+    await new Promise(ok=>setTimeout(ok,150)); }
+}
+$('#btnBackList').onclick=()=>{ resetForm(); backToList(); };
 
 /* ===== 処分伝票（スキャン・写真の添付） ===== */
 const slipReady=()=>SLIP_GAS_URL.indexOf('PASTE_')!==0;
@@ -1224,7 +1250,9 @@ function clearAiMarks(){ document.querySelectorAll('.ai-fill').forEach(el=>el.cl
 // 読み取った内容を、空いている欄にだけ入れる（入れたものは黄色の枠）
 function applySlipRead(d){
   const done=[];
-  if(d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date) && d.date!==$('#f_date').value){ $('#f_date').value=d.date; markAi($('#f_date')); done.push('日付'); }
+  if(d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date) && d.date!==$('#f_date').value){
+    if(editKey&&$('#f_date').value) done.push('（伝票の日付は '+d.date+'。入力済みの日付は変えていません）');   // 直している記録の日付は書きかえない
+    else { $('#f_date').value=d.date; markAi($('#f_date')); done.push('日付'); } }
   if(d.place && !chipsOn(pickElems.place).length && !$('#placeOther').value.trim()){
     if(PLACES.includes(d.place)) setChipsOn(pickElems.place,[d.place]); else $('#placeOther').value=d.place;
     markAi(PLACES.includes(d.place)?pickElems.place:$('#placeOther')); refreshPlaceMode(); done.push('処分場所');
@@ -1305,9 +1333,13 @@ $('#slipFileBtn').onclick=()=>$('#slipFile').click();
 ['slipCam','slipFile'].forEach(id=>$('#'+id).addEventListener('change',async e=>{ const fs=[...e.target.files]; e.target.value='';
   const before=slipEdit.length; await addSlipFiles(fs);
   // 撮影した1枚は、そのまま切り取り画面を開く（必要なところだけ残す）→ 閉じたら読み取って仮入力
-  if(id==='slipCam' && slipEdit.length===before+1 && slipEdit[before].canvas){ crop.after=()=>readSlipToForm(before); openCrop(before); }
-  // 写真・PDFを1枚だけ選んだときは、すぐ読み取って仮入力
-  else if(id==='slipFile' && slipEdit.length===before+1) readSlipToForm(before);
+  // 入力済みの記録を直しているときは、写真を付けるだけ（AIで読み取って書きかえない。読みたいときは「🔎 伝票から仮入力」）
+  const auto=!editKey;
+  const photoOnly=()=>{ if(!auto&&slipEdit.length>before) slipAiMsg('伝票の写真を付けました（入力済みの内容はそのまま）。<br>読み取って空いている欄を埋めたいときだけ「🔎 伝票から仮入力」を押してください。'); };
+  if(id==='slipCam' && slipEdit.length===before+1 && slipEdit[before].canvas){ crop.after=()=>auto?readSlipToForm(before):photoOnly(); openCrop(before); }
+  // 写真・PDFを1枚だけ選んだときは、すぐ読み取って仮入力（新しい記録のときだけ）
+  else if(id==='slipFile' && slipEdit.length===before+1){ if(auto) readSlipToForm(before); else photoOnly(); }
+  else photoOnly();
 }));
 
 /* ===== 伝票PDF（A4に2×2） ===== */
@@ -1624,7 +1656,7 @@ function buildRows(){
     return { date:$('#f_date').value, siteCat:s.cat, siteContract:s.contract, site:s.site,
       share:Math.round(share*1000)/1000, type:typeS, place:placeS, vehicle:vehS,
       qty:kgSplit[i]||0, hijuu:hj, amount:amt[i]||0, govqty:Math.round(t.govqty*share*100)/100,
-      govfee:fee[i]||0, total:(amt[i]||0)+(fee[i]||0), author };
+      govfee:fee[i]||0, total:(amt[i]||0)+(fee[i]||0), author:(editKey&&editAuthor)||author };   // 直すときは、もともとの記入者のまま
   });
 }
 
@@ -1643,7 +1675,8 @@ function openPreview(){
   html+=`<div class="pv-row"><span class="k">種類</span><span class="v">${types||'—'}</span></div>`;
   html+=`<div class="pv-row"><span class="k">処分場所</span><span class="v">${place||'—'}</span></div>`;
   html+=`<div class="pv-row"><span class="k">使用車両</span><span class="v">${veh||'—'}</span></div>`;
-  html+=`<div class="pv-row"><span class="k">記入者</span><span class="v">${author||'—'}</span></div>`;
+  const who=(editKey&&editAuthor)||author;
+  html+=`<div class="pv-row"><span class="k">記入者</span><span class="v">${esc(who||'—')}${editKey&&editAuthor&&editAuthor!==author?'（もともとの記入者のまま）':''}</span></div>`;
   html+=`<div class="pv-row"><span class="k">民間処分費 / 公共ぶん</span><span class="v">¥${yen(t.amount)} / ¥${yen(t.govfee)}</span></div>`;
   html+=`<div class="pv-row"><span class="k">処分量 / 単価</span><span class="v">${fmtKg(t.qtyKg)} / ${fmtUp(unitPrice(t.total,t.qtyKg))}</span></div>`;
   if(slipReady()) html+=`<div class="pv-row"><span class="k">処分伝票</span><span class="v">${liveSlipCount()?liveSlipCount()+'枚':'なし'}</span></div>`;
@@ -1687,6 +1720,7 @@ $('#pvConfirm').onclick=async()=>{
     }
     $('#modal').classList.remove('show'); toast((wasEdit?'更新しました':'記録しました')+slipMsg, !!slipMsg);
     resetForm(); allRecords=[]; slipsAll=[]; await loadMasters(); renderCandSuggest();
+    if(wasEdit&&listReturn) backToList();   // 一覧から直したときは、一覧の同じところへ
   }catch(e){ if(!saved) toast('電波を確認して、もう一度お試しください',true);
   }finally{ $('#pvConfirm').disabled=false; $('#pvConfirm').textContent='記録する'; }
 };
@@ -1696,12 +1730,12 @@ async function doDelete(){
     body:JSON.stringify({mode:'delete',denpyo:editDenpyo})});
     const d=await res.json(); if(!d.ok) throw new Error();
     if(slipReady() && editKey && slipsOfKey(editKey).length){ try{ await slipPost({mode:'removeDenpyo',denpyo:editKey}); }catch(e){} }
-    $('#modal').classList.remove('show'); toast('削除しました'); resetForm(); allRecords=[]; slipsAll=[]; switchTab('list');
+    $('#modal').classList.remove('show'); toast('削除しました'); resetForm(); allRecords=[]; slipsAll=[]; if(listReturn) backToList(); else switchTab('list');
   }catch(e){ toast('電波を確認して、もう一度お試しください',true); }
 }
 $('#pvDelete').onclick=doDelete;
 $('#btnDelete').onclick=doDelete;
-$('#editBadge').onclick=()=>{ if(confirm('編集をやめて新規入力にもどります。よろしいですか？')) resetForm(); };
+$('#editBadge').onclick=()=>{ const back=!!listReturn; if(confirm(back?'直すのをやめて一覧にもどります。よろしいですか？':'編集をやめて新規入力にもどります。よろしいですか？')){ resetForm(); if(back) backToList(); } };
 
 /* ===== タブ ===== */
 function switchTab(which){ const input=which==='input', yd=which==='yudo';
@@ -2127,7 +2161,7 @@ function renderList(){
     return {g:gs.length===1?gs[0]:MIXCAT, html, tot:c.tot, kg:qtyKg};
   }),'台');
   $('#recList').querySelectorAll('.rec').forEach(el=>{ el.onclick=()=>{
-    if(!picking){ openEdit(el.dataset.k); return; }
+    if(!picking){ listReturn={k:el.dataset.k,y:window.scrollY}; openEdit(el.dataset.k); return; }
     const k=el.dataset.k; if(!slipsOfKey(k).length){ toast('この記録には伝票が付いていません'); return; }
     picked.has(k)?picked.delete(k):picked.add(k); el.classList.toggle('sel',picked.has(k)); updatePickBar(); }; });
   if(picking) updatePickBar();
@@ -2173,8 +2207,9 @@ function openEdit(k){
     qty:totalKg? conv(totalKg) : '',
     amount:amount||'', govqty:govqty||'',
     place:p.on, placeOther:p.other, vehicle:v.on, vehicleOther:v.other });
-  editKey=k;
-  $('#editBadge').classList.add('show'); $('#btnDelete').style.display='';
+  editKey=k; editAuthor=String(r0.author||'');
+  $('#editBadge').classList.add('show'); $('#btnDelete').style.display=''; $('#btnBackList').style.display=listReturn&&listReturn.k===k?'':'none';
+  saveEditSession();
   switchTab('input'); window.scrollTo(0,0);
   loadEditSlips(k);
 }
@@ -2194,7 +2229,7 @@ pickElems.typeWatch=0;
   let dr=null; try{ dr=JSON.parse(localStorage.getItem(LS.draft)||'null'); }catch(e){}
   apply(dr||{date:todayStr()}); renderSlips();
   if(GAS_URL==='PASTE_YOUR_GAS_URL_HERE') toast('GAS の URL を設定してください',true);
-  openFromParam();
+  if(new URLSearchParams(location.search).get('pdf')) openFromParam(); else restoreEditSession();
 })();
 /* 公園報告から開いたとき（zaizai.html?pdf=伝票キー,…&from=公園名）：その記録を選んだ状態で伝票PDFを作る */
 async function openFromParam(){
