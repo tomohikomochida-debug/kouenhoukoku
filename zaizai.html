@@ -2076,7 +2076,8 @@ function ydrBuild(){
   const tot=ydr.rows.reduce((s,x)=>s+x.count,0), miss=recs.filter(r=>!num(r.count)||!r.kind||!ydRoutesOf(r).some(t=>t.site)).length;
   $('#ydrPrev').innerHTML=`<div class="hk-place"><div class="hd">交通誘導員　配置状況<span>${ydr.rows.length}日・のべ ${tot}人</span></div>
     <table class="hk-tbl"><tr><th>日付</th><th style="text-align:right">人数</th><th>路線名</th><th style="text-align:center">交通誘導員区分</th></tr>`+
-    ydr.rows.map(x=>`<tr><td>${mdJa(x.date)}</td><td class="n">${x.count||'<span class="yd-miss">?</span>'}</td><td class="${x.sites.length?'':'yd-miss'}">${esc(x.sites.join('・')||'未入力')}</td><td style="text-align:center">${esc(x.kind||'?')}</td></tr>`).join('')+`</table></div>`+
+    ydr.rows.map(x=>`<tr><td>${mdJa(x.date)}</td><td class="n">${x.count||'<span class="yd-miss">?</span>'}</td><td class="${x.sites.length?'':'yd-miss'}">${esc(x.sites.join('・')||'未入力')}</td><td style="text-align:center">${esc(x.kind||'?')}</td></tr>`).join('')+
+    `<tr class="tot"><td>合計</td><td class="n">${tot}</td><td></td><td></td></tr></table></div>`+
     (miss?`<div class="hk-note yd-miss">人数・路線・A／Bの入っていない伝票が ${miss} 枚あります。「交通誘導員」の一覧からタップして直せます。</div>`:'');
 }
 const YD_ROWS=45;   // 表の行数（少なくても空欄の行を残す。多いときは行を足す）
@@ -2097,7 +2098,10 @@ $('#ydrXlsx').onclick=async()=>{
       if(x){ const d=x.date; row.getCell(1).value=d?new Date(Date.UTC(+d.slice(0,4),+d.slice(5,7)-1,+d.slice(8,10))):''; row.getCell(1).numFmt='yyyy/m/d';
         row.getCell(2).value=x.count||''; row.getCell(3).value=x.sites.join('・'); row.getCell(4).value=x.kind; }
       cellSt(row.getCell(1),'center'); cellSt(row.getCell(2),'center'); cellSt(row.getCell(3),undefined); cellSt(row.getCell(4),'center'); }
-    ws.pageSetup.printArea='A1:D'+(3+n);
+    const T=4+n, tr=ws.getRow(T);   // 表のいちばん下に合計（人数）
+    tr.getCell(1).value='合計'; tr.getCell(2).value={formula:`SUM(B4:B${T-1})`, result:ydr.rows.reduce((s2,x)=>s2+(num(x.count)||0),0)};
+    cellSt(tr.getCell(1),'center'); cellSt(tr.getCell(2),'center'); cellSt(tr.getCell(3),undefined); cellSt(tr.getCell(4),'center');
+    ws.pageSetup.printArea='A1:D'+T;
     const buf=await hkNormalFont(await wb.xlsx.writeBuffer(),'ＭＳ Ｐゴシック');
     const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const el=document.createElement('a'); el.href=URL.createObjectURL(blob); el.download='交通誘導員配置状況_'+String(c).replace(/[\\/:*?"<>|\s]+/g,'')+'_'+a+'〜'+b+'.xlsx'; document.body.appendChild(el); el.click(); el.remove();
