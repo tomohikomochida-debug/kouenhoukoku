@@ -62,6 +62,7 @@ var SHEETS = {
   todos:     { name: 'やること',     head: ['todoId', 'owner', 'cat', 'title', 'site', 'due', 'dueText', 'time', 'amount', 'who', 'note', 'state', 'src', 'srcText', 'eventId', 'eventDate', 'files', 'history', 'doneAt', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 要点まとめの「やること」。files・history は JSON
   aiRoutes:  { name: 'AIの使い分け', head: ['用途', '何に使うか', 'モデル', '1日の上限', 'メモ'] },   // モデル欄を書き換えると、その用途のAIが切り替わる（AI窓口）
   aiLog:     { name: 'AIの利用記録', head: ['日時', '用途', 'モデル', '使った人', '読んだ量', '書いた量', '概算円', '秒', '結果'] },   // AI窓口が1回ずつ残す
+  zaizaiOrders: { name: '残材処分の指示番号', head: ['key', 'site', 'order', 'contract', 'by', 'at'] },   // 残材処分の記録（一台＝key）の公共の現場ごとの指示番号。記録そのものは残材処分のGAS
   yudo:      { name: '交通誘導員', head: ['id', 'date', 'company', 'kind', 'count', 'start', 'end', 'contract', 'routes', 'place', 'ticketSite', 'names', 'memo', 'fileId', 'mime', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 警備会社の伝票1枚＝1行。kind：A（有資格者）／B。routes：[{site,order}]（路線名・指示番号、JSON）。伝票の画像は「社内アプリ ＞ 交通誘導員の伝票」
   shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId', 'kanshu', 'msId', 'msRawId', 'msGone', 'kai'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
 };
@@ -533,6 +534,7 @@ function doGet(e) {
     if (app === 'shashin') return out_(shashinGet_(a, p));
     if (app === 'chosa') return out_(chosaGet_(a, p));
     if (app === 'yudo') return out_(yudoGet_(a, p));
+    if (app === 'zaizai' && a === 'orders') return out_({ ok: true, orders: rows_('zaizaiOrders') });
     if (app === 'ai') return aiPage_(a);   // AI窓口の状態（?app=ai&action=status）・つながるかの確認（action=test）
     if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL), claude: !!prop_('ANTHROPIC_API_KEY', '') });
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
@@ -602,6 +604,7 @@ function doPost(e) {
       case 'sharyo:readDoc':   return out_(b.kind === 'inspect' ? readInspect_(b.data, b.mime) : readShaken_(b.data, b.mime));
       /* 残材処分：伝票の読み取り（仮入力用） */
       case 'zaizai:readSlip':  return out_(readSlip_(b.data, b.mime, b.hints));
+      case 'zaizai:setOrders': return withLock_(function () { return setZaizaiOrders_(b.key, b.items, b.by); });
       case 'yudo:read':        return out_(readYudo_(b.data, b.mime));
       case 'yudo:save':        return withLock_(function () { return saveYudo_(b); });
       case 'yudo:state':       return withLock_(function () { return upsert_('yudo', 'id', 'Y', { id: b.id, state: b.state === '削除' ? '削除' : '' }, b.by); });   // 消す・元に戻す
@@ -4528,6 +4531,16 @@ function setDocType_(batch, type, restore) {
 /* ================================================================
  *  交通誘導員（残材処分アプリの「交通誘導員」）：警備会社の伝票を撮って、委託ごとの「交通誘導員 使用人数」を作る
  * ================================================================ */
+/* 残材処分：一台（key）の指示番号を入れかえる。items：[{site,order,contract}]（空の指示番号は入れない） */
+function setZaizaiOrders_(key, items, by) {
+  key = String(key || '').trim(); if (!key) return { ok: false, error: '記録のキーがありません' };
+  var s = sh_('zaizaiOrders'), vals = s.getDataRange().getValues();
+  for (var i = vals.length - 1; i >= 1; i--) if (String(vals[i][0]) === key) s.deleteRow(i + 1);
+  (items || []).filter(function (x) { return x && String(x.order || '').trim(); }).forEach(function (x) {
+    s.appendRow([key, String(x.site || ''), cell_(String(x.order).trim()), String(x.contract || ''), by || '', now_()]);
+  });
+  return { ok: true };
+}
 function yudoFolder_() {
   var id = prop_('YUDO_FOLDER_ID', '');
   if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) return f; } catch (e) {} }
