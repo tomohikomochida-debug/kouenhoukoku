@@ -267,6 +267,36 @@
 
   /* 処分状況報告書 */
   .modal .sheet.hk{max-width:640px}
+  .yd-lead{font-size:13.5px;color:var(--bark);margin:2px 0 12px;line-height:1.6}
+  .yd-shot{cursor:pointer;background:var(--leaf);color:#fff;border-color:var(--leaf)}
+  .yd-undo{display:flex;align-items:center;gap:10px;background:#2c2b27;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:14px}
+  .yd-undo button{margin-left:auto;background:#fff;color:#2c2b27;border:none;border-radius:8px;padding:7px 12px;font-weight:700;font-family:inherit;cursor:pointer}
+  .yd-undo[hidden]{display:none}
+  .yd-card{display:flex;gap:12px;align-items:flex-start}
+  .yd-card .yd-k{flex:0 0 auto;min-width:54px;text-align:center;border-radius:10px;background:var(--leaf-soft);color:var(--leaf);font-weight:800;padding:6px 4px;font-size:15px}
+  .yd-card .yd-k small{display:block;font-size:11px;font-weight:600;color:var(--bark)}
+  .yd-card .yd-b{flex:1;min-width:0}
+  .yd-card .rt{font-size:15px;font-weight:700}
+  .yd-miss{color:var(--danger);font-weight:700}
+  .modal .sheet.yd{max-width:640px}
+  .yd-img{position:relative;background:#f3f1ec;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px;text-align:center}
+  .yd-img img{max-width:100%;max-height:300px;display:block;margin:0 auto}
+  .yd-imgbtns{position:absolute;right:8px;bottom:8px;display:flex;gap:6px}
+  .yd-imgbtns button{background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;font-family:inherit;cursor:pointer}
+  .yd-ai{font-size:13px;border-radius:8px;padding:8px 12px;margin-bottom:12px;background:var(--leaf-soft);color:var(--leaf)}
+  .yd-ai.err{background:#fbeeea;color:var(--danger)}
+  .yd-ticket{font-size:12.5px;color:var(--bark);margin:-6px 0 12px;line-height:1.6}
+  .yd-route{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+  .yd-route input{flex:1;min-width:0}
+  .yd-route input.ord{flex:0 0 110px}
+  .yd-route button{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 10px;cursor:pointer}
+  #ydModal .seg button{min-width:56px}
+  .modal .field .seg{align-self:flex-start}
+  .yd-zoom{position:relative;width:100%;height:100%;overflow:auto;background:#111}
+  .yd-zoom img{width:160%;max-width:none;display:block}
+  .yd-zoom button{position:fixed;top:12px;right:12px;background:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:700;font-family:inherit}
+  #ydZoomModal{padding:0}
+
   .hk-row{display:flex;gap:10px;flex-wrap:wrap}
   .hk-row .field{flex:1;min-width:130px}
   #hkSites .chip{font-size:13px;padding:6px 12px}
@@ -339,6 +369,7 @@
 <div class="tabs">
   <button id="tabInput" class="on">入力</button>
   <button id="tabList">一覧</button>
+  <button id="tabYudo">交通誘導員</button>
 </div>
 
 <!-- ===== 入力 ===== -->
@@ -435,6 +466,67 @@
   <div class="totals" id="totals"></div>
   <div id="recList"></div>
 </main>
+
+<main id="viewYudo" style="display:none">
+  <p class="yd-lead">警備会社の伝票（警備報告書）を撮ると、日付・人数・A／B（有資格者かどうか）を読み取ります。委託・路線・指示番号を選んで記録すると、「交通誘導員 使用人数」の表と伝票のPDFを作れます。</p>
+  <div class="splitmode" style="margin-bottom:12px">
+    <label class="mini-btn yd-shot">📷 伝票を撮る・選ぶ<input type="file" id="ydFile" accept="image/*,application/pdf" multiple hidden></label>
+    <button class="mini-btn" id="ydReport" style="margin-left:auto">📑 使用人数の報告（Excel・伝票PDF）</button>
+    <button class="mini-btn" id="ydReload">↻ 更新</button>
+  </div>
+  <div class="filters"><div class="field" style="flex:1;min-width:200px"><label>委託でしぼる</label><select id="ydFlC"></select></div></div>
+  <div class="yd-undo" id="ydUndo" hidden></div>
+  <div id="ydList"></div>
+</main>
+
+<div class="modal" id="ydModal">
+  <div class="sheet yd">
+    <h3 id="ydTitle">交通誘導員の記録</h3>
+    <div class="yd-img"><img id="ydImg" alt=""><div class="yd-imgbtns"><button type="button" id="ydRot">↻ 回す</button><button type="button" id="ydZoom">🔍 大きく</button></div></div>
+    <div class="yd-ai" id="ydAi" hidden></div>
+    <div class="hk-row">
+      <div class="field"><label>日付</label><input type="date" id="ydDate"></div>
+      <div class="field"><label>警備会社</label><input type="text" id="ydCompany" list="ydCompanies" placeholder="例：ジャスティス"><datalist id="ydCompanies"></datalist></div>
+    </div>
+    <div class="hk-row">
+      <div class="field"><label>交通誘導員（A＝有資格者）</label><span class="seg"><button type="button" id="ydKindA">A</button><button type="button" id="ydKindB">B</button></span></div>
+      <div class="field" style="flex:0 0 96px"><label>人数</label><input type="text" inputmode="numeric" id="ydCount"></div>
+      <div class="field" style="flex:0 0 110px"><label>開始</label><input type="time" id="ydStart"></div>
+      <div class="field" style="flex:0 0 110px"><label>終了</label><input type="time" id="ydEnd"></div>
+    </div>
+    <div class="field"><label>委託（公共）</label><select id="ydContract"></select></div>
+    <div class="yd-ticket" id="ydTicket"></div>
+    <div class="field"><label>路線名・指示番号（同じ日に2つの路線なら「＋ 路線を足す」）</label><div id="ydRoutes"></div>
+      <button type="button" class="mini-btn" id="ydAddRoute" style="align-self:flex-start">＋ 路線を足す</button></div>
+    <datalist id="ydSiteList"></datalist><datalist id="ydOrderList"></datalist>
+    <div class="field"><label>メモ</label><input type="text" id="ydMemo" placeholder="任意"></div>
+    <div class="acts">
+      <button id="ydBack">もどる</button>
+      <button id="ydDel" class="danger">消す</button>
+      <button id="ydSave" class="primary">記録する</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="ydRepModal">
+  <div class="sheet hk">
+    <h3>交通誘導員 使用人数を作る</h3>
+    <p class="lead">委託と期間を選ぶと、いつもの様式の表（Excel）を作ります。伝票のPDFも同じ順番で作れます（A4に4枚）。</p>
+    <div class="field"><label>委託（公共）</label><select id="ydrContract"></select></div>
+    <div class="hk-row">
+      <div class="field"><label>期間（から）</label><input type="date" id="ydrFrom"></div>
+      <div class="field"><label>（まで）</label><input type="date" id="ydrTo"></div>
+    </div>
+    <div id="ydrPrev"></div>
+    <div class="acts">
+      <button id="ydrClose">閉じる</button>
+      <button id="ydrPdf">🖨 伝票PDF</button>
+      <button id="ydrXlsx" class="primary">Excelを作る</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="ydZoomModal"><div class="yd-zoom"><img id="ydZoomImg" alt=""><button type="button" id="ydZoomClose">✕ 閉じる</button></div></div>
 
 <div class="savebar" id="savebar">
   <div class="sum">集計金額 <b><span class="yen">¥</span><span class="tnum" id="barTotal">0</span></b></div>
@@ -1554,12 +1646,211 @@ $('#btnDelete').onclick=doDelete;
 $('#editBadge').onclick=()=>{ if(confirm('編集をやめて新規入力にもどります。よろしいですか？')) resetForm(); };
 
 /* ===== タブ ===== */
-function switchTab(which){ const input=which==='input';
+function switchTab(which){ const input=which==='input', yd=which==='yudo';
+  $('#tabYudo').classList.toggle('on',yd); $('#viewYudo').style.display=yd?'':'none';
+  if(yd){ if(picking) setPicking(false); $('#tabInput').classList.remove('on'); $('#tabList').classList.remove('on'); $('#viewInput').style.display='none'; $('#viewList').style.display='none'; $('#savebar').style.display='none'; ydLoad(); return; }
   if(input&&picking){ picking=false; picked.clear(); document.body.classList.remove('picking'); $('#btnPick').textContent='🖨 伝票をA4にまとめる'; }
   $('#tabInput').classList.toggle('on',input); $('#tabList').classList.toggle('on',!input);
   $('#viewInput').style.display=input?'':'none'; $('#viewList').style.display=input?'none':'';
   $('#savebar').style.display=input?'flex':'none'; if(!input) loadList(); }
-$('#tabInput').onclick=()=>switchTab('input'); $('#tabList').onclick=()=>switchTab('list');
+$('#tabInput').onclick=()=>switchTab('input'); $('#tabList').onclick=()=>switchTab('list'); $('#tabYudo').onclick=()=>switchTab('yudo');
+
+
+/* ===== 交通誘導員：警備会社の伝票を撮る → AIで読む → 委託・路線・指示番号を付けて記録 → 「交通誘導員 使用人数」と伝票PDF =====
+   記録と伝票の画像は共通GAS（app=yudo）。交通誘導員は A＝有資格者（交通誘導警備の検定合格者）、B＝それ以外 */
+let ydItems=[], ydLoaded=false, ydEd=null, ydUndoT=null;
+const ydImgCache={};
+const ydRoutesOf=r=>{ try{ const a=typeof r.routes==='string'?(r.routes?JSON.parse(r.routes):[]):(r.routes||[]); return a.filter(x=>x&&(x.site||x.order)); }catch(e){ return []; } };
+const ydNz=t=>String(t||'').normalize('NFKC').replace(/[\s　・()（）「」]/g,'').replace(/(業務)?委託$/,'');
+function ydBigram(a,b){ a=ydNz(a); b=ydNz(b); if(!a||!b) return 0; const g=t=>{ const m={}; for(let i=0;i<t.length-1;i++){ const k=t.slice(i,i+2); m[k]=(m[k]||0)+1; } return m; };
+  const A=g(a), B=g(b); let n=0, ta=0, tb=0; for(const k in A){ ta+=A[k]; if(B[k]) n+=Math.min(A[k],B[k]); } for(const k in B) tb+=B[k]; return ta+tb? 2*n/(ta+tb) : 0; }
+function ydContracts(){ const g=MASTER.siteGroups['公共']; const a=g&&!Array.isArray(g)?Object.keys(g):[];
+  ydItems.forEach(r=>{ if(r.contract&&!a.includes(r.contract)) a.push(r.contract); }); return a; }
+function ydSitesOf(c){ const g=MASTER.siteGroups['公共']; const a=(g&&!Array.isArray(g)&&g[c])?g[c].slice():[];
+  ydItems.forEach(r=>{ if(r.contract===c) ydRoutesOf(r).forEach(x=>{ if(x.site&&!a.includes(x.site)) a.push(x.site); }); }); return a; }
+function ydGuessContract(site){ let best='', sc=0; ydContracts().forEach(c=>{ const v=ydBigram(c,site); if(v>sc){ sc=v; best=c; } }); return sc>=0.45?best:''; }
+function ydGuessRoutes(c,site,place){ const t=ydNz(site)+'|'+ydNz(place);
+  return ydSitesOf(c).filter(x=>{ const k=ydNz(x); return k.length>=2 && t.includes(k); }).slice(0,3); }
+async function ydLoad(force){
+  if(ydLoaded&&!force){ ydRender(); return; }
+  $('#ydList').innerHTML='<div class="empty">読み込み中…</div>';
+  try{ const r=await fetchT(GENBA_GAS_URL+'?app=yudo&action=list',25000); const d=await r.json(); if(!d.ok) throw new Error(d.error||'');
+    ydItems=d.items||[]; ydLoaded=true; ydRender(); }
+  catch(e){ $('#ydList').innerHTML='<div class="empty">読み込めませんでした。電波を確認して「↻ 更新」を押してください</div>'; }
+}
+function ydMissing(r){ const m=[]; if(!r.contract) m.push('委託'); const rt=ydRoutesOf(r); if(!rt.length||rt.some(x=>!x.site)) m.push('路線'); if(!rt.length||rt.some(x=>!x.order)) m.push('指示番号'); if(!num(r.count)) m.push('人数'); if(!r.kind) m.push('A/B'); return m; }
+function ydRender(){
+  const cs=ydContracts().filter(c=>ydItems.some(r=>r.contract===c)), cur=$('#ydFlC').value;
+  $('#ydFlC').innerHTML='<option value="">すべて</option>'+cs.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('')+(ydItems.some(r=>!r.contract)?`<option value="-" ${cur==='-'?'selected':''}>（委託がまだ）</option>`:'');
+  const f=$('#ydFlC').value;
+  const list=ydItems.filter(r=>!f||(f==='-'?!r.contract:r.contract===f)).sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.id).localeCompare(String(a.id)));
+  if(!list.length){ $('#ydList').innerHTML='<div class="empty">まだ記録がありません。「📷 伝票を撮る・選ぶ」から始めてください</div>'; return; }
+  $('#ydList').innerHTML=list.map(r=>{ const rt=ydRoutesOf(r), m=ydMissing(r), d=normDate(r.date);
+    return `<div class="rec" data-yd="${esc(r.id)}"><div class="yd-card"><div class="yd-k">${esc(r.kind||'?')}<small>${num(r.count)||'?'}人</small></div><div class="yd-b">
+      <div class="top"><span class="date">${d?d.slice(0,4)+'年'+mdJa(d):'日付なし'}${r.start?'　'+esc(r.start)+'〜'+esc(r.end||''):''}</span><span class="date">${esc(r.company||'')}</span></div>
+      <div class="rt">${rt.length?rt.map(x=>esc(x.site||'（路線なし）')+(x.order?'　<span class="date">'+esc(x.order)+'</span>':'')).join('<br>'):'<span class="yd-miss">路線が未入力</span>'}</div>
+      <div class="meta"><span class="mtag">${esc(r.contract||'委託が未選択')}</span>${m.length?'<span class="mtag t">未入力：'+m.join('・')+'</span>':''}</div></div></div></div>`; }).join('');
+  $('#ydList').querySelectorAll('[data-yd]').forEach(el=>el.onclick=()=>ydOpen(ydItems.find(r=>r.id===el.dataset.yd)));
+}
+$('#ydFlC').onchange=ydRender; $('#ydReload').onclick=()=>ydLoad(true);
+/* 撮った・選んだ伝票：1枚ずつ編集画面を開く（2枚以上なら順番に） */
+let ydQueue=[];
+$('#ydFile').onchange=async e=>{ const files=[...e.target.files]; e.target.value=''; if(!files.length) return;
+  if(!author){ toast('先に名前を選んでください',true); return; }
+  const cv=[]; for(const f of files){ try{ if(/pdf/i.test(f.type)||/\.pdf$/i.test(f.name)) (await pdfToCanvases(f)).forEach(c=>cv.push(c)); else cv.push(await imageToCanvas(f,SLIP_MAX)); }catch(er){ toast('読めないファイルがありました：'+f.name,true); } }
+  ydQueue=cv.slice(1); if(cv.length) ydOpen(null,cv[0]); };
+function ydKind(k){ ydEd.kind=k; $('#ydKindA').classList.toggle('on',k==='A'); $('#ydKindB').classList.toggle('on',k==='B'); }
+$('#ydKindA').onclick=()=>ydKind('A'); $('#ydKindB').onclick=()=>ydKind('B');
+function ydAiMsg(t,err){ const el=$('#ydAi'); el.hidden=!t; el.innerHTML=t||''; el.classList.toggle('err',!!err); }
+function ydFillLists(){
+  const cs=ydContracts(), c=$('#ydContract').value;
+  $('#ydCompanies').innerHTML=[...new Set(ydItems.map(r=>r.company).filter(Boolean))].map(x=>`<option value="${esc(x)}">`).join('');
+  $('#ydSiteList').innerHTML=ydSitesOf(c).map(x=>`<option value="${esc(x)}">`).join('');
+  const ords=[]; ydItems.filter(r=>r.contract===c).sort((a,b)=>String(b.date).localeCompare(String(a.date))).forEach(r=>ydRoutesOf(r).forEach(x=>{ if(x.order&&!ords.includes(x.order)) ords.push(x.order); }));
+  $('#ydOrderList').innerHTML=ords.slice(0,30).map(x=>`<option value="${esc(x)}">`).join('');
+  if(!cs.includes(c)&&c) cs.unshift(c);
+}
+function ydContractOpts(sel){ const cs=ydContracts(); if(sel&&!cs.includes(sel)) cs.unshift(sel);
+  $('#ydContract').innerHTML='<option value="">委託を選ぶ…</option>'+cs.map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join(''); }
+function ydRoutesHtml(){
+  const rt=ydEd.routes.length?ydEd.routes:[{site:'',order:''}]; ydEd.routes=rt;
+  $('#ydRoutes').innerHTML=rt.map((x,i)=>`<div class="yd-route"><input type="text" list="ydSiteList" data-rs="${i}" value="${esc(x.site)}" placeholder="路線名（例：高津6号線）"><input type="text" class="ord" list="ydOrderList" data-ro="${i}" value="${esc(x.order)}" placeholder="指示番号（例：第6回）">${rt.length>1?`<button type="button" data-rx="${i}" title="この路線を外す">✕</button>`:''}</div>`).join('');
+  $('#ydRoutes').querySelectorAll('[data-rs]').forEach(el=>el.oninput=()=>{ ydEd.routes[+el.dataset.rs].site=el.value.trim(); });
+  $('#ydRoutes').querySelectorAll('[data-ro]').forEach(el=>el.oninput=()=>{ ydEd.routes[+el.dataset.ro].order=el.value.trim(); });
+  $('#ydRoutes').querySelectorAll('[data-rx]').forEach(el=>el.onclick=()=>{ ydEd.routes.splice(+el.dataset.rx,1); ydRoutesHtml(); });
+}
+$('#ydAddRoute').onclick=()=>{ ydEd.routes.push({site:'',order:ydEd.routes.length?ydEd.routes[ydEd.routes.length-1].order:''}); ydRoutesHtml(); };
+$('#ydContract').onchange=()=>{ ydFillLists(); if(!ydEd.routes.some(x=>x.site)){ const g=ydGuessRoutes($('#ydContract').value,ydEd.ticketSite,ydEd.place); if(g.length){ ydEd.routes=g.map(x=>({site:x,order:''})); ydRoutesHtml(); } } };
+function ydTicketNote(){ const t=[ydEd.ticketSite&&('伝票の現場名：'+ydEd.ticketSite), ydEd.place&&('勤務地：'+ydEd.place), ydEd.names&&('誘導員：'+ydEd.names)].filter(Boolean);
+  $('#ydTicket').innerHTML=t.map(esc).join('<br>'); }
+async function ydImgData(r){ if(ydImgCache[r.id]) return ydImgCache[r.id];
+  const res=await fetchT(GENBA_GAS_URL+'?app=yudo&action=img&id='+encodeURIComponent(r.id),40000); const d=await res.json(); if(!d.ok) throw new Error(d.error||'');
+  return (ydImgCache[r.id]=d); }
+async function ydOpen(r,canvas){
+  ydEd={ id:r?r.id:'', canvas:canvas||null, rot:0, kind:r?r.kind:'', routes:r?ydRoutesOf(r).map(x=>({site:x.site||'',order:x.order||''})):[], ticketSite:r?r.ticketSite:'', place:r?r.place:'', names:r?r.names:'', base:null };
+  $('#ydTitle').textContent=r?'交通誘導員の記録を直す':'交通誘導員の記録'+(ydQueue.length?'（あと '+ydQueue.length+' 枚）':'');
+  $('#ydDate').value=r?normDate(r.date):''; $('#ydCompany').value=r?r.company||'':''; $('#ydCount').value=r?r.count||'':'';
+  $('#ydStart').value=r?r.start||'':''; $('#ydEnd').value=r?r.end||'':''; $('#ydMemo').value=r?r.memo||'':'';
+  ydKind(ydEd.kind); ydContractOpts(r?r.contract:''); ydFillLists(); ydRoutesHtml(); ydTicketNote(); ydAiMsg('');
+  $('#ydDel').style.display=r?'':'none'; $('#ydSave').textContent=r?'直す':'記録する'; $('#ydSave').disabled=false;
+  $('#ydImg').removeAttribute('src');
+  $('#ydModal').classList.add('show');
+  if(canvas){ $('#ydImg').src=canvas.toDataURL('image/jpeg',.7); ydRead(); }
+  else if(r){ try{ const d=await ydImgData(r); if(ydEd&&ydEd.id===r.id){ ydEd.base='data:'+d.mime+';base64,'+d.data; $('#ydImg').src=ydEd.base; } }catch(e){ ydAiMsg('伝票の画像を取り寄せられませんでした（電波を確認してください）',true); } }
+}
+function ydCanvasNow(){ return ydEd.canvas? rotCanvas(ydEd.canvas,ydEd.rot) : null; }
+$('#ydRot').onclick=async()=>{ if(!ydEd) return;
+  if(!ydEd.canvas&&ydEd.base){ const img=await loadImg(ydEd.base); ydEd.canvas=fitCanvas(img,img.naturalWidth,img.naturalHeight); ydEd.rot=0; ydEd.changed=true; }
+  if(!ydEd.canvas) return; ydEd.rot=(ydEd.rot+90)%360; ydEd.changed=true; $('#ydImg').src=ydCanvasNow().toDataURL('image/jpeg',.7); };
+$('#ydZoom').onclick=()=>{ const s=$('#ydImg').src; if(!s) return; $('#ydZoomImg').src=ydEd&&ydEd.canvas?ydCanvasNow().toDataURL('image/jpeg',.9):s; $('#ydZoomModal').classList.add('show'); };
+$('#ydZoomClose').onclick=()=>$('#ydZoomModal').classList.remove('show');
+async function ydRead(){
+  const ed=ydEd; ydAiMsg('🔎 伝票を読み取っています…（10秒ほどかかります）');
+  try{ const c=shrinkTo(ydCanvasNow(),2400);
+    const res=await fetch(GENBA_GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({app:'yudo',mode:'read',data:c.toDataURL('image/jpeg',.88).split(',')[1],mime:'image/jpeg',by:author})});
+    const r=await res.json(); if(ed!==ydEd) return; if(!r.ok) throw new Error(r.error||'読み取りに失敗しました');
+    const d=r.data||{}, done=[];
+    const put=(id,v,label)=>{ if(v&&!$(id).value){ $(id).value=v; done.push(label); } };
+    put('#ydDate',d.date,'日付'); put('#ydCompany',d.company,'警備会社'); put('#ydCount',d.count,'人数'); put('#ydStart',d.start,'開始'); put('#ydEnd',d.end,'終了');
+    if(d.kind&&!ydEd.kind){ ydKind(d.kind); done.push('A/B'); }
+    ydEd.ticketSite=d.site||''; ydEd.place=d.place||''; ydEd.names=d.names||''; ydTicketNote();
+    if(!$('#ydContract').value){ const c2=ydGuessContract(d.site); if(c2){ $('#ydContract').value=c2; done.push('委託'); } }
+    ydFillLists();
+    if(!ydEd.routes.some(x=>x.site)){ const g=ydGuessRoutes($('#ydContract').value,d.site,d.place); if(g.length){ ydEd.routes=g.map(x=>({site:x,order:''})); ydRoutesHtml(); done.push('路線'); } }
+    ydAiMsg(done.length?'伝票から入れました：<b>'+done.join('・')+'</b>。ちがうところは直してください。指示番号は入れてください。':'伝票から読み取れませんでした。手で入れてください。');
+  }catch(e){ if(ed===ydEd) ydAiMsg('伝票を読み取れませんでした。手で入れてください。<br><small>'+esc(e&&e.message?e.message:e)+'</small>',true); }
+}
+function ydClose(){ $('#ydModal').classList.remove('show'); ydEd=null; ydQueue=[]; }
+$('#ydBack').onclick=()=>{ if(ydQueue.length&&!confirm('まだ '+ydQueue.length+' 枚の伝票が残っています。やめますか？')) return; ydClose(); };
+$('#ydSave').onclick=async()=>{
+  const it={ id:ydEd.id||'', date:$('#ydDate').value, company:$('#ydCompany').value.trim(), kind:ydEd.kind||'', count:num($('#ydCount').value)||'',
+    start:$('#ydStart').value, end:$('#ydEnd').value, contract:$('#ydContract').value, routes:ydEd.routes.filter(x=>x.site||x.order),
+    place:ydEd.place||'', ticketSite:ydEd.ticketSite||'', names:ydEd.names||'', memo:$('#ydMemo').value.trim() };
+  if(!it.date){ toast('日付を入れてください',true); return; }
+  const m=ydMissing(it); if(m.length&&!confirm('まだ入っていない所があります：'+m.join('・')+'\nこのまま記録しますか？（あとで直せます）')) return;
+  const btn=$('#ydSave'); btn.disabled=true; btn.textContent='送っています…';
+  try{ const body={app:'yudo',mode:'save',item:it,by:author};
+    if(ydEd.canvas&&(!ydEd.id||ydEd.changed)){ body.data=shrinkTo(ydCanvasNow(),SLIP_MAX).toDataURL('image/jpeg',.82).split(',')[1]; body.mime='image/jpeg'; if(ydEd.id) delete ydImgCache[ydEd.id]; }
+    const res=await fetch(GENBA_GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)}); const r=await res.json();
+    if(!r.ok) throw new Error(r.error||'');
+    it.id=r.id; it.routes=JSON.stringify(it.routes); const i=ydItems.findIndex(x=>x.id===r.id); if(i>=0) ydItems[i]=Object.assign({},ydItems[i],it); else ydItems.push(it);
+    toast(ydEd.id?'直しました':'記録しました'); ydRender();
+    if(ydQueue.length){ const nx=ydQueue.shift(); ydOpen(null,nx); } else ydClose();
+  }catch(e){ toast('送れませんでした。電波を確認して、もう一度押してください',true); btn.disabled=false; btn.textContent=ydEd&&ydEd.id?'直す':'記録する'; }
+};
+async function ydSetState(id,st){ const res=await fetch(GENBA_GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({app:'yudo',mode:'state',id,state:st,by:author})}); const r=await res.json(); if(!r.ok) throw new Error(r.error||''); }
+$('#ydDel').onclick=async()=>{ const id=ydEd&&ydEd.id; if(!id) return;
+  try{ await ydSetState(id,'削除'); }catch(e){ toast('消せませんでした。電波を確認してください',true); return; }
+  const gone=ydItems.find(x=>x.id===id); ydItems=ydItems.filter(x=>x.id!==id); ydClose(); ydRender();
+  const u=$('#ydUndo'); u.innerHTML='記録を消しました<button type="button">元に戻す</button>'; u.hidden=false; clearTimeout(ydUndoT); ydUndoT=setTimeout(()=>{ u.hidden=true; },10000);
+  u.querySelector('button').onclick=async()=>{ u.hidden=true; try{ await ydSetState(id,''); ydItems.push(gone); ydRender(); toast('元に戻しました'); }catch(e){ toast('戻せませんでした。電波を確認してください',true); } };
+};
+
+/* ----- 交通誘導員 使用人数（いつもの様式）・伝票PDF ----- */
+let ydr={rows:[]};
+$('#ydReport').onclick=()=>{
+  const cs=ydContracts().filter(c=>ydItems.some(r=>r.contract===c)); if(!cs.length){ toast('委託を選んだ記録がまだありません',true); return; }
+  const cur=$('#ydrContract').value||$('#ydFlC').value; $('#ydrContract').innerHTML=cs.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
+  if(!$('#ydrFrom').value){ const y=fyOf(todayStr()); $('#ydrFrom').value=y+'-04-01'; $('#ydrTo').value=(+y+1)+'-03-31'; }
+  $('#ydRepModal').classList.add('show'); ydrBuild(); };
+$('#ydrClose').onclick=()=>$('#ydRepModal').classList.remove('show');
+['ydrContract','ydrFrom','ydrTo'].forEach(id=>$('#'+id).addEventListener('change',ydrBuild));
+function ydrBuild(){
+  const c=$('#ydrContract').value, a=$('#ydrFrom').value, b=$('#ydrTo').value;
+  const recs=ydItems.filter(r=>r.contract===c&&(!a||normDate(r.date)>=a)&&(!b||normDate(r.date)<=b))
+    .sort((x,y)=>normDate(x.date).localeCompare(normDate(y.date))||String(x.id).localeCompare(String(y.id)));
+  ydr.recs=recs; ydr.rows=[];
+  recs.forEach(r=>{ const rt=ydRoutesOf(r); const list=rt.length?rt:[{site:'',order:''}];
+    list.forEach((x,i)=>ydr.rows.push({ r, first:i===0, span:list.length, order:x.order||'', date:normDate(r.date), site:x.site||'', kind:r.kind||'', count:num(r.count)||'' })); });
+  if(!ydr.rows.length){ $('#ydrPrev').innerHTML='<div class="empty" style="padding:20px 0">この条件の記録はありません</div>'; return; }
+  const tot=recs.reduce((s,r)=>s+num(r.count),0), miss=recs.filter(r=>ydMissing(r).length).length;
+  $('#ydrPrev').innerHTML=`<div class="hk-place"><div class="hd">交通誘導員　使用人数<span>${recs.length}枚・のべ ${tot}人</span></div>
+    <table class="hk-tbl"><tr><th>指示番号</th><th>日付</th><th>路線名</th><th>交通誘導員</th><th style="text-align:right">人数</th></tr>`+
+    ydr.rows.map(x=>`<tr><td class="${x.order?'':'yd-miss'}">${esc(x.order||'未入力')}</td><td>${mdJa(x.date)}</td><td class="${x.site?'':'yd-miss'}">${esc(x.site||'未入力')}</td>`+
+      (x.first?`<td rowspan="${x.span}" style="text-align:center">${esc(x.kind||'?')}</td><td rowspan="${x.span}" class="n">${x.count||'?'}</td>`:'')+`</tr>`).join('')+`</table></div>`+
+    (miss?`<div class="hk-note yd-miss">未入力のある伝票が ${miss} 枚あります。「交通誘導員」の一覧からタップして直せます。</div>`:'');
+}
+$('#ydrXlsx').onclick=async()=>{
+  if(!ydr.rows.length){ toast('この条件の記録はありません',true); return; }
+  const btn=$('#ydrXlsx'); btn.disabled=true; btn.textContent='作っています…';
+  try{
+    const EJ=await loadExcelJS(); const wb=new EJ.Workbook(); wb.creator='庭乃持田園 交通誘導員';
+    const c=$('#ydrContract').value, a=$('#ydrFrom').value, b=$('#ydrTo').value;
+    const ws=wb.addWorksheet('交通誘導員',{pageSetup:{paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:true,margins:{left:.7,right:.7,top:.75,bottom:.75,header:.3,footer:.3}}});
+    const F='ＭＳ Ｐゴシック', thin={style:'thin'}, box={top:thin,left:thin,bottom:thin,right:thin}, ctr={horizontal:'center',vertical:'middle'};
+    ws.columns=[{width:13.625},{width:14.125},{width:21.875},{width:16.75},{width:10},{width:9}];
+    ws.getRow(6).height=26.25; ws.getRow(7).height=24; ws.getRow(8).height=9; ws.getRow(9).height=21;
+    ws.mergeCells('A7:F7'); ws.getCell('A7').value=c; ws.getCell('A7').font={name:F,size:20}; ws.getCell('A7').alignment=ctr;
+    ws.mergeCells('A9:F9'); ws.getCell('A9').value='交通誘導員　使用人数'; ws.getCell('A9').font={name:F,size:18}; ws.getCell('A9').alignment={horizontal:'center'};
+    const H=12; ['指示番号','日付','路線名','交通誘導員','人数'].forEach((h,i)=>{ const cl=ws.getRow(H).getCell(i+1); cl.value=h; cl.font={name:F,size:16}; cl.alignment=ctr; cl.border=box; });
+    ws.getRow(H).height=21;
+    ydr.rows.forEach((x,i)=>{ const r=H+1+i, row=ws.getRow(r); row.height=21;
+      const d=x.date; row.getCell(1).value=x.order; row.getCell(2).value=d?new Date(Date.UTC(+d.slice(0,4),+d.slice(5,7)-1,+d.slice(8,10))):''; row.getCell(2).numFmt='m"月"d"日"';
+      row.getCell(3).value=x.site; if(x.first){ row.getCell(4).value=x.kind; row.getCell(5).value=x.count===''?'':Number(x.count); }
+      for(let k=1;k<=5;k++){ const cl=row.getCell(k); cl.font={name:F,size:16}; cl.alignment=ctr; cl.border=box; }
+      if(x.first&&x.span>1){ ws.mergeCells(r,4,r+x.span-1,4); ws.mergeCells(r,5,r+x.span-1,5); } });
+    ws.pageSetup.printArea='A1:F'+Math.max(35,H+ydr.rows.length+1);
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const el=document.createElement('a'); el.href=URL.createObjectURL(blob); el.download='交通誘導員使用人数_'+String(c).replace(/[\\/:*?"<>|\s]+/g,'')+'_'+a+'〜'+b+'.xlsx'; document.body.appendChild(el); el.click(); el.remove();
+    setTimeout(()=>URL.revokeObjectURL(el.href),60000);
+    const miss=ydr.recs.filter(r=>ydMissing(r).length).length;
+    toast('Excelを作りました'+(miss?'（未入力のある伝票 '+miss+'枚）':''),!!miss);
+  }catch(e){ toast('Excelを作れませんでした。電波を確認して、もう一度お試しください',true); }
+  finally{ btn.disabled=false; btn.textContent='Excelを作る'; }
+};
+$('#ydrPdf').onclick=async()=>{
+  const recs=(ydr.recs||[]).filter(r=>r.fileId||ydImgCache[r.id]); if(!recs.length){ toast('伝票の画像がありません',true); return; }
+  pdfOut&&URL.revokeObjectURL(pdfOut.url); pdfOut=null;
+  $('#pdfModal').classList.add('show'); pdfModalState(false,'伝票を取り寄せています…','0 / '+recs.length,0);
+  try{ const imgs=[];
+    for(let i=0;i<recs.length;i++){ imgs.push(await toJpegBytes(await ydImgData(recs[i]))); pdfModalState(false,'伝票を取り寄せています…',(i+1)+' / '+recs.length,Math.round((i+1)/recs.length*100)); }
+    const blob=buildSlipPdf(imgs), d1=normDate(recs[0].date), d2=normDate(recs[recs.length-1].date);
+    const name='交通誘導員伝票_'+String($('#ydrContract').value).replace(/[\\/:*?"<>|\s]+/g,'')+'_'+(d1===d2?d1:d1+'〜'+d2)+'_'+recs.length+'枚.pdf';
+    pdfOut={blob,name,url:URL.createObjectURL(blob)};
+    pdfModalState(true,name,'A4 '+Math.ceil(recs.length/4)+'ページ・'+recs.length+'枚（左上→右上→左下→右下・表と同じ順番）',100);
+  }catch(e){ pdfModalState(false,'伝票を取り寄せられませんでした。電波を確認して、もう一度お試しください。','',0); }
+};
 
 /* ===== 一覧 ===== */
 async function loadList(force){

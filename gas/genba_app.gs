@@ -62,6 +62,7 @@ var SHEETS = {
   todos:     { name: 'やること',     head: ['todoId', 'owner', 'cat', 'title', 'site', 'due', 'dueText', 'time', 'amount', 'who', 'note', 'state', 'src', 'srcText', 'eventId', 'eventDate', 'files', 'history', 'doneAt', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 要点まとめの「やること」。files・history は JSON
   aiRoutes:  { name: 'AIの使い分け', head: ['用途', '何に使うか', 'モデル', '1日の上限', 'メモ'] },   // モデル欄を書き換えると、その用途のAIが切り替わる（AI窓口）
   aiLog:     { name: 'AIの利用記録', head: ['日時', '用途', 'モデル', '使った人', '読んだ量', '書いた量', '概算円', '秒', '結果'] },   // AI窓口が1回ずつ残す
+  yudo:      { name: '交通誘導員', head: ['id', 'date', 'company', 'kind', 'count', 'start', 'end', 'contract', 'routes', 'place', 'ticketSite', 'names', 'memo', 'fileId', 'mime', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 警備会社の伝票1枚＝1行。kind：A（有資格者）／B。routes：[{site,order}]（路線名・指示番号、JSON）。伝票の画像は「社内アプリ ＞ 交通誘導員の伝票」
   shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId', 'kanshu', 'msId', 'msRawId', 'msGone', 'kai'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
@@ -196,6 +197,7 @@ var AI_ROUTES = [
   ['保険明細読み取り',    '車両：フリート契約の証券・見積書・明細書から、契約と車ごとの明細を読む', 'opus',     20],
   ['点検記録読み取り',    '車両：年次点検の記録表・シールから検査日を読む',               'sonnet',       30],
   ['伝票読み取り',        '残材処分：計量票・伝票から日付・重さ・金額を読む',             'sonnet',       100],
+  ['誘導員伝票読み取り',  '残材処分：交通誘導員の伝票（警備報告書）から日付・人数・A／Bなどを読む', 'sonnet',   100],
   ['請求書読み取り',      '取引先：請求書・名刺などから会社の情報を読む',                 'sonnet',       50],
   ['用語の意味下書き',    '用語集：新しい言葉の意味を下書きする（人が確認する前提）',     'sonnet',       100],
   ['用語さがし',          '用語集：うろ覚え・聞き間違いから候補を探す',                   'haiku',        300],
@@ -530,6 +532,7 @@ function doGet(e) {
     if (app === 'park') return out_(parkGet_(a, p));
     if (app === 'shashin') return out_(shashinGet_(a, p));
     if (app === 'chosa') return out_(chosaGet_(a, p));
+    if (app === 'yudo') return out_(yudoGet_(a, p));
     if (app === 'ai') return aiPage_(a);   // AI窓口の状態（?app=ai&action=status）・つながるかの確認（action=test）
     if (a === 'ping') return out_({ ok: true, model: prop_('GEMINI_MODEL', GEMINI_MODEL), claude: !!prop_('ANTHROPIC_API_KEY', '') });
     if (app === 'yougo' && a === 'data') return out_({ ok: true, terms: rows_('terms'), aliases: rows_('aliases') });
@@ -599,6 +602,9 @@ function doPost(e) {
       case 'sharyo:readDoc':   return out_(b.kind === 'inspect' ? readInspect_(b.data, b.mime) : readShaken_(b.data, b.mime));
       /* 残材処分：伝票の読み取り（仮入力用） */
       case 'zaizai:readSlip':  return out_(readSlip_(b.data, b.mime, b.hints));
+      case 'yudo:read':        return out_(readYudo_(b.data, b.mime));
+      case 'yudo:save':        return withLock_(function () { return saveYudo_(b); });
+      case 'yudo:state':       return withLock_(function () { return upsert_('yudo', 'id', 'Y', { id: b.id, state: b.state === '削除' ? '削除' : '' }, b.by); });   // 消す・元に戻す
       case 'sharyo:docType':   return withLock_(function () { return setDocType_(b.batch, b.type, b.restore); });
       case 'sharyo:docUntil':  return withLock_(function () { return setDocUntil_(b.batch, b.until); });
       case 'sharyo:importInfo': return out_(importVehicleInfo_(b.by, !!b.dry));
@@ -4517,4 +4523,60 @@ function setDocType_(batch, type, restore) {
     if (String(d.vehicleId) === vid && d.type === type && String(d.batch || d.docId) !== String(batch) && d.state !== '過去') { upsert_('vehicleDocs', 'docId', 'D', { docId: d.docId, state: '過去' }); moved.push(d.docId); }
   });
   return { ok: true, moved: moved };
+}
+
+/* ================================================================
+ *  交通誘導員（残材処分アプリの「交通誘導員」）：警備会社の伝票を撮って、委託ごとの「交通誘導員 使用人数」を作る
+ * ================================================================ */
+function yudoFolder_() {
+  var id = prop_('YUDO_FOLDER_ID', '');
+  if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) return f; } catch (e) {} }
+  var p = docsFolder_().getParents(), parent = p.hasNext() ? p.next() : DriveApp.getRootFolder();
+  var folder = subFolder_(parent, '交通誘導員の伝票');
+  PropertiesService.getScriptProperties().setProperty('YUDO_FOLDER_ID', folder.getId());
+  return folder;
+}
+function yudoGet_(a, p) {
+  if (a === 'list') return { ok: true, items: rows_('yudo').filter(function (r) { return r.state !== '削除'; }) };
+  if (a === 'img') {   // 伝票の画像（PDF・確認用）。id=…
+    var r = rows_('yudo').filter(function (x) { return x.id === p.id; })[0];
+    if (!r || !r.fileId) return { ok: false, error: '伝票の画像がありません' };
+    try { var b = DriveApp.getFileById(r.fileId).getBlob(); return { ok: true, mime: r.mime || b.getContentType() || 'image/jpeg', data: Utilities.base64Encode(b.getBytes()) }; }
+    catch (e) { return { ok: false, error: '伝票の画像を開けませんでした：' + e }; }
+  }
+  return { ok: false, error: 'unknown action' };
+}
+function saveYudo_(b) {
+  var it = Object.assign({}, b.item || {});
+  if (!it.id && !b.data) return { ok: false, error: '伝票の画像がありません' };
+  delete it.fileId; delete it.state;
+  if (it.routes && typeof it.routes !== 'string') it.routes = JSON.stringify(it.routes);
+  if (!it.id) { it.by = b.by || ''; it.at = now_(); }
+  var r = upsert_('yudo', 'id', 'Y', it, b.by);
+  if (b.data) {
+    var mime = b.mime || 'image/jpeg', name = (it.date || '日付なし') + '_' + String(it.company || '警備').replace(/[\\\/:*?"<>|]/g, '') + '_' + r.id + (/pdf/.test(mime) ? '.pdf' : '.jpg');
+    var f = yudoFolder_().createFile(Utilities.newBlob(Utilities.base64Decode(b.data), mime, name));
+    var old = rows_('yudo').filter(function (x) { return x.id === r.id; })[0];
+    if (old && old.fileId) { try { DriveApp.getFileById(old.fileId).setTrashed(true); } catch (e) {} }
+    upsert_('yudo', 'id', 'Y', { id: r.id, fileId: f.getId(), mime: mime }, b.by);
+  }
+  return r;
+}
+function readYudo_(b64, mime) {
+  var prompt = 'これは警備会社が書いた「警備報告書」「警備請負報告書」などの伝票の写真です。造園会社（庭乃持田園）が道路・公園の作業で交通誘導員を頼んだ記録です。' +
+    '次の項目を読み取り、JSONだけ返してください。' +
+    '{"date":"勤務した日 YYYY-MM-DD（R・令和n年＝2018+n年。H・平成n年＝1988+n年）",' +
+    '"company":"警備会社の名前（株式会社などは除いた短い名前。例：ジャスティス、グリーン警備保障）",' +
+    '"count":"配置した誘導員の人数（数値。「1名」なら1。書かれていなければ氏名の数）",' +
+    '"kind":"有資格者（交通誘導警備業務の検定合格者）なら A、そうでなければ B。「有資格者配置：A.交通誘導」に丸、資格欄に「交通誘導2級」「検定」などの記入があれば A。何も印や記入が無ければ B",' +
+    '"start":"開始（上番）時刻 HH:MM","end":"終了（下番）時刻 HH:MM",' +
+    '"site":"現場名（書かれたとおり）","place":"勤務地・住所（書かれたとおり）",' +
+    '"names":"誘導員の氏名（複数なら・区切り）"}。読めない項目は空文字。推測で埋めない（kind 以外）。';
+  var j = ai_('誘導員伝票読み取り', [{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
+  var d = String(j.date || '').replace(/\//g, '-'), m = d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  d = m ? (m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2)) : '';
+  var tm = function (v) { var x = String(v || '').replace(/[：]/g, ':').match(/(\d{1,2}):(\d{2})/); return x ? ('0' + x[1]).slice(-2) + ':' + x[2] : ''; };
+  var n = Number(String(j.count == null ? '' : j.count).replace(/[^\d]/g, ''));
+  return { ok: true, data: { date: d, company: String(j.company || '').trim(), count: n > 0 ? n : '', kind: /^A/i.test(String(j.kind || '')) ? 'A' : (/^B/i.test(String(j.kind || '')) ? 'B' : ''),
+    start: tm(j.start), end: tm(j.end), site: String(j.site || '').trim(), place: String(j.place || '').trim(), names: String(j.names || '').trim() } };
 }
