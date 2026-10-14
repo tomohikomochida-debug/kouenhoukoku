@@ -1573,29 +1573,42 @@ function loadExcelJS(){ if(window.ExcelJS) return Promise.resolve(window.ExcelJS
     s.onload=()=>ok(window.ExcelJS); s.onerror=()=>{ exceljsP=null; ng(new Error('exceljs')); }; document.head.appendChild(s); });
   return exceljsP; }
 /* いつもの様式：委託名・提出日／処分状況報告書／受託者／回数・処分場所・処分日・現場№・重量(kg)／合計重量（1枚の表に処分先をまとめて日付順） */
+/* ひな型の「標準」の字体（游ゴシック 11）にそろえる。列の幅は標準の字体の文字の幅で決まるので、これが違うと表の幅が変わる */
+let jszipP=null;
+function loadJSZip(){ if(window.JSZip) return Promise.resolve(window.JSZip); if(jszipP) return jszipP;
+  jszipP=new Promise((ok,ng)=>{ const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    sc.onload=()=>ok(window.JSZip); sc.onerror=()=>{ jszipP=null; ng(new Error('jszip')); }; document.head.appendChild(sc); }); return jszipP; }
+async function hkNormalFont(buf){
+  try{ const JZ=await loadJSZip(), z=await JZ.loadAsync(buf), f=z.file('xl/styles.xml'); if(!f) return buf;
+    const x=await f.async('string'), y=x.replace(/(<fonts[^>]*>)<font>[\s\S]*?<\/font>/,'$1<font><sz val="11"/><color theme="1"/><name val="游ゴシック"/><family val="3"/><charset val="128"/></font>');
+    if(y===x) return buf; z.file('xl/styles.xml',y); return await z.generateAsync({type:'arraybuffer',compression:'DEFLATE'});
+  }catch(e){ return buf; } }
+const HK_ROWS=25;   // いつもの様式の表の行数（記録が少なくても空欄の行を残し、合計の位置を上に詰めない。多いときは行を足す）
 function hkStdSheet(wb,c,date){
-  const ws=wb.addWorksheet((normDate(date)||todayStr()).replace(/-0?/g,'.'),{pageSetup:{paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:true,margins:{left:.7,right:.7,top:.75,bottom:.75,header:.3,footer:.3}}});
+  const ws=wb.addWorksheet((normDate(date)||todayStr()).replace(/-0?/g,'.'),{properties:{defaultRowHeight:18.75},pageSetup:{paperSize:9,orientation:'portrait',margins:{left:.7,right:.7,top:.75,bottom:.75,header:.3,footer:.3}}});
   const F='ＭＳ Ｐゴシック', f=(sz)=>({name:F,size:sz||11}), thin={style:'thin'}, box={top:thin,left:thin,bottom:thin,right:thin}, ctr={horizontal:'center',vertical:'middle'};
-  ws.columns=[{width:10},{width:15.125},{width:9},{width:8},{width:9.25},{width:18.125},{width:9.125}];
-  ws.getCell('A1').value=c; ws.getCell('A1').font=f(12);
-  ws.mergeCells('F1:G1'); const d=normDate(date); ws.getCell('F1').value=d?new Date(Date.UTC(+d.slice(0,4),+d.slice(5,7)-1,+d.slice(8,10))):'';
-  ws.getCell('F1').numFmt='[$-411]ggge"年"m"月"d"日";@'; ws.getCell('F1').font=f(10); ws.getCell('F1').alignment={horizontal:'right'};
-  ws.mergeCells('A2:G2'); ws.getCell('A2').value='処分状況報告書'; ws.getCell('A2').font=f(12); ws.getCell('A2').alignment={horizontal:'center'};
-  [['D3','受託者'],['D4','住　所'],['D5','名　称'],['D6','代表者名']].forEach(([k,v])=>{ ws.getCell(k).value=v; ws.getCell(k).font=f(10); });
-  [['F4',HK_OWNER.addr],['F5',HK_OWNER.name],['F6',HK_OWNER.rep]].forEach(([k,v])=>{ ws.getCell(k).value=v; ws.getCell(k).font=f(10); });
-  const head=(r,vals)=>{ ws.mergeCells(`C${r}:D${r}`); ws.mergeCells(`F${r}:G${r}`);
-    [['A',vals[0]],['B',vals[1]],['C',vals[2]],['E',vals[3]],['F',vals[4]]].forEach(([col,v])=>{ const cl=ws.getCell(col+r); cl.value=v; });
-    'ABCDEFG'.split('').forEach(col=>{ const cl=ws.getCell(col+r); cl.border=box; cl.font=f(11); cl.alignment=ctr; }); };
-  head(8,['回数','処分場所','処分日','現場№','重量(ｋｇ）']);
-  const R0=9;
-  hk.entries.forEach((e,i)=>{ const r=R0+i, dd=normDate(e.date);
-    head(r,['第'+zen(i+1)+'回', e.place, dd?new Date(Date.UTC(+dd.slice(0,4),+dd.slice(5,7)-1,+dd.slice(8,10))):'', e.no||'', Math.round(e.kg)]);
-    ws.getCell('C'+r).numFmt='yyyy/m/d'; ws.getCell('F'+r).numFmt='#,##0_);[Red](#,##0)'; });
-  const last=R0+hk.entries.length-1, T=last+2;
-  ws.mergeCells(`C${T}:D${T}`); ws.mergeCells(`F${T}:G${T}`);
-  ws.getCell('C'+T).value='合計重量'; ws.getCell('F'+T).value={formula:`SUM(F${R0}:F${last})`, result:hk.entries.reduce((s,e)=>s+Math.round(e.kg),0)};
-  ws.getCell('F'+T).numFmt='#,##0_);[Red](#,##0)';
-  ['C','D','E','F','G'].forEach(col=>{ const cl=ws.getCell(col+T); cl.border=box; cl.font=f(11); cl.alignment=ctr; });
+  ws.columns=[{width:8.63},{width:15.125},{width:8.63},{width:8},{width:9.25},{width:18.125},{width:9.125}];
+  ws.getCell('A1').value=c; ws.getCell('A1').font=f(12); ws.getCell('A1').alignment={vertical:'middle'};
+  const d=normDate(date), wa=d?(()=>{ const y=+d.slice(0,4)-2018; return '令和　'+(y===1?'元':y)+'年　'+(+d.slice(5,7))+'月　'+(+d.slice(8,10))+'日'; })():'令和　　年　　月　　日';
+  ws.getCell('G1').value=wa; ws.getCell('G1').font=f(10); ws.getCell('G1').alignment={horizontal:'right'};   // ひな型と同じく G1 に右寄せ（左へはみ出して見える）
+  ws.mergeCells('A2:G2'); ws.getCell('A2').value='処分状況報告書'; ws.getCell('A2').font=f(12); ws.getCell('A2').alignment=ctr;
+  [['D3','受託者'],['D4','住　所'],['D5','名　称'],['D6','代表者名']].forEach(([k,v])=>{ ws.getCell(k).value=v; ws.getCell(k).font=f(10); ws.getCell(k).alignment={vertical:'middle'}; });
+  [['F4',HK_OWNER.addr],['F5',HK_OWNER.name],['F6',HK_OWNER.rep]].forEach(([k,v])=>{ ws.getCell(k).value=v; ws.getCell(k).font=f(10); ws.getCell(k).alignment={vertical:'middle'}; });
+  const row=(r,vals)=>{ ws.mergeCells(`C${r}:D${r}`); ws.mergeCells(`F${r}:G${r}`);
+    [['A',vals[0]],['B',vals[1]],['C',vals[2]],['E',vals[3]],['F',vals[4]]].forEach(([col,v])=>{ if(v!==''&&v!=null) ws.getCell(col+r).value=v; });
+    'ABCDEFG'.split('').forEach(col=>{ const cl=ws.getCell(col+r); cl.border=box; cl.font=f(11); cl.alignment=ctr; });
+    ws.getCell('F'+r).numFmt='#,##0_);[Red](#,##0)'; };
+  row(8,['回数','処分場所','処分日','現場№','重量(ｋｇ）']);
+  const R0=9, n=Math.max(HK_ROWS,hk.entries.length), last=R0+n-1;
+  for(let i=0;i<n;i++){ const e=hk.entries[i], r=R0+i;
+    if(!e){ row(r,['','','','','']); continue; }   // 空欄の行（罫線だけ）
+    const dd=normDate(e.date);
+    row(r,['第'+zen(i+1)+'回', e.place, dd?new Date(Date.UTC(+dd.slice(0,4),+dd.slice(5,7)-1,+dd.slice(8,10))):'', e.no||'', Math.round(e.kg)]);
+    ws.getCell('C'+r).numFmt='yyyy/m/d'; }
+  const T=last+1;   // 合計は表のいちばん下（いつも同じ位置）
+  row(T,['','','合計重量','','']);
+  ws.getCell('F'+T).value={formula:`SUM(F${R0}:F${last})`, result:hk.entries.reduce((s,e)=>s+Math.round(e.kg),0)};
+  for(let r=1;r<=T;r++) ws.getRow(r).height=18.75;
   ws.pageSetup.printArea=`A1:G${T}`;
 }
 $('#hkXlsx').onclick=async()=>{
@@ -1606,7 +1619,7 @@ $('#hkXlsx').onclick=async()=>{
       const EJ=await loadExcelJS(); const wb=new EJ.Workbook(); wb.creator='庭乃持田園 残材処分';
       const c=$('#hkContract').value, a=$('#hkFrom').value, b=$('#hkTo').value;
       hkStdSheet(wb,c,$('#hkDate').value);
-      const buf=await wb.xlsx.writeBuffer();
+      const buf=await hkNormalFont(await wb.xlsx.writeBuffer());
       const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       const el=document.createElement('a'); el.href=URL.createObjectURL(blob); el.download='処分状況報告書_'+String(c).replace(/[\\/:*?"<>|\s]+/g,'')+'_'+a+'〜'+b+'.xlsx'; document.body.appendChild(el); el.click(); el.remove();
       setTimeout(()=>URL.revokeObjectURL(el.href),60000);
