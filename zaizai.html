@@ -506,7 +506,7 @@
 <div class="modal" id="ydModal">
   <div class="sheet yd">
     <h3 id="ydTitle">交通誘導員の記録</h3>
-    <div class="yd-img"><img id="ydImg" alt=""><div class="yd-imgbtns"><button type="button" id="ydRot">↻ 回す</button><button type="button" id="ydZoom">🔍 大きく</button></div></div>
+    <div class="yd-img"><img id="ydImg" alt=""><div class="yd-imgbtns"><button type="button" id="ydCrop">✂ 切り取る</button><button type="button" id="ydRot">↻ 回す</button><button type="button" id="ydZoom">🔍 大きく</button></div></div>
     <div class="yd-ai" id="ydAi" hidden></div>
     <div class="hk-row">
       <div class="field"><label>日付</label><input type="date" id="ydDate"></div>
@@ -1215,7 +1215,7 @@ $('#cropWrap').addEventListener('pointermove',e=>{
   crop.box=b; cropDraw();
 });
 ['pointerup','pointercancel'].forEach(ev=>$('#cropWrap').addEventListener(ev,()=>{ crop.drag=null; }));
-$('#cropCancel').onclick=()=>{ closeCrop(); finishCrop(); };
+$('#cropCancel').onclick=()=>{ crop.onDone=null; closeCrop(); finishCrop(); };
 $('#cropAll').onclick=cropFull;
 $('#cropRot').onclick=()=>{ if(!crop.base) return; crop.base=rotCanvas(crop.base,90); crop.box=null; cropApplyEnh(); cropShow(); };
 $('#cropEnh').onclick=()=>{ if(!crop.base) return; const row=$('#cropEnhRow'); row.hidden=!row.hidden; };   // 強さの目盛りを出す・しまう
@@ -1223,7 +1223,16 @@ let cropEnhT=null;
 $('#cropEnhLv').oninput=e=>{ crop.lv=Number(e.target.value)||0; $('#cropEnhVal').textContent=crop.lv?crop.lv+'%':'なし';
   try{ localStorage.setItem('zaizai_crop_enh_lv',String(crop.lv)); }catch(er){}
   clearTimeout(cropEnhT); cropEnhT=setTimeout(()=>{ if(!crop.base) return; cropApplyEnh(); cropShow(true); },120); };
+/* 伝票以外（交通誘導員の伝票など）から切り取り画面を使う：切り取った画像を onDone へ。after は閉じた後（やめたときも） */
+function openCropCanvas(c,onDone,after){ crop.i=-1; crop.onDone=onDone; crop.after=after||null; crop.base=c; crop.box=null; cropApplyEnh();
+  $('#cropEnhRow').hidden=!crop.lv; $('#cropModal').hidden=false; document.body.style.overflow='hidden'; cropShow(); }
 $('#cropOk').onclick=()=>{
+  if(crop.onDone){ const fn=crop.onDone; crop.onDone=null; if(!crop.base||!crop.box){ closeCrop(); finishCrop(); return; }
+    const B=crop.base, d=cropDisp(), k=B.width/d.w, b=crop.box, sx=Math.round(b.x*k), sy=Math.round(b.y*k);
+    const sw=Math.max(1,Math.min(B.width-sx,Math.round(b.w*k))), sh=Math.max(1,Math.min(B.height-sy,Math.round(b.h*k)));
+    const out=document.createElement('canvas'); out.width=sw; out.height=sh; const x=out.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,sw,sh); x.drawImage(B,sx,sy,sw,sh,0,0,sw,sh);
+    let kept=shrinkTo(out,SLIP_MAX); if(crop.lv>0) kept=enhanceLv(kept,crop.lv);
+    closeCrop(); fn(kept); finishCrop(); return; }
   const s=slipEdit[crop.i]; if(!s||!crop.base||!crop.box) return closeCrop();
   const B=crop.base, d=cropDisp(), k=B.width/d.w, b=crop.box;
   const sx=Math.round(b.x*k), sy=Math.round(b.y*k);
@@ -1932,13 +1941,18 @@ async function ydOpen(r,canvas){
   $('#ydDel').style.display=r?'':'none'; $('#ydSave').textContent=r?'直す':'記録する'; $('#ydSave').disabled=false;
   $('#ydImg').removeAttribute('src');
   $('#ydModal').classList.add('show');
-  if(canvas){ $('#ydImg').src=canvas.toDataURL('image/jpeg',.7); ydRead(); }
+  if(canvas){ $('#ydImg').src=canvas.toDataURL('image/jpeg',.7);   // 撮ったら、まず必要なところを切り取る → 閉じたら読み取る
+    const ed=ydEd; openCropCanvas(canvas,kept=>{ if(ydEd!==ed) return; ydEd.canvas=kept; ydEd.rot=0; $('#ydImg').src=kept.toDataURL('image/jpeg',.7); },()=>{ if(ydEd===ed) ydRead(); }); }
   else if(r){ try{ const d=await ydImgData(r); if(ydEd&&ydEd.id===r.id){ ydEd.base='data:'+d.mime+';base64,'+d.data; $('#ydImg').src=ydEd.base; } }catch(e){ ydAiMsg('伝票の画像を取り寄せられませんでした（電波を確認してください）',true); } }
 }
 function ydCanvasNow(){ return ydEd.canvas? rotCanvas(ydEd.canvas,ydEd.rot) : null; }
 $('#ydRot').onclick=async()=>{ if(!ydEd) return;
   if(!ydEd.canvas&&ydEd.base){ const img=await loadImg(ydEd.base); ydEd.canvas=fitCanvas(img,img.naturalWidth,img.naturalHeight); ydEd.rot=0; ydEd.changed=true; }
   if(!ydEd.canvas) return; ydEd.rot=(ydEd.rot+90)%360; ydEd.changed=true; $('#ydImg').src=ydCanvasNow().toDataURL('image/jpeg',.7); };
+$('#ydCrop').onclick=async()=>{ if(!ydEd) return;
+  if(!ydEd.canvas&&ydEd.base){ const img=await loadImg(ydEd.base); ydEd.canvas=fitCanvas(img,img.naturalWidth,img.naturalHeight); ydEd.rot=0; }
+  if(!ydEd.canvas){ toast('伝票の画像を読み込み中です',true); return; }
+  const ed=ydEd; openCropCanvas(ydCanvasNow(),kept=>{ if(ydEd!==ed) return; ydEd.canvas=kept; ydEd.rot=0; ydEd.changed=true; $('#ydImg').src=kept.toDataURL('image/jpeg',.7); toast(ydEd.id?'切り取りました（「直す」で差しかえます）':'切り取りました'); }); };
 $('#ydZoom').onclick=()=>{ const s=$('#ydImg').src; if(!s) return; $('#ydZoomImg').src=ydEd&&ydEd.canvas?ydCanvasNow().toDataURL('image/jpeg',.9):s; $('#ydZoomModal').classList.add('show'); };
 $('#ydZoomClose').onclick=()=>$('#ydZoomModal').classList.remove('show');
 async function ydRead(){
@@ -1970,7 +1984,7 @@ $('#ydSave').onclick=async()=>{
     if(ydEd.canvas&&(!ydEd.id||ydEd.changed)){ body.data=shrinkTo(ydCanvasNow(),SLIP_MAX).toDataURL('image/jpeg',.82).split(',')[1]; body.mime='image/jpeg'; if(ydEd.id) delete ydImgCache[ydEd.id]; }
     const res=await fetch(GENBA_GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)}); const r=await res.json();
     if(!r.ok) throw new Error(r.error||'');
-    it.id=r.id; it.routes=JSON.stringify(it.routes); const i=ydItems.findIndex(x=>x.id===r.id); if(i>=0) ydItems[i]=Object.assign({},ydItems[i],it); else ydItems.push(it);
+    it.id=r.id; it.routes=JSON.stringify(it.routes); if(body.data) it.fileId=it.fileId||'saved'; /* 画像あり（伝票PDFに入れる） */ const i=ydItems.findIndex(x=>x.id===r.id); if(i>=0) ydItems[i]=Object.assign({},ydItems[i],it); else ydItems.push(it);
     toast(ydEd.id?'直しました':'記録しました'); ydRender();
     if(ydQueue.length){ const nx=ydQueue.shift(); ydOpen(null,nx); } else ydClose();
   }catch(e){ toast('送れませんでした。電波を確認して、もう一度押してください',true); btn.disabled=false; btn.textContent=ydEd&&ydEd.id?'直す':'記録する'; }
