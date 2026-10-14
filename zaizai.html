@@ -268,6 +268,15 @@
 
   /* 処分状況報告書 */
   .modal .sheet.hk{max-width:640px}
+  .sb-item{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px}
+  .sb-item img{width:92px;height:120px;object-fit:contain;background:#f3f1ec;border-radius:6px;flex:0 0 auto;cursor:zoom-in}
+  .sb-item .bd{flex:1;min-width:0}
+  .sb-item .rd{font-size:13px;color:var(--bark);margin-bottom:6px}
+  .sb-item select{width:100%;font-size:14px}
+  .sb-item .st{font-size:12.5px;margin-top:5px;font-weight:700}
+  .sb-item .st.ok{color:var(--leaf)} .sb-item .st.ng{color:var(--danger)}
+  .sb-item .rot{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 9px;font-size:12.5px;margin-top:6px;cursor:pointer;font-family:inherit}
+
   .yd-lead{font-size:13.5px;color:var(--bark);margin:2px 0 12px;line-height:1.6}
   .yd-shot{cursor:pointer;background:var(--leaf);color:#fff;border-color:var(--leaf)}
   .yd-undo{display:flex;align-items:center;gap:10px;background:#2c2b27;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:14px}
@@ -460,6 +469,7 @@
     <button class="chip" id="btnGroupCat" type="button">区分ごとにまとめる</button>
     <button class="mini-btn" id="btnPick" style="margin-left:auto">🖨 伝票をA4にまとめる</button>
     <button class="mini-btn" id="btnHoukoku">📑 処分状況報告書</button>
+    <label class="mini-btn" id="btnBulk" style="cursor:pointer">📎 伝票をまとめて付ける<input type="file" id="sbFile" accept="image/*,application/pdf" multiple hidden></label>
   </div>
   <div class="catbar"><span class="lbl">区分</span><div class="pick" id="catBar"></div></div>
   <div class="pick-hint">伝票の付いた記録をタップして選び、下の「PDFを作る」を押してください。<br>A4に4枚（左上→右上→左下→右下）、日付の古い順に並べます。</div>
@@ -530,6 +540,19 @@
 <div class="modal" id="ydZoomModal"><div class="yd-zoom"><img id="ydZoomImg" alt=""><button type="button" id="ydZoomClose">✕ 閉じる</button></div></div>
 
 <datalist id="zzOrderList"></datalist>
+<div class="modal" id="sbModal">
+  <div class="sheet hk">
+    <h3>伝票をまとめて付ける</h3>
+    <p class="lead">入力済みの記録（まだ伝票が付いていないもの）に、伝票の写真を付けます。日付と重さから記録を探しました。ちがう所は選び直してください。新しい記録は作りません。</p>
+    <div class="field"><label>委託でしぼる（探す記録）</label><select id="sbContract"></select></div>
+    <div id="sbMsg" class="hk-note"></div>
+    <div id="sbList"></div>
+    <div class="acts">
+      <button id="sbClose">やめる</button>
+      <button id="sbGo" class="primary">付ける</button>
+    </div>
+  </div>
+</div>
 <div class="savebar" id="savebar">
   <div class="sum">集計金額 <b><span class="yen">¥</span><span class="tnum" id="barTotal">0</span></b></div>
   <button class="save danger-btn" id="btnDelete" style="display:none">削除</button>
@@ -1670,6 +1693,84 @@ function switchTab(which){ const input=which==='input', yd=which==='yudo';
   $('#savebar').style.display=input?'flex':'none'; if(!input) loadList(); }
 $('#tabInput').onclick=()=>switchTab('input'); $('#tabList').onclick=()=>switchTab('list'); $('#tabYudo').onclick=()=>switchTab('yudo');
 
+
+
+/* ===== 伝票をまとめて付ける：前に入力した記録（伝票なし）に、あとから伝票の写真を付ける（新しい記録は作らない）
+   写真を選ぶ → AIで日付・処分場所・正味重量を読む → 同じ日・同じ重さの記録を探して組み合わせ → 確かめて「付ける」→「元に戻す」も */
+let sb={items:[], busy:false, lastIds:[]};
+function sbGroups(){ const g={}; allRecords.forEach(r=>{ const k=recKey(r); (g[k]=g[k]||[]).push(r); });
+  return Object.keys(g).map(k=>{ const a=g[k]; return { k, date:normDate(a[0].date), place:a[0].place||'', kg:Math.round(a.reduce((s,r)=>s+num(r.qty),0)),
+    sites:[...new Set(a.map(r=>r.site).filter(Boolean))], contracts:[...new Set(a.map(r=>String(r.siteContract||'').trim()).filter(Boolean))], slips:slipsOfKey(k).length }; }); }
+function sbCands(it){ const c=$('#sbContract').value, taken=new Set(sb.items.filter(x=>x!==it&&x.key).map(x=>x.key));
+  return sbGroups().filter(g=>!g.slips&&(!c||g.contracts.includes(c))).map(g=>{
+    let sc=0; if(it.date&&g.date===it.date) sc+=10; else if(it.date&&g.date&&Math.abs(new Date(g.date)-new Date(it.date))<=3*864e5) sc+=3;
+    if(it.kg&&g.kg){ const d=Math.abs(g.kg-it.kg); if(d===0) sc+=8; else if(d<=Math.max(10,it.kg*0.02)) sc+=5; }
+    if(it.place&&g.place&&(nz(g.place).includes(nz(it.place))||nz(it.place).includes(nz(g.place)))) sc+=2;
+    return Object.assign({sc,taken:taken.has(g.k)},g); }).sort((a,b)=>b.sc-a.sc||String(a.date).localeCompare(String(b.date))); }
+const sbLabel=g=>`${g.date?mdJa(g.date):'日付なし'}　${g.place||'処分先なし'}　${g.kg?yen(g.kg)+'kg':'重さなし'}　${g.sites.join('・')}`;
+function sbAuto(){ sb.items.forEach(it=>{ it.key=''; });
+  sb.items.forEach(it=>{ if(!it.read) return; const c=sbCands(it).filter(g=>!g.taken); if(c[0]&&c[0].sc>=15&&!(c[1]&&c[1].sc===c[0].sc)) it.key=c[0].k; }); }
+function sbRender(){
+  const cs=[...new Set(allRecords.filter(r=>catOf(r)==='公共').map(r=>String(r.siteContract||'').trim()).filter(Boolean))];
+  const cur=$('#sbContract').value; $('#sbContract').innerHTML='<option value="">すべての記録から探す</option>'+cs.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
+  $('#sbList').innerHTML=sb.items.map((it,i)=>{ const c=it.read?sbCands(it):[];
+    const opts='<option value="">（付けない）</option>'+c.slice(0,40).map(g=>`<option value="${esc(g.k)}" ${g.k===it.key?'selected':''} ${g.taken&&g.k!==it.key?'disabled':''}>${g.sc>=15?'◎ ':g.sc>=10?'○ ':''}${esc(sbLabel(g))}${g.taken&&g.k!==it.key?'（ほかの伝票で選択中）':''}</option>`).join('');
+    const st=it.err?'<div class="st ng">読み取れませんでした。記録を選んでください</div>':!it.read?'<div class="st">🔎 読み取り中…</div>':it.key?'<div class="st ok">✓ この記録に付けます</div>':'<div class="st ng">合う記録が見つかりません。選ぶか「付けない」のまま</div>';
+    return `<div class="sb-item"><img src="${it.thumb}" data-sbz="${i}" alt=""><div class="bd">
+      <div class="rd">伝票：${it.read?`${it.date?mdJa(it.date):'日付?'}　${esc(it.place||'処分先?')}　${it.kg?yen(it.kg)+'kg':'重さ?'}`:'読み取り中…'}</div>
+      <select data-sb="${i}" ${it.read||it.err?'':'disabled'}>${opts}</select>${st}<button type="button" class="rot" data-sbr="${i}">↻ 回す</button></div></div>`; }).join('');
+  $('#sbList').querySelectorAll('select[data-sb]').forEach(el=>el.onchange=()=>{ sb.items[+el.dataset.sb].key=el.value; sbRender(); });
+  $('#sbList').querySelectorAll('[data-sbr]').forEach(el=>el.onclick=()=>{ const it=sb.items[+el.dataset.sbr]; it.rot=(it.rot+90)%360; it.thumb=thumbOf(it.canvas,it.rot); sbRender(); });
+  $('#sbList').querySelectorAll('[data-sbz]').forEach(el=>el.onclick=()=>{ const it=sb.items[+el.dataset.sbz]; $('#ydZoomImg').src=rotCanvas(it.canvas,it.rot).toDataURL('image/jpeg',.85); $('#ydZoomModal').style.zIndex=90; $('#ydZoomModal').classList.add('show'); });
+  const n=sb.items.filter(x=>x.key).length, reading=sb.items.filter(x=>!x.read&&!x.err).length;
+  $('#sbMsg').textContent=reading?`伝票を読み取っています（あと ${reading} 枚）…`:`${sb.items.length}枚のうち ${n}枚を記録に付けます。`;
+  $('#sbGo').disabled=sb.busy||!n||!!reading; $('#sbGo').textContent=n?`${n}枚を付ける`:'付ける';
+}
+async function sbReadOne(it){
+  try{ const c=shrinkTo(rotCanvas(it.canvas,it.rot),2400);
+    const res=await fetch(GENBA_GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({app:'zaizai',mode:'readSlip',data:c.toDataURL('image/jpeg',.88).split(',')[1],mime:'image/jpeg',by:author,hints:{places:[...new Set(PLACES.concat(cand.places||[]))],types:TYPES}})});
+    const r=await res.json(); if(!r.ok) throw new Error(r.error||''); const d=r.data||{};
+    it.date=d.date||''; it.place=d.place||''; it.kg=Math.round(num(d.netKg))||0; it.read=true;
+  }catch(e){ it.err=true; }
+}
+$('#sbFile').onchange=async e=>{ const files=[...e.target.files]; e.target.value=''; if(!files.length) return;
+  if(!slipReady()){ toast('伝票GASのURLを設定してください',true); return; }
+  if(!allRecords.length){ toast('先に一覧を読み込んでください',true); return; }
+  sb={items:[],busy:false,lastIds:sb.lastIds||[]}; toast('伝票を読み込んでいます…');
+  for(const f of files){ try{ const cv=(/pdf/i.test(f.type)||/\.pdf$/i.test(f.name))?await pdfToCanvases(f):[await imageToCanvas(f,SLIP_MAX)];
+    cv.forEach(c=>sb.items.push({canvas:c,rot:0,thumb:thumbOf(c,0),key:'',read:false,err:false})); }catch(er){ toast('読めないファイルがありました：'+f.name,true); } }
+  if(!sb.items.length) return;
+  $('#sbContract').value=''; $('#sbModal').classList.add('show'); sbRender();
+  const hc=$('#hkContract').value; if(hc&&[...$('#sbContract').options].some(o=>o.value===hc)){ $('#sbContract').value=hc; sbRender(); }
+  let i=0; const work=async()=>{ while(i<sb.items.length){ const it=sb.items[i++]; await sbReadOne(it); sbAuto(); sbRender(); } };
+  await Promise.all([work(),work(),work()]);   // 3枚ずつ同時に読む
+  sbAuto(); sbRender();
+};
+$('#sbContract').onchange=()=>{ sbAuto(); sbRender(); };
+$('#sbClose').onclick=()=>{ if(sb.busy) return; $('#sbModal').classList.remove('show'); };
+$('#sbGo').onclick=async()=>{
+  const go=sb.items.filter(x=>x.key); if(!go.length) return;
+  const keys=go.map(x=>x.key); if(new Set(keys).size!==keys.length&&!confirm('同じ記録に2枚以上の伝票を付けます。よろしいですか？')) return;
+  sb.busy=true; const btn=$('#sbGo'); btn.disabled=true;
+  const before=new Set(slipsAll.map(x=>x.id)); let done=0, bad=0;
+  const G=Object.fromEntries(sbGroups().map(g=>[g.k,g]));
+  for(const it of go){ btn.textContent=`送っています ${done+1}/${go.length}`;
+    try{ const g=G[it.key]||{}; const c=shrinkTo(rotCanvas(it.canvas,it.rot),SLIP_MAX);
+      await slipPost({mode:'upload',denpyo:it.key,date:g.date||it.date,place:g.place||it.place,site:(g.sites||[]).join('・'),author,mime:'image/jpeg',data:c.toDataURL('image/jpeg',SLIP_Q).split(',')[1],w:c.width,h:c.height});
+      it.sent=true; done++; }catch(e){ bad++; } }
+  await loadSlipList(); sb.lastIds=slipsAll.filter(x=>!before.has(x.id)).map(x=>x.id);
+  sb.busy=false; $('#sbModal').classList.remove('show'); renderList();
+  sbUndoBar(done,bad);
+};
+function sbUndoBar(done,bad){
+  let u=$('#sbUndo'); if(!u){ u=document.createElement('div'); u.id='sbUndo'; u.className='yd-undo'; $('#recList').before(u); }
+  u.hidden=false; u.innerHTML=`伝票を ${done}枚 付けました${bad?`（${bad}枚は送れませんでした）`:''}`+(sb.lastIds.length?'<button type="button">元に戻す</button>':'');
+  const b=u.querySelector('button'); if(b) b.onclick=async()=>{ b.disabled=true; b.textContent='戻しています…';
+    let ng=0; for(const id of sb.lastIds){ try{ await slipPost({mode:'remove',id}); }catch(e){ ng++; } }
+    sb.lastIds=[]; await loadSlipList(); renderList(); u.hidden=true; toast(ng?'戻せなかった伝票があります（'+ng+'枚）':'元に戻しました',!!ng); };
+  setTimeout(()=>{ if(u) u.hidden=true; },20000);
+}
 
 /* ===== 指示番号（公共の案件）：残材処分の記録（一台＝key）の現場ごと。共通GASに置く（報告書の印刷には今は出さない） ===== */
 const ZZ_ORD={ map:{}, list:[], ok:false };
