@@ -235,6 +235,11 @@
   .crop-box i[data-h=se]{right:-15px;bottom:-15px;cursor:nwse-resize}
   .crop-foot{display:flex;gap:6px;padding:10px 10px calc(10px + env(safe-area-inset-bottom))}
   .crop-foot button{flex:1;min-width:0;height:48px;padding:0 2px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;font-family:inherit;font-size:14px;font-weight:700;white-space:nowrap;letter-spacing:-.02em;cursor:pointer}
+  .crop-enh{display:flex;align-items:center;gap:10px;color:#fff;padding:8px 16px 0;font-size:14px;font-weight:700}
+  .crop-enh[hidden]{display:none}
+  .crop-enh .lb{font-size:12px;font-weight:400;opacity:.75;white-space:nowrap}
+  .crop-enh input{flex:1;min-width:0;accent-color:#e0a52a;height:28px}
+  .crop-enh b{min-width:44px;text-align:right;font-variant-numeric:tabular-nums;color:#e0a52a}
   .crop-foot button.on{background:#e0a52a;border-color:#e0a52a;color:#222}
   .crop-foot button.primary{background:var(--leaf);border-color:var(--leaf)}
 
@@ -627,6 +632,9 @@
     <small>角の白い丸で大きさ、枠の中をなぞると移動。外をなぞると囲み直せます。</small></div>
   <div class="crop-stage" id="cropStage">
     <div class="crop-wrap" id="cropWrap"><img id="cropImg" alt="伝票"><div class="crop-box" id="cropBox"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i></div></div>
+  </div>
+  <div class="crop-enh" id="cropEnhRow" hidden>
+    <span>くっきり</span><span class="lb">元の色</span><input type="range" id="cropEnhLv" min="0" max="100" step="10" aria-label="くっきりの強さ"><span class="lb">強い</span><b id="cropEnhVal"></b>
   </div>
   <div class="crop-foot">
     <button type="button" id="cropCancel">やめる</button>
@@ -1066,8 +1074,9 @@ $('#svZoom').onclick=()=>{ svZoom=(svZoom+1)%SV_Z.length; applySvZoom(); };
 $('#svClose').onclick=()=>{ $('#slipView').hidden=true; document.body.style.overflow=''; $('#svImg').removeAttribute('src'); };
 
 /* ===== 伝票のトリミング（必要なところだけ切り取る） ===== */
-const crop={i:-1,base:null,src:null,box:null,drag:null,after:null,enh:false};
-try{ crop.enh=localStorage.getItem('zaizai_crop_enh2')==='1'; }catch(e){}
+const crop={i:-1,base:null,src:null,box:null,drag:null,after:null,lv:0,ef:null};
+/* くっきりの強さ（0＝元の色〜100＝いちばん強い）。前に「くっきり」をオンにしていた人は中くらい（50）から */
+try{ const v=localStorage.getItem('zaizai_crop_enh_lv'); crop.lv=v!=null?Math.max(0,Math.min(100,Number(v)||0)):(localStorage.getItem('zaizai_crop_enh2')==='1'?50:0); }catch(e){}
 /* 「くっきり」：スキャナのように仕上げる。
    ①細かいざらつきを軽くならす → ②場所ごとの紙の明るさ（影・四隅の暗さ）を見つけて割り戻し、紙を白くそろえる
    → ③紙は白く、文字は少し濃く。薄い印字は消さないよう控えめに */
@@ -1114,8 +1123,16 @@ function enhanceDoc(c){
     d[i]=d[i+1]=d[i+2]=m; d[i+3]=255; }
   x.putImageData(im,0,0); return o;
 }
-function cropApplyEnh(){ crop.src=crop.enh?enhanceDoc(shrinkTo(crop.base,1400)):crop.base;   // 画面の見本だけ。切り取りは元の画像から
-  const b=$('#cropEnh'); if(b) b.classList.toggle('on',crop.enh); }
+/* 強さ：くっきりにした画像を、元の画像に lv% だけ重ねる */
+function blendDoc(o,e,a){ if(a>=1) return e; const c=document.createElement('canvas'); c.width=o.width; c.height=o.height; const x=c.getContext('2d');
+  x.drawImage(o,0,0); x.globalAlpha=a; x.drawImage(e,0,0,c.width,c.height); return c; }
+function enhanceLv(c,lv){ return lv>0? blendDoc(c,enhanceDoc(c),lv/100) : c; }
+function cropApplyEnh(){   // 画面の見本だけ（くっきりの計算は1回だけにして、強さを変えたときは重ね直すだけ）。切り取りは元の画像から
+  if(crop.lv>0){ if(!crop.ef||crop.ef.base!==crop.base){ const sm=shrinkTo(crop.base,1400); crop.ef={base:crop.base,s:sm,e:enhanceDoc(sm)}; }
+    crop.src=blendDoc(crop.ef.s,crop.ef.e,crop.lv/100); }
+  else crop.src=crop.base;
+  const b=$('#cropEnh'); if(b){ b.classList.toggle('on',crop.lv>0); b.textContent=crop.lv>0?'くっきり '+crop.lv+'%':'くっきり'; }
+  const r=$('#cropEnhLv'); if(r) r.value=crop.lv; const v=$('#cropEnhVal'); if(v) v.textContent=crop.lv?crop.lv+'%':'なし'; }
 function finishCrop(){ const fn=crop.after; crop.after=null; if(fn) fn(); }   // 切り取り画面を閉じた後にすること（伝票の読み取り）
 const CROP_MIN=40;   // 枠の最小（画面px）
 function cropDisp(){ const im=$('#cropImg'); return {w:im.clientWidth,h:im.clientHeight}; }
@@ -1134,10 +1151,10 @@ async function openCrop(i){
     if(s.canvas) c=rotCanvas(s.canvas,s.rot);
     else { toast('伝票を読み込んでいます…'); const d=await getSlipData(s.id);
       const img=await loadImg('data:'+d.mime+';base64,'+d.data); c=fitCanvas(img,img.naturalWidth,img.naturalHeight); }
-    crop.i=i; crop.base=c; crop.box=null; cropApplyEnh(); $('#cropModal').hidden=false; document.body.style.overflow='hidden'; cropShow();
+    crop.i=i; crop.base=c; crop.box=null; cropApplyEnh(); $('#cropEnhRow').hidden=!crop.lv; $('#cropModal').hidden=false; document.body.style.overflow='hidden'; cropShow();
   }catch(e){ toast('伝票を開けませんでした。電波を確認してください',true); }
 }
-function closeCrop(){ $('#cropModal').hidden=true; document.body.style.overflow=''; crop.i=-1; crop.base=null; crop.src=null; crop.drag=null; }
+function closeCrop(){ $('#cropModal').hidden=true; document.body.style.overflow=''; crop.i=-1; crop.base=null; crop.src=null; crop.drag=null; crop.ef=null; }
 function cropPt(e){ const r=$('#cropWrap').getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; }
 function cropClamp(b){ const d=cropDisp();
   b.w=Math.max(CROP_MIN,Math.min(b.w,d.w)); b.h=Math.max(CROP_MIN,Math.min(b.h,d.h));
@@ -1170,8 +1187,11 @@ $('#cropWrap').addEventListener('pointermove',e=>{
 $('#cropCancel').onclick=()=>{ closeCrop(); finishCrop(); };
 $('#cropAll').onclick=cropFull;
 $('#cropRot').onclick=()=>{ if(!crop.base) return; crop.base=rotCanvas(crop.base,90); crop.box=null; cropApplyEnh(); cropShow(); };
-$('#cropEnh').onclick=()=>{ if(!crop.base) return; crop.enh=!crop.enh; try{ localStorage.setItem('zaizai_crop_enh2',crop.enh?'1':'0'); }catch(e){}
-  toast(crop.enh?'文字をくっきりさせました':'元の色にもどしました'); cropApplyEnh(); cropShow(true); };
+$('#cropEnh').onclick=()=>{ if(!crop.base) return; const row=$('#cropEnhRow'); row.hidden=!row.hidden; };   // 強さの目盛りを出す・しまう
+let cropEnhT=null;
+$('#cropEnhLv').oninput=e=>{ crop.lv=Number(e.target.value)||0; $('#cropEnhVal').textContent=crop.lv?crop.lv+'%':'なし';
+  try{ localStorage.setItem('zaizai_crop_enh_lv',String(crop.lv)); }catch(er){}
+  clearTimeout(cropEnhT); cropEnhT=setTimeout(()=>{ if(!crop.base) return; cropApplyEnh(); cropShow(true); },120); };
 $('#cropOk').onclick=()=>{
   const s=slipEdit[crop.i]; if(!s||!crop.base||!crop.box) return closeCrop();
   const B=crop.base, d=cropDisp(), k=B.width/d.w, b=crop.box;
@@ -1180,7 +1200,7 @@ $('#cropOk').onclick=()=>{
   let out=document.createElement('canvas'); out.width=sw; out.height=sh;
   const x=out.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,sw,sh); x.drawImage(crop.base,sx,sy,sw,sh,0,0,sw,sh);
   let kept=shrinkTo(out,SLIP_MAX);
-  if(crop.enh) kept=enhanceDoc(kept);   // くっきりは切り取った範囲だけで決める（机などの写り込みに引っぱられない）
+  if(crop.lv>0) kept=enhanceLv(kept,crop.lv);   // くっきりは切り取った範囲だけで決める（机などの写り込みに引っぱられない）
   const fresh={canvas:kept,rot:0,thumb:thumbOf(kept,0)};
   if(s.canvas){ slipEdit[crop.i]=fresh; }                       // まだ送っていない伝票：そのまま置きかえ
   else { s.removed=true; slipEdit.splice(crop.i+1,0,fresh); }   // 送った伝票：切り取った画像に差しかえ（記録するときに入れかわる）
