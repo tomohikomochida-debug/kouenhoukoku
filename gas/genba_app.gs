@@ -62,6 +62,7 @@ var SHEETS = {
   todos:     { name: 'やること',     head: ['todoId', 'owner', 'cat', 'title', 'site', 'due', 'dueText', 'time', 'amount', 'who', 'note', 'state', 'src', 'srcText', 'eventId', 'eventDate', 'files', 'history', 'doneAt', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 要点まとめの「やること」。files・history は JSON
   aiRoutes:  { name: 'AIの使い分け', head: ['用途', '何に使うか', 'モデル', '1日の上限', 'メモ'] },   // モデル欄を書き換えると、その用途のAIが切り替わる（AI窓口）
   aiLog:     { name: 'AIの利用記録', head: ['日時', '用途', 'モデル', '使った人', '読んだ量', '書いた量', '概算円', '秒', '結果'] },   // AI窓口が1回ずつ残す
+  renameLog: { name: '委託名のまとめ履歴', head: ['batch', 'at', 'by', 'from', 'to', 'kind', 'ss', 'sheet', 'row', 'col', 'old', 'new'] },   // 委託名をまとめたときに書きかえた所（元に戻す用）。kind：cell／folder／file／zaizai
   zaizaiOrders: { name: '残材処分の指示番号', head: ['key', 'site', 'order', 'contract', 'by', 'at'] },   // 残材処分の記録（一台＝key）の公共の現場ごとの指示番号。記録そのものは残材処分のGAS
   yudo:      { name: '交通誘導員', head: ['id', 'date', 'company', 'kind', 'count', 'start', 'end', 'contract', 'routes', 'place', 'ticketSite', 'names', 'memo', 'fileId', 'mime', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 警備会社の伝票1枚＝1行。kind：A（有資格者）／B。routes：[{site,order}]（路線名・指示番号、JSON）。伝票の画像は「社内アプリ ＞ 交通誘導員の伝票」
   shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId', 'kanshu', 'msId', 'msRawId', 'msGone', 'kai'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
@@ -626,6 +627,7 @@ function doPost(e) {
       case 'nippou:addSite':   return withLock_(function () { return addSitesFromNippou_(b.sites || [b.site], b.by); });
       case 'note:saveSite':      return withLock_(function () { return saveSite_(b.site, b.by); });
       case 'note:importBukken':  return withLock_(function () { return importBukken_(b.by); });
+      case 'note:renameContract': return withLock_(function () { return renameContract_(b); });
       case 'note:saveCaution':   return withLock_(function () { return saveCaution_(b.caution, b.image, b.by); });
       case 'note:deleteCaution': return withLock_(function () { return upsert_('cautions', 'cautionId', 'K', { cautionId: b.cautionId, state: '削除', updatedBy: b.by, updatedAt: now_() }, b.by); });
       /* 現場調査 */
@@ -4592,4 +4594,97 @@ function readYudo_(b64, mime) {
   var n = Number(String(j.count == null ? '' : j.count).replace(/[^\d]/g, ''));
   return { ok: true, data: { date: d, company: String(j.company || '').trim(), count: n > 0 ? n : '', kind: /^A/i.test(String(j.kind || '')) ? 'A' : (/^B/i.test(String(j.kind || '')) ? 'B' : ''),
     start: tm(j.start), end: tm(j.end), site: String(j.site || '').trim(), place: String(j.place || '').trim(), names: String(j.names || '').trim() } };
+}
+
+/* ================================================================
+ *  委託名をまとめる（現場ノートの親方メニュー）：まちがった委託名（from）を正しい委託名（to）に、全部の記録で書きかえる
+ *  ・日報システムのスプレッドシート（現場マスタ・日報データ・アーカイブなど全部のシート）と、このアプリのスプレッドシート（交通誘導員・指示番号・公園報告・工事写真など）
+ *  ・セルの中身が委託名そのもの／工事写真の「C|委託名」「C|委託名|年度」／JSON の中の "委託名" を書きかえる（式のセルは触らない）
+ *  ・公園報告の中身のファイル、Googleドライブの委託名のフォルダも直す
+ *  ・残材処分の記録（別のGAS）はアプリ側で直し、直した一台を zaizai として履歴に残す
+ *  mode：dry（数えるだけ）／run／undo（batch を元に戻す）／logZaizai（アプリが直した残材処分の一台を履歴へ）
+ * ================================================================ */
+function renameTargets_() {
+  var out = [{ id: prop_('NIPPOU_SHEET_ID', NIPPOU_SHEET_ID), label: '日報システム' }];
+  try { out.push({ id: ss_().getId(), label: '社内アプリのデータ' }); } catch (e) {}
+  return out;
+}
+function renameMatch_(v, from, to) {
+  if (typeof v !== 'string' || v.indexOf(from) < 0) return null;
+  if (v.trim() === from) return to;
+  if (v === 'C|' + from) return 'C|' + to;
+  if (v.indexOf('C|' + from + '|') === 0) return 'C|' + to + v.slice(('C|' + from).length);
+  if (v.indexOf('"' + from + '"') >= 0) return v.split('"' + from + '"').join('"' + to + '"');
+  return null;
+}
+function renameContract_(b) {
+  if (!isAdmin_(b.by)) return { ok: false, error: '委託名をまとめるのは' + admins_().join('・') + 'だけができます' };
+  var mode = b.mode2 || 'dry', by = b.by || '';
+  if (mode === 'undo') return renameUndo_(b.batch, by);
+  if (mode === 'logZaizai') {
+    var lg = sh_('renameLog'), at = now_();
+    (b.denpyos || []).forEach(function (k) { lg.appendRow([b.batch, at, by, b.from, b.to, 'zaizai', '', '', '', '', b.from, cell_(String(k))]); });
+    return { ok: true };
+  }
+  var from = String(b.from || '').trim(), to = String(b.to || '').trim();
+  if (!from || !to || from === to) return { ok: false, error: '2つの委託名を選んでください' };
+  var batch = 'R' + Utilities.formatDate(new Date(), TZ, 'yyyyMMddHHmmss'), at2 = now_(), logRows = [], summary = [], parkFiles = [];
+  renameTargets_().forEach(function (t) {
+    var ss; try { ss = SpreadsheetApp.openById(t.id); } catch (e) { summary.push({ place: t.label, error: '開けませんでした' }); return; }
+    ss.getSheets().forEach(function (sh) {
+      var name = sh.getName(); if (name === SHEETS.renameLog.name || name === SHEETS.aiLog.name) return;
+      if (sh.getLastRow() < 1 || sh.getLastColumn() < 1) return;
+      var rg = sh.getDataRange(), vals = rg.getValues(), fx = rg.getFormulas(), n = 0, head = vals[0] || [];
+      for (var r = 0; r < vals.length; r++) for (var c = 0; c < vals[r].length; c++) {
+        if (fx[r][c]) continue;
+        var nv = renameMatch_(vals[r][c], from, to); if (nv == null) continue;
+        n++;
+        if (mode === 'run') { sh.getRange(r + 1, c + 1).setValue(nv); logRows.push([batch, at2, by, from, to, 'cell', t.id, name, r + 1, c + 1, vals[r][c], nv]); }
+        if (name === SHEETS.parks.name && String(head[c]) === 'contract') { var fc = head.indexOf('fileId'); if (fc >= 0 && vals[r][fc]) parkFiles.push(String(vals[r][fc])); }
+      }
+      if (n) summary.push({ place: t.label + '：' + name, n: n });
+    });
+  });
+  // 公園報告の中身のファイル
+  var nf = 0;
+  parkFiles.forEach(function (id) {
+    try { var f = DriveApp.getFileById(id), txt = f.getBlob().getDataAsString('UTF-8'); if (txt.indexOf('"' + from + '"') < 0) return;
+      nf++; if (mode === 'run') { f.setContent(txt.split('"' + from + '"').join('"' + to + '"')); logRows.push([batch, at2, by, from, to, 'file', '', '', '', '', id, '']); } } catch (e) {}
+  });
+  if (nf) summary.push({ place: '公園報告の中身のファイル', n: nf });
+  // ドライブの委託名のフォルダ（工事写真など）
+  var nd = 0, it = DriveApp.getFoldersByName(from);
+  while (it.hasNext()) {
+    var fo = it.next(); if (fo.isTrashed()) continue;
+    var ps = fo.getParents(), clash = false; if (ps.hasNext()) { var pa = ps.next(); clash = pa.getFoldersByName(to).hasNext(); }
+    if (clash) { summary.push({ place: 'ドライブのフォルダ（同じ所に「' + to + '」があるので直していません）', n: 1, warn: true }); continue; }
+    nd++; if (mode === 'run') { fo.setName(to); logRows.push([batch, at2, by, from, to, 'folder', '', '', '', '', fo.getId(), '']); }
+  }
+  if (nd) summary.push({ place: 'Googleドライブのフォルダ', n: nd });
+  if (mode === 'run') {
+    if (logRows.length) { var lg2 = sh_('renameLog'); lg2.getRange(lg2.getLastRow() + 1, 1, logRows.length, logRows[0].length).setValues(logRows.map(function (x) { return x.map(function (v) { return typeof v === 'string' ? cell_(v) : v; }); })); }
+    siteBriefClear_(); try { CacheService.getScriptCache().remove('jk_apps'); } catch (e) {}
+  }
+  return { ok: true, batch: mode === 'run' ? batch : '', summary: summary, total: summary.reduce(function (a, x) { return a + (x.warn ? 0 : (x.n || 0)); }, 0) };
+}
+function renameUndo_(batch, by) {
+  if (!batch) return { ok: false, error: '元に戻す記録がありません' };
+  var rows = rows_('renameLog').filter(function (x) { return x.batch === batch; });
+  if (!rows.length) return { ok: false, error: '元に戻す記録が見つかりません' };
+  if (rows.some(function (x) { return x.kind === 'undone'; })) return { ok: false, error: 'もう元に戻してあります' };
+  var from = rows[0].from, to = rows[0].to, n = 0, ssCache = {}, zaizai = [];
+  rows.forEach(function (x) {
+    try {
+      if (x.kind === 'cell') {
+        var ss = ssCache[x.ss] || (ssCache[x.ss] = SpreadsheetApp.openById(x.ss)), sh = ss.getSheetByName(x.sheet); if (!sh) return;
+        var cl = sh.getRange(Number(x.row), Number(x.col)); if (String(cl.getValue()) === String(x['new'])) { cl.setValue(x.old); n++; }
+      } else if (x.kind === 'file') {
+        var f = DriveApp.getFileById(x.old), txt = f.getBlob().getDataAsString('UTF-8'); f.setContent(txt.split('"' + to + '"').join('"' + from + '"')); n++;
+      } else if (x.kind === 'folder') { var fo = DriveApp.getFolderById(x.old); if (fo.getName() === to) { fo.setName(from); n++; } }
+      else if (x.kind === 'zaizai') zaizai.push(String(x['new']));
+    } catch (e) {}
+  });
+  sh_('renameLog').appendRow([batch, now_(), by || '', from, to, 'undone', '', '', '', '', '', '']);
+  siteBriefClear_();
+  return { ok: true, n: n, from: from, to: to, zaizai: zaizai };
 }
