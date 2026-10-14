@@ -205,6 +205,10 @@
     box-shadow:0 8px 24px -8px rgba(0,0,0,.5);opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%}
   .toast.show{opacity:1}
   .toast.err{background:var(--danger)}
+  .obx{position:fixed;left:12px;bottom:84px;z-index:79;background:#2c2b27;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.25);display:flex;gap:10px;align-items:center;max-width:calc(100vw - 24px)}
+  .obx[hidden]{display:none}
+  .obx.err{background:var(--danger)}
+  .obx button{background:#fff;color:#2c2b27;border:none;border-radius:999px;padding:5px 10px;font-weight:700;font-family:inherit;font-size:12.5px}
 
   .editbadge{display:none;background:var(--tape);color:#fff;font-size:12px;font-weight:700;border-radius:6px;padding:3px 10px;margin-left:8px;cursor:pointer}
   .editbadge.show{display:inline-block}
@@ -654,6 +658,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="obx" id="obx" hidden><span id="obxText"></span><button type="button" id="obxRetry" hidden>もう一度送る</button></div>
 
 <script>
 /* ===== 設定 ===== */
@@ -1715,23 +1720,17 @@ $('#pvConfirm').onclick=async()=>{
   try{
     const ordItems=siteList().filter(s=>s.cat==='公共').map(s=>({site:s.site,contract:s.contract,order:s.order||''}));
     const orderWork=ordItems.some(x=>x.order) || !!(editKey&&ZZ_ORD.map[editKey]);
-    const beforeKeys=allRecords.length?new Set(allRecords.map(recKey)):null;   // 取り直さない（新しい一台は、保存後の一覧で番号のいちばん大きいものから探す）
     const body=editDenpyo?{mode:'update',denpyo:editDenpyo,editor:author,rows}:{rows};
-    let slipMsg='', key=null, extra=null;
-    // 直すとき（どの一台か分かっている）は、記録・伝票・指示番号を同時に送る。新しい記録は、保存してから一台を見つけて送る
-    const sendExtra=()=>Promise.all([
-      orderWork ? (async()=>{ try{ if(!key) throw new Error('nokey'); await zzSaveOrders(key,ordItems); }
-        catch(e){ slipMsg+='（指示番号を送れませんでした。一覧から開いて入れ直してください）'; } })() : null,
-      slipWork ? (async()=>{ try{ if(!key) throw new Error('nokey');
-          await sendSlips(key,rows,(n,t)=>{ $('#pvConfirm').textContent='伝票を送信中 '+n+'/'+t; }); }
-        catch(e){ slipMsg+='（伝票の送信に失敗しました。一覧から開いて付け直してください）'; } })() : null ]);
-    if(editDenpyo&&editKey&&(slipWork||orderWork)){ key=editKey; extra=sendExtra(); }
+    // 伝票の画像は、記録を送る前に作っておく（送るのは裏で）
+    const job=(slipWork||orderWork)?{ key:editDenpyo&&editKey?editKey:'', rows:rows.map(r=>({date:r.date,total:r.total,author:r.author,site:r.site,place:r.place})),
+      dels:slipWork?slipEdit.filter(s=>s.id&&s.removed).map(s=>s.id):[],
+      adds:slipWork?slipEdit.filter(s=>s.canvas&&!s.removed).map(s=>{ const c=shrinkTo(rotCanvas(s.canvas,s.rot),SLIP_MAX); return {data:c.toDataURL('image/jpeg',SLIP_Q).split(',')[1],w:c.width,h:c.height}; }):[],
+      orders:orderWork?ordItems:null, at:Date.now() }:null;
     const res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
-    const d=await res.json(); if(!d.ok){ if(extra) await extra; throw new Error(d.error||''); }
+    const d=await res.json(); if(!d.ok) throw new Error(d.error||'');
     saved=true;
-    if(!extra&&(slipWork||orderWork)){ try{ key=editKey || d.denpyo || await findNewKey(beforeKeys,rows); }catch(e){ key=null; } extra=sendExtra(); }
-    if(extra) await extra;
-    $('#modal').classList.remove('show'); toast((wasEdit?'更新しました':'記録しました')+slipMsg, !!slipMsg);
+    if(job){ if(!job.key&&d.denpyo) job.key=d.denpyo; await obxAdd(job); obxRun(); }   // 伝票・指示番号は端末に置いてから裏で送る（待たない）
+    $('#modal').classList.remove('show'); toast((wasEdit?'更新しました':'記録しました')+(job&&job.adds.length?'（伝票は裏で送っています）':''));
     const ek=editKey;
     if(wasEdit&&ek){ const old=allRecords.filter(r=>recKey(r)===ek);   // 直した一台は、手元の一覧も入れかえておく（最新は裏で取る）
       allRecords=allRecords.filter(r=>recKey(r)!==ek).concat(rows.map((r,i)=>Object.assign({},r,{denpyo:editDenpyo,rid:(old[i]||old[0]||{}).rid||0}))); }
@@ -1767,6 +1766,47 @@ function switchTab(which){ const input=which==='input', yd=which==='yudo';
 $('#tabInput').onclick=()=>switchTab('input'); $('#tabList').onclick=()=>switchTab('list'); $('#tabYudo').onclick=()=>switchTab('yudo');
 
 
+
+
+/* ===== 送信待ち（伝票の写真・指示番号）：端末（IndexedDB）に置いて裏で順に送る。電波が切れても、アプリを閉じても、次に開いたときに続きを送る ===== */
+function obxDb(){ return new Promise((ok,ng)=>{ const r=indexedDB.open('zaizaiOutbox',1); r.onupgradeneeded=()=>r.result.createObjectStore('jobs',{keyPath:'id',autoIncrement:true}); r.onsuccess=()=>ok(r.result); r.onerror=()=>ng(r.error); }); }
+async function obxTx(mode,fn){ const db=await obxDb(); return new Promise((ok,ng)=>{ const t=db.transaction('jobs',mode), st=t.objectStore('jobs'); let out; Promise.resolve(fn(st)).then(v=>{ out=v; }); t.oncomplete=()=>ok(out); t.onerror=()=>ng(t.error); }); }
+let obxMem=null, obxSeq=0;   // 端末に置けないとき（プライベートモードなど）は、開いている間だけ覚えて送る
+const obxSafe=(fn,mem)=>async(...a)=>{ if(!obxMem){ try{ return await fn(...a); }catch(e){ obxMem=[]; } } return mem(...a); };
+const obxAll=obxSafe(()=>obxTx('readonly',st=>new Promise(ok=>{ const q=st.getAll(); q.onsuccess=()=>ok(q.result||[]); })), ()=>obxMem.slice());
+const obxAdd=obxSafe(job=>obxTx('readwrite',st=>{ st.add(job); }), job=>{ job.id=++obxSeq; obxMem.push(job); });
+const obxPut=obxSafe(job=>obxTx('readwrite',st=>{ st.put(job); }), job=>{ const i=obxMem.findIndex(x=>x.id===job.id); if(i>=0) obxMem[i]=job; });
+const obxDel=obxSafe(id=>obxTx('readwrite',st=>{ st.delete(id); }), id=>{ obxMem=obxMem.filter(x=>x.id!==id); });
+let obxBusy=false;
+function obxShow(text,err){ const b=$('#obx'); b.hidden=!text; $('#obxText').textContent=text||''; b.classList.toggle('err',!!err); $('#obxRetry').hidden=!err; }
+async function obxStatus(){ try{ const js=await obxAll(); const n=js.reduce((a,j)=>a+j.adds.length+j.dels.length+(j.orders?1:0),0); return {jobs:js,n}; }catch(e){ return {jobs:[],n:0}; } }
+async function obxRun(){
+  if(obxBusy) return; obxBusy=true; let sent=0, failed=false, nokey=false;
+  try{
+    for(;;){
+      const {jobs,n}=await obxStatus(); if(!jobs.length) break;
+      obxShow('📤 伝票を送っています（あと '+n+'）');
+      const j=jobs[0];
+      if(!j.key){ try{ j.key=await findNewKey(null,j.rows)||''; }catch(e){} if(!j.key){ if(Date.now()-j.at>3*60*1000){ nokey=true; } failed=true; break; } await obxPut(j); }
+      try{
+        while(j.dels.length){ await slipPost({mode:'remove',id:j.dels[0]}); j.dels.shift(); await obxPut(j); sent++; obxShow('📤 伝票を送っています（あと '+(n-sent)+'）'); }
+        const r0=j.rows[0]||{}, site=j.rows.map(r=>r.site).filter(Boolean).join('・');
+        while(j.adds.length){ const a=j.adds[0];
+          await slipPost({mode:'upload',denpyo:j.key,date:r0.date,place:r0.place,site,author:r0.author||author,mime:'image/jpeg',data:a.data,w:a.w,h:a.h});
+          j.adds.shift(); await obxPut(j); sent++; obxShow('📤 伝票を送っています（あと '+(n-sent)+'）'); }
+        if(j.orders){ await zzSaveOrders(j.key,j.orders); j.orders=null; sent++; }
+        await obxDel(j.id);
+      }catch(e){ failed=true; break; }
+    }
+  }finally{ obxBusy=false; }
+  if(failed){ const {n}=await obxStatus();
+    obxShow(nokey?'⚠ 伝票を付ける記録が見つかりません（'+n+'）':'⚠ 伝票の送信待ち '+n+'（電波が戻ったら送ります）',true);
+    clearTimeout(obxRun.t); obxRun.t=setTimeout(obxRun,30000); }
+  else { obxShow(''); if(sent){ await loadSlipList(); renderList(); listCacheSave(); toast('伝票を送りました'); } }
+}
+$('#obxRetry').onclick=()=>obxRun();
+window.addEventListener('online',()=>obxRun());
+window.addEventListener('beforeunload',e=>{ if(obxBusy){ e.preventDefault(); e.returnValue=''; } });   // 送っている途中に閉じそうなとき
 
 /* ===== 伝票をまとめて付ける：前に入力した記録（伝票なし）に、あとから伝票の写真を付ける（新しい記録は作らない）
    写真を選ぶ → AIで日付・処分場所・正味重量を読む → 同じ日・同じ重さの記録を探して組み合わせ → 確かめて「付ける」→「元に戻す」も */
@@ -2293,7 +2333,8 @@ pickElems.typeWatch=0;
   apply(dr||{date:todayStr()}); renderSlips();
   if(GAS_URL==='PASTE_YOUR_GAS_URL_HERE') toast('GAS の URL を設定してください',true);
   if(new URLSearchParams(location.search).get('pdf')) openFromParam(); else restoreEditSession();
-  setTimeout(()=>{ if(!allRecords.length&&GAS_URL.indexOf('PASTE_')!==0){ if(listCacheLoad()) fillYearMonth(); refreshList(); } },1200);   // 一覧を開いたときにすぐ出るよう、裏で先に取っておく
+  setTimeout(()=>{ if(!allRecords.length&&GAS_URL.indexOf('PASTE_')!==0){ if(listCacheLoad()) fillYearMonth(); refreshList(); } },1200);
+  setTimeout(()=>{ if(slipReady()) obxRun(); },2000);   // 前に送りきれなかった伝票の続き   // 一覧を開いたときにすぐ出るよう、裏で先に取っておく
 })();
 /* 公園報告から開いたとき（zaizai.html?pdf=伝票キー,…&from=公園名）：その記録を選んだ状態で伝票PDFを作る */
 async function openFromParam(){
