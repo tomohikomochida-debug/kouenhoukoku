@@ -114,6 +114,7 @@ dl.info dd{margin:0;min-width:0;overflow-wrap:anywhere}
     <div id="adminTools" hidden style="margin-top:16px">
       <button class="btn block" type="button" id="addSiteBtn">＋ 新しい現場を追加</button>
       <button class="btn block" type="button" id="importBtn" style="margin-top:8px">📥 物件マスタから住所・連絡先を写す</button>
+      <button class="btn block" type="button" id="renameBtn" style="margin-top:8px">🔤 委託名をまとめる（まちがった名前を正しい名前に）</button>
     </div>
   </section>
 
@@ -133,6 +134,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvO
 const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';   // 名簿
 const LS = { me: 'dandori_me', cache: 'note_cache', kind: 'note_kind', layer: 'note_layer3' };   // 地図の種類（最初は OpenStreetMap）
 const NET_ERR = '電波を確認して、もう一度お試しください';
+const ZAIZAI_URL = 'https://script.google.com/macros/s/AKfycbz3eI72jQip1qDuZp1rBgQQB4vmDlaP8kjptoFWquxKf2x1Y45ZbjG_wUksPmZ113zM/exec';   // 残材処分のGAS（委託名をまとめるときに、残材処分の記録も直す）
 const KINDS = ['マンション', '公共', '法人', '個人', '寺院', 'その他'];
 const CAUTION_KINDS = ['危険', '駐車', '搬入', '近隣', 'お客さんの要望', '設備・埋設物', 'その他'];
 const HOME = { lat: 35.6007, lng: 139.6110 };   // 位置が分からないときに最初に出す場所（川崎市高津区あたり）
@@ -511,6 +513,106 @@ $('siteBody').addEventListener('click', e => {
 });
 $('addSiteBtn').addEventListener('click', () => editSite(true));
 $('importBtn').addEventListener('click', importBukken);
+/* ============ 委託名をまとめる（親方）：まちがった委託名を、正しい委託名に全部の記録で書きかえる ============
+   日報システム（現場マスタ・日報）・このアプリの記録（交通誘導員・指示番号・公園報告・工事写真）・ドライブのフォルダは共通GASで、
+   残材処分の記録（別のGAS）はここから一台ずつ直す。直した所は履歴に残し、「元に戻す」で戻せる */
+const ZZ_ROW_KEYS = ['date', 'siteCat', 'siteContract', 'site', 'share', 'type', 'place', 'vehicle', 'qty', 'hijuu', 'amount', 'govqty', 'govfee', 'total', 'author'];
+const ymdOf = v => {   // 残材処分の日付（「2025-05-28」「2025/5/28」「Wed May 28 2025 …」、時刻つきのUTCは日本の日付に）
+  const s = String(v || '').trim(); if (!s) return '';
+  if (/T\d{2}:\d{2}.*(Z|[+-]\d{2}:?\d{2})$/.test(s)) { const d = new Date(s); if (!isNaN(d)) return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); }
+  const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/); if (m) return m[1] + '-' + p2(m[2]) + '-' + p2(m[3]);
+  const d = new Date(s); return isNaN(d) ? s : d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); };
+async function zaizaiGroups(name) {   // 委託名が name の残材処分の記録（一台＝伝票ごと）
+  const d = await getJSON(ZAIZAI_URL + '?action=list', 40000), all = d.records || [], g = {}; let noKey = 0;
+  const hit = new Set(); all.forEach(r => { if (String(r.siteContract || '').trim() !== name) return; if (!r.denpyo) { noKey++; return; } hit.add(r.denpyo); });
+  all.forEach(r => { if (r.denpyo && hit.has(r.denpyo)) (g[r.denpyo] = g[r.denpyo] || []).push(r); });   // 一台の全部の行（ほかの委託の現場の行も）を送る。行が欠けると消えてしまう
+  return { groups: g, noKey, all };
+}
+async function zaizaiRename(groups, from, to, onProg, only) {   // 一台ずつ「直す」で送る（記入者・量・金額はそのまま）。only：{一台: [直す現場]}（元に戻すとき）
+  const keys = Object.keys(groups), done = []; let i = 0;
+  for (const k of keys) {
+    const all = groups[k].slice().sort((a, b) => (Number(a.rid) || 0) - (Number(b.rid) || 0)), sites = [];
+    const rows = all.map(r => { const o = {}; ZZ_ROW_KEYS.forEach(f => { o[f] = r[f] == null ? '' : r[f]; }); o.date = ymdOf(r.date);
+      if (String(o.siteContract).trim() === from && (!only || (only[k] || []).includes(String(o.site || '')))) { o.siteContract = to; sites.push(String(o.site || '')); } return o; });
+    try { const r = await postJSON(ZAIZAI_URL, { mode: 'update', denpyo: k, editor: me(), rows }); if (r && r.ok) done.push(JSON.stringify({ k, sites })); } catch (e) {}
+    onProg && onProg(++i, keys.length);
+  }
+  return done;
+}
+function openRename() {
+  const names = [...new Set(SITES.map(s => String(s.contract || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'));
+  const opts = sel => '<option value="">選ぶ…</option>' + names.map(n => '<option' + (n === sel ? ' selected' : '') + '>' + esc(n) + '</option>').join('');
+  let plan = null;
+  const draw = (body) => openModal('<h3>🔤 委託名をまとめる</h3><p class="hint">まちがった委託名を、正しい委託名に書きかえます。現場マスタ・日報・残材処分・交通誘導員・公園報告・工事写真など、その名前が入っている所を全部直します。あとから「元に戻す」もできます。</p>' + body, handler);
+  const form = () => draw(
+    '<label class="lbl">まちがっている委託名（消す方）</label><select id="rnFrom">' + opts('') + '</select><input type="text" id="rnFromT" placeholder="一覧に無ければ、ここに書く" style="margin-top:6px">' +
+    '<label class="lbl">正しい委託名（残す方）</label><select id="rnTo">' + opts('') + '</select><input type="text" id="rnToT" placeholder="一覧に無ければ、ここに書く" style="margin-top:6px">' +
+    '<div id="rnRes"></div>' +
+    '<div class="row2" style="margin-top:16px"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="check" style="flex:2">どこに入っているか調べる</button></div>');
+  const val = (a, b) => ($(b).value.trim() || $(a).value).trim();
+  async function handler(e) {
+    const b = e.target.closest('button[data-act]'); if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'cancel' || act === 'close') return closeModal();
+    if (act === 'back') return form();
+    if (act === 'check') {
+      const from = val('rnFrom', 'rnFromT'), to = val('rnTo', 'rnToT');
+      if (!from || !to) return toast('2つの委託名を選んでください'); if (from === to) return toast('同じ名前です');
+      b.disabled = true; b.innerHTML = '<span class="loading"></span> 調べています…（1分ほどかかることがあります）';
+      try {
+        const [r, z] = await Promise.all([postJSON(GAS_URL, { app: 'note', mode: 'renameContract', mode2: 'dry', from, to, by: me() }), zaizaiGroups(from).catch(() => null)]);
+        if (!r.ok) throw new Error(/unknown mode/.test(r.error || '') ? '共通GASの更新がまだです（数分で反映されます）' : r.error);
+        plan = { from, to, zg: z ? z.groups : {}, noKey: z ? z.noKey : 0 };
+        const zn = Object.keys(plan.zg).length;
+        const lines = r.summary.map(x => '<li>' + esc(x.place) + (x.warn ? '' : '：<b>' + x.n + '</b> か所') + '</li>').join('') +
+          (zn ? '<li>残材処分の記録：<b>' + zn + '</b> 台</li>' : '') + (z ? '' : '<li style="color:var(--danger)">残材処分の記録は読めませんでした（電波を確認してください）</li>') +
+          (plan.noKey ? '<li style="color:var(--danger)">残材処分の古い記録 ' + plan.noKey + ' 件は、ここからは直せません（一覧から開いて委託を選び直してください）</li>' : '');
+        const total = r.total + zn;
+        draw('<div class="memo-box"><b>「' + esc(from) + '」</b><br>↓<br><b>「' + esc(to) + '」</b></div>' +
+          (total ? '<p style="margin-top:12px">次の所を書きかえます：</p><ul style="margin:6px 0 0 18px;line-height:1.8">' + lines + '</ul>' : '<p style="margin-top:12px">「' + esc(from) + '」が入っている所は見つかりませんでした。</p><ul style="margin:6px 0 0 18px">' + lines + '</ul>') +
+          '<div class="row2" style="margin-top:16px"><button class="btn" data-act="back">← 選び直す</button>' + (total ? '<button class="btn primary" data-act="run" style="flex:2">書きかえる</button>' : '') + '</div>');
+      } catch (err) { toast(err.message || NET_ERR); b.disabled = false; b.textContent = 'どこに入っているか調べる'; }
+      return;
+    }
+    if (act === 'run' && plan) {
+      if (!confirm('「' + plan.from + '」を「' + plan.to + '」に書きかえます。よろしいですか？')) return;
+      b.disabled = true; b.innerHTML = '<span class="loading"></span> 書きかえています…';
+      try {
+        const r = await postJSON(GAS_URL, { app: 'note', mode: 'renameContract', mode2: 'run', from: plan.from, to: plan.to, by: me() });
+        if (!r.ok) throw new Error(r.error);
+        let z = { groups: {} }; try { z = await zaizaiGroups(plan.from); } catch (e) {}   // 共通GASの方で直った分は除いて、残りの残材処分を直す
+        const done = await zaizaiRename(z.groups, plan.from, plan.to, (i, n) => { b.innerHTML = '<span class="loading"></span> 残材処分を直しています ' + i + '/' + n; });
+        if (done.length) await postJSON(GAS_URL, { app: 'note', mode: 'renameContract', mode2: 'logZaizai', batch: r.batch, from: plan.from, to: plan.to, denpyos: done, by: me() });
+        const miss = Object.keys(z.groups).length - done.length;   // done は {k, sites}（直した一台と現場）
+        lsSet('note_rename_last', { batch: r.batch, from: plan.from, to: plan.to });
+        draw('<div class="memo-box">「' + esc(plan.from) + '」を「' + esc(plan.to) + '」に書きかえました。<br>書きかえた所：<b>' + (r.total + done.length) + '</b>' +
+          (miss ? '<br><span style="color:var(--danger)">残材処分の ' + miss + ' 台は直せませんでした。もう一度「委託名をまとめる」で同じ名前を選ぶと続きを直します。</span>' : '') + '</div>' +
+          '<p class="hint" style="margin-top:10px">各アプリでは、次に開いたときから新しい名前で出ます。</p>' +
+          '<div class="row2" style="margin-top:16px"><button class="btn" data-act="undo">↩ 元に戻す</button><button class="btn primary" data-act="close" style="flex:2">閉じる</button></div>');
+        await load();
+      } catch (err) { toast(err.message || NET_ERR); b.disabled = false; b.textContent = '書きかえる'; }
+      return;
+    }
+    if (act === 'undo') {
+      const last = lsGet('note_rename_last', null); if (!last) return toast('元に戻す記録がありません');
+      if (!confirm('「' + last.to + '」にした所を、「' + last.from + '」に戻します。よろしいですか？')) return;
+      b.disabled = true; b.innerHTML = '<span class="loading"></span> 戻しています…';
+      try {
+        const r = await postJSON(GAS_URL, { app: 'note', mode: 'renameContract', mode2: 'undo', batch: last.batch, by: me() });
+        if (!r.ok) throw new Error(r.error);
+        if (r.zaizai && r.zaizai.length) {
+          const z = await zaizaiGroups(last.to), back = {}, only = {};
+          r.zaizai.forEach(x => { let o; try { o = JSON.parse(x); } catch (e) { o = { k: x, sites: null }; } if (z.groups[o.k]) { back[o.k] = z.groups[o.k]; only[o.k] = o.sites || z.groups[o.k].map(g => String(g.site || '')); } });
+          await zaizaiRename(back, last.to, last.from, (i, n) => { b.innerHTML = '<span class="loading"></span> 残材処分を戻しています ' + i + '/' + n; }, only);   // 書きかえた現場の行だけ戻す
+        }
+        lsSet('note_rename_last', null); closeModal(); toast('元に戻しました'); await load();
+      } catch (err) { toast(err.message || NET_ERR); b.disabled = false; b.textContent = '↩ 元に戻す'; }
+    }
+  }
+  form();
+}
+$('renameBtn').addEventListener('click', openRename);
+
 $('meBtn').addEventListener('click', () => chooseName());
 
 (function init() {
