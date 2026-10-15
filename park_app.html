@@ -353,7 +353,17 @@ body.ui-new #nuSide{display:flex;flex-direction:column;overflow-y:auto;padding:1
 #roBar small{display:block;font-size:11px;color:#9cc8ff;margin-top:1px}
 #roBar button{border:none;background:#3d79c2;color:#fff;border-radius:9px;padding:9px 12px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
 body.ro #roBar{display:flex}
+#histBar{display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:26;align-items:center;gap:8px;background:#2a1f0e;border:1px solid #d08a1c;color:#ffe9c2;border-radius:12px;padding:8px 10px 8px 14px;box-shadow:0 6px 20px #0008;font-size:14px;max-width:calc(100% - 20px)}
+#histBar small{display:block;font-size:11px;color:#ffcf85;margin-top:1px}
+#histBar>span{white-space:nowrap}
+#histBar button{border:none;background:#d08a1c;color:#1d1300;border-radius:9px;padding:9px 12px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
+#histBar button.g{background:#3b4656;color:#fff}
+body.hist #histBar{display:flex} body.hist #roBar{display:none}
+.histItem{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:6px 0;background:var(--panel2);cursor:pointer}
+.histItem b{font-size:15px}.histItem small{display:block;color:var(--mut);font-size:12px;margin-top:2px}.histItem .go{margin-left:auto;color:var(--acc);font-weight:700;white-space:nowrap}
+.histItem.now{cursor:default;border-style:dashed;opacity:.8}
 @media(max-width:900px){ .autoSt{padding:5px 7px;font-size:11px} }
+@media(max-width:600px){ #histBar>span{white-space:normal} #histBar{left:8px;right:60px;transform:none;max-width:none;flex-wrap:wrap;font-size:13px;padding:6px 8px} #histBar small{display:none} #histBar button{padding:7px 9px;font-size:13px} }
 @media(max-width:600px){ #roBar{left:8px;right:60px;transform:none;max-width:none;justify-content:space-between;padding:6px 6px 6px 10px;font-size:13px} #roBar small{display:none} #roBar span{white-space:nowrap} #roBar button{padding:8px 10px;font-size:13px} }
 @media(max-width:900px){ .manual-btn .mb-t{display:none} }
 #nuSideBtn{display:none!important}
@@ -690,6 +700,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <h3>保存 / 書き出し</h3>
       <button class="btn" id="cloudSave">☁️ クラウドに保存<small>みんなの共有（Googleドライブ）へ。設定は要りません</small></button>
       <button class="btn ghost" id="cloudOpen">☁️ クラウドから開く<small>みんなが保存した公園の一覧から選びます</small></button>
+      <button class="btn ghost" id="histBtn">🕘 履歴（前の版に戻す）<small>間違えて直したときに。30分おき・ほかの人が直す前の版を10個まで</small></button>
       <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
       <button class="btn ghost" id="rpMapBtn">🖼 履行場所の図をえらぶ<small>公園名でさがした地図で、ピンクの枠を決めるだけ</small></button>
       <input type="file" id="rpMapFile" accept="image/*" hidden>
@@ -731,6 +742,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <button id="symSel" style="display:none;align-items:center;background:#0f766e;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">実寸/記号</button>
     </div>
     <div class="hint" id="hint"></div>
+    <div id="histBar"><span>🕘 <b id="histWhen"></b> の版を見ています<small>この版のまま直すことはできません</small></span><button id="histRestore">↩ この版に戻す</button><button id="histLatest" class="g">最新にもどる</button></div>
     <div id="roBar"><span>👀 <b>見るだけ</b>で開いています<small id="roWho"></small></span><button id="roEdit">✏️ 編集する</button></div>
     <div class="scalebadge no" id="scaleBadge" title="タップして縮尺を合わせる">縮尺：未設定（タップで合わせる）</div>
     <div id="calPop"><b>縮尺合わせ</b><span class="cp-t">図面の上で、長さの分かる<b>2点</b>をタップ（押したままドラッグでもOK）</span>
@@ -835,6 +847,12 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
     <div id="modalBody"></div>
   </div>
 </div>
+<!-- 履歴（前の版） -->
+<div id="histModal" class="sdModal"><div class="sdCard" style="width:min(460px,100%)">
+  <h3>🕘 履歴（前の版）<small>30分に1回と、ほかの人が直す前・戻す前の版を、新しい10個まで残しています。選ぶと、まず見るだけで表示します。</small></h3>
+  <div id="histBody"></div>
+  <button class="sdBtn sm" id="histClose" style="margin-top:10px">閉じる</button>
+</div></div>
 <!-- 辺の長さを入れて直す -->
 <div id="edgeLenModal" class="sdModal"><div class="sdCard" style="width:min(380px,100%)">
   <h3>辺の長さを直す<small>角<b id="elFrom"></b>は動かさず、角<b id="elTo"></b>を辺の向きのまま動かして長さを合わせます。今の長さ <b id="elNow"></b></small></h3>
@@ -3773,6 +3791,7 @@ async function draftPut(v){ const db=await draftDB(); return new Promise((res,re
 async function draftGet(){ const db=await draftDB(); return new Promise((res)=>{ const t=db.transaction('d','readonly'), r=t.objectStore('d').get('cur'); r.onsuccess=()=>res(r.result||null); r.onerror=()=>res(null); }); }
 async function draftSaveNow(){
   clearTimeout(draftT); draftT=null;
+  if(typeof HIST!=='undefined'&&HIST.on) return;   // 前の版を見ている間は、端末の控えを上書きしない
   if(!state.img&&!(state.features||[]).length) return;
   try{ const p=parkPayload(); await draftPut({at:Date.now(),park:p.park,n:(state.features||[]).length,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,ro:RO.on,owner:RO.owner,dirty:AUTO.dirty,json:JSON.stringify(p)}); }catch(e){}
 }
@@ -3791,7 +3810,7 @@ async function draftOffer(){
   if(resume){ history.replaceState(null,'',location.pathname); if(!state.img&&!(state.features||[]).length) draftOpen(d); return; }
   if(state.img||(state.features||[]).length) return;
   if(Date.now()-d.at>14*24*3600*1000) return;
-  const t=new Date(d.at), el=document.createElement('div'); el.className='draftBar';
+  const t=new Date(d.at), el=document.createElement('div'); el.className='draftBar resumeBar';
   el.innerHTML=`<span>前回の続き：<b>${esc(d.park||'（公園名なし）')}</b><small>${t.getMonth()+1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2,'0')}・図形${d.n||0}</small></span><button class="go">続きを開く</button><button class="x">✕</button>`;
   document.body.appendChild(el);
   el.querySelector('.go').onclick=()=>{ el.remove(); draftOpen(d); };
@@ -4574,7 +4593,8 @@ function applyParkJson(text){
     }
     return;
   }
-  try{ setReadOnly(false); autoReset(); applyParkData(d,kb); }
+  try{ document.querySelectorAll('.resumeBar').forEach(e=>e.remove());   // 別の記録を開いたら「前回の続き」は消す
+    if(typeof HIST!=='undefined'&&!HIST.loading) histEnd(); setReadOnly(false); autoReset(); applyParkData(d,kb); }
   catch(err){ alert('読み込みの途中で問題が起きました。\n'+((err&&err.message)||err)+'\n\nデータは残っているので、もう一度お試しください。'); }
 }
 function applyParkData(d,kb){
@@ -4794,6 +4814,7 @@ function setReadOnly(on,owner){
   autoStRender();
 }
 function guardEdit(){
+  if(typeof HIST!=='undefined'&&HIST.on){ alert('前の版を見ています。\nこの版にするなら上の「↩ この版に戻す」、いまの内容にもどるなら「最新にもどる」を押してください。'); return false; }
   if(!RO.on) return true;
   const ok=confirm('この記録は '+(RO.owner||'ほかの人')+' さんが記入したものです。\n\n編集しますか？\n\nOK＝編集する（自動で保存されます）\nキャンセル＝見るだけのまま');
   if(!ok) return false;
@@ -4865,7 +4886,8 @@ function autoStRender(){
   b.textContent=t; b.className='autoSt '+c;
 }
 $('autoSt').onclick=()=>{
-  if(RO.on){ guardEdit(); return; }
+  if(HIST.on){ guardEdit(); return; }
+  if(RO.on){ openHist(); return; }
   if(AUTO.stopped){
     if(confirm('自動保存を止めています。\n'+AUTO.stopped+'。\n\nこのまま保存すると、上書きせずに「別の記録」として残します（あとで一覧で見くらべられます）。\n\n別の記録として保存しますか？')){ AUTO.stopped=''; $('cloudSave').click(); }
     return;
@@ -4873,10 +4895,73 @@ $('autoSt').onclick=()=>{
   const why=autoWhy();
   if(why==='name'){ if(myName(true)){ autoLater(); } return; }
   if(why==='park'){ alert('公園名を入れると、みんなの共有（Googleドライブ）へ自動で保存しはじめます。'); return; }
-  if(AUTO.dirty){ autoSaveNow(); return; }
-  alert('変更すると、少しして みんなの共有（Googleドライブ）へ自動で保存します。'+(AUTO.at?'\n最後に保存：'+AUTO.at:'')+(AUTO.err?'\n前回うまくいかなかった理由：'+AUTO.err:''));
+  if(AUTO.dirty&&AUTO.err){ autoSaveNow(); return; }
+  openHist();
 };
 $('roEdit').onclick=()=>guardEdit();
+
+/* ---------- 履歴（前の版）：一覧 → 見るだけで表示 → この版に戻す／最新にもどる ---------- */
+var HIST={on:false,loading:false,hid:'',label:'',back:null};
+function fmtAt(t){ const m=String(t||'').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})/); return m?(+m[2]+'/'+(+m[3])+' '+(+m[4])+':'+m[5]):String(t||''); }
+async function openHist(){
+  if(HIST.on){ $('histModal').classList.add('on'); return; }
+  if(!state.cloudId){ alert('この記録はまだクラウドに保存されていないので、履歴はありません。\n公園名を入れて描くと自動で保存され、そのあとから履歴が残ります。'); return; }
+  const m=$('histModal'), body=$('histBody'); m.classList.add('on');
+  body.innerHTML='<div class="legend">'+(AUTO.dirty&&!AUTO.stopped&&!autoWhy()?'いまの変更を保存してから、履歴を読み込みます…':'履歴を読み込んでいます…')+'</div>';
+  if(AUTO.dirty&&!AUTO.stopped&&!autoWhy()) await autoSaveNow();
+  try{
+    const d=await cloudGet('hist','&id='+encodeURIComponent(state.cloudId));
+    if(!d.ok) throw new Error(/unknown/.test(d.error||'')?'共通GASの更新がまだです（数分で反映されます）':(d.error||'読み込めませんでした'));
+    const items=d.items||[];
+    let h='<div class="histItem now"><div><b>いま（最新）</b><small>'+(AUTO.at?'自動保存 '+AUTO.at:'')+'　図形 '+state.features.length+'件</small></div></div>';
+    if(!items.length) h+='<div class="legend" style="margin-top:8px">まだ前の版はありません。30分たつか、ほかの人が直すと残りはじめます。</div>';
+    h+=items.map(it=>'<div class="histItem" data-hid="'+esc(it.hid)+'" data-lb="'+esc(fmtAt(it.at)+(it.by?'（'+it.by+'）':''))+'"><div><b>'+esc(fmtAt(it.at))+'</b><small>'+esc(it.by||'')+'　図形 '+(it.figures||0)+'件'+(it.note?'　'+esc(it.note):'')+'</small></div><div class="go">見る →</div></div>').join('');
+    body.innerHTML=h;
+    body.querySelectorAll('[data-hid]').forEach(el=>el.onclick=()=>histView(el.dataset.hid,el.dataset.lb));
+  }catch(e){ body.innerHTML='<div class="legend">履歴を読み込めませんでした。'+esc(String(e&&e.message||e))+'</div>'; }
+}
+async function histView(hid,label){
+  const body=$('histBody'); body.insertAdjacentHTML('afterbegin','<div class="legend" id="histWait">開いています…</div>');
+  try{
+    const d=await cloudGet('histGet','&hid='+encodeURIComponent(hid));
+    if(!d.ok) throw new Error(d.error||'開けませんでした');
+    if(!HIST.on) HIST.back={json:JSON.stringify(parkPayload()),cloudId:state.cloudId,cloudVer:state.cloudVer,ro:RO.on,owner:RO.owner,undo:undoStack.slice(),redo:redoStack.slice(),at:AUTO.at};
+    HIST.loading=true; try{ applyParkJson(d.data); }finally{ HIST.loading=false; }
+    state.cloudId=HIST.back.cloudId; state.cloudVer=HIST.back.cloudVer;
+    HIST.on=true; HIST.hid=hid; HIST.label=label;
+    document.body.classList.add('hist'); $('histWhen').textContent=label;
+    setReadOnly(true,HIST.back.owner); $('histModal').classList.remove('on');
+  }catch(e){ const w=$('histWait'); if(w) w.textContent='開けませんでした。'+String(e&&e.message||e); }
+}
+function histEnd(){ HIST.on=false; HIST.hid=''; HIST.back=null; document.body.classList.remove('hist'); }
+function histLatest(){
+  const b=HIST.back; if(!b){ histEnd(); return; }
+  HIST.loading=true; try{ applyParkJson(b.json); }finally{ HIST.loading=false; }
+  state.cloudId=b.cloudId; state.cloudVer=b.cloudVer; undoStack=b.undo||[]; redoStack=b.redo||[]; updateUndoButtons();
+  histEnd(); setReadOnly(b.ro,b.owner); AUTO.at=b.at||''; autoStRender();
+}
+async function histRestore(){
+  const b=HIST.back; if(!b) return;
+  let msg='「'+HIST.label+'」の版に戻しますか？\n\nいまの内容も履歴に残るので、戻し間違えても、また戻せます。';
+  if(b.ro) msg='この記録は '+(b.owner||'ほかの人')+' さんが記入したものです。\n\n'+msg;
+  if(!confirm(msg)) return;
+  if(!myName(true)) return;
+  const btn=$('histRestore'); btn.disabled=true; btn.textContent='戻しています…';
+  try{
+    const d=await cloudPost({mode:'restore',id:b.cloudId,hid:HIST.hid});
+    if(!d.ok) throw new Error(/unknown/.test(d.error||'')?'共通GASの更新がまだです（数分で反映されます）':(d.error||'戻せませんでした'));
+    HIST.loading=true; try{ applyParkJson(d.data); }finally{ HIST.loading=false; }
+    state.cloudId=d.id; state.cloudVer=d.ver; recPut(d.id,d.ver,d.data); roRemember(d.id);
+    const lb=HIST.label; histEnd(); setReadOnly(false); AUTO.at=hhmm(); autoStRender(); draftSaveNow();
+    alert('「'+lb+'」の版に戻しました。\n（戻す前の内容は履歴に入っています）');
+  }catch(e){ alert('戻せませんでした。\n'+(e&&e.message||e)); }
+  finally{ btn.disabled=false; btn.textContent='↩ この版に戻す'; }
+}
+$('histBtn').onclick=openHist;
+$('histClose').onclick=()=>$('histModal').classList.remove('on');
+$('histModal').addEventListener('click',e=>{ if(e.target===$('histModal')) $('histModal').classList.remove('on'); });
+$('histLatest').onclick=histLatest;
+$('histRestore').onclick=histRestore;
 // 画面を閉じる・ほかのアプリへ移るときは、すぐ保存を試す
 document.addEventListener('visibilitychange',()=>{ if(document.hidden&&AUTO.dirty&&!AUTO.busy&&!autoWhy()) autoSaveNow(); });
 window.addEventListener('online',()=>{ if(AUTO.dirty&&!AUTO.busy) autoSaveNow(); });
@@ -6380,7 +6465,7 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     const gPrep=grp('g-prep','準備（図面と縮尺）');
     const openRow=document.createElement('div');
     gPrep.appendChild(openRow);
-    move($('cloudOpen'),openRow); move($('openJson'),openRow);
+    move($('cloudOpen'),openRow); move($('histBtn'),openRow); move($('openJson'),openRow);
     move($('secMap'),gPrep); move($('secCal'),gPrep); move($('scanSec'),gPrep);   // 3Dスキャンの木（LASを取り込む）も準備に
     const tip=document.createElement('div'); tip.className='legend'; tip.style.marginTop='4px';
     tip.textContent='図面を読み込んで縮尺を合わせたら、上の「入力」へ。'; gPrep.appendChild(tip);
