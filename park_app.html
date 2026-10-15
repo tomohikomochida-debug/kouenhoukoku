@@ -137,6 +137,16 @@ input.kpIn{cursor:pointer;caret-color:transparent}
   #gsiMapBox{flex:1;min-height:0}
   .gsiFoot{padding:10px;background:var(--panel);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   #gsiNote{flex:1;min-width:200px;color:var(--mut);font-size:13px}
+  #gmBox{flex:1;min-height:0;position:relative;background:#ddd}
+  #gmFrame{position:absolute;inset:0;width:100%;height:100%;border:0}
+  #gmGuide{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:4px solid #ff00ff;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,.18);display:none}
+  .gmSeg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .gsiBar .gmSeg button{border:none;border-radius:0;padding:7px 14px}
+  .gsiBar .gmSeg button.on{background:#2f6b3f;color:#fff}
+  .gmHint{color:var(--mut);font-size:13px;margin-left:auto}
+  #gmNote{flex:1;min-width:200px;color:var(--mut);font-size:13px;line-height:1.5}
+  #gmPick{background:#2f6b3f;color:#fff;border:none;border-radius:10px;padding:13px 20px;font-size:16px;font-weight:700}
+  .gmSub{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:13px}
   #gsiTake{background:#2f6b3f;color:#fff;border:none;border-radius:10px;padding:13px 20px;font-size:16px;font-weight:700}
   .shootFab{position:absolute;left:50%;bottom:76px;transform:translateX(-50%);z-index:6;background:#2f6b3f;color:#fff;border:none;border-radius:999px;padding:13px 22px;font-size:16px;font-weight:700;box-shadow:0 3px 12px rgba(0,0,0,.35);white-space:nowrap}
   .hint{position:absolute;left:10px;top:10px;background:rgba(14,18,24,.5);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
@@ -520,12 +530,8 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
         <div id="mapPickOpts" class="subopts" style="display:none">
           <button class="btn" id="gsiStdBtn">国土地理院の地図<small>その場で切り出し・縮尺は自動</small></button>
           <button class="btn" id="gsiPhotoBtn">国土地理院の航空写真<small>その場で切り出し・縮尺は自動</small></button>
-          <button class="btn" id="gmapShotBtn">Googleマップのスクショを取り込む<small>スクショを選んだあと、縮尺合わせをします</small></button>
-          <div id="gmapOpts" class="subopts" style="display:none">
-            <button class="btn ghost" id="gmapOpenBtn">① Googleマップで公園を開く<small>公園名でさがします。画面いっぱいに出してスクショ</small></button>
-            <button class="btn ghost" id="gmapFileBtn">② スクショを選ぶ<small>写真（カメラロール）から</small></button>
-            <input type="file" id="gmapFile" accept="image/*" hidden>
-          </div>
+          <button class="btn" id="gmapShotBtn">Googleマップのスクショを取り込む<small>公園の地図を出す → スクショ → 選ぶ。あとで縮尺合わせ</small></button>
+          <input type="file" id="gmapFile" accept="image/*" hidden>
         </div>
         <div class="mini">
           <button id="zoomIn">＋拡大</button><button id="zoomOut">－縮小</button><button id="fit">全体表示</button>
@@ -658,7 +664,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <button class="btn" id="cloudSave">☁️ クラウドに保存<small>みんなの共有（Googleドライブ）へ。設定は要りません</small></button>
       <button class="btn ghost" id="cloudOpen">☁️ クラウドから開く<small>みんなが保存した公園の一覧から選びます</small></button>
       <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
-      <button class="btn ghost" id="rpMapBtn">🖼 履行場所の図をえらぶ<small>Googleマップのスクショ（枠に合わせて自動で収めます）</small></button>
+      <button class="btn ghost" id="rpMapBtn">🖼 履行場所の図をえらぶ<small>公園の地図を出す → スクショ → 選ぶ（枠に合わせて自動で収めます）</small></button>
       <input type="file" id="rpMapFile" accept="image/*" hidden>
       <button class="btn" id="rpXlsx">📄 報告書のExcelを書き出す<small>報告書・配置図・求積図をまとめて1つのブックに</small></button>
       <button class="btn ghost" id="cfgBtn">⚙ 施工条件・報告書の設定<small>委託・実施日・担当者・年度・契約番号など</small></button>
@@ -670,7 +676,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
         <input type="file" id="jsonFile" accept="application/json" hidden>
         <button class="btn ghost" id="printPdf">🖨 印刷／PDFで保存<small>社内の確認用：地図＋集計を1枚に</small></button>
         <button class="btn ghost" id="exportPng">注記図を画像で書き出す</button>
-        <button class="btn ghost" id="openMap">📍 位置図用にGoogleマップを開く<small>スクショして「履行場所の図」に使います</small></button>
+        <button class="btn ghost" id="openMap">📍 位置図用にGoogleマップを開く<small>「履行場所の図をえらぶ」と同じ画面です</small></button>
         <button class="btn ghost danger" id="clearAll">全消去</button>
       </div>
     </div>
@@ -778,6 +784,13 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
   <div class="gsiBar"><input id="gsiQ" placeholder="公園名・住所でさがす"><button id="gsiGo">さがす</button><button id="gsiHereBtn">📍現在地</button></div>
   <div id="gsiMapBox"></div>
   <div class="gsiFoot"><div id="gsiNote">公園が画面に入るように動かして、「この範囲を図面にする」を押してください</div><button id="gsiTake">この範囲を図面にする</button></div>
+</div>
+<div class="gsiModal" id="gmModal">
+  <div class="gsiBar"><button id="gmBack">‹ 戻る</button><b id="gmTitle">Googleマップでスクショ</b></div>
+  <div class="gsiBar"><input id="gmQ" placeholder="公園名・住所でさがす"><button id="gmGo">さがす</button></div>
+  <div class="gsiBar" style="padding-top:0"><span class="gmSeg"><button id="gmTypeM" class="on">地図</button><button id="gmTypeK">航空写真</button></span><span class="gmHint">ピンクの枠の中だけが使われます</span></div>
+  <div id="gmBox"><iframe id="gmFrame" title="Googleマップ" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe><div id="gmGuide"></div></div>
+  <div class="gsiFoot"><div id="gmNote"></div><button id="gmPick">② 撮ったスクショを選ぶ</button><button id="gmApp" class="gmSub">Googleマップのアプリで開く</button></div>
 </div>
 <div class="modal" id="modal">
   <div class="card">
@@ -4211,11 +4224,72 @@ $('saveJson').onclick=()=>{
   const base=(order?order+'_':'')+(data.park);
   dl(JSON.stringify(data),`${base}.json`,'application/json');
 };
-$('openMap').onclick=()=>{
-  const q=($('parkName').value||'').trim();
-  if(!q){alert('先に公園名を入力してください。');return;}
-  window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q),'_blank');
-};
+/* ---------- Googleマップでスクショ：公園名でさがした地図をアプリの中に出し、その場でスクショ → 選ぶ ----------
+   for：'plan'＝図面にする（gmapFile）／'rp'＝履行場所の図（rpMapFile） */
+let gmFor='plan', gmType='m';
+function gmQuery(){ const pk=($('parkName').value||'').trim(), ad=($('rpAddr').value||'').trim(); return [ad,pk].filter(Boolean).join(' '); }
+function gmLoad(){
+  const q=($('gmQ').value||'').trim();
+  if(!q){ $('gmFrame').removeAttribute('src'); $('gmNote').textContent='公園名か住所を入れて「さがす」を押してください'; return; }
+  $('gmFrame').src='https://maps.google.com/maps?q='+encodeURIComponent(q)+'&t='+(gmType==='k'?'k':'m')+'&z=17&hl=ja&output=embed';
+  gmNoteSet();
+}
+function gmNoteSet(){
+  const ios=/iP(hone|ad|od)|Macintosh/.test(navigator.userAgent)&&'ontouchend' in document;
+  const how=ios?'電源ボタン＋音量を上げるボタンを同時に押す':'電源ボタン＋音量を下げるボタンを同時に押す';
+  $('gmNote').innerHTML=(gmFor==='rp'?'位置が分かるように、公園と周りの道路が<b>ピンクの枠</b>に入るよう地図を動かして（2本指で拡大・縮小）':'公園が<b>ピンクの枠</b>いっぱいに入るよう地図を動かして（2本指で拡大・縮小）')+
+    '、<b>スクショ</b>を撮ってください（'+how+'）。撮ったら「② 撮ったスクショを選ぶ」。';
+}
+function gmGuideFit(){
+  const g=$('gmGuide'), b=$('gmBox');
+  if(gmFor!=='rp'){ g.style.width=(b.clientWidth-24)+'px'; g.style.height=(b.clientHeight-24)+'px'; g.style.display='block'; return; }
+  const W=b.clientWidth*0.9, H=b.clientHeight*0.85, r=RP_BOX_W/RP_BOX_H;
+  const w=Math.min(W,H*r); g.style.width=w+'px'; g.style.height=(w/r)+'px'; g.style.display='block';
+}
+/* スクショからピンクの枠の内側だけを切り出す（見つからなければ null＝そのまま使う） */
+function gmCropShot(file){
+  return new Promise(res=>{
+    const url=URL.createObjectURL(file), im=new Image();
+    im.onload=()=>{
+      try{
+        const W=im.naturalWidth, H=im.naturalHeight, c=document.createElement('canvas'); c.width=W; c.height=H;
+        const g=c.getContext('2d'); g.drawImage(im,0,0); const d=g.getImageData(0,0,W,H).data;
+        const isPk=i=>d[i]>190&&d[i+1]<90&&d[i+2]>190;
+        const rows=[], cols=new Array(W).fill(0);
+        for(let y=0;y<H;y++){ let n=0; for(let x=0;x<W;x++){ if(isPk((y*W+x)*4)){ n++; cols[x]++; } } rows.push(n); }
+        const ry=[], cx=[]; rows.forEach((n,y)=>{ if(n>W*0.3) ry.push(y); }); cols.forEach((n,x)=>{ if(n>H*0.2) cx.push(x); });
+        if(ry.length<2||cx.length<2) throw 0;
+        const run=a=>{ let k=1; while(k<a.length&&a[k]===a[k-1]+1) k++; return k; };   // 枠の線の太さ
+        const top=ry[0]+run(ry), bot=ry[ry.length-1]-run(ry.slice().reverse().map(v=>-v))+1, left=cx[0]+run(cx), right=cx[cx.length-1]-run(cx.slice().reverse().map(v=>-v))+1;
+        const m=2, x0=left+m, y0=top+m, w=right-left-2*m, h=bot-top-2*m;
+        if(w<W*0.2||h<H*0.1) throw 0;
+        const o=document.createElement('canvas'); o.width=w; o.height=h; o.getContext('2d').drawImage(c,x0,y0,w,h,0,0,w,h);
+        o.toBlob(b=>{ URL.revokeObjectURL(url); res(b?new File([b],'gmap.png',{type:'image/png'}):null); },'image/png');
+      }catch(e){ URL.revokeObjectURL(url); res(null); }
+    };
+    im.onerror=()=>{ URL.revokeObjectURL(url); res(null); };
+    im.src=url;
+  });
+}
+function openGmapShot(forWhat){
+  gmFor=forWhat;
+  $('gmTitle').textContent=forWhat==='rp'?'履行場所の図：Googleマップでスクショ':'図面：Googleマップでスクショ';
+  $('gmQ').value=gmQuery();
+  $('gmModal').classList.add('on');
+  history.pushState({gm:1},'');
+  gmLoad(); setTimeout(gmGuideFit,50);
+}
+function closeGmapShot(fromPop){ if(!$('gmModal').classList.contains('on'))return; $('gmModal').classList.remove('on'); if(!fromPop&&history.state&&history.state.gm) history.back(); }
+window.addEventListener('popstate',()=>closeGmapShot(true));
+window.addEventListener('resize',()=>{ if($('gmModal').classList.contains('on')) gmGuideFit(); });
+$('gmBack').onclick=()=>closeGmapShot();
+$('gmGo').onclick=gmLoad;
+$('gmQ').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.isComposing){ e.preventDefault(); gmLoad(); } });
+$('gmTypeM').onclick=()=>{ gmType='m'; $('gmTypeM').classList.add('on'); $('gmTypeK').classList.remove('on'); gmLoad(); };
+$('gmTypeK').onclick=()=>{ gmType='k'; $('gmTypeK').classList.add('on'); $('gmTypeM').classList.remove('on'); gmLoad(); };
+$('gmPick').onclick=()=>{ $(gmFor==='rp'?'rpMapFile':'gmapFile').click(); };
+$('gmApp').onclick=()=>{ const q=($('gmQ').value||'').trim(); window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q||'公園'),'_blank'); };
+$('openMap').onclick=()=>openGmapShot('rp');
 /* ---------- 図面を「地図から選ぶ」：国土地理院の地図・航空写真をその場で切り出す／Googleマップのスクショ ----------
    国土地理院から切り出した図面は、縮尺と緯度経度が分かっているので、縮尺合わせがいらない。
    工事写真アプリの地図にも、そのまま木の位置が出せる（state.geo） */
@@ -4226,10 +4300,8 @@ function loadJs(src){ return new Promise((res,rej)=>{ if(window.L&&window.L.map)
 $('mapPickBtn').onclick=()=>{ const o=$('mapPickOpts'); o.style.display=o.style.display==='none'?'':'none'; $('mapPickBtn').querySelector('.chv').textContent=o.style.display==='none'?'▸':'▾'; };
 $('gsiStdBtn').onclick=()=>openGsiPicker('std');
 $('gsiPhotoBtn').onclick=()=>openGsiPicker('photo');
-$('gmapShotBtn').onclick=()=>{ const o=$('gmapOpts'); o.style.display=o.style.display==='none'?'':'none'; };
-$('gmapOpenBtn').onclick=()=>{ const q=($('parkName').value||'').trim(); window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q||'公園'),'_blank'); };
-$('gmapFileBtn').onclick=()=>{ $('gmapFile').click(); };
-$('gmapFile').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if(!f)return; if(!confirmReplaceImg())return; state.geo=null; openMapFile(f);
+$('gmapShotBtn').onclick=()=>openGmapShot('plan');
+$('gmapFile').onchange=async e=>{ let f=e.target.files[0]; e.target.value=''; if(!f)return; if(!confirmReplaceImg())return; const cut=await gmCropShot(f); if(cut) f=cut; closeGmapShot(); state.geo=null; openMapFile(f);
   setTimeout(()=>alert('Googleマップのスクショを図面にしました。\n\n面積を出すには「① 縮尺合わせ」で、スクショの縮尺（左下の目盛りなど）の両端をタップして長さを入れてください。'),400); };
 function confirmReplaceImg(){ return !(state.img&&state.features.length) || confirm('いまの図面を入れ替えます。描いた図形はそのままの位置に残ります（ずれることがあります）。よろしいですか？'); }
 async function openGsiPicker(kind){
@@ -5782,9 +5854,9 @@ function rpFitMap(dataURL){
     im.src=dataURL;
   });
 }
-$('rpMapBtn').onclick=()=>$('rpMapFile').click();
-$('rpMapFile').onchange=e=>{
-  const f=e.target.files[0]; if(!f)return;
+$('rpMapBtn').onclick=()=>openGmapShot('rp');
+$('rpMapFile').onchange=async e=>{
+  let f=e.target.files[0]; if(!f)return; e.target.value=''; const cut=await gmCropShot(f); if(cut) f=cut; closeGmapShot();
   const r=new FileReader();
   r.onload=()=>{ state.mapImg=r.result;
     $('rpMapBtn').firstChild.textContent='🖼 履行場所の図：選びました（変えるならもう一度）'; };
