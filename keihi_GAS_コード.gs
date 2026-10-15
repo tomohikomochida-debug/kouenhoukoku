@@ -9,7 +9,7 @@
  * 返り値はすべて { ok:true/false, error?:"..." } 形式（日報アプリと同じ作法）
  ****************************************************************/
 
-var GEMINI_MODEL = 'gemini-2.5-flash';
+var GEMINI_MODEL = 'gemini-3.8-flash';   // Gemini 2.5 は新しい利用者に出なくなったため 3.8 Flash に変更（2026-10-15）
 
 var SHEETS = {
   rec: { name: '明細', head: ['id', 'ym', 'date', 'category', 'store', 'items', 'amount', 'pay', 'who', 'settled', 'createdAt', 'author'] },
