@@ -81,6 +81,7 @@ nav.tabs .badge{position:absolute;top:3px;left:calc(50% + 8px);background:var(--
 .wd{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.wd select{width:auto;flex:1;min-width:64px;padding:8px 4px}.wd .wdx{font-size:12px;color:var(--bark);min-width:44px}.wd .wdc{border:0;background:none;font-size:16px;color:var(--bark);cursor:pointer;padding:4px}
 .ai input,.ai select,input.ai,.wd.ai select{background:#FFF7D6;border-color:#E8C95A}
 .cropw{width:100%;text-align:center;touch-action:none}.cropw canvas{max-width:100%;touch-action:none;border-radius:6px;background:#222}
+.othrow{display:flex;gap:8px;align-items:flex-start;margin-top:8px;padding-top:8px;border-top:1px dashed #CFE0D3}.othrow>input[type=checkbox]{width:22px;height:22px;margin-top:8px;flex:none}.othrow .othname{padding:6px 8px;font-size:14px}
 .readbig{display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px;font-size:16px}.readbig small{font-weight:400;color:var(--bark);font-size:12px}.btn.primary.readbig small{color:rgba(255,255,255,.88)}
 .th{position:relative;width:110px;height:78px;border-radius:8px;overflow:hidden;background:var(--leaf-soft);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--bark);border:1px solid var(--line);cursor:pointer}
 .th img{width:100%;height:100%;object-fit:cover;display:block}
@@ -391,7 +392,7 @@ function renderPerson(staffId, mine) {
     <p class="hint" style="margin-top:0">修了証や免許証の写真を撮って登録してください。見られるのは、あなたと親方・事務担当だけです。</p>
     ${!lic ? '<div class="note"><b>運転免許証がまだ登録されていません</b>表と裏の写真を撮ってください。</div>' : ''}</div>`;
   else h += `<div class="card"><h2>${esc(nameOf(staffId))}</h2><p class="hint" style="margin:0">${list.length}件　${list.filter(it => it.status !== '確認済').length ? `確認待ち ${list.filter(it => it.status !== '確認済').length}件` : ''}</p></div>`;
-  h += `<button class="btn primary block readbig" id="quickRead" style="margin-bottom:8px">📷 免許証・修了証を撮って登録<small>撮る → 切り取る → AIが読み取って仕分け → 足りない所だけ手で</small></button>`;
+  h += `<button class="btn primary block readbig" id="quickRead" style="margin-bottom:8px">📷 免許証・修了証を撮って登録<small>表を撮る → 裏も撮る（あれば） → AIが表と裏を合わせて読む → 足りない所だけ手で</small></button>`;
   h += `<div class="row2" style="margin-bottom:12px"><button class="btn tape" data-add="運転免許">🪪 運転免許証を登録</button><button class="btn primary" data-add="">＋ 資格を登録</button></div>`;
   h += byKind.length ? byKind.map(([k, l]) => `<h3>${esc(k)}（${l.length}）</h3>${l.map(itemCard).join('')}`).join('') : '<div class="empty">まだ登録がありません</div>';
   $('#main').innerHTML = h;
@@ -476,9 +477,17 @@ function renderEdit(v) {
   const sides = lic ? ['表', '裏'] : ['修了証', '裏・続き'];
   $('#main').innerHTML = `<div class="card">
     ${S.admin && String(e.staffId) !== String(S.me.id) ? `<div class="note green" style="margin-top:0"><b>${esc(nameOf(e.staffId))}さんの分</b>親方・事務担当が代わりに登録しています</div>` : ''}
-    <button type="button" class="btn primary block readbig" id="rdCam">📷 撮って自動で読み取る<small>撮る → 必要な所だけ切り取る → AIが名前・番号・日付を入れて仕分け → 足りない所だけ手で</small></button>
+    <button type="button" class="btn primary block readbig" id="rdCam">📷 撮って自動で読み取る<small>表を撮る → 裏も撮る（あれば） → AIが表と裏を合わせて読んで仕分け → 足りない所だけ手で</small></button>
     <button type="button" class="btn sm block" id="rdLib" style="margin-top:6px">🖼 撮ってある写真から読み取る</button>
     <div id="rdMsg">${e._ai && e._ai.length ? `<div class="note green"><b>AIが読み取って入れました（黄色の欄）</b>写真と見比べて、違う所は直してください。空いている所は手で入れてください。</div>` : ''}${e._readErr ? `<div class="note red"><b>読み取れませんでした</b>${esc(e._readErr)}（写真は入っています。手で入れてください）</div>` : ''}
+      ${e._pending ? `<div class="note"><b>📷 撮った写真はまだ読み取っていません</b>裏に資格・講習の種類が書いてあるカードは、裏も撮ってから読み取ってください。
+        <div class="row2" style="margin-top:8px"><button type="button" class="btn sm" id="pdBack">📷 裏を撮る</button><button type="button" class="btn sm primary" id="pdRead">🤖 読み取る</button></div></div>` : ''}
+      ${(e._others || []).length ? `<div class="note green"><b>このカードには、ほかにも${e._others.length}件載っています</b>チェックしたものは、「保存する」で<b>同じ写真を付けて一緒に登録</b>します（全部で${1 + e._others.filter(o => !o.off).length}件）。名前が違っていたら、ここで直せます。
+        ${e._others.map((o, i) => `<div class="othrow"><input type="checkbox" data-oth="${i}"${o.off ? '' : ' checked'} aria-label="一緒に登録する"><div style="flex:1;min-width:0"><input type="text" class="othname" data-othn="${i}" list="dlCatAll" value="${esc(o.name)}">
+          <div class="hint" style="margin:2px 0 0">${[o.issued ? '修了 ' + wj(o.issued) : '', o.number ? '番号 ' + o.number : '', o.issuer].filter(Boolean).map(esc).join('　')}${o.dup ? '　<b style="color:var(--danger);display:inline">もう登録してあります</b>' : ''}</div></div>
+          <button type="button" class="btn sm" data-othup="${i}" title="この資格を上の欄に入れる">上に入れる</button></div>`).join('')}
+        <datalist id="dlCatAll">${allNames().map(n => `<option value="${esc(n)}">`).join('')}</datalist></div>` : ''}
+      ${e._new && e.name && live().some(x => String(x.staffId) === String(e.staffId) && catKey(x.name) === catKey(e.name)) ? `<div class="note red"><b>「${esc(e.name)}」はもう登録してあります</b>二重にならないか確かめてください（違う資格を「上に入れる」こともできます）。</div>` : ''}
       ${holderNg ? `<div class="note red"><b>名前が違うかもしれません</b>写真の名前は「${esc(e._holder)}」、登録する人は「${esc(nameOf(e.staffId))}」です。人違いでないか確かめてください。</div>` : ''}</div>
     <label class="lbl">区分<span class="req">必須</span></label><div class="chips">${KINDS.map(k => `<button type="button" class="chip${e.kind === k ? ' on' : ''}" data-kind="${esc(k)}">${esc(k)}</button>`).join('')}</div>
     <label class="lbl">資格・免許の名前<span class="req">必須</span></label><input type="text" id="fName"${A('name')} list="dlCat" value="${esc(e.name)}" placeholder="${lic ? '自動車運転免許証' : '一覧から選ぶか、手で入れる'}"><datalist id="dlCat">${opts}</datalist>
@@ -492,6 +501,7 @@ function renderEdit(v) {
     <label class="lbl">写真</label><p class="hint" style="margin-top:0">${lic ? '免許証の表と裏を、文字が読めるように明るい所で撮ってください' : '修了証（カード・修了証書）を撮ってください'}</p>
     <div class="thumbs" id="edThumbs">${e.photos.map((p, i) => `<div class="th" data-ph="${i}"><span>…</span><span class="lab">${esc(p.side || '')}</span><button type="button" class="x" data-px="${i}">×</button></div>`).join('')}</div>
     ${sides.map(s => `<div class="row2" style="margin-top:6px"><button type="button" class="btn sm" data-cam="${esc(s)}">📷 ${esc(s)}を撮る</button><button type="button" class="btn sm" data-lib="${esc(s)}">🖼 ${esc(s)}を選ぶ</button></div>`).join('')}
+    ${e.photos.length && !e._pending ? `<button type="button" class="btn sm block" id="rdAll" style="margin-top:6px">🤖 入っている写真（${Math.min(e.photos.length, 3)}枚）を表・裏まとめて読み取る</button>` : ''}
     <div class="row2" style="margin-top:16px"><button type="button" class="btn" id="edCancel">やめる</button><button type="button" class="btn primary" id="edSave">保存する</button></div>
   </div>`;
   loadThumbs(e, '#edThumbs [data-ph]');
@@ -499,6 +509,12 @@ function renderEdit(v) {
   bindWd((id, val, clr) => { keep(); if (clr) { e[id === 'fIssued' ? 'issued' : 'expires'] = ''; renderEdit(v); } });
   $('#rdCam').onclick = () => { keep(); pickMode = 'read'; const el = $('#fileCam'); el.value = ''; el.click(); };
   $('#rdLib').onclick = () => { keep(); pickMode = 'read'; const el = $('#fileLib'); el.value = ''; el.click(); };
+  if ($('#pdBack')) $('#pdBack').onclick = () => { keep(); askBack(); };
+  if ($('#pdRead')) $('#pdRead').onclick = () => { keep(); readPhotos(); };
+  if ($('#rdAll')) $('#rdAll').onclick = () => { keep(); readPhotos(); };
+  document.querySelectorAll('[data-oth]').forEach(c => c.onchange = () => { e._others[+c.dataset.oth].off = !c.checked; keep(); renderEdit(v); });
+  document.querySelectorAll('[data-othn]').forEach(c => c.oninput = () => { e._others[+c.dataset.othn].name = c.value.trim(); });
+  document.querySelectorAll('[data-othup]').forEach(b => b.onclick = ev => { ev.preventDefault(); keep(); swapMain(+b.dataset.othup); });
   const keep = () => { e.name = $('#fName').value.trim(); if ($('#fGrade')) e.grade = $('#fGrade').value.trim(); e.number = $('#fNumber').value.trim(); e.issued = $('#fIssued').value; e.expires = $('#fExpires').value; e.issuer = $('#fIssuer').value.trim(); e.memo = $('#fMemo').value.trim(); };
   document.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => { keep(); const k = b.dataset.kind; if (k === '運転免許' && !e.name) e.name = '自動車運転免許証'; if (k === '運転免許' && !e.issuer) e.issuer = '神奈川県公安委員会'; e.kind = k; renderEdit(v); });
   document.querySelectorAll('[data-lt]').forEach(b => b.onclick = () => { keep(); const a = (e.grade || '').split('・').filter(Boolean), t = b.dataset.lt, i = a.indexOf(t); if (i >= 0) a.splice(i, 1); else a.push(t); e.grade = LICENSE_TYPES.filter(x => a.includes(x)).join('・'); renderEdit(v); });
@@ -506,6 +522,7 @@ function renderEdit(v) {
   document.querySelectorAll('[data-px]').forEach(b => b.onclick = ev => { ev.stopPropagation(); keep(); const p = e.photos.splice(+b.dataset.px, 1)[0]; if (p && e._uploaded.includes(p.photoId)) api('photoDel', { photoId: p.photoId }).catch(() => {}); renderEdit(v); toast('写真を外しました（保存すると反映）'); });
   $('#edCancel').onclick = () => {
     if (e._uploaded.length) e._uploaded.forEach(id => api('photoDel', { photoId: id }).catch(() => {}));   // やめたら、撮ったばかりの写真も捨てる
+    e.photos.forEach(p => { if (p._up) p._up.then(() => api('photoDel', { photoId: p.photoId })).catch(() => {}); });   // まだ送っている途中のものも
     ED = null; back();
   };
   $('#edSave').onclick = async () => {
@@ -515,11 +532,24 @@ function renderEdit(v) {
     if (!e.photos.length && !confirm('写真がありません。このまま保存しますか？（あとから足せます）')) return;
     const b = $('#edSave'); b.disabled = true; b.innerHTML = '<span class="loading"></span> 保存しています';
     try {
+      if (!(await photosReady())) { b.disabled = false; b.textContent = '保存する'; renderEdit(v); return; }
+      if (e._cardNo && !e.memo.includes(e._cardNo)) e.memo = [e.memo, '修了証明書番号 ' + e._cardNo].filter(Boolean).join('\n');   // まとめたカードの番号はメモに
       const item = { id: e.id, staffId: e.staffId, kind: e.kind, name: e.name, number: e.number, grade: e.grade, issued: e.issued, expires: e.expires, issuer: e.issuer, memo: e.memo, photos: e.photos.map(p => ({ photoId: p.photoId, side: p.side })) };
       const j = await api('save', { item });
       const i = S.items.findIndex(x => x.id === e.id); if (i >= 0) S.items[i] = j.item; else S.items.push(j.item);
-      ED = null; toast(S.admin ? '保存しました' : '保存しました。親方・事務担当が確認します');
-      history.replaceState({ v: { name: 'item', id: e.id } }, ''); S.view = { name: 'item', id: e.id }; render();
+      // 同じカードに載っているほかの資格も、同じ写真を付けて一緒に登録
+      const more = (e._others || []).filter(o => !o.off && o.name), fail = [];
+      for (let k = 0; k < more.length; k++) {
+        const o = more[k]; b.innerHTML = `<span class="loading"></span> 一緒に登録しています（${k + 1}/${more.length}）`;
+        const it2 = { id: newId(), staffId: e.staffId, kind: o.kind || e.kind, name: o.name, number: o.number || '', grade: o.grade || '', issued: o.issued || '', expires: o.expires || '', issuer: o.issuer || '',
+          memo: e._cardNo ? '修了証明書番号 ' + e._cardNo : '', photos: item.photos };
+        try { const j2 = await api('save', { item: it2 }); S.items.push(j2.item); } catch (err) { fail.push(o.name); }
+      }
+      ED = null;
+      history.replaceState({ v: { name: 'item', id: e.id } }, ''); S.view = { name: 'item', id: e.id };
+      if (fail.length) { toast('登録できなかったもの：' + fail.join('、') + '（もう一度、手で登録してください）', 6000); render(); return; }
+      if (more.length) { toast(`${1 + more.length}件まとめて登録しました${S.admin ? '' : '。親方・事務担当が確認します'}`, 4000); render(); return; }
+      toast(S.admin ? '保存しました' : '保存しました。親方・事務担当が確認します'); render();
     } catch (err) { toast(err.message, 4500); b.disabled = false; b.textContent = '保存する'; }
   };
 }
@@ -542,29 +572,91 @@ async function uploadPhoto(blob, side) {
   return { photoId, side, local: URL.createObjectURL(blob) };
 }
 const rerender = () => { if (S.view && S.view.name === 'edit') renderEdit(S.view); };
-/* 読み取った中身を入れる：空いている欄（と、はじめから入っている決まり文句の欄）だけ。もう入れた所は変えない */
-function applyRead(d) {
-  const e = ED, lic0 = e.kind === '運転免許', defs = { name: lic0 ? '自動車運転免許証' : '', issuer: lic0 ? '神奈川県公安委員会' : '' }, got = new Set(e._ai || []);
-  if (d.kind && (!e.kind || (e._new && !e.name))) { e.kind = d.kind; got.add('kind'); }
+/* 読み取った中身を入れる：空いている欄（と、はじめから入っている決まり文句の欄）だけ。もう入れた所は変えない（force：「上に入れる」を押したときは入れ替える） */
+function applyRead(d, force) {
+  const e = ED, lic0 = e.kind === '運転免許', defs = { name: lic0 ? '自動車運転免許証' : '', issuer: lic0 ? '神奈川県公安委員会' : '' }, got = new Set(force ? [] : (e._ai || []));
+  if (d.kind && (force || !e.kind || (e._new && !e.name))) { e.kind = d.kind; got.add('kind'); }
   if (e.kind === '運転免許') { if (!e.name || e.name !== '自動車運転免許証') { e.name = '自動車運転免許証'; } if (!e.issuer) e.issuer = '神奈川県公安委員会'; }
-  ['name', 'number', 'grade', 'issued', 'expires', 'issuer'].forEach(k => { if (d[k] && (!e[k] || e[k] === defs[k] || got.has(k))) { e[k] = d[k]; got.add(k); } });
+  ['name', 'number', 'grade', 'issued', 'expires', 'issuer'].forEach(k => { if (force ? (d[k] || k === 'grade' || k === 'expires' || k === 'issued') : (d[k] && (!e[k] || e[k] === defs[k] || got.has(k)))) { e[k] = d[k] || ''; if (d[k]) got.add(k); } });
   if (e.kind === '運転免許' && d.grade) e.grade = LICENSE_TYPES.filter(t => d.grade.split(/[・、,\s]+/).includes(t)).join('・') || e.grade;
   if (d.holder) e._holder = d.holder;
   e._ai = [...got];
 }
-async function readFlow(blob) {
+/* 「上に入れる」：ほかに載っていた資格と、いま入っている資格を入れ替える */
+function swapMain(i) {
+  const e = ED, o = e._others[i]; if (!o) return;
+  const cur = { kind: e.kind, name: e.name, number: e.number, grade: e.grade, issued: e.issued, expires: e.expires, issuer: e.issuer, off: false };
+  const before = JSON.parse(JSON.stringify({ kind: e.kind, name: e.name, number: e.number, grade: e.grade, issued: e.issued, expires: e.expires, issuer: e.issuer, _ai: e._ai, _others: e._others }));
+  e._others.splice(i, 1);
+  if (cur.name) e._others.unshift(cur);
+  applyRead(o, true); rerender();
+  toast(`「${o.name}」を上に入れました`, 4000, { label: '元に戻す', fn: () => { Object.assign(ED, before); rerender(); } });
+}
+/* 写真をすぐ入れて、送るのは裏で進める（撮り終わるのを待たせない） */
+function addPhoto(blob, side) {
+  const e = ED, photoId = 'P' + Date.now().toString(36) + rid(), p = { photoId, side, local: URL.createObjectURL(blob), _blob: blob };
+  p._up = blobToB64(blob).then(data => api('photo', { photo: { photoId, itemId: e.id, staffId: e.staffId, side, name: e.name || e.kind }, data }, 120000))
+    .then(() => { e._uploaded.push(photoId); p._up = null; })
+    .catch(err => { p._up = null; p._err = err.message || '送れませんでした'; throw err; });
+  p._up.catch(() => {});
+  e.photos.push(p); return p;
+}
+async function photosReady() {   // 送っている途中の写真を待つ。送れなかった写真は外して知らせる
+  const e = ED; await Promise.all(e.photos.map(p => p._up ? p._up.catch(() => {}) : null));
+  const bad = e.photos.filter(p => p._err); if (!bad.length) return true;
+  e.photos = e.photos.filter(p => !p._err);
+  toast('送れなかった写真を外しました。もう一度撮ってください（' + bad[0]._err + '）', 5000); return false;
+}
+/* 「撮って自動で読み取る」：表を入れたら「裏も撮りますか？」 */
+function askBack() {
+  const e = ED, first = e.photos.find(p => e._pending && e._pending.includes(p.photoId));
+  openModal(`<h3>📷 裏も撮りますか？</h3>
+    <p class="hint" style="margin-top:0">裏に<b>資格・講習の種類や区分</b>が書いてあるカードは、裏も撮ってください。表と裏を合わせてAIが読みます。</p>
+    ${first ? `<div style="text-align:center;margin:6px 0 10px"><img src="${first.local}" alt="" style="max-width:70%;max-height:140px;border-radius:6px;border:1px solid var(--line)"><div class="hint">撮った表</div></div>` : ''}
+    <button type="button" class="btn primary block" id="abCam">📷 裏を撮る</button>
+    <button type="button" class="btn block" id="abLib" style="margin-top:6px">🖼 裏を撮ってある写真から選ぶ</button>
+    <button type="button" class="btn block" id="abNone" style="margin-top:6px">裏には何もない・このまま読み取る</button>
+    <div class="row2" style="margin-top:12px"><button type="button" class="btn sm" id="abRedo">↩ 表を撮り直す</button><button type="button" class="btn sm" id="abLater">あとで（閉じる）</button></div>`);
+  $('#modal').dataset.lock = '1';
+  const shut = () => { $('#modal').dataset.lock = ''; closeModal(); };
+  $('#abCam').onclick = () => { shut(); pickMode = 'back'; const el = $('#fileCam'); el.value = ''; el.click(); };
+  $('#abLib').onclick = () => { shut(); pickMode = 'back'; const el = $('#fileLib'); el.value = ''; el.click(); };
+  $('#abNone').onclick = () => { shut(); readPhotos(); };
+  $('#abLater').onclick = () => { shut(); rerender(); };   // 撮った写真は入ったまま。「裏を撮る」「読み取る」は登録画面に出る
+  $('#abRedo').onclick = () => {   // 撮った表を捨てて、撮り直す
+    shut(); dropPending(); rerender(); pickMode = 'read'; const el = $('#fileCam'); el.value = ''; el.click();
+  };
+}
+function dropPending() {
+  const e = ED, ids = e._pending || [];
+  e.photos = e.photos.filter(p => { if (!ids.includes(p.photoId)) return true; if (p._up) p._up.then(() => api('photoDel', { photoId: p.photoId })).catch(() => {}); else if (e._uploaded.includes(p.photoId)) api('photoDel', { photoId: p.photoId }).catch(() => {}); return false; });
+  e._pending = null;
+}
+/* 入っている写真（最大3枚：表・裏）をまとめてAIに読ませる */
+async function readPhotos() {
   const e = ED; e._readErr = '';
-  openModal('<h3>🤖 読み取っています…</h3><p class="hint">切り取った写真をAI（Claude）が読んでいます。10〜20秒ほどかかります。住所・生年月日は読みません。</p>'); $('#modal').dataset.lock = '1';
-  let d = null;
-  try { const j = await api('read', { data: await blobToB64(blob), names: allNames() }, 90000); d = j.data || {}; applyRead(d); }
-  catch (err) { e._readErr = err.message; }
-  $('#modal').dataset.lock = ''; closeModal();
+  const ps = (e._pending ? e.photos.filter(p => e._pending.includes(p.photoId)) : e.photos).slice(0, 3);
+  if (!ps.length) { toast('写真がありません'); return; }
+  openModal(`<h3>🤖 読み取っています…</h3><p class="hint">${ps.length > 1 ? `表と裏の${ps.length}枚を合わせて` : '切り取った写真を'}AI（Claude）が読んでいます。20〜30秒ほどかかります。住所・生年月日は読みません。</p>`); $('#modal').dataset.lock = '1';
   try {
-    const side = (d && d.side) || (e.kind === '運転免許' ? (e.photos.some(p => p.side === '表') ? '裏' : '表') : (e.photos.some(p => p.side === '修了証') ? '裏・続き' : '修了証'));
-    e.photos.push(await uploadPhoto(blob, side));
-  } catch (err) { toast('写真を送れませんでした：' + err.message, 4500); }
+    const images = await Promise.all(ps.map(async p => p._blob ? blobToB64(p._blob) : blobToB64(await (await fetch(await photoUrl(p))).blob())));
+    const j = await api('read', { images, names: allNames() }, 120000), d = j.data || {};
+    const items = (d.items && d.items.length) ? d.items : (d.name ? [d] : []);
+    const want = e.name && !(e.kind === '運転免許' && e.name === '自動車運転免許証') ? catKey(e.name) : '';
+    const had = n => live().some(x => String(x.staffId) === String(e.staffId) && catKey(x.name) === catKey(n));
+    let main = items.find(x => want && catKey(x.name) === want) || (want && items.length ? null : (items.find(x => !had(x.name)) || items[0]));   // まだ登録していないものを上に
+    applyRead(Object.assign({ holder: d.holder }, main || { number: d.number, issuer: d.issuer }));
+    const have = n => live().some(x => String(x.staffId) === String(e.staffId) && catKey(x.name) === catKey(n));
+    e._others = items.filter(x => x !== main).map(x => Object.assign({}, x, { dup: have(x.name), off: !main || have(x.name) }));   // もう登録してある資格は、最初からチェックを外す
+    e._cardNo = d.cardNumber || '';   // 名前を決めて開いたのに見つからないときは、チェックを外して並べる（「上に入れる」で選べる）
+    const lic = e.kind === '運転免許';
+    ps.forEach((p, i) => { const sd = (d.sides || [])[i] || (i === 0 ? '表' : '裏'); p.side = sd === '裏' ? (lic ? '裏' : '裏・続き') : (lic ? '表' : '修了証'); });
+    e.photos.sort((a, b) => (/裏/.test(a.side) ? 1 : 0) - (/裏/.test(b.side) ? 1 : 0));   // 表を先に
+    e._pending = null;
+  } catch (err) { e._readErr = err.message; }
+  $('#modal').dataset.lock = ''; closeModal();
   rerender();
-  toast(e._readErr ? '読み取れませんでした。手で入れてください' : '読み取りました。黄色の欄を確かめてください', 3500);
+  toast(e._readErr ? '読み取れませんでした。手で入れてください' : (e._others || []).length ? '読み取りました。このカードにはほかの資格も載っています' : '読み取りました。黄色の欄を確かめてください', 3500);
 }
 async function recrop(i) {   // 入っている写真を切り取り直す（新しい写真に入れ替え。保存するまで前の写真は残る）
   const e = ED, p = e.photos[i]; if (!p) return;
@@ -579,12 +671,16 @@ async function recrop(i) {   // 入っている写真を切り取り直す（新
   const f = (ev.target.files || [])[0]; if (!f || !ED) return;
   try {
     const big = await resizeImage(f, 2600, 0.9);
-    const blob = await openCrop(big, pickMode === 'read' ? '必要な所だけに切り取る（このあとAIが読みます）' : (pickSide || '写真') + 'を切り取る');
-    if (!blob) return;
-    if (pickMode === 'read') return readFlow(blob);
-    toast('写真を送っています…', 20000);
-    ED.photos.push(await uploadPhoto(blob, pickSide));
-    toast('写真を入れました'); rerender();
+    const blob = await openCrop(big, pickMode === 'read' ? '表を切り取る（このあと裏も撮れます）' : pickMode === 'back' ? '裏を切り取る（このあと表と合わせてAIが読みます）' : (pickSide || '写真') + 'を切り取る');
+    if (!blob) { if (pickMode === 'back' && ED._pending) askBack(); return; }   // 裏の切り取りをやめたら「裏も撮りますか？」に戻る
+    if (pickMode === 'read') {   // 1枚目（表）：入れて「裏も撮りますか？」
+      if (ED._pending) dropPending();
+      const ph = addPhoto(blob, ED.kind === '運転免許' ? '表' : '修了証'); ED._pending = [ph.photoId]; rerender(); askBack(); return;
+    }
+    if (pickMode === 'back') {   // 2枚目（裏）：入れて、表と合わせて読む
+      const ph = addPhoto(blob, ED.kind === '運転免許' ? '裏' : '裏・続き'); ED._pending = (ED._pending || []).concat(ph.photoId); return readPhotos();
+    }
+    addPhoto(blob, pickSide); toast('写真を入れました'); rerender();
   } catch (e) { toast('写真を送れませんでした：' + e.message, 4500); }
 }));
 

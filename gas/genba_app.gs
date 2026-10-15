@@ -4492,21 +4492,57 @@ function skCatRename_(b, me) {
   return { ok: true, changed: changed, n: changed.filter(function (c) { return c.item; }).length, kinds: skKinds_(), catalog: skCatalog_() };
 }
 /* ---------- 写真から読み取る（免許証・修了証）。Claude だけに送る。住所・生年月日・本籍は読まない ---------- */
+/* 技能講習修了証明書（まとめたカード）の略称 → 正式名 */
+var SK_ABBR = { '整地': '車両系建設機械（整地・運搬・積込み用及び掘削用）運転技能講習', '基礎': '車両系建設機械（基礎工事用）運転技能講習', '解体': '車両系建設機械（解体用）運転技能講習',
+  '不整': '不整地運搬車運転技能講習', '高所': '高所作業車運転技能講習', 'フォ': 'フォークリフト運転技能講習', 'ショ': 'ショベルローダー等運転技能講習', '玉掛': '玉掛け技能講習',
+  '床ク': '床上操作式クレーン運転技能講習', '小ク': '小型移動式クレーン運転技能講習', 'ガス': 'ガス溶接技能講習', 'コ破': 'コンクリート破砕器作業主任者技能講習',
+  '地山': '地山の掘削作業主任者技能講習', '土止': '土止め支保工作業主任者技能講習', '地土': '地山の掘削及び土止め支保工作業主任者技能講習', 'ず掘': 'ずい道等の掘削等作業主任者技能講習',
+  'ず覆': 'ずい道等の覆工作業主任者技能講習', '型枠': '型枠支保工の組立て等作業主任者技能講習', '足場': '足場の組立て等作業主任者技能講習', '鉄骨': '建築物等の鉄骨の組立て等作業主任者技能講習',
+  'コ解': 'コンクリート造の工作物の解体等作業主任者技能講習', '鋼橋': '鋼橋架設等作業主任者技能講習', 'コ橋': 'コンクリート橋架設等作業主任者技能講習', '採石': '採石のための掘削作業主任者技能講習',
+  '木建': '木造建築物の組立て等作業主任者技能講習', 'はい': 'はい作業主任者技能講習', '船内': '船内荷役作業主任者技能講習', 'ボ取': 'ボイラー取扱技能講習', 'ボ据': 'ボイラー据付け工事作業主任者技能講習',
+  '普圧': '普通第一種圧力容器取扱作業主任者技能講習', '化圧': '化学設備関係第一種圧力容器取扱作業主任者技能講習', '木材': '木材加工用機械作業主任者技能講習', 'プレ': 'プレス機械作業主任者技能講習',
+  '乾燥': '乾燥設備作業主任者技能講習', '酸欠': '酸素欠乏危険作業主任者技能講習', '酸硫': '酸素欠乏・硫化水素危険作業主任者技能講習', '特化': '特定化学物質等作業主任者技能講習',
+  '特四': '特定化学物質及び四アルキル鉛等作業主任者技能講習', '鉛': '鉛作業主任者技能講習', '四鉛': '四アルキル鉛等作業主任者技能講習', '有機': '有機溶剤作業主任者技能講習',
+  '石綿': '石綿作業主任者技能講習', 'ア溶': '金属アーク溶接等作業主任者限定技能講習' };
 function skRead_(b, me) {
-  if (!b.data) return { ok: false, error: '写真がありません' };
+  // 写真は1〜3枚（同じカードの表と裏など）。両方を合わせて読む。裏に資格・講習の種類が書いてあるカードがあるため
+  var imgs = (Array.isArray(b.images) ? b.images : (b.data ? [b.data] : [])).filter(function (d) { return d; }).slice(0, 3);
+  if (!imgs.length) return { ok: false, error: '写真がありません' };
   var kinds = skKinds_(), names = (Array.isArray(b.names) ? b.names : []).slice(0, 300).map(function (n) { return String(n).slice(0, 80); });
+  var LT = ['普通', '準中型（5t限定）', '準中型', '中型（8t限定）', '中型', '大型', '大型特殊', '普通二輪', '大型二輪', '牽引'];
   var prompt = 'これは日本の運転免許証、または技能講習・特別教育・安全衛生教育の修了証、国家資格の免許証・合格証・登録証の写真です（切り抜いてあります）。' +
+    '写真は ' + imgs.length + ' 枚です。' + (imgs.length > 1 ? '同じカード・証書の表と裏（続き）なので、全部を合わせて1枚のカードとして読んでください。裏面に資格・講習の種類、区分、追加で修了した講習、条件が書いてあることがよくあります。' : '') +
+    '【技能講習修了証明書（いくつもの講習を1枚にまとめたカード）】表の「講習の種類」の表で、上下の「有無」の欄に◆・●・○などの印がある略称が、持っている講習です。印のない略称は持っていないので入れない。' +
+    '裏の表（種類・講習を実施した機関の名称・修了証番号・修了年月日）に、講習ごとの機関・番号・修了日が書いてあるので、講習ごとにそれを使う。表の「発行日」はカードを発行した日で、講習の修了日ではない。表の右下の機関（〇〇株式会社など）はカードをまとめて発行した所で、講習の機関ではない。' +
+    '略称は次の正式名に直す：' + JSON.stringify(SK_ABBR) + '。' +
     '次の項目だけを読み取り、JSONだけ返してください。住所・生年月日・本籍・顔写真の様子は読まないで、返さないでください。' +
-    '{"kind":"区分。次から1つ：' + JSON.stringify(kinds) + '","name":"資格・免許の正式な名前。次の候補に同じものがあれば候補の文字のまま：' + JSON.stringify(names) + '。運転免許証なら「自動車運転免許証」",' +
-    '"holder":"資格を持っている人の氏名（書かれたとおり）","number":"免許証番号・修了証番号・登録番号",' +
-    '"grade":"運転免許なら持っている種類を、次の文字で「・」区切り：' + JSON.stringify(['普通', '準中型（5t限定）', '準中型', '中型（8t限定）', '中型', '大型', '大型特殊', '普通二輪', '大型二輪', '牽引']) + '（「準中型で運転できる準中型車は準中型車(5t)に限る」は準中型（5t限定）、「中型車は中型車(8t)に限る」は中型（8t限定））。運転免許以外は、吊り上げ荷重・作業床の高さなどの区分があれば短く。無ければ空",' +
-    '"issued":"交付日・修了日・取得日を西暦 YYYY-MM-DD（平成n年＝1988+n年、令和n年＝2018+n年、昭和n年＝1925+n年）",' +
-    '"expires":"有効期限（「〇年〇月〇日まで有効」）を西暦 YYYY-MM-DD。無ければ空","issuer":"発行した所（〇〇県公安委員会・講習を行った機関の名前など）",' +
-    '"side":"写っている面：表・裏・修了証 のどれか"}。読めない項目は空文字。推測で埋めない。';
-  var j = ai_('資格証読み取り', [{ inline_data: { mime_type: 'image/jpeg', data: b.data } }, { text: prompt }], { claudeOnly: true }) || {};
+    '{"cardNumber":"いくつもの講習をまとめたカードなら、表の修了証明書番号。それ以外は空",' +
+    '"holder":"資格を持っている人の氏名（書かれたとおり）",' +
+    '"number":"カード全体の免許証番号・修了証番号・登録番号",' +
+    '"issuer":"カードを発行した所（〇〇県公安委員会・講習を行った機関の名前など）",' +
+    '"sides":"写真ごとに写っている面を、写真の順番どおりの配列で。各要素は「表」か「裏」。例：[\"表\",\"裏\"]",' +
+    '"items":"このカードに載っている資格・免許・講習を、1つずつ全部、次の形の配列で（表と裏で同じものは1つにまとめる。運転免許証は1つだけ）：' +
+      '[{\"kind\":\"区分。次から1つ：' + JSON.stringify(kinds).replace(/"/g, '\\"') + '\",' +
+      '\"name\":\"資格・免許・講習の正式な名前。次の候補に同じものがあれば候補の文字のまま：' + JSON.stringify(names).replace(/"/g, '\\"') + '。運転免許証なら「自動車運転免許証」\",' +
+      '\"grade\":\"運転免許なら持っている種類を、次の文字で「・」区切り：' + JSON.stringify(LT).replace(/"/g, '\\"') + '（「準中型で運転できる準中型車は準中型車(5t)に限る」は準中型（5t限定）、「中型車は中型車(8t)に限る」は中型（8t限定））。運転免許以外は、吊り上げ荷重・作業床の高さ・機体重量などの区分があれば短く。無ければ空\",' +
+      '\"issued\":\"その資格の交付日・修了日・取得日を西暦 YYYY-MM-DD（平成n年＝1988+n年、令和n年＝2018+n年、昭和n年＝1925+n年）\",' +
+      '\"expires\":\"有効期限（「〇年〇月〇日まで有効」）を西暦 YYYY-MM-DD。無ければ空\",' +
+      '\"number\":\"その資格だけの番号があれば。無ければ空\",\"issuer\":\"その資格だけ講習機関が違えば。無ければ空\"}]"}' +
+    '。読めない項目は空文字。推測で埋めない。';
+  var parts = imgs.map(function (d) { return { inline_data: { mime_type: 'image/jpeg', data: d } }; }).concat([{ text: prompt }]);
+  var j = ai_('資格証読み取り', parts, { claudeOnly: true }) || {};
   var t = function (v, n) { return vinsT_(v, n || 80); };
-  return { ok: true, data: { kind: kinds.indexOf(j.kind) >= 0 ? j.kind : '', name: t(j.name), holder: t(j.holder, 40), number: t(j.number, 40).normalize('NFKC'), grade: t(j.grade),
-    issued: warekiYmd_(j.issued), expires: warekiYmd_(j.expires), issuer: t(j.issuer), side: ['表', '裏', '修了証'].indexOf(j.side) >= 0 ? j.side : '' } };
+  var num = t(j.number, 40).normalize('NFKC'), iss = t(j.issuer), cardNo = t(j.cardNumber, 40).normalize('NFKC');
+  var items = (Array.isArray(j.items) ? j.items : (j.name ? [j] : [])).slice(0, 12).map(function (x) {
+    x = x || {};
+    return { kind: kinds.indexOf(x.kind) >= 0 ? x.kind : '', name: t(x.name), grade: t(x.grade), issued: warekiYmd_(x.issued), expires: warekiYmd_(x.expires),
+      number: t(x.number, 40).normalize('NFKC') || num, issuer: t(x.issuer) || iss };
+  }).filter(function (x) { return x.name; });
+  var sides = (Array.isArray(j.sides) ? j.sides : []).slice(0, imgs.length).map(function (v) { return v === '裏' ? '裏' : v === '表' ? '表' : ''; });
+  var f = items[0] || { kind: '', name: '', grade: '', issued: '', expires: '', number: num, issuer: iss };
+  // 前の形（1件）も入れておく（古い画面のため）
+  return { ok: true, data: { kind: f.kind, name: f.name, holder: t(j.holder, 40), number: f.number, grade: f.grade, issued: f.issued, expires: f.expires, issuer: f.issuer,
+    side: sides[0] || '', sides: sides, items: items, cardNumber: cardNo } };
 }
 
 /* ---------- 車両の書類：アプリの中で見る・種類を直す ---------- */
