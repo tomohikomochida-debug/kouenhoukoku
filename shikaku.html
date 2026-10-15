@@ -126,7 +126,7 @@ table.matrix td.c.exp{color:var(--danger);font-weight:800;background:#FDF3F0}
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
 <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
-<input type="file" id="fileLib" accept="image/*" hidden>
+<input type="file" id="fileLib" accept="image/*,application/pdf,.pdf" hidden>
 
 <script>
 /* =========================================================
@@ -478,7 +478,7 @@ function renderEdit(v) {
   $('#main').innerHTML = `<div class="card">
     ${S.admin && String(e.staffId) !== String(S.me.id) ? `<div class="note green" style="margin-top:0"><b>${esc(nameOf(e.staffId))}さんの分</b>親方・事務担当が代わりに登録しています</div>` : ''}
     <button type="button" class="btn primary block readbig" id="rdCam">📷 撮って自動で読み取る<small>表を撮る → 裏も撮る（あれば） → AIが表と裏を合わせて読んで仕分け → 足りない所だけ手で</small></button>
-    <button type="button" class="btn sm block" id="rdLib" style="margin-top:6px">🖼 撮ってある写真から読み取る</button>
+    <button type="button" class="btn sm block" id="rdLib" style="margin-top:6px">🖼 撮ってある写真・PDFから読み取る</button>
     <div id="rdMsg">${e._ai && e._ai.length ? `<div class="note green"><b>AIが読み取って入れました（黄色の欄）</b>写真と見比べて、違う所は直してください。空いている所は手で入れてください。</div>` : ''}${e._readErr ? `<div class="note red"><b>読み取れませんでした</b>${esc(e._readErr)}（写真は入っています。手で入れてください）</div>` : ''}
       ${e._pending ? `<div class="note"><b>📷 撮った写真はまだ読み取っていません</b>裏に資格・講習の種類が書いてあるカードは、裏も撮ってから読み取ってください。
         <div class="row2" style="margin-top:8px"><button type="button" class="btn sm" id="pdBack">📷 裏を撮る</button><button type="button" class="btn sm primary" id="pdRead">🤖 読み取る</button></div></div>` : ''}
@@ -500,7 +500,7 @@ function renderEdit(v) {
     <label class="lbl">メモ</label><textarea id="fMemo" rows="2">${esc(e.memo)}</textarea>
     <label class="lbl">写真</label><p class="hint" style="margin-top:0">${lic ? '免許証の表と裏を、文字が読めるように明るい所で撮ってください' : '修了証（カード・修了証書）を撮ってください'}</p>
     <div class="thumbs" id="edThumbs">${e.photos.map((p, i) => `<div class="th" data-ph="${i}"><span>…</span><span class="lab">${esc(p.side || '')}</span><button type="button" class="x" data-px="${i}">×</button></div>`).join('')}</div>
-    ${sides.map(s => `<div class="row2" style="margin-top:6px"><button type="button" class="btn sm" data-cam="${esc(s)}">📷 ${esc(s)}を撮る</button><button type="button" class="btn sm" data-lib="${esc(s)}">🖼 ${esc(s)}を選ぶ</button></div>`).join('')}
+    ${sides.map(s => `<div class="row2" style="margin-top:6px"><button type="button" class="btn sm" data-cam="${esc(s)}">📷 ${esc(s)}を撮る</button><button type="button" class="btn sm" data-lib="${esc(s)}">🖼 ${esc(s)}を選ぶ（写真・PDF）</button></div>`).join('')}
     ${e.photos.length && !e._pending ? `<button type="button" class="btn sm block" id="rdAll" style="margin-top:6px">🤖 入っている写真（${Math.min(e.photos.length, 3)}枚）を表・裏まとめて読み取る</button>` : ''}
     <div class="row2" style="margin-top:16px"><button type="button" class="btn" id="edCancel">やめる</button><button type="button" class="btn primary" id="edSave">保存する</button></div>
   </div>`;
@@ -564,6 +564,29 @@ async function resizeImage(file, max = 1600, q = 0.82) {
     return await new Promise(ok => c.toBlob(ok, 'image/jpeg', q));
   } finally { URL.revokeObjectURL(url); }
 }
+/* PDF：ページごとに画像にする（最大3ページ。長い辺 約2400px）。PDFを読む道具は、はじめて使うときに読み込む */
+let pdfLibP = null;
+function loadPdfLib() {
+  return pdfLibP = pdfLibP || new Promise((ok, ng) => {
+    const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; ok(window.pdfjsLib); };
+    sc.onerror = () => { pdfLibP = null; ng(new Error('PDFを開く道具を読み込めませんでした（電波を確かめてください）')); }; document.head.appendChild(sc);
+  });
+}
+const isPdf = f => /pdf/i.test(f.type) || /\.pdf$/i.test(f.name || '');
+async function pdfToImages(file, maxPages = 3) {
+  const lib = await loadPdfLib();
+  let doc; try { doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise; }
+  catch (e) { throw new Error(/password/i.test(e.name || e.message) ? 'パスワード付きのPDFは開けません' : 'PDFを開けませんでした'); }
+  const out = [], n = Math.min(doc.numPages, maxPages);
+  for (let i = 1; i <= n; i++) {
+    const pg = await doc.getPage(i), v1 = pg.getViewport({ scale: 1 }), sc = Math.min(4, 2400 / Math.max(v1.width, v1.height)), vp = pg.getViewport({ scale: sc });
+    const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height); const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+    await pg.render({ canvasContext: x, viewport: vp }).promise;
+    out.push(await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.9)));
+  }
+  return { pages: out, total: doc.numPages };
+}
 let pickMode = 'side';   // side：表・裏などを撮る／read：撮って読み取る
 async function uploadPhoto(blob, side) {
   const photoId = 'P' + Date.now().toString(36) + rid();
@@ -614,8 +637,8 @@ function askBack() {
     <p class="hint" style="margin-top:0">裏に<b>資格・講習の種類や区分</b>が書いてあるカードは、裏も撮ってください。表と裏を合わせてAIが読みます。</p>
     ${first ? `<div style="text-align:center;margin:6px 0 10px"><img src="${first.local}" alt="" style="max-width:70%;max-height:140px;border-radius:6px;border:1px solid var(--line)"><div class="hint">撮った表</div></div>` : ''}
     <button type="button" class="btn primary block" id="abCam">📷 裏を撮る</button>
-    <button type="button" class="btn block" id="abLib" style="margin-top:6px">🖼 裏を撮ってある写真から選ぶ</button>
-    <button type="button" class="btn block" id="abNone" style="margin-top:6px">裏には何もない・このまま読み取る</button>
+    <button type="button" class="btn block" id="abLib" style="margin-top:6px">🖼 裏を撮ってある写真・PDFから選ぶ</button>
+    <button type="button" class="btn block" id="abNone" style="margin-top:6px">裏はない／1枚に表と裏が写っている<br><small>→ このまま読み取る</small></button>
     <div class="row2" style="margin-top:12px"><button type="button" class="btn sm" id="abRedo">↩ 表を撮り直す</button><button type="button" class="btn sm" id="abLater">あとで（閉じる）</button></div>`);
   $('#modal').dataset.lock = '1';
   const shut = () => { $('#modal').dataset.lock = ''; closeModal(); };
@@ -669,19 +692,38 @@ async function recrop(i) {   // 入っている写真を切り取り直す（新
 }
 ['#fileCam', '#fileLib'].forEach(sel => $(sel).addEventListener('change', async ev => {
   const f = (ev.target.files || [])[0]; if (!f || !ED) return;
+  const mode = pickMode;
   try {
-    const big = await resizeImage(f, 2600, 0.9);
-    const blob = await openCrop(big, pickMode === 'read' ? '表を切り取る（このあと裏も撮れます）' : pickMode === 'back' ? '裏を切り取る（このあと表と合わせてAIが読みます）' : (pickSide || '写真') + 'を切り取る');
-    if (!blob) { if (pickMode === 'back' && ED._pending) askBack(); return; }   // 裏の切り取りをやめたら「裏も撮りますか？」に戻る
-    if (pickMode === 'read') {   // 1枚目（表）：入れて「裏も撮りますか？」
+    let pages, total = 1;
+    if (isPdf(f)) {
+      openModal('<h3>📄 PDFを開いています…</h3><p class="hint">ページを画像にしています。</p>'); $('#modal').dataset.lock = '1';
+      try { const r = await pdfToImages(f, mode === 'side' ? 1 : 3); pages = r.pages; total = r.total; } finally { $('#modal').dataset.lock = ''; closeModal(); }
+      if (!pages.length) throw new Error('PDFにページがありません');
+    } else pages = [await resizeImage(f, 2600, 0.9)];
+    const pdf = isPdf(f), many = pages.length > 1;
+    const blobs = [];
+    for (let i = 0; i < pages.length; i++) {
+      const where = pdf ? `PDFの${i + 1}ページ目` : '';
+      const title = mode === 'read' ? (many ? `${where}（${i === 0 ? '表' : '裏'}）を切り取る` : (pdf ? where + 'を切り取る（表と裏が並んでいるなら、両方入るように）' : '表を切り取る（このあと裏も撮れます）'))
+        : mode === 'back' ? `${where || ''}裏を切り取る（このあと表と合わせてAIが読みます）` : (where ? where + '：' : '') + (pickSide || '写真') + 'を切り取る';
+      const b = await openCrop(pages[i], title);
+      if (!b) { if (!blobs.length) { if (mode === 'back' && ED._pending) askBack(); return; } break; }   // 1枚目でやめたら何もしない。2枚目以降でやめたら、そこまでを使う
+      blobs.push(b);
+    }
+    if (pdf && total > pages.length) toast(`PDFは${total}ページありますが、はじめの${pages.length}ページだけ使いました`, 4000);
+    if (mode === 'read') {   // 表（と、PDFなら裏のページ）
       if (ED._pending) dropPending();
-      const ph = addPhoto(blob, ED.kind === '運転免許' ? '表' : '修了証'); ED._pending = [ph.photoId]; rerender(); askBack(); return;
+      ED._pending = blobs.map((b, i) => addPhoto(b, i === 0 ? (ED.kind === '運転免許' ? '表' : '修了証') : (ED.kind === '運転免許' ? '裏' : '裏・続き')).photoId);
+      rerender();
+      if (blobs.length > 1) return readPhotos();   // PDFに表と裏のページがあれば、そのまま読む
+      return askBack();
     }
-    if (pickMode === 'back') {   // 2枚目（裏）：入れて、表と合わせて読む
-      const ph = addPhoto(blob, ED.kind === '運転免許' ? '裏' : '裏・続き'); ED._pending = (ED._pending || []).concat(ph.photoId); return readPhotos();
+    if (mode === 'back') {   // 裏：入れて、表と合わせて読む
+      blobs.forEach(b => { const ph = addPhoto(b, ED.kind === '運転免許' ? '裏' : '裏・続き'); ED._pending = (ED._pending || []).concat(ph.photoId); });
+      return readPhotos();
     }
-    addPhoto(blob, pickSide); toast('写真を入れました'); rerender();
-  } catch (e) { toast('写真を送れませんでした：' + e.message, 4500); }
+    blobs.forEach(b => addPhoto(b, pickSide)); toast(pdf ? 'PDFを写真として入れました' : '写真を入れました'); rerender();
+  } catch (e) { toast((isPdf(f) ? 'PDFを入れられませんでした：' : '写真を送れませんでした：') + e.message, 4500); }
 }));
 
 /* =========================================================
