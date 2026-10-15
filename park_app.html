@@ -780,15 +780,16 @@ async function openLAS(file) {
   // 見出しの範囲が入っていない（0のまま）書き出しもあるので、そのときは点を読んで範囲を出す
   const okB = [B.a0, B.a1, B.b0, B.b1, B.c0, B.c1].every(Number.isFinite) && B.a1 > B.a0 && B.b1 > B.b0 && B.c1 >= B.c0 && !(B.a0 === 0 && B.a1 === 0);
   const geo = okB && Math.abs(B.a0) <= 180 && Math.abs(B.a1) <= 180 && Math.abs(B.b0) <= 90 && Math.abs(B.b1) <= 90 && (B.a1 - B.a0) < 0.05 && (B.b1 - B.b0) < 0.05;
-  const total = N * rl, CH = Math.max(1, Math.floor(CHUNK / rl)) * rl;
-  async function stream(fn, onPart) {
+  const total = N * rl, CH = Math.max(1, Math.floor(CHUNK / rl)) * rl, co = { 2: 20, 3: 28, 5: 28, 7: 30, 8: 30, 10: 30 }[fmtRaw & 0x3f];
+  async function stream(fn, onPart, col) {   // col：色も読む（立面図用）。色は生の値（16bit のこともある）、無ければ −1
     for (let pos = 0; pos < total; pos += CH) {
       const len = Math.min(CH, total - pos), buf = await file.slice(off + pos, off + pos + len).arrayBuffer(), n = Math.floor(buf.byteLength / rl);
-      const al = rl % 4 === 0, I = al ? new Int32Array(buf, 0, buf.byteLength >> 2) : null, st = rl >> 2, dv = al ? null : new DataView(buf);
+      const al = rl % 4 === 0, I = al ? new Int32Array(buf, 0, buf.byteLength >> 2) : null, st = rl >> 2, dv = new DataView(buf), wc = col && co != null;
       for (let i = 0; i < n; i++) {
         let ix, iy, iz;
         if (al) { const o = i * st; ix = I[o]; iy = I[o + 1]; iz = I[o + 2]; } else { const o = i * rl; ix = dv.getInt32(o, true); iy = dv.getInt32(o + 4, true); iz = dv.getInt32(o + 8, true); }
-        fn(ix * sx + ox, iy * sy + oy, iz * sz + oz);
+        if (wc) { const o = i * rl + co; fn(ix * sx + ox, iy * sy + oy, iz * sz + oz, dv.getUint16(o, true), dv.getUint16(o + 2, true), dv.getUint16(o + 4, true)); }
+        else fn(ix * sx + ox, iy * sy + oy, iz * sz + oz, -1, -1, -1);
       }
       if (onPart) onPart(Math.min(1, (pos + len) / total));
       await tick();
@@ -815,6 +816,8 @@ async function openPLY(file, head) {
   const vi = els.findIndex(e => e.name === 'vertex'); if (vi < 0) throw new Error('PLY に点がありません');
   const ve = els[vi], N = ve.n, P = ve.props, ix = P.findIndex(p => p.name === 'x'), iy = P.findIndex(p => p.name === 'y'), iz = P.findIndex(p => p.name === 'z');
   if (ix < 0 || iy < 0 || iz < 0) throw new Error('PLY に x・y・z がありません');
+  const ck = [['red', 'green', 'blue'], ['r', 'g', 'b'], ['diffuse_red', 'diffuse_green', 'diffuse_blue']].find(ks => ks.every(k => P.some(p => p.name === k)));
+  const ic = ck ? ck.map(k => P.findIndex(p => p.name === k)) : null, cf = ic && /float|double/.test(P[ic[0]].type) ? 255 : 1;
   let stream;
   if (fmt === 'ascii') {
     let skip = 0; for (let e = 0; e < vi; e++) skip += els[e].n;
@@ -824,7 +827,7 @@ async function openPLY(file, head) {
         const s = carry + dec.decode(await file.slice(pos, Math.min(file.size, pos + CHUNK)).arrayBuffer());
         let a = 0, b;
         while ((b = s.indexOf('\n', a)) >= 0 && got < N) {
-          if (line++ >= skip) { const w = s.slice(a, b).trim().split(/\s+/); if (w.length > 2) { const x = +w[ix], y = +w[iy], z = +w[iz]; if (x === x && y === y && z === z) fn(x, y, z); got++; } }
+          if (line++ >= skip) { const w = s.slice(a, b).trim().split(/\s+/); if (w.length > 2) { const x = +w[ix], y = +w[iy], z = +w[iz]; if (x === x && y === y && z === z) { if (ic) fn(x, y, z, +w[ic[0]] * cf, +w[ic[1]] * cf, +w[ic[2]] * cf); else fn(x, y, z, -1, -1, -1); } got++; } }
           a = b + 1;
         }
         carry = s.slice(a);
@@ -844,10 +847,13 @@ async function openPLY(file, head) {
     let stride = 0; const of = P.map(p => { const o = stride; stride += (PT[p.type] || PT.float)[1]; return o; });
     const gx = (PT[P[ix].type] || PT.float)[0], gy = (PT[P[iy].type] || PT.float)[0], gz = (PT[P[iz].type] || PT.float)[0], ox = of[ix], oy = of[iy], oz = of[iz];
     const total = Math.min(N * stride, file.size - off), CH = Math.max(1, Math.floor(CHUNK / stride)) * stride;
-    stream = async (fn, onPart) => {
+    const cg = ic ? ic.map(k => [(PT[P[k].type] || PT.float)[0], of[k]]) : null;
+    stream = async (fn, onPart, col) => {
+      const wc = col && cg;
       for (let pos = 0; pos < total; pos += CH) {
         const len = Math.min(CH, total - pos), dv = new DataView(await file.slice(off + pos, off + pos + len).arrayBuffer()), n = Math.floor(dv.byteLength / stride);
-        for (let i = 0, o = 0; i < n; i++, o += stride) { const x = dv[gx](o + ox, le), y = dv[gy](o + oy, le), z = dv[gz](o + oz, le); if (x === x && y === y && z === z) fn(x, y, z); }
+        for (let i = 0, o = 0; i < n; i++, o += stride) { const x = dv[gx](o + ox, le), y = dv[gy](o + oy, le), z = dv[gz](o + oz, le); if (!(x === x && y === y && z === z)) continue;
+          if (wc) fn(x, y, z, dv[cg[0][0]](o + cg[0][1], le) * cf, dv[cg[1][0]](o + cg[1][1], le) * cf, dv[cg[2][0]](o + cg[2][1], le) * cf); else fn(x, y, z, -1, -1, -1); }
         if (onPart) onPart(Math.min(1, (pos + len) / total));
         await tick();
       }
@@ -896,12 +902,12 @@ function mapper(rd, up) {
   if (rd.geo) {
     const lat0 = (B.b0 + B.b1) / 2, rad = Math.PI / 180;
     const mLat = 111132.954 - 559.822 * Math.cos(2 * lat0 * rad) + 1.175 * Math.cos(4 * lat0 * rad), mLon = 111412.84 * Math.cos(lat0 * rad) - 93.5 * Math.cos(3 * lat0 * rad);
-    return { W: (B.a1 - B.a0) * mLon, H: (B.b1 - B.b0) * mLat, f: (a, b, c, fn) => fn((a - B.a0) * mLon, (b - B.b0) * mLat, c),
+    return { W: (B.a1 - B.a0) * mLon, H: (B.b1 - B.b0) * mLat, f: (a, b, c, fn, r, g, bb) => fn((a - B.a0) * mLon, (b - B.b0) * mLat, c, r, g, bb),
       geo: { crs: 'EPSG:4326', lon0: B.a0, lat0: B.b0, mLon, mLat } };
   }
-  if (up === 'z') return { W: B.a1 - B.a0, H: B.b1 - B.b0, f: (a, b, c, fn) => fn(a - B.a0, b - B.b0, c), origin: { x: B.a0, y: B.b0 } };
+  if (up === 'z') return { W: B.a1 - B.a0, H: B.b1 - B.b0, f: (a, b, c, fn, r, g, bb) => fn(a - B.a0, b - B.b0, c, r, g, bb), origin: { x: B.a0, y: B.b0 } };
   // Y が上（ARKit）：上から見て 右 x・上（北）は −z
-  return { W: B.a1 - B.a0, H: B.c1 - B.c0, f: (a, b, c, fn) => fn(a - B.a0, B.c1 - c, b), origin: { x: B.a0, y: -B.c1 } };
+  return { W: B.a1 - B.a0, H: B.c1 - B.c0, f: (a, b, c, fn, r, g, bb) => fn(a - B.a0, B.c1 - c, b, r, g, bb), origin: { x: B.a0, y: -B.c1 } };
 }
 
 /* ---------- 円の当てはめ（代数的）。cov は 10° ごとに点がある割合 ---------- */
@@ -930,6 +936,18 @@ function groundHigh(gz, ga, zg) {
   for (let i = 0; i < gz.length; i++) sec[Math.min(11, Math.floor((ga[i] + Math.PI) / (Math.PI / 6)))].push(gz[i]);
   let hi = -Infinity; for (const l of sec) if (l.length >= 8) hi = Math.max(hi, pct(l, 0.1));
   return hi === -Infinity ? null : Math.round((hi - zg) * 1000) / 10;
+}
+// 立面図のます目を小さな文字列に（幹：半径mm・色／地面：高さmm・色、1つ5バイト）
+function b64(u8) { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+function encSurf(t, cx, cy, zg, sh, SV0, SDV, GN) {
+  const sn = t.sn, rows = t.st.length / 5 / sn, tb = new Uint8Array(rows * sn * 5), gb = new Uint8Array(sn * GN * 5);
+  const c8 = v => Math.min(255, Math.max(0, Math.round(v) >> sh)); let col = false;
+  for (let c = 0; c < rows * sn; c++) { const q = c * 5, n = t.st[q]; if (!n) continue; const mm = Math.max(1, Math.min(65535, Math.round(t.st[q + 1] / n * 1000)));
+    tb[q] = mm & 255; tb[q + 1] = mm >> 8; if (t.st[q + 2] > 0) { col = true; tb[q + 2] = c8(t.st[q + 2] / n); tb[q + 3] = c8(t.st[q + 3] / n); tb[q + 4] = c8(t.st[q + 4] / n); } }
+  for (let c = 0; c < sn * GN; c++) { const q = c * 5, n = t.sg[q]; if (!n) continue; const mm = Math.max(-32767, Math.min(32767, Math.round((t.g0 + t.sg[q + 1] / n - zg) * 1000))) + 32768;
+    gb[q] = mm & 255; gb[q + 1] = mm >> 8; if (t.sg[q + 2] > 0) { gb[q + 2] = c8(t.sg[q + 2] / n); gb[q + 3] = c8(t.sg[q + 3] / n); gb[q + 4] = c8(t.sg[q + 4] / n); } }
+  return { na: sn, rows, dv: SDV * 100, v0: Math.round((t.g0 + SV0 - zg) * 1000) / 10, gn: GN, gr0: Math.round((t.r + 0.05) * 1000) / 10, gdr: 5,
+    ox: Math.round((t.cx - cx) * 1000) / 10, oy: Math.round((t.cy - cy) * 1000) / 10, col, trunk: b64(tb), ground: b64(gb) };
 }
 const NB = 180, BW = 2 * Math.PI / NB;
 function tapeOutline(xs, ys, cx, cy, q) {
@@ -986,7 +1004,7 @@ async function analyze(file, opt, onProg) {
   const W = M.W, Hm = M.H;
   if (!(W > 0 && Hm > 0)) throw new Error('座標が読めません');
   if (W > 2000 || Hm > 2000) throw new Error('範囲が広すぎます（2km以上）。上の向きか、書き出しの設定を確かめてください');
-  const S = (label, base, span, fn) => rd.stream((a, b, c) => M.f(a, b, c, fn), p => prog(label, base + span * p));
+  const S = (label, base, span, fn, col) => rd.stream((a, b, c, r, g, bb) => M.f(a, b, c, fn, r, g, bb), p => prog(label, base + span * p), col);
 
   // ---- 1回目：地面（0.5mマスの最低点）----
   const gc = 0.5, gx = Math.ceil(W / gc) + 1, gy = Math.ceil(Hm / gc) + 1, Gd = new Float32Array(gx * gy).fill(Infinity);
@@ -1060,21 +1078,25 @@ async function analyze(file, opt, onProg) {
   const acc = keep.filter(t => { const rl = Math.max(0.03, 0.12 * t.r); t.sure = t.cov >= 0.85 && t.res < rl && t.cont >= 3; return t.sure || (t.cont >= 3 && t.cov >= 0.4 && t.r >= 0.04 && t.res < rl * 1.2); });   /* 楕円の幹は円からのずれが大きいので、太さに合わせて許す */
 
   // ---- 3回目：木ごとに「幹のまわりの低い側の地面」から測定の高さで測り直す ----
+  const SV0 = -0.6, SDV = 0.03, GN = 11; let cMax = 0;
   if (acc.length) {
-    const tc = new Map(), RR = 1.0, EC = 2000;   // EC：立面図に残す点の数（木ごと、まんべんなく選ぶ）
-    acc.forEach((t, ti) => { t.px = []; t.py = []; t.pz = []; t.gz = []; t.ga = []; t.g0 = gH(t.cx, t.cy); t.ev = new Float32Array(EC * 3); t.en = 0;
+    const tc = new Map(), RR = 1.0, SR = Math.ceil((hm + 0.9 - SV0) / SDV);   // 立面図：幹の表面を 向き×高さ のます目にまとめる
+    acc.forEach((t, ti) => { t.px = []; t.py = []; t.pz = []; t.gz = []; t.ga = []; t.g0 = gH(t.cx, t.cy); t.sn = Math.max(24, Math.min(72, Math.round(2 * Math.PI * t.r / 0.03))); t.st = new Float64Array(SR * t.sn * 5); t.sg = new Float64Array(t.sn * GN * 5);
       for (let i = Math.floor(t.cx - RR - 0.6); i <= Math.floor(t.cx + RR + 0.6); i++) for (let j = Math.floor(t.cy - RR - 0.6); j <= Math.floor(t.cy + RR + 0.6); j++) { const k = i * 65536 + j; let a = tc.get(k); if (!a) { a = []; tc.set(k, a); } a.push(ti); } });
-    await S('幹周を測っています', W0 + 2.3 * part, part, (x, y, z) => {
+    await S('幹周を測っています', W0 + 2.3 * part, part, (x, y, z, cr, cg, cb) => {
       const a = tc.get(Math.floor(x) * 65536 + Math.floor(y)); if (!a) return;
       for (const ti of a) { const t = acc[ti], dz = z - t.g0; if (dz < -1.2 || dz > hm + 0.9) continue;
         const ddx = x - t.cx, ddy = y - t.cy, d2 = ddx * ddx + ddy * ddy, ro = t.r + 0.6; if (d2 > ro * ro) continue; const ri = t.r + 0.12;
-        { t.en++; let k = -1; if (t.en <= EC) k = (t.en - 1) * 3; else { const j = (Math.random() * t.en) | 0; if (j < EC) k = j * 3; }   // 立面図用（くじ引きで均等に）
-          if (k >= 0) { t.ev[k] = ddx; t.ev[k + 1] = ddy; t.ev[k + 2] = dz; } }
+        { const d = Math.sqrt(d2), sn = t.sn; let ai = Math.floor((Math.atan2(ddy, ddx) + Math.PI) / (2 * Math.PI) * sn); if (ai >= sn) ai = sn - 1;   // 立面図用：すべての点をます目に足す
+          if (cr > cMax) cMax = cr;
+          if (z - gH(x, y) < 0.06 && d >= t.r + 0.05) { const k = Math.floor((d - t.r - 0.05) / 0.05); if (k >= 0 && k < GN) { const q = (ai * GN + k) * 5; t.sg[q]++; t.sg[q + 1] += dz; if (cr >= 0) { t.sg[q + 2] += cr; t.sg[q + 3] += cg; t.sg[q + 4] += cb; } } }
+          else if (dz >= SV0 && d < (dz < 0.5 ? t.r * 2 + 0.25 : t.r * 1.35 + 0.08)) { const j = Math.floor((dz - SV0) / SDV); if (j < SR) { const q = (j * sn + ai) * 5; t.st[q]++; t.st[q + 1] += d; if (cr >= 0) { t.st[q + 2] += cr; t.st[q + 3] += cg; t.st[q + 4] += cb; } } } }
         if (d2 >= ri * ri) { if (dz < 0.8) { t.gz.push(z); t.ga.push(Math.atan2(ddy, ddx)); } }                    // まわりの地面
         else if (dz > hm - 0.75 && dz < hm + 0.4) { t.px.push(x); t.py.push(y); t.pz.push(z); } }   // 幹（測定の高さの近く）
-    });
+    }, true);
   }
   prog('まとめています', 0.99);
+  const cSh = cMax > 255 ? 8 : 0;   // 色が 16bit（256 以上）なら 8bit に
   const trees = [];
   acc.forEach((t, ti) => {
     const flags = [];
@@ -1108,8 +1130,7 @@ async function analyze(file, opt, onProg) {
     if (useTape && Math.abs(Ctape - Ccircle) > Math.max(6, 0.1 * Ccircle)) flags.push('mismatch');
     if (!t.sure) flags.push('unsure');
     // 立面図の点：幹の中心・基準の地面（低い側）からの cm
-    const elev = []; for (let i = 0, n = t.ev ? Math.min(t.en, t.ev.length / 3) : 0; i < n; i++) elev.push([Math.round((t.cx + t.ev[i * 3] - cx) * 1000) / 10, Math.round((t.cy + t.ev[i * 3 + 1] - cy) * 1000) / 10, Math.round((t.g0 + t.ev[i * 3 + 2] - zg) * 1000) / 10]);
-    t.ev = null;
+    const surf = t.st ? encSurf(t, cx, cy, zg, cSh, SV0, SDV, GN) : null; t.st = t.sg = null;
     // 断面の点（表示用・最大 700 点、中心からの cm）
     const st = Math.max(1, Math.ceil(sxs.length / 700)), pts = [];
     for (let i = 0; i < sxs.length; i += st) pts.push([Math.round((sxs[i] - cx) * 1000) / 10, Math.round((sys[i] - cy) * 1000) / 10]);
@@ -1118,7 +1139,7 @@ async function analyze(file, opt, onProg) {
       C: Math.round(C), Ctape: tp ? Math.round(Ctape * 10) / 10 : null, Ccircle: Math.round(Ccircle * 10) / 10,
       method: useTape ? 'tape' : 'circle', cover, gap: tp ? tp.gap : null,
       groundOffset: Math.round((zg - t.g0) * 100), hm, flags,
-      sect: { pts, r: tp ? tp.r : null, has: tp ? tp.has : null, hull: tp ? tp.hull : null, rc: Math.round(r * 1000) / 10, elev, ring: [Math.round((t.r + 0.12) * 100), Math.round((t.r + 0.6) * 100)], gHi: groundHigh(t.gz, t.ga, zg) }
+      sect: { pts, surf, r: tp ? tp.r : null, has: tp ? tp.has : null, hull: tp ? tp.hull : null, rc: Math.round(r * 1000) / 10, ring: [Math.round((t.r + 0.12) * 100), Math.round((t.r + 0.6) * 100)], gHi: groundHigh(t.gz, t.ga, zg) }
     });
     t.px = t.py = t.pz = t.gz = t.ga = null;
   });
