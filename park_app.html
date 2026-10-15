@@ -63,6 +63,37 @@
   .sdQrWrap .sdCodeWrap b{font-size:34px;letter-spacing:6px}
   .sdLink{display:block;font-size:13px;margin-top:6px;color:var(--mut)}.sdLink.ok{color:#3ecf8e;font-weight:700}
   .sdHow{font-size:13px;line-height:1.7;color:var(--ink);background:var(--panel2);border-radius:8px;padding:10px;margin-bottom:10px}
+/* 他の委託から利用 */
+#owModal .sdCard{width:min(680px,100%)}
+#owModal .fld{margin-top:10px}
+.owNote{font-size:13px;line-height:1.6;background:#163428;border:1px solid #2b6b4c;border-radius:8px;padding:8px 10px;margin:8px 0;white-space:pre-line}
+.owNote.warn{background:#3a2a12;border-color:#8a5a20;color:#ffd9a3}
+.owEmpty{color:var(--mut);font-size:13px;padding:14px 4px;line-height:1.7}
+.owSrc{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:var(--panel2)}
+.owSrc b{font-size:15px}.owSrc small{display:block;color:var(--mut);font-size:11px;margin-top:2px}
+.owCnt{font-size:12px;color:var(--acc);margin-top:4px}
+.owList{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}.owList span{font-size:11px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:2px 6px}
+.owBtns{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.owMini{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:7px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
+.owMini.bad{color:#ff9f9f;border-color:#6b2b2b}
+.owFiles{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px}.owFiles span{font-size:12px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 8px}.owFiles a{color:#ff9f9f;cursor:pointer;margin-left:4px}
+.owFoot{display:flex;gap:8px;margin-top:12px;position:sticky;bottom:-16px;background:var(--panel);padding:8px 0 4px}.owFoot .sdBtn{margin:0;flex:1}
+.owFoot .sdBtn[disabled]{opacity:.45}
+.owTools{display:flex;gap:6px;align-items:center;margin:8px 0}.owTools input{flex:1}
+.owRow2{display:flex;gap:6px;align-items:center}.owRow2>*{flex:1;min-width:0}
+.owG{display:flex;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px;margin:6px 0;opacity:.6}
+.owG.on{opacity:1;border-color:#2b6b4c;background:rgba(62,207,142,.05)}
+.owChk input{width:22px;height:22px;margin-top:8px}
+.owGb{flex:1;min-width:0}.owGb input.txt{padding:6px 8px}
+.owSpec{font-size:11px;color:var(--mut);margin:3px 0 0}
+.owSm{margin-top:6px;flex-wrap:wrap}.owSm select{flex:1.4;padding:6px}.owUnit{flex:0 0 auto!important;font-size:13px;font-weight:700;min-width:28px}
+.owPrice{display:flex;align-items:center;gap:4px;font-size:12px}.owPrice input{text-align:right}
+.owRanks{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:4px 10px;margin-top:6px}
+.owRanks div{display:flex;align-items:center;gap:6px;font-size:12px}.owRanks span{flex:0 0 86px;color:var(--mut)}.owRanks input{text-align:right}
+.owEx{font-size:11px;color:#ffb547;margin-top:4px}
+@media (max-width:600px){ .owSm [data-a=ranks],.owSm .owPrice{flex:1 1 100%} .owRanks span{flex-basis:78px} }
+#nuAll .nuOw{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
+#nuAll .nuOw button{flex:1;min-width:160px}
 .pickBar{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:30;display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:center;background:rgba(17,24,33,.94);border:1px solid var(--line);border-radius:14px;padding:8px 10px;max-width:calc(100% - 20px);box-shadow:0 8px 24px rgba(0,0,0,.4);color:var(--ink)}
   .pickBar button{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px;font-weight:700;cursor:pointer}
   .pickBar button.go{background:#2f6b3f;border-color:#2f6b3f;color:#fff}
@@ -512,6 +543,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <label class="fld">大分類</label>
       <select id="catSel"></select>
       <button class="btn ghost" id="addWorkBtn" style="margin-top:6px">＋ 工種を追加<small>登録されていない工種を、色・規格を決めて追加します</small></button>
+      <button class="btn ghost" id="otherWorksBtn">📄 他の委託から利用<small>ほかの委託の仕様書・設計書（PDF・Excel）を読んで、工種と単価を借りてきます</small></button>
       <label class="fld">細別</label>
       <select id="kindSel"></select>
       <div id="copyWorksBox" style="display:none;margin-top:8px;padding:8px;border:1px dashed var(--line);border-radius:8px;background:rgba(124,58,237,.06)">
@@ -754,6 +786,9 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
     <div id="modalBody"></div>
   </div>
 </div>
+<!-- 他の委託から利用（画面の切替で左の列が隠れても出るよう、いちばん外に置く） -->
+<div id="owModal" class="sdModal"><div class="sdCard" id="owBody"></div></div>
+<input type="file" id="owFile" hidden multiple accept=".pdf,.xlsx,.xlsm,.xls,.csv,.txt,.tsv,application/pdf,image/*">
 <script>
 /* ===== 3D樹木計測：計算の部分（画面に依存しない） =====
    3D Scanner App などの点群（LAS・PLY）を少しずつ読み、地面を見つけ、幹を探して、
@@ -1251,8 +1286,11 @@ function updateUndoButtons(){const u=$('undoBtn'),r=$('redoBtn');if(u)u.style.op
 
 /* ---------- 工種セレクト構築 ---------- */
 function fillCats(){
-  const c=$('catSel'); c.innerHTML='';
-  Object.keys(MASTER).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k+`（${MASTER[k].unit}）`;c.appendChild(o);});
+  const c=$('catSel'); c.innerHTML=''; const groups={};
+  Object.keys(MASTER).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k+`（${MASTER[k].unit}）`;
+    const src=MASTER[k]._src; if(src){ (groups[src]=groups[src]||[]).push(o); } else c.appendChild(o);});
+  // 他の委託から借りた工種は、委託ごとにまとめて下に出す
+  Object.keys(groups).forEach(src=>{ const g=document.createElement('optgroup'); g.label='他の委託：'+(((typeof specSources!=='undefined')&&specSources[src]||{}).short||'別の委託'); groups[src].forEach(o=>g.appendChild(o)); c.appendChild(g); });
   fillKinds();
 }
 function updateCopyWorksUI(){ const cat=$('catSel')?$('catSel').value:''; const selCut=(selected&&selected.cat==='中低木刈込工')||(multiSel&&multiSel.some(f=>f&&f.cat==='中低木刈込工')); const cw=$('copyWorksBox'); if(cw)cw.style.display=((cat==='中低木刈込工')||selCut)?'block':'none'; }
@@ -1399,8 +1437,563 @@ $('nwOk').onclick=()=>{
 
 function fillManual(){
   const s=$('manKind');s.innerHTML='';
-  Object.keys(MANUAL).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k+`（${MANUAL[k].unit}）`;s.appendChild(o);});
+  const groups={};
+  Object.keys(MANUAL).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k+`（${MANUAL[k].unit}）`;
+    const src=MANUAL[k]._src; if(src){ (groups[src]=groups[src]||[]).push(o); } else s.appendChild(o);});
+  Object.keys(groups).forEach(src=>{ const g=document.createElement('optgroup'); g.label='他の委託：'+((specSources[src]||{}).short||'別の委託'); groups[src].forEach(o=>g.appendChild(o)); s.appendChild(g); });
 }
+/* ===== 他の委託の仕様書・設計書を読む（PDF・Excel・貼り付け文字 → 工種の候補） ===== */
+const SPEC_UNIT_RE=/^(m2|ｍ2|㎡|m²|ｍ²|m3|ｍ3|㎥|本|株|個|箇所|ヶ所|か所|カ所|ケ所|基|巣|m|ｍ|km|t|ｔ|kg|台|式|回|人|日|枚|袋|kl|L|l|ℓ|ha|a|組|対|点|件|月|時間|h)$/;
+const SPEC_NUM_RE=/^[-−]?[0-9０-９][0-9０-９,，]*(\.[0-9０-９]+)?$/;
+// 半角カナ・㎝などをそろえる（ﾂﾙ→ツル、㎝→cm）。㎡・Ⅰはそのまま
+function specNorm(s){ return String(s).replace(/[\uFF61-\uFF9F]+/g,m=>m.normalize('NFKC')).replace(/㎝|ｃｍ/g,'cm').replace(/㎜|ｍｍ/g,'mm'); }
+function specZen2han(s){ return String(s).replace(/[０-９．，]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)); }
+function specNum(s){ const v=parseFloat(specZen2han(s).replace(/[,，]/g,'').replace('−','-')); return isNaN(v)?null:v; }
+function specIsNum(s){ return SPEC_NUM_RE.test(String(s).trim()); }
+function specNormUnit(u){ u=specZen2han(u).trim();
+  if(/^(m2|ｍ2|m²|ｍ²)$/.test(u))return '㎡'; if(/^(m3|ｍ3)$/.test(u))return '㎥'; if(u==='ｍ')return 'm'; if(u==='ｔ')return 't';
+  if(/^(ヶ所|か所|カ所|ケ所)$/.test(u))return '箇所'; return u; }
+// 集計・経費の行（工種ではない）
+const SPEC_SKIP_RE=/^(直接工事費|間接工事費|共通仮設|共通仮設費|共通仮設費（率計上）|純工事費|現場管理費|工事原価|一般管理費|一般管理費等|工事価格|消費税|消費税額及び地方消費税額|工事費計|業務価格|業務原価|委託料|合計|小計|計|総計|諸経費|設計額|請負額)$/;
+
+/* PDFの文字を「行」にまとめる。行＝[{s:文字, x:左端}]。pdf.js の getTextContent の結果を使う */
+function specItemsToLines(items){
+  const pts=items.filter(it=>it.str&&it.str.trim()).map(it=>({s:it.str, x:it.transform[4], y:it.transform[5], w:it.width||0, h:Math.abs(it.transform[3])||Math.abs(it.height)||10}));
+  pts.sort((a,b)=>b.y-a.y||a.x-b.x);
+  const rows=[];
+  pts.forEach(p=>{ const r=rows.find(r=>Math.abs(r.y-p.y)<=Math.max(2,p.h*0.35)); if(r){r.items.push(p);} else rows.push({y:p.y,items:[p]}); });
+  rows.sort((a,b)=>b.y-a.y);
+  return rows.map(r=>{
+    r.items.sort((a,b)=>a.x-b.x);
+    const cells=[]; let cur=null;
+    r.items.forEach(p=>{
+      const gap=cur?p.x-(cur.x+cur.w):999;
+      if(cur&&gap<p.h*0.9){ cur.s+=(gap>p.h*0.3?' ':'')+p.s; cur.w=p.x+p.w-cur.x; }
+      else{ cur={s:p.s,x:p.x,w:p.w,h:p.h}; cells.push(cur); }
+    });
+    return {y:r.y,cells:cells.map(c=>({s:specNorm(c.s).replace(/\s+/g,' ').trim(),x:c.x,w:c.w,h:c.h})).filter(c=>c.s)};
+  }).filter(l=>l.cells.length);
+}
+/* 貼り付けた文字・CSV → 行（タブか2つ以上の空白で区切る。字下げは x に） */
+function specTextToLines(text){
+  return specNorm(text).split(/\r?\n/).map(raw=>{
+    const ind=(raw.match(/^[ 　]*/)||[''])[0].length;
+    let parts=raw.split(/\t|[ 　]{2,}|　/).map(s=>s.trim()).filter(Boolean);
+    if(parts.length<3) parts=raw.trim().split(/\s+/).filter(Boolean);   // 半角スペース1つで区切った時
+    let x=ind*6; return {cells:parts.map((s,i)=>({s,x:x+i*80,w:60,h:10}))};
+  }).filter(l=>l.cells.length);
+}
+function specRowsToLines(rows){ // Excelの行（配列の配列）
+  return rows.map(r=>({cells:(r||[]).map((v,i)=>({s:(v==null?'':specNorm(v)).replace(/\s+/g,' ').trim(),x:i*80,w:60,h:10})).filter(c=>c.s)})).filter(l=>l.cells.length);
+}
+
+/* 規格の文字から幹周ランクを読む → "60〜90cm" など（読めなければ ''） */
+function specRank(s){
+  const t=specZen2han(String(s)).replace(/[～~〜ー－-]/g,'〜').replace(/\s/g,'');
+  if(!/(幹周|C=|Ｃ=|C＝|周)/i.test(t)&&!/cm(以上|未満)|cm〜/.test(t)) return '';
+  let m=t.match(/(\d+(?:\.\d+)?)(cm|m)?以上(\d+(?:\.\d+)?)(cm|m)未満/);
+  const toCm=(v,u)=>Math.round(parseFloat(v)*((u==='m'||(!u&&parseFloat(v)<10))?100:1));
+  if(m) return toCm(m[1],m[2]||m[4])+'〜'+toCm(m[3],m[4])+'cm';
+  m=t.match(/(\d+(?:\.\d+)?)(cm|m)?〜(\d+(?:\.\d+)?)(cm|m)/);
+  if(m) return toCm(m[1],m[2]||m[4])+'〜'+toCm(m[3],m[4])+'cm';
+  m=t.match(/(\d+(?:\.\d+)?)(cm|m)未満/);
+  if(m) return toCm(m[1],m[2])+'cm未満';
+  m=t.match(/(\d+(?:\.\d+)?)(cm|m)以上/);
+  if(m) return toCm(m[1],m[2])+'cm以上';
+  return '';
+}
+function specStripRank(s){
+  return String(s).replace(/(幹周|C\s*[=＝])\s*[0-9０-９.．]+\s*(cm|ｃｍ|m|ｍ)?\s*(以上|[～~〜ー－-])\s*[0-9０-９.．]+\s*(cm|ｃｍ|m|ｍ)\s*(未満)?/gi,'')
+    .replace(/(幹周|C\s*[=＝])\s*[0-9０-９.．]+\s*(cm|ｃｍ|m|ｍ)\s*(未満|以上)/gi,'')
+    .replace(/^[\s　:：、,]+|[\s　:：、,]+$/g,'');
+}
+const SPEC_CODE_RE=/^[A-Z]{1,3}[0-9＊*]{3,}[0-9]$/;
+function specCleanName(s){
+  return String(s).replace(/\(/g,'（').replace(/\)/g,'）').replace(/^[A-Z]{1,3}[0-9＊*]{3,}[0-9][\s　]+/,'').replace(/^[＊*\s　]+/,'').replace(/^[（(]\d{3,}[）)]([（(]P[）)])?\s*/,'').replace(/\s*第\d+号(単価表|内訳表)?$/,'').replace(/\s*[A-Z]{2}\d{6}$/,'').trim();
+}
+
+/* 行 → 工種の候補。
+   ・1行に「名前 … 単位 数量 単価 金額」がそろう表（単価表・Excel）
+   ・名前の行の下に「単位 数量」が来る川崎市の設計内訳書（金抜きも可）
+   の両方を読む */
+function specIsUnitLine(c){ for(let i=0;i<c.length;i++){ if(SPEC_UNIT_RE.test(specZen2han(c[i].s))&&c.slice(i+1).length&&c.slice(i+1).every(z=>specIsNum(z.s))) return i; } return -1; }
+/* 1つの欄が2段（上に名前・下に規格）で、数字の行をはさんで少しずつずれて並ぶ表（基礎単価集計一覧など）。
+   すき間がとても狭い行どうしを1行にまとめる：上の行＝名前、下の行＝規格 */
+function specMergeTight(lines){
+  const out=[]; let i=0;
+  while(i<lines.length){
+    const grp=[lines[i]]; let j=i+1;
+    while(j<lines.length&&lines[j].y!=null&&grp[grp.length-1].y!=null){
+      const a=grp[grp.length-1], b=lines[j]; const h=Math.min(...a.cells.map(z=>z.h||10),...b.cells.map(z=>z.h||10));
+      const gap=a.y-b.y; if(gap>0&&gap<h*0.7){ grp.push(b); j++; } else break; }
+    const ui=grp.findIndex(l=>specIsUnitLine(l.cells)>=0);
+    if(grp.length>1&&ui>=0&&grp.filter(l=>specIsUnitLine(l.cells)>=0).length===1){
+      const U=grp[ui].cells, k=specIsUnitLine(U);
+      const above=grp.slice(0,ui).flatMap(l=>l.cells), below=grp.slice(ui+1).flatMap(l=>l.cells);
+      const pre=U.slice(0,k).filter(z=>!SPEC_CODE_RE.test(z.s)&&!SPEC_CODE_RE.test(z.s.split(/\s+/)[0]||'')||z.s.split(/\s+/).length>1);
+      const qtyPre=pre.filter(z=>specIsNum(z.s)), namePre=pre.filter(z=>!specIsNum(z.s)).map(z=>({...z,s:specCleanName(z.s)}));
+      const nameCells=above.concat(namePre,below);
+      out.push({y:grp[ui].y,cells:nameCells.concat([U[k]],qtyPre,U.slice(k+1))});
+      i=j; continue;
+    }
+    grp.forEach(l=>out.push(l)); i=j;
+  }
+  return out;
+}
+function specParseLines(lines){
+  lines=specMergeTight(lines);
+  const out=[]; let pend=[]; const heads=[]; // heads: {name,x}（式の行＝見出し）
+  let skipSec=false, priceList=false;
+  const textOf=c=>c.map(x=>x.s).join(' ');
+  function headAt(x){ for(let i=heads.length-1;i>=0;i--){ if(heads[i].x<x-1) return heads[i].name; } return ''; }
+  function emit(nameCells,unit,nums,extra){
+    if(!nameCells.length) return;
+    const nx=nameCells[0].x;
+    let name=specCleanName(nameCells[0].s), spec=nameCells.slice(1).map(c=>c.s).join(' ');
+    // 「名前 規格」が1つのかたまりになっている時は、全角スペース・2つ空白で分ける
+    if(!spec){ const mm=name.match(/^(\S+?)[ 　]+(.+)$/); if(mm&&/[:：=＝]|幹周|cm|ｍ|m|以上|未満|作業形態|厚|径|高/.test(mm[2])){ name=mm[1]; spec=mm[2]; } }
+    spec=spec.replace(/\s*[:：]\s*/g,'：').trim();
+    if(!name||SPEC_SKIP_RE.test(name)||/^(工事区分|工種|種別|細別|名称|コード|規格|単位|数量|単価|金額|摘要|備考)/.test(name)) return;
+    if(/^[A-Z]\d{2}$/.test(name)||/^\d+$/.test(name)) return;  // 入力条件のコード
+    if(name.replace(/[\s　]/g,'').length<2||/^(\S[ 　]){2,}\S$/.test(name)) return; // 1文字・1文字ずつ空いた文字（表題や図面の字）
+    unit=specNormUnit(unit);
+    let qty=null, price=null;
+    const n=nums.map(specNum).filter(v=>v!==null);
+    if(!n.length) return;   // 数字のない行（「令和　年　月」の欄など）
+    if(priceList){ price=n.length?n[0]:null; }
+    else if(n.length>=3 && Math.abs(n[0]*n[1]-n[2])<=Math.max(2,n[2]*0.002)){ qty=n[0]; price=n[1]; }
+    else if(n.length>=2 && extra&&extra.priceCol){ qty=n[0]; price=n[1]; }
+    else if(n.length>=1){ qty=n[0]; }
+    if(unit==='式'){ heads.push({name,x:nx}); while(heads.length>1&&heads[heads.length-2].x>=nx) heads.splice(heads.length-2,1); }
+    const rec={name,spec,unit,qty,price,parent:headAt(nx),x:nx}; out.push(rec); return rec;
+  }
+  lines.forEach(l=>{
+    const c=l.cells, t=textOf(c);
+    // 区切り（読まない部分）
+    if(/分類[:：]\s*(損料|労務|機械|機械損料)/.test(t)){ skipSec=true; pend=[]; return; }
+    if(/分類[:：]/.test(t)){ skipSec=false; pend=[]; return; }
+    if(/管理費区分|管理費区分等一覧|入力条件は、積算の考え方|呼吸用保護具/.test(t)){ skipSec=/管理費区分/.test(t); pend=[]; return; }
+    if(/積算入力データ/.test(t)){ skipSec=true; pend=[]; return; }   // 内訳書と同じ中身のくり返し
+    const isTitle=c.length<=3&&!/[＊*]|第\d+号/.test(t);
+    if(isTitle&&/設計内訳書|設計総括表|内訳表|明細書|単価表|代価表|数量総括|内訳書/.test(t)){ skipSec=false; priceList=false; pend=[]; if(/総括/.test(t))heads.length=0; return; }
+    if(/登\s*録\s*単\s*価|単価一覧|単価表（一覧）|単価リスト/.test(t)&&!/数量|情報/.test(t)&&!/[＊*]/.test(t)&&c.length<=6){ skipSec=false; priceList=true; pend=[]; return; }
+    if(skipSec) return;
+    if(/^-\s*\d+\s*-$/.test(t)||/^工事名|^業務名|^委託名|^事業区分|^工事区分\s|入力条件$/.test(t)) { if(/^工事名|^業務名|^委託名/.test(t))pend=[]; return; }
+    if(/単位/.test(t)&&/(数量|単価)/.test(t)){ pend=[]; return; } // 表の見出し
+    // 単位の位置をさがす（最後の単位らしいかたまり）
+    let ui=-1;
+    for(let i=0;i<c.length;i++){ if(SPEC_UNIT_RE.test(specZen2han(c[i].s))&&c.slice(i+1).every(z=>specIsNum(z.s)||/^\d{4}$|^\d{1,2}$|^[^\d]{0,12}$/.test(z.s))){ ui=i; break; } }
+    // 「m2 2,100」が1つのかたまりになった時
+    if(ui<0&&c.length){ const last=c[c.length-1]; const mm=specZen2han(last.s).match(/^(\S+)\s+([-0-9.,]+(?:\s+[-0-9.,]+)*)$/); if(mm&&SPEC_UNIT_RE.test(mm[1])){ const xs=mm[2].split(/\s+/); c.splice(c.length-1,1,{s:mm[1],x:last.x,w:0,h:last.h},...xs.map(s=>({s,x:last.x+1,w:0,h:last.h}))); ui=c.length-1-xs.length; } }
+    if(ui>=0){
+      let before=c.slice(0,ui).filter(z=>!SPEC_CODE_RE.test(z.s));
+      const qtyPre=[]; while(before.length&&specIsNum(before[before.length-1].s)) qtyPre.unshift(before.pop().s);
+      const nums=qtyPre.concat(c.slice(ui+1).filter(z=>specIsNum(z.s)).map(z=>z.s));
+      if(before.length){ emit(before.filter(z=>!SPEC_CODE_RE.test(z.s)),c[ui].s,nums,{priceCol:nums.length>=2&&!priceList}); pend=[]; }
+      else if(pend.length){ // 上の行が名前（字下げの一番浅い行が名前、続きは規格）
+        const first=pend[0]; const rest=pend.slice(1).flat();
+        emit(first.concat(rest),c[ui].s,nums,{}); pend=[];
+      }
+      return;
+    }
+    // 単位がない行 → 次の「単位 数量」の行を待つ名前・規格
+    if(c.every(z=>specIsNum(z.s))) return;
+    if(SPEC_SKIP_RE.test(c[0].s.replace(/\s/g,''))){ pend=[]; return; }
+
+    if(c[0].s.length>40) { pend=[]; return; } // 文章（仕様書の本文）
+    if(pend.length>=3) pend=[];
+    // 規格の続き（前の行より右から始まる）か、新しい名前か
+    if(pend.length&&c[0].x>pend[0][0].x+20){ pend.push(c); } else { pend=[c]; }
+  });
+  return out;
+}
+
+/* 候補を整理：重複をまとめ、登録単価の値段を内訳に当てはめ、ランクを読む */
+function specBuildCandidates(raw){
+  const map=new Map(), list=[];
+  raw.forEach(r=>{
+    const rank=specRank(r.spec)||specRank(r.name);
+    const spec=rank?specStripRank(r.spec):r.spec;
+    const key=r.name+'\u0000'+spec+'\u0000'+rank+'\u0000'+r.unit;
+    const ex=map.get(key);
+    if(ex){ if(ex.price==null&&r.price!=null)ex.price=r.price; if(ex.qty==null&&r.qty!=null)ex.qty=r.qty; if(!ex.parent&&r.parent)ex.parent=r.parent; return; }
+    const o={name:r.name,spec,rank,unit:r.unit,qty:r.qty,price:r.price,parent:r.parent||'',head:r.unit==='式'};
+    map.set(key,o); list.push(o);
+  });
+  // 登録単価（名前＝分類、規格＝品名）を、同じ単位で名前が一致する内訳の行へ
+  list.forEach(o=>{ if(o.price!=null)return;
+    const hit=list.find(p=>p!==o&&p.price!=null&&p.unit===o.unit&&p.rank===o.rank&&(p.spec===o.name||p.name===o.name));
+    if(hit) o.price=hit.price; });
+  // 値段だけの重複（登録単価の行）は、内訳に取り込めたら消す
+  const used=new Set();
+  list.forEach(o=>{ if(o.qty==null&&o.price!=null){ const t=list.find(p=>p!==o&&p.qty!=null&&p.unit===o.unit&&(o.spec===p.name||o.name===p.name)); if(t) used.add(o); } });
+  // 式の行は、下に工種がぶらさがっている見出しなら消す
+  return list.filter(o=>!used.has(o)).filter(o=>!(o.head&&list.some(p=>p.parent===o.name)));
+}
+
+/* 書類の表題から委託名を推測（「工事名 ○○委託」や、上の方の「○○業務委託」の行） */
+function specGuessTitle(lines){
+  for(const l of lines.slice(0,80)){ const c=l.cells;
+    const k=c.findIndex(z=>/^(工事名|業務名|委託名|件名)$/.test(z.s.replace(/\s/g,'')));
+    if(k>=0&&c[k+1]&&c[k+1].s.length>=4) return c[k+1].s.replace(/\s+/g,''); }
+  for(const l of lines.slice(0,12)){ const t=l.cells.map(z=>z.s).join('').replace(/\s+/g,'');
+    if(/(委託|業務|工事)$/.test(t)&&t.length>=6&&t.length<=60&&!/^(工事名|設計書)/.test(t)) return t; }
+  return '';
+}
+/* 委託名を短く（一覧で見分けられる長さに） */
+function specShortName(full){
+  let s=String(full||'').replace(/\s+/g,'').replace(/(業務)?委託$|業務$|工事$/,'').replace(/^(川崎市|横浜市)/,'').replace(/^[^区]{1,4}区(内|管内)?/,'');
+  return s.length>14?s.slice(0,14)+'…':(s||String(full||'').slice(0,14));
+}
+/* 候補 → 工種のまとまり（大分類・細別。幹周ランクの値段は1つにまとめる） */
+const SPEC_TREE_UNITS=['本','株','個','基','箇所','巣'];
+function specDefaultUse(unit){ if(unit==='㎡')return 'area'; if(SPEC_TREE_UNITS.indexOf(unit)>=0)return 'tree'; if(unit==='式'||/^(L|l|ℓ|kg|h|時間|日)$/.test(unit))return 'none'; return 'manual'; }
+function specSplitName(name,parent){
+  let m=String(name).match(/^(.+?)[（(]([^（）()]+)[）)](.*)$/);
+  if(m&&m[1].length>=2) return {cat:m[1].trim(), kind:(m[2]+m[3]).trim()};
+  if(parent) return {cat:parent, kind:name, par:true};
+  return {cat:name, kind:name};
+}
+function specGroup(cands){
+  const groups=[], byKey=new Map();
+  cands.forEach(o=>{
+    let name=o.name;
+    if(o.rank) name=name.replace(/[\s　]*[A-HＡ-Ｈ]$/,'');     // 萌芽更新（平坦地）A → 規格は幹周で持つので記号は外す
+    const sp=specSplitName(name,o.parent);
+    const use=specDefaultUse(o.unit);
+    const key=sp.cat+'\u0000'+sp.kind+'\u0000'+o.unit+'\u0000'+(o.rank?'#rank':o.spec);
+    let g=byKey.get(key);
+    if(!g){ g={on:use!=='none', cat:sp.cat, kind:sp.kind, par:!!sp.par, unit:o.unit, use, spec:o.rank?'':o.spec, price:null, ranks:[], qty:o.qty}; byKey.set(key,g); groups.push(g); }
+    if(o.rank){ if(!g.ranks.some(r=>r.rank===o.rank)) g.ranks.push({rank:o.rank, price:o.price}); }
+    else if(g.price==null) g.price=o.price;
+  });
+  // 「芝刈／機械刈」のように（）がなく規格が短い時は、規格を細別にする
+  groups.forEach(g=>{ if(!g.par&&g.cat===g.kind&&g.spec&&g.spec.length<=20&&!g.ranks.length){ g.kind=g.spec; g.spec=''; } });
+  // 同じ大分類・細別で規格だけ違う → 細別に規格をつけて見分ける
+  const cnt={}; groups.forEach(g=>{const k=g.cat+'\u0000'+g.kind+'\u0000'+g.unit; cnt[k]=(cnt[k]||0)+1;});
+  groups.forEach(g=>{ if(g.spec&&cnt[g.cat+'\u0000'+g.kind+'\u0000'+g.unit]>1) g.kind=g.kind+' '+g.spec; });
+  // ランクは細い順に
+  const lo=r=>{ const m=String(r).match(/(\d+)/); return /未満/.test(r)&&!/〜/.test(r)?-1:(m?+m[1]:999); };
+  groups.forEach(g=>g.ranks.sort((a,b)=>lo(a.rank)-lo(b.rank)));
+  return groups;
+}
+
+
+/* ---------- 他の委託から利用（ほかの委託の仕様書・設計書を読んで、工種と単価を借りる） ----------
+   ・読んだ工種は MASTER に足す（def._src＝どの委託から借りたか）。保存は追加工種と同じ customWorksDefs
+   ・数を手で入れる項目（t・台・人など）は MANUAL に足す（customManualDefs）
+   ・読んだ仕様書のファイルはこの端末の IndexedDB に置いて、あとで開けるようにする */
+const SPEC_SRC_KEY='park_spec_sources', CUSTOM_MANUAL_KEY='park_custom_manual';
+let specSources={};          // id -> {id,name,short,date,files:[{name,type,size}]}
+let customManualDefs={};     // 手入力項目名 -> {unit,price,_src}
+function loadSpecSources(){
+  try{ specSources=JSON.parse(localStorage.getItem(SPEC_SRC_KEY)||'{}')||{}; }catch(e){ specSources={}; }
+  try{ const o=JSON.parse(localStorage.getItem(CUSTOM_MANUAL_KEY)||'{}')||{}; Object.keys(o).forEach(k=>{ if(!MANUAL[k]){ MANUAL[k]=o[k]; customManualDefs[k]=o[k]; } }); }catch(e){}
+}
+function saveSpecSources(){ try{ localStorage.setItem(SPEC_SRC_KEY,JSON.stringify(specSources)); localStorage.setItem(CUSTOM_MANUAL_KEY,JSON.stringify(customManualDefs)); }catch(e){} }
+function importSpecData(d){   // プロジェクトを開いた時（別の端末で取り込んだ委託もそろえる）
+  if(d&&d.specSources&&typeof d.specSources==='object') Object.keys(d.specSources).forEach(id=>{ if(!specSources[id]) specSources[id]=d.specSources[id]; });
+  if(d&&d.customManual&&typeof d.customManual==='object') Object.keys(d.customManual).forEach(k=>{ if(!MANUAL[k]){ MANUAL[k]=d.customManual[k]; customManualDefs[k]=d.customManual[k]; } });
+  saveSpecSources();
+}
+function specSrcCats(id){ return Object.keys(customWorksDefs).filter(c=>customWorksDefs[c]&&customWorksDefs[c]._src===id&&MASTER[c]); }
+function specSrcManual(id){ return Object.keys(customManualDefs).filter(k=>customManualDefs[k]&&customManualDefs[k]._src===id&&MANUAL[k]); }
+
+/* 仕様書のファイル置き場（この端末だけ） */
+function specDB(){ return new Promise((res,rej)=>{ const r=indexedDB.open('park_spec_docs',1); r.onupgradeneeded=()=>r.result.createObjectStore('f'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function specDocsGet(id){ try{ const db=await specDB(); return await new Promise(res=>{ const q=db.transaction('f').objectStore('f').get(id); q.onsuccess=()=>res(q.result||[]); q.onerror=()=>res([]); }); }catch(e){ return []; } }
+async function specDocsPut(id,list){ try{ const db=await specDB(); await new Promise(res=>{ const tx=db.transaction('f','readwrite'); tx.objectStore('f').put(list,id); tx.oncomplete=res; tx.onerror=res; }); return true; }catch(e){ return false; } }
+async function specDocsDel(id){ try{ const db=await specDB(); await new Promise(res=>{ const tx=db.transaction('f','readwrite'); tx.objectStore('f').delete(id); tx.oncomplete=res; tx.onerror=res; }); }catch(e){} }
+
+let pdfjsP=null;
+function loadPdfjs(){ if(pdfjsP) return pdfjsP;
+  pdfjsP=new Promise((ok,ng)=>{ const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=()=>{ window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; ok(window.pdfjsLib); };
+    s.onerror=()=>{ pdfjsP=null; ng(new Error('pdfjs')); }; document.head.appendChild(s); });
+  return pdfjsP; }
+
+/* ファイル → 行。戻り値 {lines, note}（note＝文字が読めなかった時の説明） */
+async function specReadFile(f,prog){
+  const nm=(f.name||'').toLowerCase();
+  if(/\.pdf$/.test(nm)||f.type==='application/pdf'){
+    const lib=await loadPdfjs();
+    const pdf=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise; const lines=[];
+    for(let n=1;n<=pdf.numPages;n++){ if(prog)prog(f.name+'　'+n+'／'+pdf.numPages+'ページ');
+      const tc=await (await pdf.getPage(n)).getTextContent(); lines.push(...specItemsToLines(tc.items)); }
+    return {lines, note: lines.length?'':'「'+f.name+'」は文字の入っていないPDF（紙をスキャンしたもの）でした。'};
+  }
+  if(/\.(xlsx|xlsm|xls)$/.test(nm)){
+    if(typeof XLSX==='undefined') return {lines:[],note:'Excelを読む部品が読み込めていません。電波のある所でもう一度。'};
+    const wb=XLSX.read(new Uint8Array(await f.arrayBuffer()),{type:'array'}); const lines=[];
+    wb.SheetNames.forEach(sn=>{ lines.push({cells:[{s:'設計内訳書',x:0,w:0,h:10}]}); lines.push(...specRowsToLines(XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:''}))); });
+    return {lines,note:''};
+  }
+  if(/\.csv$/.test(nm)){ const t=await f.text(); return {lines:specRowsToLines(t.split(/\r?\n/).map(r=>r.split(','))),note:''}; }
+  if(/\.(txt|tsv)$/.test(nm)||/^text\//.test(f.type)){ return {lines:specTextToLines(await f.text()),note:''}; }
+  if(/^image\//.test(f.type)||/\.(jpe?g|png|heic|heif|webp)$/.test(nm)) return {lines:[],note:'「'+f.name+'」は写真なので、このままでは文字を読めません。'};
+  return {lines:[],note:'「'+f.name+'」は読めない種類のファイルでした（PDF・Excel・CSVが読めます）。'};
+}
+
+/* ===== 画面 ===== */
+let ow={view:'home', id:null, name:'', short:'', files:[], text:'', groups:[], notes:[], open:{}, filter:'', undo:null, undoMsg:'', busy:''};
+function owEl(){ return $('owModal'); }
+function owShow(view){ if(view) ow.view=view; owEl().classList.add('on'); owRender(); }
+function owClose(){ owEl().classList.remove('on'); }
+function owFmt(v){ return (v==null||v==='')?'':Number(v).toLocaleString('ja-JP'); }
+function owExists(g){   // 今の工種・手入力項目にすでにある？
+  const full=(g.cat===g.kind||(g.par&&g.use==='manual'))?g.kind:g.cat+'（'+g.kind+'）';
+  const own=c=>MASTER[c]&&!(MASTER[c]._src&&MASTER[c]._src===ow.id);
+  if(own(g.cat)&&MASTER[g.cat].kinds&&MASTER[g.cat].kinds[g.kind]) return true;
+  if(own(full)) return true;
+  if(MANUAL[full]&&!(MANUAL[full]._src&&MANUAL[full]._src===ow.id)) return true;
+  if(MANUAL[g.cat]&&g.cat===g.kind&&!(MANUAL[g.cat]._src&&MANUAL[g.cat]._src===ow.id)) return true;
+  if(g.use==='manual'&&MANUAL[g.kind]&&!(MANUAL[g.kind]._src&&MANUAL[g.kind]._src===ow.id)) return true;
+  return false;
+}
+const OW_USE={area:'面積で描く（㎡）',tree:'点で数える（本・個）',manual:'数を手で入れる',none:'使わない'};
+
+function owRender(){
+  const box=$('owBody'); if(!box) return;
+  const H=[]; const e=esc;
+  if(ow.view==='home'){
+    const ids=Object.keys(specSources);
+    H.push('<h3>📄 他の委託から利用<small>ほかの委託の仕様書・設計書（PDF・Excelなど）を読んで、この委託にない工種を単価ごと借りてきます。借りた工種は「工種を選ぶ」のいちばん下にまとまって出ます。</small></h3>');
+    if(ow.undo) H.push(`<div class="owNote">${e(ow.undoMsg)}<button class="owMini" data-a="undo">↩ 元に戻す</button></div>`);
+    if(!ids.length) H.push('<div class="owEmpty">まだ何も借りていません。</div>');
+    ids.forEach(id=>{ const s=specSources[id]; const nc=specSrcCats(id), nm=specSrcManual(id); const nk=nc.reduce((a,c)=>a+Object.keys(MASTER[c].kinds||{}).length,0);
+      H.push(`<div class="owSrc"><b>${e(s.short||s.name)}</b><small>${e(s.name||'')}${s.date?'　'+e(s.date):''}</small>
+        <div class="owCnt">工種 ${nk}${nm.length?'・手入力 '+nm.length:''}${(s.files||[]).length?'・ファイル '+s.files.length:''}</div>
+        <div class="owList">${nc.map(c=>`<span>${e(c)}（${e(MASTER[c].unit)}）</span>`).join('')}${nm.map(k=>`<span>${e(k)}（${e(MANUAL[k].unit)}）</span>`).join('')}</div>
+        <div class="owBtns">${(s.files||[]).map((f,i)=>`<button class="owMini" data-a="doc" data-id="${e(id)}" data-i="${i}">📄 ${e(f.name)}</button>`).join('')}
+        <button class="owMini" data-a="more" data-id="${e(id)}">＋ 読み足す</button><button class="owMini bad" data-a="rm" data-id="${e(id)}">外す</button></div></div>`); });
+    H.push('<button class="sdBtn ok" data-a="new">＋ 仕様書・設計書を読む<small style="color:#d6f5e3">PDF・Excel・CSV。写真の場合は文字を貼り付けます</small></button>');
+    H.push('<button class="sdBtn sm" data-a="close">閉じる</button>');
+  }
+  else if(ow.view==='read'){
+    H.push('<h3>📄 仕様書・設計書を読む<small>単価表・内訳書・基礎単価集計一覧など、工種と単位（と単価）が並んだページが入っていれば読めます。</small></h3>');
+    H.push(`<label class="fld">委託名（空なら書類の表題から入れます）</label><input class="txt" id="owName" value="${e(ow.name)}" placeholder="例：高津区内特別緑地保全地区等樹林地整備業務委託">`);
+    H.push('<label class="fld">ファイル（いくつでも選べます）</label><button class="sdBtn sm" data-a="pick">📂 ファイルを選ぶ</button>');
+    if(ow.files.length) H.push('<div class="owFiles">'+ow.files.map((f,i)=>`<span>${e(f.name)} <a data-a="unfile" data-i="${i}">✕</a></span>`).join('')+'</div>');
+    H.push(`<label class="fld">または文字を貼り付け（写真の文字はiPadで長押し→「テキストを表示」→コピーでとれます）</label><textarea class="txt" id="owText" rows="4" placeholder="例：萌芽更新（平坦地）　幹周30cm未満　本　1,620">${e(ow.text)}</textarea>`);
+    if(ow.busy) H.push(`<div class="owNote">⏳ ${e(ow.busy)}</div>`);
+    H.push('<div class="owFoot"><button class="sdBtn sm" data-a="back">← 戻る</button><button class="sdBtn sm ok" data-a="read">読み取る →</button></div>');
+  }
+  else if(ow.view==='pick'){
+    const on=ow.groups.filter(g=>g.on&&g.use!=='none').length;
+    H.push(`<h3>使う工種に ✓<small>${ow.groups.length}件見つかりました。名前・使い方・単価はここで直せます。</small></h3>`);
+    H.push(`<div class="owRow2"><div><label class="fld">委託名</label><input class="txt" id="owName" value="${e(ow.name)}"></div><div style="flex:0 0 38%"><label class="fld">短い呼び名（一覧に出る）</label><input class="txt" id="owShort" value="${e(ow.short)}"></div></div>`);
+    ow.notes.forEach(n=>H.push(`<div class="owNote warn">${e(n)}</div>`));
+    if(!ow.groups.length) H.push('<div class="owEmpty">工種が見つかりませんでした。<br>スキャンしたPDFや写真のときは、文字を貼り付けるか「＋ 1行足す」で手で入れてください。</div>');
+    else H.push(`<div class="owTools"><input class="txt" id="owFilter" placeholder="しぼりこみ（例：剪定）" value="${e(ow.filter)}"><button class="owMini" data-a="all">全部 ✓</button><button class="owMini" data-a="none">全部はずす</button></div>`);
+    const fl=ow.filter.trim();
+    ow.groups.forEach((g,i)=>{ if(fl&&(g.cat+g.kind+g.spec).indexOf(fl)<0) return;
+      const ex=owExists(g), ranked=g.ranks.length>0&&g.use==='tree';
+      const pr=g.ranks.filter(r=>r.price!=null).map(r=>r.price);
+      H.push(`<div class="owG${g.on&&g.use!=='none'?' on':''}" data-i="${i}">
+        <label class="owChk"><input type="checkbox" data-f="on" ${g.on&&g.use!=='none'?'checked':''}></label>
+        <div class="owGb">
+          <div class="owRow2"><input class="txt" data-f="cat" value="${e(g.cat)}" title="大分類"><input class="txt" data-f="kind" value="${e(g.kind)}" title="細別"></div>
+          ${g.spec?`<div class="owSpec">${e(g.spec)}</div>`:''}
+          <div class="owRow2 owSm"><span class="owUnit">${e(g.unit)}</span>
+            <select data-f="use">${Object.keys(OW_USE).map(k=>`<option value="${k}"${g.use===k?' selected':''}>${OW_USE[k]}</option>`).join('')}</select>
+            ${ranked?`<button class="owMini" data-a="ranks">幹周 ${g.ranks.length}区分　${pr.length?owFmt(Math.min(...pr))+'〜'+owFmt(Math.max(...pr))+'円':'単価なし'} ${ow.open[i]?'▴':'▾'}</button>`
+              :`<span class="owPrice"><input class="txt" data-f="price" inputmode="numeric" value="${g.price==null?(g.ranks[0]&&g.ranks[0].price!=null?g.ranks[0].price:''):g.price}" placeholder="単価"> 円</span>`}</div>
+          ${ranked&&ow.open[i]?'<div class="owRanks">'+g.ranks.map((r,j)=>`<div><span>${e(r.rank)}</span><input class="txt" data-f="rp" data-j="${j}" inputmode="numeric" value="${r.price==null?'':r.price}" placeholder="単価"> 円</div>`).join('')+'</div>':''}
+          ${ex?'<div class="owEx">※ 今の委託の工種にも同じ名前があります（借りると「〔呼び名〕」つきで別に入ります）</div>':''}
+          ${g.price==null&&!g.ranks.some(r=>r.price!=null)&&g.use!=='none'?'<div class="owEx">単価が書いてありません（金抜きの設計書）。わかれば入れてください。空なら0円。</div>':''}
+        </div></div>`); });
+    H.push('<button class="owMini" data-a="addrow" style="margin:6px 0 4px">＋ 1行足す（手で入れる）</button>');
+    H.push(`<div class="owFoot"><button class="sdBtn sm" data-a="back">← 読み直す</button><button class="sdBtn sm ok" data-a="import"${on?'':' disabled'}>✓ ${on}件を借りる</button></div>`);
+  }
+  else if(ow.view==='done'){
+    H.push(`<h3>借りました<small>${e(ow.undoMsg)}</small></h3>`);
+    H.push(`<div class="owNote">「工種を選ぶ」の大分類のいちばん下、<b>他の委託：${e(ow.short)}</b> から選べます。数を手で入れる項目は「その他（手入力）」に入りました。</div>`);
+    H.push('<button class="sdBtn sm" data-a="undo">↩ 元に戻す（借りるのをやめる）</button><button class="sdBtn sm" data-a="home">借りた委託の一覧へ</button><button class="sdBtn sm ok" data-a="close">閉じる</button>');
+  }
+  box.innerHTML=H.join('');
+  const nm=$('owName'); if(nm) nm.oninput=()=>{ ow.name=nm.value; };
+  const sh=$('owShort'); if(sh) sh.oninput=()=>{ ow.short=sh.value; };
+  const tx=$('owText'); if(tx) tx.oninput=()=>{ ow.text=tx.value; };
+  const fi=$('owFilter'); if(fi) fi.oninput=()=>{ ow.filter=fi.value; const p=fi.selectionStart; owRender(); const f2=$('owFilter'); if(f2){ f2.focus(); try{f2.setSelectionRange(p,p);}catch(_){} } };
+}
+function owSyncFoot(){ const on=ow.groups.filter(g=>g.on&&g.use!=='none').length; const b=owEl().querySelector('[data-a="import"]'); if(b){ b.textContent='✓ '+on+'件を借りる'; b.disabled=!on; } }
+
+/* 入力の変化（再描画しないで値だけ持つ） */
+function owOnInput(ev){
+  const t=ev.target, row=t.closest('.owG'); if(!row||!t.dataset.f) return;
+  const g=ow.groups[+row.dataset.i]; if(!g) return; const f=t.dataset.f;
+  const num=v=>{ const s=String(v).replace(/[^\d.]/g,''); return s===''?null:Math.round(parseFloat(s)); };
+  if(f==='on'){ g.on=t.checked; if(g.on&&g.use==='none') { g.use=specDefaultUse(g.unit)==='none'?'manual':specDefaultUse(g.unit); owRender(); return; } row.classList.toggle('on',g.on); owSyncFoot(); }
+  else if(f==='cat'){ g.cat=t.value.trim(); g.par=false; }
+  else if(f==='kind') g.kind=t.value.trim();
+  else if(f==='price') g.price=num(t.value);
+  else if(f==='rp'){ const r=g.ranks[+t.dataset.j]; if(r) r.price=num(t.value); }
+  else if(f==='use'){ g.use=t.value; g.on=g.use!=='none'; owRender(); }
+}
+
+async function owDoRead(){
+  const nm=$('owName'); if(nm) ow.name=nm.value.trim();
+  const tx=$('owText'); if(tx) ow.text=tx.value;
+  if(!ow.files.length&&!ow.text.trim()){ alert('ファイルを選ぶか、文字を貼り付けてください。'); return; }
+  ow.notes=[]; let lines=[], title='';
+  try{
+    for(const f of ow.files){ ow.busy='読んでいます：'+f.name; owRender();
+      const r=await specReadFile(f,m=>{ ow.busy='読んでいます：'+m; const n=owEl().querySelector('.owNote'); if(n) n.textContent='⏳ '+ow.busy; });
+      if(r.note) ow.notes.push(r.note); if(!title) title=specGuessTitle(r.lines); lines.push(...r.lines); }
+  }catch(err){ ow.busy=''; owRender(); alert('読み取れませんでした。'+(String(err&&err.message)==='pdfjs'?'\nPDFを読む部品が読み込めません。電波のある所でもう一度。':'\n'+(err&&err.message||err))); return; }
+  if(ow.text.trim()) lines.push({cells:[{s:'設計内訳書',x:0,w:0,h:10}]},...specTextToLines(ow.text));
+  ow.busy='';
+  const found=specGroup(specBuildCandidates(specParseLines(lines)));
+  // 手で足した行は残し、読んだ分は読み直すたびに入れかえる
+  ow.groups=ow.groups.filter(g=>g._hand).concat(found);
+  ow.groups.forEach(g=>{ if(g._chk) return; g._chk=1; if(owExists(g)) g.on=false; });
+  if(ow.notes.length&&!found.length) ow.notes.push('文字を貼り付けて「読み取る」か、「＋ 1行足す」で入れてください。');
+  if(!ow.name) ow.name=title||'';
+  if(!ow.short) ow.short=specShortName(ow.name)||'別の委託';
+  ow.filter=''; ow.open={}; ow.view='pick'; owRender();
+}
+
+/* 今の状態を控える（元に戻す用） */
+function owSnap(id,cats,mans){
+  const s={id, src:specSources[id]?JSON.parse(JSON.stringify(specSources[id])):null, cats:{}, mans:{}};
+  cats.forEach(c=>{ s.cats[c]=customWorksDefs[c]?JSON.parse(JSON.stringify(customWorksDefs[c])):null; });
+  mans.forEach(k=>{ s.mans[k]=customManualDefs[k]?JSON.parse(JSON.stringify(customManualDefs[k])):null; });
+  return s;
+}
+function owUsedCats(){ const u=new Set(); state.features.forEach(f=>u.add(f.cat)); return u; }
+function owUsedManual(){ const u=new Set(); state.manual.forEach(m=>u.add(m.kind)); return u; }
+function owRestore(s){
+  const uc=owUsedCats(), um=owUsedManual(), kept=[];
+  Object.keys(s.cats).forEach(c=>{ const prev=s.cats[c];
+    if(prev){ MASTER[c]=prev; customWorksDefs[c]=prev; }
+    else if(uc.has(c)) kept.push(c);
+    else { delete MASTER[c]; delete customWorksDefs[c]; } });
+  Object.keys(s.mans).forEach(k=>{ const prev=s.mans[k];
+    if(prev){ MANUAL[k]=prev; customManualDefs[k]=prev; }
+    else if(um.has(k)) kept.push(k);
+    else { delete MANUAL[k]; delete customManualDefs[k]; } });
+  if(s.src) specSources[s.id]=s.src; else if(!kept.length){ delete specSources[s.id]; specDocsDel(s.id); }
+  owAfterChange();
+  return kept;
+}
+function owAfterChange(){
+  saveCustomWorksLS(); saveSpecSources(); buildTreeColors();
+  const cur=$('catSel').value, curK=$('kindSel').value, curM=$('manKind').value;
+  fillCats(); if(MASTER[cur]){ $('catSel').value=cur; fillKinds(); if(MASTER[cur].kinds[curK]){ $('kindSel').value=curK; fillRanks(); } }
+  fillManual(); if(MANUAL[curM]) $('manKind').value=curM;
+  renderAgg(); draw();
+}
+
+function owDoImport(){
+  const nm=$('owName'); if(nm) ow.name=nm.value.trim(); const sh=$('owShort'); if(sh) ow.short=sh.value.trim();
+  if(!ow.name){ alert('委託名を入れてください。'); return; }
+  if(!ow.short) ow.short=specShortName(ow.name);
+  const id=ow.id||('s'+Date.now().toString(36));
+  const pick=ow.groups.filter(g=>g.on&&g.use!=='none'&&g.cat&&g.kind);
+  if(!pick.length){ alert('使う工種に ✓ を入れてください。'); return; }
+  const tag='〔'+ow.short+'〕';
+  const mine=c=>MASTER[c]&&MASTER[c]._src===id;
+  const freeCat=(c,mode,unit)=>{ let n=c;
+    if(MASTER[n]&&!mine(n)) n=c+tag;
+    if(MASTER[n]&&mine(n)&&(MASTER[n].mode!==mode||MASTER[n].unit!==unit)) n=n+'（'+unit+'）';
+    return n; };
+  const touchedC=new Set(), touchedM=new Set(), plan=[];
+  pick.forEach(g=>{
+    /* 見出し（林地育成工など）の下の項目は、項目名だけで */
+    if(g.use==='manual'){ let k=(g.cat===g.kind||g.par)?g.kind:g.cat+'（'+g.kind+'）'; if(MANUAL[k]&&!(MANUAL[k]._src===id)) k=k+tag; plan.push({g,k}); touchedM.add(k); }
+    else { const unit=g.use==='area'?'㎡':g.unit; const c=freeCat(g.cat,g.use,unit); plan.push({g,c,unit}); touchedC.add(c); }
+  });
+  ow.undo=owSnap(id,[...touchedC],[...touchedM]);
+  const priceOf=g=>g.price!=null?g.price:((g.ranks.find(r=>r.price!=null)||{}).price||0);
+  let nK=0, nM=0;
+  plan.forEach(p=>{ const g=p.g;
+    if(p.k){ const d={unit:g.unit,price:priceOf(g),_src:id}; MANUAL[p.k]=d; customManualDefs[p.k]=d; nM++; return; }
+    let def=(MASTER[p.c]&&mine(p.c))?MASTER[p.c]:{unit:p.unit,mode:g.use,kinds:{},_src:id,_custom:true};
+    if(g.use==='area'){ def.kinds[g.kind]={price:priceOf(g)}; }
+    else if(g.ranks.length){
+      const prices={}; g.ranks.forEach(r=>{ prices[r.rank]=r.price||0; });
+      const bands=(def.bands||[]).slice(); g.ranks.forEach(r=>{ if(bands.indexOf(r.rank)<0) bands.push(r.rank); });
+      const lo=r=>{ const m=String(r).match(/(\d+)/); return /未満/.test(r)&&!/〜/.test(r)?-1:(m?+m[1]:999); };
+      bands.sort((a,b)=>lo(a)-lo(b));
+      def.ranks=true; def.bands=bands; def.kinds[g.kind]={prices};
+    }else{
+      def.kinds[g.kind]={ranks:false,price:priceOf(g)};
+      if(def.ranks===undefined) def.ranks=false;
+    }
+    if(def.ranks===false&&Object.values(def.kinds).some(k=>k.prices)) def.ranks=true;
+    def._src=id; MASTER[p.c]=def; customWorksDefs[p.c]=def; nK++; });
+  const prevFiles=(specSources[id]&&specSources[id].files)||[];
+  const newFiles=ow.files.map(f=>({name:f.name,type:f.type,size:f.size}));
+  specSources[id]={id,name:ow.name,short:ow.short,date:new Date().toISOString().slice(0,10),files:prevFiles.concat(newFiles.filter(n=>!prevFiles.some(p=>p.name===n.name)))};
+  if(ow.files.length){ specDocsGet(id).then(old=>{ const list=(old||[]).filter(o=>!ow.files.some(f=>f.name===o.name)); return specDocsPut(id,list.concat(ow.files.map(f=>({name:f.name,type:f.type,blob:f})))); }); }
+  ow.id=id;
+  ow.undoMsg='「'+ow.short+'」から 工種'+nK+(nM?'・手入力'+nM:'')+' を借りました。';
+  owAfterChange();
+  ow.view='done'; owRender();
+}
+function owRemove(id){
+  const s=specSources[id]; if(!s) return;
+  const cats=specSrcCats(id), mans=specSrcManual(id);
+  if(!confirm('「'+(s.short||s.name)+'」から借りた工種を外しますか？\n（地図に描いてある工種は残します。外したあとでも「元に戻す」で戻せます）')) return;
+  ow.undo=owSnap(id,cats,mans);
+  const uc=owUsedCats(), um=owUsedManual(), kept=[];
+  cats.forEach(c=>{ if(uc.has(c)) kept.push(c); else { delete MASTER[c]; delete customWorksDefs[c]; } });
+  mans.forEach(k=>{ if(um.has(k)) kept.push(k); else { delete MANUAL[k]; delete customManualDefs[k]; } });
+  if(!kept.length) delete specSources[id];     // ファイルは「元に戻す」に備えて残す（次に同じ委託を読むと上書き）
+  owAfterChange();
+  ow.undoMsg='「'+(s.short||s.name)+'」を外しました。'+(kept.length?'\n地図に描いてある '+kept.join('・')+' は残しました。':'');
+  owShow('home');
+}
+async function owOpenDoc(id,i){
+  const w=window.open('','_blank');
+  const list=await specDocsGet(id); const d=list[i]||list.find(x=>x.name===((specSources[id]||{}).files||[])[i]?.name);
+  if(!d||!d.blob){ if(w) w.close(); alert('この端末には、このファイルが入っていません（別の端末で読んだ時など）。'); return; }
+  const url=URL.createObjectURL(d.blob);
+  if(w) w.location.href=url; else { const a=document.createElement('a'); a.href=url; a.target='_blank'; a.download=d.name; document.body.appendChild(a); a.click(); a.remove(); }
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+function openOtherWorks(){ ow.view='home'; owShow(); }
+function owNew(id){
+  const s=id?specSources[id]:null;
+  ow={view:'read', id:id||null, name:s?s.name:'', short:s?s.short:'', files:[], text:'', groups:[], notes:[], open:{}, filter:'', undo:ow.undo, undoMsg:ow.undoMsg, busy:''};
+  owShow();
+}
+(function(){
+  const m=owEl(); if(!m) return;
+  m.addEventListener('click',ev=>{
+    if(ev.target===m){ owClose(); return; }
+    const b=ev.target.closest('[data-a]'); if(!b) return; const a=b.dataset.a;
+    if(a==='close') owClose();
+    else if(a==='home') owShow('home');
+    else if(a==='new') owNew(null);
+    else if(a==='more') owNew(b.dataset.id);
+    else if(a==='rm') owRemove(b.dataset.id);
+    else if(a==='doc') owOpenDoc(b.dataset.id,+b.dataset.i);
+    else if(a==='pick') $('owFile').click();
+    else if(a==='unfile'){ ow.files.splice(+b.dataset.i,1); owRender(); }
+    else if(a==='back'){ if(ow.view==='pick'){ ow.view='read'; owRender(); } else owShow('home'); }
+    else if(a==='read') owDoRead();
+    else if(a==='all'){ ow.groups.forEach(g=>{ if(g.use==='none') g.use=specDefaultUse(g.unit)==='none'?'manual':specDefaultUse(g.unit); g.on=true; }); owRender(); }
+    else if(a==='none'){ ow.groups.forEach(g=>g.on=false); owRender(); }
+    else if(a==='ranks'){ const i=+b.closest('.owG').dataset.i; ow.open[i]=!ow.open[i]; owRender(); }
+    else if(a==='addrow'){ ow.groups.push({on:true,cat:'',kind:'',unit:'本',use:'tree',spec:'',price:null,ranks:[],_chk:1,_hand:1}); owRender();
+      const u=prompt('単位を入れてください（例：本・㎡・t・台）','本'); const last=ow.groups[ow.groups.length-1];
+      if(u){ last.unit=specNormUnit(u); last.use=specDefaultUse(last.unit)==='none'?'manual':specDefaultUse(last.unit); }
+      owRender(); const ins=owEl().querySelectorAll('.owG [data-f="cat"]'); if(ins.length) ins[ins.length-1].focus(); }
+    else if(a==='import') owDoImport();
+    else if(a==='undo'){ if(!ow.undo) return; const kept=owRestore(ow.undo); ow.undo=null;
+      ow.undoMsg=''; if(kept.length) alert('地図に描いてある '+kept.join('・')+' は消さずに残しました。'); owShow('home'); }
+  });
+  m.addEventListener('input',owOnInput);
+  m.addEventListener('change',ev=>{ if(ev.target&&(ev.target.dataset.f==='use'||ev.target.dataset.f==='on')) owOnInput(ev); });
+  $('owFile').addEventListener('change',e=>{ const fs=[...(e.target.files||[])]; e.target.value='';
+    fs.forEach(f=>{ if(!ow.files.some(x=>x.name===f.name&&x.size===f.size)) ow.files.push(f); }); owRender(); });
+  $('otherWorksBtn').onclick=openOtherWorks;
+  // 「工種を追加」の画面も、新しい画面から開けるよう外に出す
+  const wm=$('workModal'); if(wm&&wm.parentNode!==document.body) document.body.appendChild(wm);
+})();
+
 
 /* ---------- ツール切替 ---------- */
 function setTool(t){
@@ -3483,7 +4076,7 @@ function renderAgg(){
   const me=$('manualRows');
   if(!state.manual.length)me.innerHTML='';
   else{let t='<table>';state.manual.forEach((r,i)=>{const p=(MANUAL[r.kind]||{}).price||0;cost+=r.qty*p;
-    t+=`<tr><td>${r.kind}</td><td class="num">${r.qty} ${MANUAL[r.kind].unit}</td><td class="x" style="cursor:pointer;color:var(--mut)" data-mi="${i}">✕</td></tr>`;});t+='</table>';me.innerHTML=t;
+    t+=`<tr><td>${r.kind}</td><td class="num">${r.qty} ${(MANUAL[r.kind]||{}).unit||''}</td><td class="x" style="cursor:pointer;color:var(--mut)" data-mi="${i}">✕</td></tr>`;});t+='</table>';me.innerHTML=t;
     me.querySelectorAll('[data-mi]').forEach(b=>b.onclick=()=>{pushHistory();state.manual.splice(+b.dataset.mi,1);renderAgg();});}
   $('costTotal').textContent='¥'+Math.round(cost).toLocaleString();
 }
@@ -3527,7 +4120,7 @@ $('saveJson').onclick=()=>{
     scale:state.scale,imgData:state.imgData||null,features:state.features,manual:state.manual,scan:state.scan||[],
     rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value,
         genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:'',genzaiSrc:genzaiSrc},
-    customWorks:customWorksDefs,
+    customWorks:customWorksDefs,customManual:customManualDefs,specSources,
     mapImg:state.mapImg||null,geo:state.geo||null,saved:new Date().toISOString()};
   const base=(order?order+'_':'')+(data.park);
   dl(JSON.stringify(data),`${base}.json`,'application/json');
@@ -3661,6 +4254,7 @@ function applyParkData(d,kb){
     genzaiSrc=Array.isArray(R.genzaiSrc)?R.genzaiSrc:[]; zzCands=[]; renderZzCands();
     if($('rpGenzaiQty'))$('rpGenzaiQty').style.borderColor='';
     genzaiStat(genzaiSrc.length?('残材処分の記録 '+genzaiSrc.length+'件から取った数量です（'+genzaiSrc.map(s=>s.date+' '+s.kg+'kg').join('、')+'）'):'');}
+  if(d.specSources||d.customManual){ importSpecData(d); fillManual(); }
   if(d.customWorks){ importCustomWorks(d.customWorks); buildTreeColors(); fillCats(); }
   state.cloudId=d.cloudId||state.cloudId||null; state.cloudVer=d.cloudId?(d.cloudVer||null):(state.cloudVer||null);
   if(d.mapImg){state.mapImg=d.mapImg;const b=$('rpMapBtn');if(b)b.firstChild.textContent='🖼 履行場所の図：読み込みました（変えるならもう一度）';}
@@ -3745,7 +4339,7 @@ function parkPayload(){
     rp:{fy:$('rpFy').value,no:$('rpNo').value,submit:$('rpSubmit').value,keiyaku:$('rpKeiyaku').value,
         addr:$('rpAddr').value,atena:$('rpAtena').value,ukeoi:$('rpUkeoi').value,
         genzaiOn:$('rpGenzaiOn')?$('rpGenzaiOn').checked:true,genzaiQty:$('rpGenzaiQty')?$('rpGenzaiQty').value:'',genzaiNote:$('rpGenzaiNote')?$('rpGenzaiNote').value:'',genzaiSrc:genzaiSrc},
-    customWorks:customWorksDefs,
+    customWorks:customWorksDefs,customManual:customManualDefs,specSources,
     mapImg:state.mapImg||null,geo:state.geo||null,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,saved:new Date().toISOString()};
 }
 $('cloudSave').onclick=async()=>{
@@ -5242,6 +5836,7 @@ $('mCopy').onclick=()=>{
 /* ---------- init ---------- */
 $('hint').onclick=()=>$('hint').style.display='none';   // 邪魔なときはタップで一時的に隠す（ツール切替で再表示）
 loadCustomWorks();
+loadSpecSources();
 buildTreeColors();
 fillCats();fillManual();renderAgg();renderSansha();setTool('area');updateHint();updateUndoButtons();
 new ResizeObserver(resize).observe(cv.parentElement);resize();
@@ -5399,10 +5994,19 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
   function renderAll(){
     const cur=kindKey($('catSel').value,$('kindSel').value);
     let h='';
-    Object.keys(MASTER).forEach(c=>{ h+=`<div class="cat">${c}（${MASTER[c].unit}）</div><div class="list">`+
-      Object.keys(MASTER[c].kinds).map(k=>chipHtml(c,k,kindKey(c,k)===cur)).join('')+'</div>'; });
+    const one=c=>`<div class="cat">${c}（${MASTER[c].unit}）</div><div class="list">`+
+      Object.keys(MASTER[c].kinds).map(k=>chipHtml(c,k,kindKey(c,k)===cur)).join('')+'</div>';
+    const cats=Object.keys(MASTER), srcs=[];
+    cats.forEach(c=>{ const sr=MASTER[c]._src; if(!sr) h+=one(c); else if(srcs.indexOf(sr)<0) srcs.push(sr); });
+    // 他の委託から借りた工種は委託ごとにまとめる
+    srcs.forEach(sr=>{ const nm=((typeof specSources!=='undefined'&&specSources[sr])||{}).short||'別の委託';
+      h+=`<div class="cat" style="color:var(--acc);font-weight:700;margin-top:14px">📄 他の委託：${esc(nm)}</div>`;
+      cats.filter(c=>MASTER[c]._src===sr).forEach(c=>{ h+=one(c); }); });
+    h+='<div class="nuOw"><button class="btn ghost" id="nuOwBtn">📄 他の委託から利用<small>ほかの委託の仕様書・設計書を読んで工種を借りる</small></button><button class="btn ghost" id="nuAddWork">＋ 工種を追加<small>色・規格を決めて1つ足す</small></button></div>';
     const a=$('nuAll'); a.innerHTML=h;
     a.querySelectorAll('.nu-chip[data-c]').forEach(b=>b.onclick=()=>{pick(b.dataset.c,b.dataset.k);a.classList.remove('on');});
+    $('nuOwBtn').onclick=()=>{ a.classList.remove('on'); openOtherWorks(); };
+    $('nuAddWork').onclick=()=>{ a.classList.remove('on'); $('addWorkBtn').click(); };
   }
   function pick(c,k){
     if(!exists(c,k))return;
