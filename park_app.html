@@ -347,6 +347,14 @@ body.ui-new #nuSide{display:flex;flex-direction:column;overflow-y:auto;padding:1
 .nu-hbtn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:7px 11px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;align-items:center;gap:4px;touch-action:manipulation}
 .nu-hbtn.back{color:var(--mut);font-weight:600}
 .manual-btn{display:inline-flex;text-decoration:none;margin-right:6px}
+.autoSt{background:none;border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:5px 9px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;margin-right:6px;font-family:inherit}
+.autoSt.ok{color:var(--acc);border-color:#2b6b4c}.autoSt.wait{color:#ffd27a;border-color:#7a5a20}.autoSt.ng{color:#ff9f7a;border-color:#8a3a20}.autoSt.ro{color:#9cc8ff;border-color:#2c5a8a;background:#14243a}
+#roBar{display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:25;align-items:center;gap:10px;background:#14243a;border:1px solid #3d79c2;color:#dbeaff;border-radius:12px;padding:8px 10px 8px 14px;box-shadow:0 6px 20px #0008;font-size:14px;max-width:calc(100% - 20px)}
+#roBar small{display:block;font-size:11px;color:#9cc8ff;margin-top:1px}
+#roBar button{border:none;background:#3d79c2;color:#fff;border-radius:9px;padding:9px 12px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
+body.ro #roBar{display:flex}
+@media(max-width:900px){ .autoSt{padding:5px 7px;font-size:11px} }
+@media(max-width:600px){ #roBar{left:8px;right:60px;transform:none;max-width:none;justify-content:space-between;padding:6px 6px 6px 10px;font-size:13px} #roBar small{display:none} #roBar span{white-space:nowrap} #roBar button{padding:8px 10px;font-size:13px} }
 @media(max-width:900px){ .manual-btn .mb-t{display:none} }
 #nuSideBtn{display:none!important}
 .nu-grp{display:none}
@@ -527,6 +535,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
     <span class="nu-only nu-tabs" id="nuTabs"><button class="nu-tab" data-view="prep">準備</button><button class="nu-tab" data-view="input">入力</button><button class="nu-tab" data-view="finish">仕上げ</button></span>
     <span class="meta" id="contractMeta">業務委託</span>
     <span class="sp"></span>
+    <button id="autoSt" class="autoSt" title="自動保存のようす（タップでくわしく）" style="display:none"></button>
     <button id="undoBtn" title="元に戻す (Ctrl+Z)" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px 10px;font-size:13px;cursor:pointer;margin-right:6px">↶<span class="blbl"> 戻る</span></button>
     <button id="redoBtn" title="やり直す (Ctrl+Y)" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px 10px;font-size:13px;cursor:pointer;margin-right:10px">↷<span class="blbl"> 進む</span></button>
     <button class="nu-only nu-hbtn" id="nuSave">☁️ 保存</button>
@@ -722,6 +731,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <button id="symSel" style="display:none;align-items:center;background:#0f766e;color:#fff;border:none;border-radius:22px;padding:11px 14px;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.28)">実寸/記号</button>
     </div>
     <div class="hint" id="hint"></div>
+    <div id="roBar"><span>👀 <b>見るだけ</b>で開いています<small id="roWho"></small></span><button id="roEdit">✏️ 編集する</button></div>
     <div class="scalebadge no" id="scaleBadge" title="タップして縮尺を合わせる">縮尺：未設定（タップで合わせる）</div>
     <div id="calPop"><b>縮尺合わせ</b><span class="cp-t">図面の上で、長さの分かる<b>2点</b>をタップ（押したままドラッグでもOK）</span>
       <span class="cp-r">その2点の実距離 <input id="calPopDist" type="number" step="0.1" min="0" inputmode="decimal"> m<button id="calPopX">やめる</button></span>
@@ -1249,6 +1259,7 @@ G.S3D = { analyze, tapeOutline, fitCircle, openCloud, NB };
 <script>
 /* 途中でエラーが出たら、黙って半分死んだ画面にせず知らせる */
 window.addEventListener('error',function(ev){
+  if(/READONLY_STOP/.test(String(ev.message||''))){ try{ev.preventDefault();}catch(e){} return; }   // 見るだけのとき編集を止めた（エラーではない）
   try{
     var b=document.getElementById('jsErr'); if(!b)return;
     b.className='on';
@@ -1326,9 +1337,9 @@ let undoStack=[], redoStack=[];
 function snapshot(){return JSON.stringify({features:state.features,manual:state.manual,scale:state.scale,scan:state.scan||[]});}
 function restore(s){const o=JSON.parse(s);state.features=o.features;state.manual=o.manual;state.scale=o.scale;state.scan=o.scan||[];selScan=null;alignScan=null;renderScanInfo();
   recalcAll();multiSel=[];selected=null;draft=null;updateScaleBadge();renderAgg();renderSansha();refreshDraftBar();draw();updateUndoButtons();}
-function pushHistory(){undoStack.push(snapshot());if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();if(typeof draftLater==='function')draftLater();}
-function undo(){if(!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop());}
-function redo(){if(!redoStack.length)return;undoStack.push(snapshot());restore(redoStack.pop());}
+function pushHistory(){if(typeof RO!=='undefined'&&RO.on&&!guardEdit())throw new Error('READONLY_STOP');undoStack.push(snapshot());if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();if(typeof draftLater==='function')draftLater();}
+function undo(){if(!undoStack.length)return;if(typeof RO!=='undefined'&&RO.on&&!guardEdit())return;redoStack.push(snapshot());restore(undoStack.pop());if(typeof draftLater==='function')draftLater();}
+function redo(){if(!redoStack.length)return;if(typeof RO!=='undefined'&&RO.on&&!guardEdit())return;undoStack.push(snapshot());restore(redoStack.pop());if(typeof draftLater==='function')draftLater();}
 function updateUndoButtons(){const u=$('undoBtn'),r=$('redoBtn');if(u)u.style.opacity=undoStack.length?'1':'.4';if(r)r.style.opacity=redoStack.length?'1':'.4';}
 
 /* ---------- 工種セレクト構築 ---------- */
@@ -3763,14 +3774,15 @@ async function draftGet(){ const db=await draftDB(); return new Promise((res)=>{
 async function draftSaveNow(){
   clearTimeout(draftT); draftT=null;
   if(!state.img&&!(state.features||[]).length) return;
-  try{ const p=parkPayload(); await draftPut({at:Date.now(),park:p.park,n:(state.features||[]).length,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,json:JSON.stringify(p)}); }catch(e){}
+  try{ const p=parkPayload(); await draftPut({at:Date.now(),park:p.park,n:(state.features||[]).length,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,ro:RO.on,owner:RO.owner,dirty:AUTO.dirty,json:JSON.stringify(p)}); }catch(e){}
 }
-function draftLater(){ clearTimeout(draftT); draftT=setTimeout(draftSaveNow,2500); }
+function draftLater(){ clearTimeout(draftT); draftT=setTimeout(draftSaveNow,2500); if(typeof autoLater==='function') autoLater(); }
 document.addEventListener('visibilitychange',()=>{ if(document.hidden&&draftT) draftSaveNow(); });
 window.addEventListener('pagehide',()=>{ if(draftT) draftSaveNow(); });
 document.addEventListener('change',e=>{ if(e.target&&e.target.closest&&e.target.closest('input,select,textarea')) draftLater(); },true);
 function draftOpen(d){
   applyParkJson(d.json); state.cloudId=d.cloudId||null; state.cloudVer=d.cloudVer||null;
+  setReadOnly(!!d.ro,d.owner||''); if(d.dirty&&!d.ro){ AUTO.dirty=true; autoLater(); }
   if(state.cloudId) setTimeout(loadShots,600);
 }
 async function draftOffer(){
@@ -4562,7 +4574,7 @@ function applyParkJson(text){
     }
     return;
   }
-  try{ applyParkData(d,kb); }
+  try{ setReadOnly(false); autoReset(); applyParkData(d,kb); }
   catch(err){ alert('読み込みの途中で問題が起きました。\n'+((err&&err.message)||err)+'\n\nデータは残っているので、もう一度お試しください。'); }
 }
 function applyParkData(d,kb){
@@ -4666,6 +4678,7 @@ function parkPayload(){
     mapImg:state.mapImg||null,geo:state.geo||null,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,saved:new Date().toISOString()};
 }
 $('cloudSave').onclick=async()=>{
+  if(RO.on&&!guardEdit()) return;
   if(!$('parkName').value){ alert('公園名を入れてください。一覧で見分けがつかなくなります。'); return; }
   myName(true);
   const b=$('cloudSave'); const label=b.firstChild.textContent;
@@ -4675,7 +4688,7 @@ $('cloudSave').onclick=async()=>{
     const d=await cloudPost({mode:'save',id:state.cloudId||null,ver:state.cloudId?state.cloudVer:null,park:payload.park,contract:payload.contract,
         order:payload.order,date:payload.date,figures:state.features.length,json:JSON.stringify(payload)});
     if(!d.ok) throw new Error(/unknown/.test(d.error||'')?'共通GASの更新がまだです（数分で反映されます）':(d.error||'保存できませんでした'));
-    state.cloudId=d.id; state.cloudVer=d.ver; setTimeout(loadShots,500);
+    state.cloudId=d.id; state.cloudVer=d.ver; setTimeout(loadShots,500); AUTO.dirty=false; AUTO.stopped=''; AUTO.err=''; AUTO.last=Date.now(); AUTO.at=hhmm(); roRemember(d.id); autoStRender();
     { const pj=Object.assign({},payload,{cloudId:d.id,cloudVer:d.ver}); recPut(d.id,d.ver,JSON.stringify(pj)); }
     let sendNote='';
     if(pickUnsent()>0){ try{ const j=await sendPickedCore(); sendNote='\n\n📤 撮る木も工事写真へ送りました（新しく '+j.added+' 本・か所'+(j.removed?'・外した '+j.removed:'')+'）'; }
@@ -4702,7 +4715,7 @@ function drawCloudList(){
   $('cloudList').innerHTML=list.length?list.map(it=>
       '<div class="item" data-id="'+esc(it.id)+'"><div><div class="nm">'+esc(it.park||'（名前なし）')
       +(it.date?('　<span style="color:var(--acc)">'+esc(it.date)+'</span>'):'')+(it.id===state.cloudId?'　<span style="color:var(--acc)">（開いている）</span>':'')+'</div>'
-      +'<div class="sb">更新 '+esc(it.updated||'')+(it.by?('　'+esc(it.by)):'')+(it.figures?('　図形 '+it.figures+'件'):'')
+      +'<div class="sb">更新 '+esc(it.updated||'')+(it.by?('　'+esc(it.by)):'')+(it.owner&&it.owner!==it.by?('　作成 '+esc(it.owner)):'')+(it.figures?('　図形 '+it.figures+'件'):'')
       +(it.order?('　指示 '+esc(it.order)):'')+(it.size?('　'+esc(it.size)):'')+'<span class="rcMark" data-rc="'+esc(it.id)+'"></span></div></div>'
       +'<div class="go">開く →</div><button class="del" data-del="'+esc(it.id)+'" title="消す">🗑</button></div>').join('')
     :'<div class="legend">'+(cloudItems.length?'見つかりません。':'まだ保存された公園がありません。')+'</div>';
@@ -4723,10 +4736,11 @@ function drawCloudList(){
   Array.prototype.forEach.call($('cloudList').querySelectorAll('.item'),el=>{
     el.onclick=async()=>{
       if(state.features.length && !confirm('いま記録している内容を置きかえます。よろしいですか。')) return;
+      if(AUTO.dirty&&!AUTO.stopped&&!autoWhy()){ $('cloudBody').innerHTML='<div class="legend">いまの記録を保存してから開きます…</div>'; await autoSaveNow(); }   // 開き直す前に、いまの記録の変更を保存しておく
       const id=el.getAttribute('data-id'), it=cloudItems.find(x=>x.id===id)||{};
       const c=await recGet(id);
       if(c&&c.data&&Number(c.ver)===Number(it.ver||1)){   // 端末の控えと同じ版 → ダウンロードせずに開く
-        applyParkJson(c.data); state.cloudId=id; state.cloudVer=Number(c.ver); cloudBox(false); recPut(id,c.ver,c.data); return;
+        applyParkJson(c.data); state.cloudId=id; state.cloudVer=Number(c.ver); cloudBox(false); recPut(id,c.ver,c.data); openedCheck(it); return;
       }
       $('cloudBody').innerHTML='<div class="legend">開いています…（はじめて開く記録・更新された記録はダウンロードします）</div>';
       try{
@@ -4735,7 +4749,7 @@ function drawCloudList(){
         applyParkJson(g.data);
         state.cloudId=id; state.cloudVer=g.item?g.item.ver:state.cloudVer;
         recPut(id,state.cloudVer||1,g.data);
-        cloudBox(false);
+        cloudBox(false); openedCheck(g.item||it);
       }catch(e){ $('cloudBody').innerHTML='<div class="legend">'+esc(String(e&&e.message||e))+'</div>'; }
     };
   });
@@ -4761,6 +4775,127 @@ $('cloudOpen').onclick=async()=>{
     cloudListShow('');
   }catch(e){ if(old&&old.length) cloudListShow('⚠ 最新の一覧を取れませんでした（前回の一覧です）。'+esc(String(e&&e.message||e))); else $('cloudBody').innerHTML='<div class="legend">一覧を取れませんでした。'+esc(String(e&&e.message||e))+'</div>'; }
 };
+/* ===================== 自動保存（みんなの共有へ）と「見るだけ」 =====================
+   ・変更してから少し待って、みんなの共有（Googleドライブ）へ自動で保存する（同じ記録の中身を入れかえる）
+   ・ほかの人が作った記録は「見るだけ」で開く。図面に描く・動かす・消すなどをしようとしたら、編集してよいか確かめる
+   ・ほかの人が先に保存し直していたら、自動保存は止めて知らせる（勝手に別の記録は作らない） */
+var RO={on:false,owner:''};
+var AUTO={t:null,last:0,busy:false,dirty:false,stopped:'',err:'',at:''};
+const RO_UNLOCK_KEY='park_ro_unlocked';
+function hhmm(){ const d=new Date(); return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0'); }
+function roUnlocked(id){ if(!id) return false; try{ return !!(JSON.parse(localStorage.getItem(RO_UNLOCK_KEY)||'{}')||{})[id]; }catch(e){ return false; } }
+function roRemember(id){ if(!id) return; try{ const o=JSON.parse(localStorage.getItem(RO_UNLOCK_KEY)||'{}')||{}; o[id]=Date.now();
+  const ks=Object.keys(o).sort((a,b)=>o[b]-o[a]); ks.slice(300).forEach(k=>delete o[k]); localStorage.setItem(RO_UNLOCK_KEY,JSON.stringify(o)); }catch(e){} }
+function setReadOnly(on,owner){
+  RO.on=!!on; RO.owner=owner||'';
+  document.body.classList.toggle('ro',RO.on);
+  const w=$('roWho'); if(w) w.textContent=RO.on?('記入：'+(RO.owner||'ほかの人')+'さん。描く・動かす・消すときは確認します'):'';
+  if(RO.on&&['pan','select'].indexOf(tool)<0) setTool('pan');
+  autoStRender();
+}
+function guardEdit(){
+  if(!RO.on) return true;
+  const ok=confirm('この記録は '+(RO.owner||'ほかの人')+' さんが記入したものです。\n\n編集しますか？\n\nOK＝編集する（自動で保存されます）\nキャンセル＝見るだけのまま');
+  if(!ok) return false;
+  myName(true);
+  roRemember(state.cloudId); setReadOnly(false);
+  return true;
+}
+// クラウドから開いたとき：作った人が自分か、前にこの端末で「編集する」にした記録なら、そのまま編集。ほかは見るだけ
+function openedCheck(it){
+  autoReset();
+  const owner=String((it&&(it.owner||it.by))||'').trim(), me=String(myName()||'').trim();
+  const mine=!!owner&&!!me&&owner===me;
+  setReadOnly(!(mine||roUnlocked(state.cloudId)), owner);
+}
+function autoReset(){ clearTimeout(AUTO.t); AUTO.t=null; AUTO.dirty=false; AUTO.stopped=''; AUTO.err=''; AUTO.at=''; autoStRender(); }
+function autoWhy(){   // 自動保存できない理由（空ならできる）
+  if(RO.on) return 'ro';
+  if(!(state.img||(state.features||[]).length)) return 'empty';
+  if(!($('parkName').value||'').trim()) return 'park';
+  if(!myName()) return 'name';
+  return '';
+}
+function autoLater(){
+  if(RO.on) return;
+  AUTO.dirty=true; clearTimeout(AUTO.t); AUTO.t=null;
+  if(!AUTO.stopped){ const wait=Math.max(15000,60000-(Date.now()-AUTO.last)); AUTO.t=setTimeout(autoSaveNow,wait); }
+  autoStRender();
+}
+async function autoSaveNow(){
+  clearTimeout(AUTO.t); AUTO.t=null;
+  if(!AUTO.dirty||AUTO.busy||AUTO.stopped||autoWhy()){ autoStRender(); return; }
+  if(navigator.onLine===false){ AUTO.err='電波がありません'; autoStRender(); AUTO.t=setTimeout(autoSaveNow,60000); return; }
+  AUTO.busy=true; AUTO.dirty=false; autoStRender();
+  try{
+    const payload=parkPayload(), wasNew=!state.cloudId;
+    const d=await cloudPost({mode:'save',noFork:true,id:state.cloudId||null,ver:state.cloudId?state.cloudVer:null,park:payload.park,contract:payload.contract,
+      order:payload.order,date:payload.date,figures:state.features.length,json:JSON.stringify(payload)});
+    if(d&&d.conflict){ AUTO.stopped=d.error||'ほかの人が先に保存し直しています'; AUTO.dirty=true; }
+    else if(!d||!d.ok) throw new Error(/unknown/.test((d&&d.error)||'')?'共通GASの更新がまだです':((d&&d.error)||'保存できませんでした'));
+    else{
+      state.cloudId=d.id; state.cloudVer=d.ver; AUTO.last=Date.now(); AUTO.at=hhmm(); AUTO.err='';
+      if(wasNew) roRemember(d.id);
+      recPut(d.id,d.ver,JSON.stringify(Object.assign({},payload,{cloudId:d.id,cloudVer:d.ver})));
+      draftSaveNow();
+    }
+  }catch(e){ AUTO.dirty=true; AUTO.err=String(e&&e.message||e); }
+  finally{
+    AUTO.busy=false;
+    if(AUTO.dirty&&!AUTO.stopped&&!AUTO.t) AUTO.t=setTimeout(autoSaveNow,AUTO.err?60000:15000);
+    autoStRender();
+  }
+}
+function autoStRender(){
+  const b=$('autoSt'); if(!b) return;
+  const has=!!(state.img||(state.features||[]).length);
+  b.style.display=(has||RO.on)?'':'none';
+  let t='', c='';
+  const why=autoWhy();
+  if(RO.on){ t='👀 見るだけ'; c='ro'; }
+  else if(AUTO.busy){ t='☁️ 保存中…'; c='wait'; }
+  else if(AUTO.stopped){ t='⚠ 自動保存を停止'; c='ng'; }
+  else if(why==='park'){ t='自動保存：公園名を入れると開始'; c='wait'; }
+  else if(why==='name'){ t='自動保存：名前を入れてください'; c='wait'; }
+  else if(AUTO.dirty&&AUTO.err){ t='⚠ 未保存（あとでもう一度）'; c='ng'; }
+  else if(AUTO.dirty){ t='● 未保存（まもなく自動保存）'; c='wait'; }
+  else if(AUTO.at){ t='☁️ 自動保存 '+AUTO.at; c='ok'; }
+  else if(state.cloudId){ t='☁️ 保存ずみ'; c='ok'; }
+  else { t='☁️ 自動保存'; c='wait'; }
+  b.textContent=t; b.className='autoSt '+c;
+}
+$('autoSt').onclick=()=>{
+  if(RO.on){ guardEdit(); return; }
+  if(AUTO.stopped){
+    if(confirm('自動保存を止めています。\n'+AUTO.stopped+'。\n\nこのまま保存すると、上書きせずに「別の記録」として残します（あとで一覧で見くらべられます）。\n\n別の記録として保存しますか？')){ AUTO.stopped=''; $('cloudSave').click(); }
+    return;
+  }
+  const why=autoWhy();
+  if(why==='name'){ if(myName(true)){ autoLater(); } return; }
+  if(why==='park'){ alert('公園名を入れると、みんなの共有（Googleドライブ）へ自動で保存しはじめます。'); return; }
+  if(AUTO.dirty){ autoSaveNow(); return; }
+  alert('変更すると、少しして みんなの共有（Googleドライブ）へ自動で保存します。'+(AUTO.at?'\n最後に保存：'+AUTO.at:'')+(AUTO.err?'\n前回うまくいかなかった理由：'+AUTO.err:''));
+};
+$('roEdit').onclick=()=>guardEdit();
+// 画面を閉じる・ほかのアプリへ移るときは、すぐ保存を試す
+document.addEventListener('visibilitychange',()=>{ if(document.hidden&&AUTO.dirty&&!AUTO.busy&&!autoWhy()) autoSaveNow(); });
+window.addEventListener('online',()=>{ if(AUTO.dirty&&!AUTO.busy) autoSaveNow(); });
+// 見るだけのとき：地図に描く・置く・動かす操作は、始める前に確かめる（いやなら地図を動かすだけにする）
+['mousedown','touchstart'].forEach(tp=>window.addEventListener(tp,e=>{
+  if(!RO.on||e.target!==cv) return;
+  if(e.touches&&e.touches.length>1) return;
+  if(['area','tree','rect','strip','shoot','cal'].indexOf(tool)>=0&&!guardEdit()) setTool('pan');
+},true));
+['mousemove','touchmove'].forEach(tp=>window.addEventListener(tp,e=>{
+  if(!RO.on) return;
+  if(dragging||editV||lblDrag||rotDrag){
+    if(!guardEdit()){ dragging=null; editV=null; lblDrag=null; rotDrag=null; dragSnap=null; e.stopImmediatePropagation(); if(e.cancelable) e.preventDefault(); draw(); }
+  }
+},true));
+window.addEventListener('unhandledrejection',e=>{ if(/READONLY_STOP/.test(String(e.reason&&e.reason.message||e.reason||''))) e.preventDefault(); });
+$('parkName').addEventListener('input',()=>{ if(!RO.on&&(state.img||state.features.length)) autoLater(); });
+autoStRender();
+
 /* ---------- ファイルをドラッグ＆ドロップで開く ---------- */
 (function setupDrop(){
   const zone=$('dropZone');

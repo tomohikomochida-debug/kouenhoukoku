@@ -2216,7 +2216,7 @@ function parkFolder_() {
   return folder;
 }
 function parkRow_(id) { var list = rows_('parks'); for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i]; return null; }
-function parkItem_(r) { return { id: r.id, park: r.park, contract: r.contract, order: r.order, date: r.date, figures: Number(r.figures) || 0, updated: r.updatedAt, by: r.updatedBy || r.by, ver: Number(r.ver) || 1, size: r.size || '', genzai: parkGenzaiList_(r.genzai) }; }
+function parkItem_(r) { return { id: r.id, park: r.park, contract: r.contract, order: r.order, date: r.date, figures: Number(r.figures) || 0, updated: r.updatedAt, by: r.updatedBy || r.by, owner: r.by || '', ver: Number(r.ver) || 1, size: r.size || '', genzai: parkGenzaiList_(r.genzai) }; }   // owner＝記録を作った人（見るだけで開くかの判断に使う）
 /* 発生材に使った残材処分の記録。[{k:伝票のキー, kg, full:全量か, date}]。報告書に入れない設定なら空 */
 function parkGenzaiOf_(json) {
   try {
@@ -2271,7 +2271,10 @@ function parkSave_(b) {
   if (old && old.state === '削除') old = null;
   if (old) {
     var noVer = b.ver == null || b.ver === '';   // 版の分からない古いファイル（前のクラウドなど）からの保存は、上書きせず新しい記録にする
-    if (noVer || Number(b.ver) !== (Number(old.ver) || 1)) { forked = !noVer; old = null; }   // 開いたあとで誰かが保存し直していた → 上書きしない
+    if (noVer || Number(b.ver) !== (Number(old.ver) || 1)) {   // 開いたあとで誰かが保存し直していた → 上書きしない
+      if (b.noFork) return { ok: false, conflict: true, error: (old.updatedBy || old.by || 'ほかの人') + 'さんが先に保存し直しています', by: old.updatedBy || old.by || '', updated: old.updatedAt };   // 自動保存は別の記録を作らずに止める
+      forked = !noVer; old = null;
+    }
   }
   var obj = { park: String(b.park).trim(), contract: b.contract || '', order: b.order || '', date: b.date || '', figures: Number(b.figures) || 0, state: '有効', genzai: parkGenzaiOf_(json) || '[]' };
   if (old) { obj.id = old.id; obj.ver = (Number(old.ver) || 1) + 1; }
@@ -2279,8 +2282,14 @@ function parkSave_(b) {
   var r = upsert_('parks', 'id', 'P', obj, by);
   try { var d = JSON.parse(json); d.cloudId = r.id; d.cloudVer = obj.ver; json = JSON.stringify(d); } catch (e) {}   // 中身にも番号と版を書いておく（.json で持ち出しても、あとで正しく照合できる）
   var name = [obj.park, obj.date || '日付なし', r.id].join('_').replace(/[\\\/:*?"<>|]/g, '') + '.json';
-  var file = parkFolder_().createFile(Utilities.newBlob(json, 'application/json', name));
-  if (old && old.fileId) { try { DriveApp.getFileById(old.fileId).setTrashed(true); } catch (e) {} }
+  var file = null;
+  if (old && old.fileId && json.length < 9.5 * 1024 * 1024) {   // 同じ記録の保存し直し（自動保存など）は、同じファイルの中身を入れかえる（ゴミ箱を増やさない）
+    try { file = DriveApp.getFileById(old.fileId); if (file.isTrashed()) file = null; else { file.setContent(json); if (file.getName() !== name) file.setName(name); } } catch (e) { file = null; }
+  }
+  if (!file) {
+    file = parkFolder_().createFile(Utilities.newBlob(json, 'application/json', name));
+    if (old && old.fileId) { try { DriveApp.getFileById(old.fileId).setTrashed(true); } catch (e) {} }
+  }
   upsert_('parks', 'id', 'P', { id: r.id, fileId: file.getId(), size: Math.round(json.length / 1024) + 'KB' }, by);
   var row = parkRow_(r.id);
   return { ok: true, id: r.id, ver: obj.ver, updated: row.updatedAt, forked: forked };
