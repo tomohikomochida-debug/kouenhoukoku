@@ -81,6 +81,8 @@ nav.tabs .badge{position:absolute;top:3px;left:calc(50% + 8px);background:var(--
 .wd{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.wd select{width:auto;flex:1;min-width:64px;padding:8px 4px}.wd .wdx{font-size:12px;color:var(--bark);min-width:44px}.wd .wdc{border:0;background:none;font-size:16px;color:var(--bark);cursor:pointer;padding:4px}
 .ai input,.ai select,input.ai,.wd.ai select{background:#FFF7D6;border-color:#E8C95A}
 .cropw{width:100%;text-align:center;touch-action:none}.cropw canvas{max-width:100%;touch-action:none;border-radius:6px;background:#222}
+.bt-ph{position:relative;width:96px;flex:none}.bt-ph img{width:96px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block;cursor:zoom-in}.bt-ph .lab{position:absolute;left:3px;top:3px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:1px 5px;border-radius:4px}.bt-ph button{margin-top:3px;width:100%;font-size:11px;padding:3px 0}
+.bt-phs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}.card.skip{opacity:.55}
 .othrow{display:flex;gap:8px;align-items:flex-start;margin-top:8px;padding-top:8px;border-top:1px dashed #CFE0D3}.othrow>input[type=checkbox]{width:22px;height:22px;margin-top:8px;flex:none}.othrow .othname{padding:6px 8px;font-size:14px}
 .readbig{display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px;font-size:16px}.readbig small{font-weight:400;color:var(--bark);font-size:12px}.btn.primary.readbig small{color:rgba(255,255,255,.88)}
 .th{position:relative;width:110px;height:78px;border-radius:8px;overflow:hidden;background:var(--leaf-soft);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--bark);border:1px solid var(--line);cursor:pointer}
@@ -127,6 +129,7 @@ table.matrix td.c.exp{color:var(--danger);font-weight:800;background:#FDF3F0}
 <div class="toast" id="toast"></div>
 <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
 <input type="file" id="fileLib" accept="image/*,application/pdf,.pdf" hidden>
+<input type="file" id="fileMulti" accept="image/*,application/pdf,.pdf" multiple hidden>
 
 <script>
 /* =========================================================
@@ -322,6 +325,7 @@ function render() {
   const rn = (S.regs || []).filter(regState).length, rb = $('#regBadge'); rb.hidden = !S.admin || !rn; rb.textContent = rn;
   const v = S.view;
   if (v && v.name === 'edit') return renderEdit(v);
+  if (v && v.name === 'batch') return renderBatch();
   if (v && v.name === 'item') return renderItem(v.id);
   if (v && v.name === 'person') return renderPerson(v.id);
   if (v && v.name === 'regEdit' && S.admin) return renderRegEdit(v);
@@ -393,11 +397,13 @@ function renderPerson(staffId, mine) {
     ${!lic ? '<div class="note"><b>運転免許証がまだ登録されていません</b>表と裏の写真を撮ってください。</div>' : ''}</div>`;
   else h += `<div class="card"><h2>${esc(nameOf(staffId))}</h2><p class="hint" style="margin:0">${list.length}件　${list.filter(it => it.status !== '確認済').length ? `確認待ち ${list.filter(it => it.status !== '確認済').length}件` : ''}</p></div>`;
   h += `<button class="btn primary block readbig" id="quickRead" style="margin-bottom:8px">📷 免許証・修了証を撮って登録<small>表を撮る → 裏も撮る（あれば） → AIが表と裏を合わせて読む → 足りない所だけ手で</small></button>`;
+  h += `<button class="btn block readbig" id="multiRead" style="margin-bottom:8px">📚 何枚もまとめて登録${BT ? '（続きがあります）' : ''}<small>続けて撮った写真・PDFを一度に選ぶ → AIがカードごとに分けて読む${S.admin && mine ? ' → 名前からだれの分かも振り分け' : ''}</small></button>`;
   h += `<div class="row2" style="margin-bottom:12px"><button class="btn tape" data-add="運転免許">🪪 運転免許証を登録</button><button class="btn primary" data-add="">＋ 資格を登録</button></div>`;
   h += byKind.length ? byKind.map(([k, l]) => `<h3>${esc(k)}（${l.length}）</h3>${l.map(itemCard).join('')}`).join('') : '<div class="empty">まだ登録がありません</div>';
   $('#main').innerHTML = h;
   document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => go({ name: 'item', id: b.dataset.open }));
   document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => go({ name: 'edit', staffId, kind: b.dataset.add || '' }));
+  $('#multiRead').onclick = () => btOpen(S.admin && mine ? '' : staffId);
   $('#quickRead').onclick = () => { ED = null; go({ name: 'edit', staffId, kind: '', t: Date.now() }); pickMode = 'read'; const el = $('#fileCam'); el.value = ''; el.click(); };
 }
 function renderPeople() {
@@ -726,6 +732,195 @@ async function recrop(i) {   // 入っている写真を切り取り直す（新
   } catch (e) { toast((isPdf(f) ? 'PDFを入れられませんでした：' : '写真を送れませんでした：') + e.message, 4500); }
 }));
 
+
+/* =========================================================
+   まとめて登録：続けて撮った写真・PDFを一度に選ぶ → AIがカードごとに組み分け → カードごとに表・裏を合わせて読む → 確かめて、まとめて登録
+   ========================================================= */
+let BT = null;   // { fixed：人を決めて開いたときのID（空＝名前から振り分け）, cards:[{ photos:[{blob, local, side}], staffId, holder, title, items, cardNo, state, err, skip, done }], hist:[] }
+const BT_MAX = 12;
+function btOpen(fixed) {
+  if (BT && BT.cards.some(c => !c.done)) { go({ name: 'batch' }); return; }   // 前の続き
+  BT = null; btPick(fixed);
+}
+function btPick(fixed, add) {
+  const el = $('#fileMulti'); el.value = '';
+  el.onchange = ev => { const fs = [...(ev.target.files || [])]; if (fs.length) btLoad(fs, fixed, add); };
+  el.click();
+}
+function btStaffOf(holder) {
+  if (!S.admin) return S.me.id;
+  const k = catKey(holder); if (!k) return '';
+  const hit = S.staff.find(st => catKey(st.name) === k) || S.staff.find(st => catKey(st.name) && (k.startsWith(catKey(st.name)) || catKey(st.name).startsWith(k)));
+  return hit ? String(hit.id) : '';
+}
+async function btLoad(files, fixed, add) {
+  openModal('<h3>📂 写真を開いています…</h3><p class="hint" id="btProg"></p>'); $('#modal').dataset.lock = '1';
+  const list = [], have = add && BT ? BT.cards.reduce((n, c) => n + c.photos.length, 0) : 0; let over = false;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i]; if ($('#btProg')) $('#btProg').textContent = `${i + 1} / ${files.length}`;
+      const blobs = isPdf(f) ? (await pdfToImages(f, BT_MAX)).pages : [await resizeImage(f, 1600, 0.85)];
+      for (const b of blobs) { if (have + list.length >= BT_MAX) { over = true; break; } list.push({ blob: b, local: URL.createObjectURL(b), side: '' }); }
+      if (over) break;
+    }
+  } catch (e) { $('#modal').dataset.lock = ''; closeModal(); toast('開けないファイルがありました：' + e.message, 4500); if (!list.length) return; }
+  $('#modal').dataset.lock = ''; closeModal();
+  if (over) toast(`一度に入れられるのは${BT_MAX}枚までです。はじめの${BT_MAX}枚だけ使いました`, 4500);
+  if (!list.length) return;
+  if (!BT || !add) BT = { fixed: fixed || '', cards: [], hist: [] };
+  const start = BT.cards.length;
+  await btGroup(list);
+  if (!S.view || S.view.name !== 'batch') go({ name: 'batch' }); else renderBatch();
+  btReadAll(start);
+}
+/* カードごとに分ける（AI）。うまくいかなければ、1枚ずつ別のカードにして手で「くっつける」 */
+async function btGroup(list) {
+  openModal(`<h3>🗂 カードごとに分けています…</h3><p class="hint">${list.length}枚の写真を、AI（Claude）が「どれとどれが同じカードの表と裏か」見ています。20秒ほどかかります。</p>`); $('#modal').dataset.lock = '1';
+  let res = null;
+  try {
+    const smalls = await Promise.all(list.map(async p => blobToB64(await resizeImage(p.blob, 800, 0.7))));
+    res = (await api('group', { images: smalls }, 120000)).photos || null;
+  } catch (e) { toast('カードごとに分けられませんでした。1枚ずつ並べたので、同じカードは「前のカードとくっつける」でまとめてください', 6000); }
+  $('#modal').dataset.lock = ''; closeModal();
+  const groups = new Map(), cards = [];
+  list.forEach((p, i) => {
+    const r = res && res[i] || {}; p.side = r.side || '';
+    let c = r.group > 0 ? groups.get(r.group) : null;
+    if (!c) { c = { photos: [], staffId: '', holder: '', title: r.title || '', items: [], cardNo: '', state: 'wait', err: '', skip: false, done: false, maybeNot: !!res && !(r.group > 0) }; cards.push(c); if (r.group > 0) groups.set(r.group, c); }
+    c.photos.push(p); if (r.holder && !c.holder) c.holder = r.holder; if (r.title && !c.title) c.title = r.title;
+  });
+  cards.forEach(c => { c.photos.sort((a, b) => (a.side === '裏' ? 1 : 0) - (b.side === '裏' ? 1 : 0)); c.staffId = BT.fixed || btStaffOf(c.holder); });
+  BT.cards.push(...cards);
+}
+/* カードごとに、表と裏を合わせて読む（2枚ずつ並べて進める） */
+let btBusy = false;
+async function btReadAll() {
+  if (btBusy) return; btBusy = true;
+  try {
+    const one = async () => {
+      for (;;) {
+        const c = BT && BT.cards.find(x => x.state === 'wait'); if (!c) return;
+        c.state = 'reading'; btRender();
+        try {
+          const images = await Promise.all(c.photos.slice(0, 3).map(p => blobToB64(p.blob)));
+          const d = (await api('read', { images, names: allNames() }, 120000)).data || {};
+          c.items = ((d.items && d.items.length) ? d.items : (d.name ? [d] : [])).map(x => Object.assign({}, x));
+          if (d.holder) { c.holder = d.holder; if (!BT.fixed && !c.staffTouched) c.staffId = btStaffOf(d.holder) || c.staffId; }
+          c.cardNo = d.cardNumber || '';
+          c.photos.slice(0, 3).forEach((p, i) => { if ((d.sides || [])[i]) p.side = d.sides[i]; });
+          c.state = c.items.length ? 'ok' : 'err'; c.err = c.items.length ? '' : '資格の名前が読めませんでした';
+        } catch (e) { c.state = 'err'; c.err = e.message; }
+        btRender();
+      }
+    };
+    await Promise.all([one(), one()]);
+  } finally { btBusy = false; btRender(); }
+}
+const btRender = () => { if (S.view && S.view.name === 'batch') renderBatch(); };
+const btHave = (staffId, name) => live().some(x => String(x.staffId) === String(staffId) && catKey(x.name) === catKey(name));
+const btOn = (c, it) => it.chk != null ? it.chk : !btHave(c.staffId, it.name);   // もう登録してある資格は、最初からチェックを外す
+function btSnap() {   // 「元に戻す」用
+  BT.hist.push(BT.cards.map(c => Object.assign({}, c, { photos: c.photos.slice(), items: c.items.map(x => Object.assign({}, x)) })));
+  if (BT.hist.length > 20) BT.hist.shift();
+}
+function renderBatch() {
+  if (!BT) { back(); return; }
+  setHeader('📚 まとめて登録', true);
+  const cs = BT.cards, left = cs.filter(c => !c.done), reading = cs.some(c => c.state === 'wait' || c.state === 'reading');
+  const n = left.filter(c => !c.skip && c.state === 'ok').reduce((k, c) => k + c.items.filter(it => it.name && btOn(c, it)).length, 0);
+  const staffOpts = sel => `<option value="">— だれの分？ —</option>` + S.staff.map(st => `<option value="${esc(st.id)}"${String(sel) === String(st.id) ? ' selected' : ''}>${esc(st.name || st.disp)}</option>`).join('');
+  const stTag = c => c.done ? '<span class="tag">登録済み</span>' : c.state === 'reading' ? '<span class="tag"><span class="loading"></span> 読んでいます</span>' : c.state === 'wait' ? '<span class="tag">読む順番待ち</span>' : c.state === 'err' ? '<span class="tag red">読めませんでした</span>' : '';
+  let h = `<div class="card"><h2>📚 まとめて登録</h2><p class="hint" style="margin-top:0">写真${cs.reduce((k, c) => k + c.photos.length, 0)}枚を、カード${cs.length}枚に分けました。組み分けが違うときは「前のカードとくっつける」「ここから分ける」で直せます。<b>チェックした資格を、カードの写真を付けてまとめて登録</b>します。</p>
+    <div class="row2"><button class="btn sm" id="btUndo"${BT.hist.length ? '' : ' disabled'}>↩ 元に戻す</button><button class="btn sm" id="btAdd">＋ 写真を足す</button></div>
+    ${reading ? '<div class="note"><b>AIが読んでいます</b>読み終わったカードから確かめられます。</div>' : ''}</div>`;
+  cs.forEach((c, i) => {
+    if (c.done) { h += `<div class="card skip"><h3 style="margin:0">カード${i + 1}　${esc(c.holder || '')}　${stTag(c)}</h3></div>`; return; }
+    const hNg = c.holder && c.staffId && catKey(c.holder) !== catKey(nameOf(c.staffId)) && !catKey(nameOf(c.staffId)).startsWith(catKey(c.holder));
+    h += `<div class="card${c.skip ? ' skip' : ''}" id="btc${i}"><h3 style="margin-top:0">カード${i + 1}${c.title ? '　<small>' + esc(c.title) + '</small>' : ''}　${stTag(c)}</h3>
+      <div class="bt-phs">${c.photos.map((p, j) => `<div class="bt-ph"><img src="${p.local}" data-bv="${i}:${j}" alt=""><span class="lab">${esc(p.side || '?')}</span>${j > 0 ? `<button class="btn sm" data-bsplit="${i}:${j}">✂ ここから分ける</button>` : ''}</div>`).join('')}</div>
+      ${c.maybeNot ? '<div class="note"><b>資格のカードではないかもしれません</b>違うなら「このカードは登録しない」にしてください。</div>' : ''}
+      ${S.admin ? `<label class="lbl">だれの分${c.holder ? `<small class="hint">（カードの名前：${esc(c.holder)}）</small>` : ''}</label><select data-bst="${i}"${BT.fixed ? ' disabled' : ''}>${staffOpts(c.staffId)}</select>
+        ${!c.staffId && c.holder ? `<p class="hint" style="color:var(--danger)">「${esc(c.holder)}」さんが社員の中に見つかりません。選んでください。</p>` : ''}` : ''}
+      ${hNg ? `<div class="note red"><b>名前が違うかもしれません</b>カードの名前は「${esc(c.holder)}」、登録先は「${esc(nameOf(c.staffId))}」です。</div>` : ''}
+      ${c.state === 'ok' ? c.items.map((it, k) => `<div class="othrow"><input type="checkbox" data-bck="${i}:${k}"${btOn(c, it) ? ' checked' : ''}${c.skip ? ' disabled' : ''} aria-label="登録する"><div style="flex:1;min-width:0">
+          <input type="text" class="othname" data-bnm="${i}:${k}" list="dlCatAll" value="${esc(it.name)}">
+          <div class="hint" style="margin:2px 0 0">${[it.kind, it.grade, it.issued ? (it.kind === '運転免許' ? '交付 ' : '修了 ') + wj(it.issued) : '', it.expires ? '期限 ' + wj(it.expires) : '', it.number ? '番号 ' + it.number : '', it.issuer].filter(Boolean).map(esc).join('　')}${btHave(c.staffId, it.name) ? '　<b style="color:var(--danger);display:inline">もう登録してあります</b>' : ''}</div></div></div>`).join('') : ''}
+      ${c.state === 'err' ? `<div class="note red"><b>読み取れませんでした</b>${esc(c.err)}<div class="row2" style="margin-top:8px"><button class="btn sm" data-bre="${i}">🤖 読み直す</button><button class="btn sm" data-bone="${i}">この写真で1件ずつ登録</button></div></div>` : ''}
+      <div class="row2" style="margin-top:10px">${i > 0 && !cs[i - 1].done ? `<button class="btn sm" data-bmerge="${i}">⬆ 前のカードとくっつける</button>` : ''}${c.state === 'ok' ? `<button class="btn sm" data-bre="${i}">🤖 読み直す</button>` : ''}<button class="btn sm" data-bskip="${i}">${c.skip ? '↩ 登録する' : 'このカードは登録しない'}</button></div>
+    </div>`;
+  });
+  h += `<datalist id="dlCatAll">${allNames().map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+    <div class="row2" style="margin:4px 0 24px"><button class="btn" id="btCancel">やめる</button><button class="btn primary" id="btSave" style="flex:2"${n && !reading ? '' : ' disabled'}>✅ まとめて登録（${n}件）</button></div>`;
+  const y = window.scrollY; $('#main').innerHTML = h; window.scrollTo(0, y);
+  const at = s2 => s2.split(':').map(Number);
+  $('#btUndo').onclick = () => { const prev = BT.hist.pop(); if (!prev) return; BT.cards = prev; renderBatch(); toast('元に戻しました'); };
+  $('#btAdd').onclick = () => btPick(BT.fixed, true);
+  document.querySelectorAll('[data-bv]').forEach(im => im.onclick = () => { const [i, j] = at(im.dataset.bv); viewPhoto({ name: 'カード' + (i + 1), photos: BT.cards[i].photos }, j); });
+  document.querySelectorAll('[data-bst]').forEach(sl => sl.onchange = () => { const c = BT.cards[+sl.dataset.bst]; btSnap(); c.staffId = sl.value; c.staffTouched = true; c.items.forEach(it => delete it.chk); renderBatch(); });
+  document.querySelectorAll('[data-bck]').forEach(cb => cb.onchange = () => { const [i, k] = at(cb.dataset.bck); BT.cards[i].items[k].chk = cb.checked; renderBatch(); });
+  document.querySelectorAll('[data-bnm]').forEach(t => t.onchange = () => { const [i, k] = at(t.dataset.bnm); btSnap(); BT.cards[i].items[k].name = t.value.trim(); renderBatch(); });
+  document.querySelectorAll('[data-bskip]').forEach(b => b.onclick = () => { const c = BT.cards[+b.dataset.bskip]; btSnap(); c.skip = !c.skip; renderBatch(); });
+  document.querySelectorAll('[data-bmerge]').forEach(b => b.onclick = () => {   // 前のカードとくっつけて、読み直す
+    const i = +b.dataset.bmerge, a = BT.cards[i - 1], c = BT.cards[i]; btSnap();
+    a.photos = a.photos.concat(c.photos); a.state = 'wait'; a.items = []; a.skip = false; a.maybeNot = false; if (!a.holder) a.holder = c.holder;
+    BT.cards.splice(i, 1); renderBatch(); btReadAll();
+  });
+  document.querySelectorAll('[data-bsplit]').forEach(b => b.onclick = () => {   // この写真から後ろを、別のカードにして読み直す
+    const [i, j] = at(b.dataset.bsplit), c = BT.cards[i]; btSnap();
+    const nc = Object.assign({}, c, { photos: c.photos.slice(j), items: [], state: 'wait', err: '', cardNo: '', holder: '', title: '', staffId: BT.fixed || (S.admin ? '' : S.me.id), staffTouched: false });
+    c.photos = c.photos.slice(0, j); c.state = 'wait'; c.items = [];
+    BT.cards.splice(i + 1, 0, nc); renderBatch(); btReadAll();
+  });
+  document.querySelectorAll('[data-bre]').forEach(b => b.onclick = () => { const c = BT.cards[+b.dataset.bre]; btSnap(); c.state = 'wait'; c.items = []; renderBatch(); btReadAll(); });
+  document.querySelectorAll('[data-bone]').forEach(b => b.onclick = () => {   // 読めなかったカードは、いつもの登録画面へ（写真はそのまま入る）
+    const i = +b.dataset.bone, c = BT.cards[i]; btSnap(); BT.cards.splice(i, 1);
+    const view = { name: 'edit', staffId: c.staffId || S.me.id, kind: '', t: Date.now() };
+    ED = { id: newId(), staffId: view.staffId, kind: '', name: '', number: '', grade: '', issued: '', expires: '', issuer: '', memo: '', photos: [], _key: JSON.stringify(view), _new: true, _uploaded: [] };
+    ED._pending = c.photos.map((p, k) => addPhoto(p.blob, k === 0 ? '修了証' : '裏・続き').photoId);
+    if (!BT.cards.length) BT = null;
+    go(view);
+  });
+  $('#btCancel').onclick = () => {
+    if (BT.cards.some(c => !c.done && !c.skip) && !confirm('まだ登録していないカードがあります。やめますか？（写真は登録されません）')) return;
+    BT = null; back();
+  };
+  $('#btSave').onclick = btSave;
+}
+async function btSave() {
+  const cs = BT.cards.filter(c => !c.done && !c.skip && c.state === 'ok' && c.items.some(it => it.name && btOn(c, it)));
+  const noOne = cs.findIndex(c => !c.staffId);
+  if (noOne >= 0) { toast('だれの分か選んでいないカードがあります', 3500); const el = $('#btc' + BT.cards.indexOf(cs[noOne])); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+  const b = $('#btSave'); b.disabled = true;
+  let ok = 0; const fail = [];
+  for (let ci = 0; ci < cs.length; ci++) {
+    const c = cs[ci], its = c.items.filter(it => it.name && btOn(c, it));
+    try {
+      b.innerHTML = `<span class="loading"></span> 写真を送っています（カード${ci + 1}/${cs.length}）`;
+      if (!c.uploaded) {   // 写真はカードごとに1回だけ送る（同じ写真を、そのカードの資格みんなで使う）
+        const itemId = newId(), ups = [];
+        for (const p of c.photos) {
+          const photoId = 'P' + Date.now().toString(36) + rid(), side = p.side === '裏' ? (its[0].kind === '運転免許' ? '裏' : '裏・続き') : (its[0].kind === '運転免許' ? '表' : '修了証');
+          await api('photo', { photo: { photoId, itemId, staffId: c.staffId, side, name: its[0].name }, data: await blobToB64(p.blob) }, 120000);
+          ups.push({ photoId, side });
+        }
+        c.uploaded = { itemId, photos: ups };
+      }
+      for (let k = 0; k < its.length; k++) {
+        const it = its[k]; if (it.saved) continue;
+        b.innerHTML = `<span class="loading"></span> 登録しています（カード${ci + 1}/${cs.length}・${k + 1}/${its.length}）`;
+        const item = { id: k === 0 ? c.uploaded.itemId : newId(), staffId: c.staffId, kind: KINDS.includes(it.kind) ? it.kind : 'その他', name: it.name, number: it.number || '', grade: it.grade || '', issued: it.issued || '', expires: it.expires || '', issuer: it.issuer || '',
+          memo: c.cardNo ? '修了証明書番号 ' + c.cardNo : '', photos: c.uploaded.photos };
+        const j = await api('save', { item }); S.items.push(j.item); it.saved = true; ok++;
+      }
+      c.done = true;
+    } catch (e) { fail.push(`カード${BT.cards.indexOf(c) + 1}：${e.message}`); }
+  }
+  if (fail.length) { toast(`${ok}件登録しました。登録できなかったもの → ${fail.join('／')}（もう一度「まとめて登録」を押せます）`, 7000); renderBatch(); return; }
+  const rest = BT.cards.filter(c => !c.done && !c.skip).length;
+  toast(`${ok}件まとめて登録しました${S.admin ? '' : '。親方・事務担当が確認します'}`, 4000);
+  if (!rest) { BT = null; back(); } else renderBatch();
+}
+
 /* =========================================================
    一覧表（資格 × 人）
    ========================================================= */
@@ -744,10 +939,12 @@ function renderTable() {
       body += `<tr><th class="nm">${esc(n.name)}</th><td>${cnt || ''}</td>${ppl.map(p => cell(p.id, n)).join('')}</tr>`; });
   });
   $('#main').innerHTML = `<div class="card"><h2>一覧表</h2><p class="hint" style="margin-top:0">○ 確認済　△ 確認待ち（本人が登録・まだ確かめていない）　✕ 期限切れ。印をタップすると中身が見られます。<b>空いている枠（＋）をタップすると、その人のその資格の登録画面</b>になります。<br>行（資格の種類）は、だれかが新しい資格を登録すると自動で増えます。</p>
-      <button class="btn sm" id="catBtn">⚙ 資格の一覧を整える（足す・名前を直す・まとめる・隠す）</button></div>
+      <button class="btn sm" id="catBtn">⚙ 資格の一覧を整える（足す・名前を直す・まとめる・隠す）</button>
+      <button class="btn sm" id="tblMulti" style="margin-left:6px">📚 何枚もまとめて登録${BT ? '（続き）' : ''}</button></div>
     <div class="matrix-wrap"><table class="matrix"><thead><tr><th class="nm">資格・免許</th><th>人数</th>${ppl.map(p => `<th>${esc(p.disp || p.name)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
   document.querySelectorAll('[data-open]').forEach(td => td.onclick = () => go({ name: 'item', id: td.dataset.open }));
   $('#catBtn').onclick = () => go({ name: 'catalog' });
+  $('#tblMulti').onclick = () => btOpen('');
   document.querySelectorAll('[data-addc]').forEach(td => td.onclick = () => { ED = null; go({ name: 'edit', staffId: td.dataset.addc, kind: td.dataset.k, preName: td.dataset.n }); });
 }
 

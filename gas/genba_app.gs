@@ -196,6 +196,7 @@ var AI_ROUTES = [
   ['事故_説明整理',       '事故報告：起きたことの説明を、要点と報告書の文に整える',       'opus',         30],
   ['黒板のひな型読み取り', '工事写真：黒板の写真から項目の並びを読み、ひな型にする',       'sonnet',       30],
   ['車検証読み取り',      '車両：車検証からナンバー・車名・満了日を読む',                 'sonnet',       30],
+  ['資格証仕分け',        '資格・免許：まとめて撮った何枚もの写真を、カードごとに組み分ける（Claudeだけ）', 'sonnet', 50],
   ['資格証読み取り',      '資格・免許：免許証・修了証の写真から、名前・番号・期限を読む（Claudeだけ）', 'sonnet', 100],
   ['保険明細読み取り',    '車両：フリート契約の証券・見積書・明細書から、契約と車ごとの明細を読む', 'opus',     20],
   ['点検記録読み取り',    '車両：年次点検の記録表・シールから検査日を読む',               'sonnet',       30],
@@ -4107,6 +4108,7 @@ function shikakuPost_(b) {
       case 'photoDel':  return withLockRaw_(function () { return skPhotoDel_(b, me); });
       case 'import':    return skImport_(b, me);
       case 'read':      return skRead_(b, me);
+      case 'group':     return skGroup_(b, me);
       case 'catAdd':    return withLockRaw_(function () { return skCatAdd_(b, me); });
       case 'catSet':    return withLockRaw_(function () { return skCatSet_(b, me); });
       case 'catRename': return withLockRaw_(function () { return skCatRename_(b, me); });
@@ -4492,6 +4494,27 @@ function skCatRename_(b, me) {
   return { ok: true, changed: changed, n: changed.filter(function (c) { return c.item; }).length, kinds: skKinds_(), catalog: skCatalog_() };
 }
 /* ---------- 写真から読み取る（免許証・修了証）。Claude だけに送る。住所・生年月日・本籍は読まない ---------- */
+/* まとめて撮った写真（最大12枚・小さくしたもの）を、カードごとに組み分ける。中身の読み取りは、組ごとに skRead_ で行う */
+function skGroup_(b, me) {
+  var imgs = (Array.isArray(b.images) ? b.images : []).filter(function (d) { return d; }).slice(0, 12);
+  if (!imgs.length) return { ok: false, error: '写真がありません' };
+  var parts = [];
+  imgs.forEach(function (d, i) { parts.push({ text: '写真' + (i + 1) }); parts.push({ inline_data: { mime_type: 'image/jpeg', data: d } }); });
+  parts.push({ text: 'これは、日本の運転免許証・技能講習や特別教育の修了証・国家資格の免許証などを、何枚も続けて撮った写真です（全部で' + imgs.length + '枚、撮った順）。' +
+    '同じカード・証書の表と裏（続き）は同じ組にしてください。ふつうは表を撮ったすぐ後に裏を撮っていますが、氏名・番号・カードの色や形・様式も見て判断してください。' +
+    '裏だけでは決めにくいときは、すぐ前の表と同じ組にする。カードとは関係ない写真は group を 0 にする。' +
+    '住所・生年月日・本籍・顔写真の様子は読まないで、返さないでください。JSONだけ返してください：' +
+    '{"photos":[{"no":写真の番号,"group":組の番号（1から。同じカードは同じ番号）,"side":"表か裏","holder":"氏名（表にあれば。無ければ空）","title":"カードの題名・資格の名前を短く（例：運転免許証、技能講習修了証明書、玉掛け技能講習修了証）"}]}' });
+  var j = ai_('資格証仕分け', parts, { claudeOnly: true, maxTokens: 2000 }) || {};
+  var t = function (v, n) { return vinsT_(v, n || 60); };
+  var out = imgs.map(function (_, i) { return { no: i + 1, group: 0, side: '', holder: '', title: '' }; });
+  (Array.isArray(j.photos) ? j.photos : []).forEach(function (x) {
+    var n = parseInt(x && x.no, 10); if (!(n >= 1 && n <= imgs.length)) return;
+    out[n - 1] = { no: n, group: Math.max(0, parseInt(x.group, 10) || 0), side: x.side === '裏' ? '裏' : '表', holder: t(x.holder, 40), title: t(x.title) };
+  });
+  return { ok: true, photos: out };
+}
+
 /* 技能講習修了証明書（まとめたカード）の略称 → 正式名 */
 var SK_ABBR = { '整地': '車両系建設機械（整地・運搬・積込み用及び掘削用）運転技能講習', '基礎': '車両系建設機械（基礎工事用）運転技能講習', '解体': '車両系建設機械（解体用）運転技能講習',
   '不整': '不整地運搬車運転技能講習', '高所': '高所作業車運転技能講習', 'フォ': 'フォークリフト運転技能講習', 'ショ': 'ショベルローダー等運転技能講習', '玉掛': '玉掛け技能講習',
