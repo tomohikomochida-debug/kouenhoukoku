@@ -4955,7 +4955,7 @@ function exportExcel(){
   if(blocks.length){
     const s=buildSummary(blocks),u=s.unit;
     // シート1：求積表（ブロック展開）
-    const aoa=[[park+'　求積表（ヘロンの公式・3辺による算出）'],['委託：公園緑地等定期維持管理（'+($('contractName').value||'')+'）　／　s=(a+b+c)/2、面積=√(s(s-a)(s-b)(s-c))'],[]];
+    const aoa=[[park+'　求積表（ヘロンの公式・3辺による算出）'],['委託：'+itakuFull()+'　／　s=(a+b+c)/2、面積=√(s(s-a)(s-b)(s-c))'],[]];
     const merges=[{s:{r:0,c:0},e:{r:0,c:7}}];
     blocks.forEach((b,idx)=>{
       merges.push({s:{r:aoa.length,c:0},e:{r:aoa.length,c:7}});
@@ -5914,6 +5914,12 @@ $('rpMapFile').onchange=async e=>{
     $('rpMapBtn').firstChild.textContent='🖼 履行場所の図：選びました（変えるならもう一度）'; };
   r.readAsDataURL(f); e.target.value='';
 };
+/* 委託名：選んだ名前がすでに正式名（「〜業務委託」など）ならそのまま、「高津区北部」のような地区名だけなら正式名の形にする */
+function itakuFull(){
+  const v=($('contractName').value||'').trim();
+  if(/委託|業務|維持管理|工事/.test(v)) return v;
+  return '公園緑地等定期維持管理（'+(v||'　　　')+'）業務委託';
+}
 async function exportReportXlsx(){
   const rows=rpRows();
   if(!rows.length){ alert('記録がありません。面積・樹木・手入力のいずれかを入力してください。'); return; }
@@ -5932,7 +5938,7 @@ async function exportReportXlsx(){
     // outlinePr を消しておかないと「読み取れなかった内容」と言われて修復にかかる。
     [ws,ws2].forEach(w=>{ if(w&&w.properties) delete w.properties.outlineProperties; });
     ws.getCell('A4').value='　'.repeat(14)+'令和'+($('rpFy').value||'')+'年度';
-    ws.getCell('A5').value='公園緑地等定期維持管理（'+($('contractName').value||'')+'）業務委託'
+    ws.getCell('A5').value=itakuFull()
       +'　　業務報告書（第'+($('rpNo').value||'　')+'回）';
     if($('rpAtena').value) ws.getCell('A9').value=$('rpAtena').value;
     if($('rpUkeoi').value) ws.getCell('H11').value=$('rpUkeoi').value;
