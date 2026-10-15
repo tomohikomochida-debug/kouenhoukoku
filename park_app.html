@@ -138,10 +138,14 @@ input.kpIn{cursor:pointer;caret-color:transparent}
   .gsiFoot{padding:10px;background:var(--panel);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   #gsiNote{flex:1;min-width:200px;color:var(--mut);font-size:13px}
   #gmBox{flex:1;min-height:0;position:relative;background:#ddd}
-  #gmFrame{position:absolute;inset:0;width:100%;height:100%;border:0}
+  #gmFrame,#gmLeaf{position:absolute;inset:0;width:100%;height:100%;border:0}
+  #gmGuide{z-index:500}
+  #gmTake{background:#2f6b3f;color:#fff;border:none;border-radius:10px;padding:13px 20px;font-size:16px;font-weight:700}
+  #gmTake:disabled{opacity:.5}
   #gmGuide{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:4px solid #ff00ff;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,.18);display:none}
   .gmSeg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-  .gsiBar .gmSeg button{border:none;border-radius:0;padding:7px 14px}
+  .gsiBar .gmSeg button{border:none;border-radius:0;padding:7px 12px}
+  @media (max-width:480px){ .gmHint{display:none} }
   .gsiBar .gmSeg button.on{background:#2f6b3f;color:#fff}
   .gmHint{color:var(--mut);font-size:13px;margin-left:auto}
   #gmNote{flex:1;min-width:200px;color:var(--mut);font-size:13px;line-height:1.5}
@@ -664,7 +668,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <button class="btn" id="cloudSave">☁️ クラウドに保存<small>みんなの共有（Googleドライブ）へ。設定は要りません</small></button>
       <button class="btn ghost" id="cloudOpen">☁️ クラウドから開く<small>みんなが保存した公園の一覧から選びます</small></button>
       <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
-      <button class="btn ghost" id="rpMapBtn">🖼 履行場所の図をえらぶ<small>公園の地図を出す → スクショ → 選ぶ（枠に合わせて自動で収めます）</small></button>
+      <button class="btn ghost" id="rpMapBtn">🖼 履行場所の図をえらぶ<small>公園名でさがした地図で、ピンクの枠を決めるだけ</small></button>
       <input type="file" id="rpMapFile" accept="image/*" hidden>
       <button class="btn" id="rpXlsx">📄 報告書のExcelを書き出す<small>報告書・配置図・求積図をまとめて1つのブックに</small></button>
       <button class="btn ghost" id="cfgBtn">⚙ 施工条件・報告書の設定<small>委託・実施日・担当者・年度・契約番号など</small></button>
@@ -786,11 +790,11 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
   <div class="gsiFoot"><div id="gsiNote">公園が画面に入るように動かして、「この範囲を図面にする」を押してください</div><button id="gsiTake">この範囲を図面にする</button></div>
 </div>
 <div class="gsiModal" id="gmModal">
-  <div class="gsiBar"><button id="gmBack">‹ 戻る</button><b id="gmTitle">Googleマップでスクショ</b></div>
-  <div class="gsiBar"><input id="gmQ" placeholder="公園名・住所でさがす"><button id="gmGo">さがす</button></div>
-  <div class="gsiBar" style="padding-top:0"><span class="gmSeg"><button id="gmTypeM" class="on">地図</button><button id="gmTypeK">航空写真</button></span><span class="gmHint">ピンクの枠の中だけが使われます</span></div>
-  <div id="gmBox"><iframe id="gmFrame" title="Googleマップ" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe><div id="gmGuide"></div></div>
-  <div class="gsiFoot"><div id="gmNote"></div><button id="gmPick">② 撮ったスクショを選ぶ</button><button id="gmApp" class="gmSub">Googleマップのアプリで開く</button></div>
+  <div class="gsiBar"><button id="gmBack">‹ 戻る</button><b id="gmTitle">地図をえらぶ</b></div>
+  <div class="gsiBar"><input id="gmQ" placeholder="公園名・住所でさがす"><button id="gmGo">さがす</button><button id="gmHere">📍現在地</button></div>
+  <div class="gsiBar" style="padding-top:0"><span class="gmSeg"><button data-t="std" class="on">地図</button><button data-t="photo">航空写真</button><button data-t="google">Google</button></span><span class="gmHint">ピンクの枠の中が図になります</span></div>
+  <div id="gmBox"><div id="gmLeaf"></div><iframe id="gmFrame" title="Googleマップ" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe><div id="gmGuide"></div></div>
+  <div class="gsiFoot"><div id="gmNote"></div><button id="gmTake">✓ この枠で決める</button><button id="gmPick">撮ったスクショを選ぶ</button><button id="gmApp" class="gmSub">Googleマップのアプリで開く</button></div>
 </div>
 <div class="modal" id="modal">
   <div class="card">
@@ -4224,21 +4228,66 @@ $('saveJson').onclick=()=>{
   const base=(order?order+'_':'')+(data.park);
   dl(JSON.stringify(data),`${base}.json`,'application/json');
 };
-/* ---------- Googleマップでスクショ：公園名でさがした地図をアプリの中に出し、その場でスクショ → 選ぶ ----------
-   for：'plan'＝図面にする（gmapFile）／'rp'＝履行場所の図（rpMapFile） */
-let gmFor='plan', gmType='m';
+/* ---------- 地図をえらぶ画面：公園名でさがした地図にピンクの枠を出し、その範囲をそのまま図にする ----------
+   for：'plan'＝図面にする／'rp'＝履行場所の図
+   地図・航空写真（国土地理院）は「この枠で決める」でその場で切り出す（スクショ不要）。
+   Googleは、アプリから地図の画像を取り出せない（Googleの決まり）ので、スクショを撮って選ぶ（枠の内側だけ自動で切り取り） */
+let gmFor='plan', gmT='std', gmMap=null, gmLayer=null, gmPos=null;
 function gmQuery(){ const pk=($('parkName').value||'').trim(), ad=($('rpAddr').value||'').trim(); return [ad,pk].filter(Boolean).join(' '); }
-function gmLoad(){
+function gmMode(t){
+  gmT=t; document.querySelectorAll('#gmModal .gmSeg button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  const g=t==='google';
+  $('gmLeaf').style.display=g?'none':''; $('gmFrame').style.display=g?'':'none';
+  $('gmTake').style.display=g?'none':''; $('gmPick').style.display=g?'':'none'; $('gmApp').style.display=g?'':'none'; $('gmHere').style.display=g?'none':'';
+  if(g){ gmGoogle(); } else { gmLeafSetup(); }
+  gmNoteSet(); setTimeout(gmGuideFit,30);
+}
+function gmGoogle(){
   const q=($('gmQ').value||'').trim();
-  if(!q){ $('gmFrame').removeAttribute('src'); $('gmNote').textContent='公園名か住所を入れて「さがす」を押してください'; return; }
-  $('gmFrame').src='https://maps.google.com/maps?q='+encodeURIComponent(q)+'&t='+(gmType==='k'?'k':'m')+'&z=17&hl=ja&output=embed';
-  gmNoteSet();
+  let src='https://maps.google.com/maps?q='+encodeURIComponent(q||'公園')+'&t=m&z=17&hl=ja&output=embed';
+  if(gmPos&&gmMap){ const c=gmMap.getCenter(); src='https://maps.google.com/maps?q='+c.lat.toFixed(6)+','+c.lng.toFixed(6)+'&t=m&z='+Math.round(gmMap.getZoom())+'&hl=ja&output=embed'; }
+  if($('gmFrame').src!==src) $('gmFrame').src=src;
+}
+async function gmLeafSetup(){
+  try{
+    loadCss('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css');
+    await loadJs('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');
+  }catch(e){ $('gmNote').textContent='地図を読み込めませんでした（電波を確認してください）'; return; }
+  if(!gmMap){ gmMap=L.map('gmLeaf',{zoomControl:true,maxZoom:19}).setView([35.59,139.61],17); }
+  if(gmLayer) gmMap.removeLayer(gmLayer);
+  gmLayer=L.tileLayer(GSI_LAYERS[gmT].url,{maxZoom:19,maxNativeZoom:GSI_LAYERS[gmT].max,attribution:'国土地理院'}).addTo(gmMap);
+  setTimeout(()=>gmMap.invalidateSize(),60);
+  if(!gmPos) gmSearch();
+}
+/* 公園名でさがす：地理院の地名検索 → OpenStreetMap（公園名に強い）→ 住所だけ、の順 */
+async function gmFind(q){
+  const pk=($('parkName').value||'').trim(), ad=($('rpAddr').value||'').trim();
+  const tryGsi=async t=>{ const r=await (await fetch('https://msearch.gsi.go.jp/address-search/AddressSearch?q='+encodeURIComponent(t))).json(); if(r&&r[0]){ const [lng,lat]=r[0].geometry.coordinates; return {lat,lng,title:r[0].properties.title}; } return null; };
+  const tryOsm=async t=>{ const r=await (await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&accept-language=ja&viewbox=139.40,35.70,139.85,35.25&q='+encodeURIComponent(t))).json(); if(r&&r[0]) return {lat:+r[0].lat,lng:+r[0].lon,title:(r[0].display_name||'').split(',')[0]}; return null; };
+  const steps=[];
+  if(q&&q!==gmQuery()) steps.push(()=>tryOsm(q),()=>tryGsi(q));
+  else { if(pk) steps.push(()=>tryOsm(ad?ad.replace(/^(.*?[市区])?/,'')+' '+pk:pk),()=>tryOsm(pk),()=>tryGsi(pk)); if(ad) steps.push(()=>tryGsi(ad)); if(!pk&&!ad&&q) steps.push(()=>tryOsm(q),()=>tryGsi(q)); }
+  for(const f of steps){ try{ const r=await f(); if(r) return r; }catch(e){} }
+  return null;
+}
+async function gmSearch(){
+  const q=($('gmQ').value||'').trim();
+  if(gmT==='google'){ gmPos=null; gmGoogle(); return; }
+  if(!q){ gmHereGo(); return; }
+  $('gmNote').textContent='さがしています…';
+  const r=await gmFind(q);
+  if(r&&gmMap){ gmMap.setView([r.lat,r.lng],18); gmPos=r; $('gmNote').innerHTML='「'+esc(r.title||q)+'」を表示しました。'+gmHowText(); }
+  else { $('gmNote').textContent='見つかりませんでした。「現在地」か、地図を指で動かして公園を出してください'; }
+}
+function gmHereGo(){ if(!navigator.geolocation||!gmMap)return; navigator.geolocation.getCurrentPosition(p=>{ gmMap.setView([p.coords.latitude,p.coords.longitude],18); gmPos={lat:p.coords.latitude,lng:p.coords.longitude}; },()=>{}, {enableHighAccuracy:true,timeout:10000}); }
+function gmHowText(){
+  return gmFor==='rp'?'公園と周りの道路が<b>ピンクの枠</b>に入るよう動かして（2本指で拡大・縮小）、「この枠で決める」。':'公園が<b>ピンクの枠</b>いっぱいに入るよう動かして（2本指で拡大・縮小）、「この枠で決める」。縮尺は自動で合います。';
 }
 function gmNoteSet(){
+  if(gmT!=='google'){ $('gmNote').innerHTML=gmHowText(); return; }
   const ios=/iP(hone|ad|od)|Macintosh/.test(navigator.userAgent)&&'ontouchend' in document;
   const how=ios?'電源ボタン＋音量を上げるボタンを同時に押す':'電源ボタン＋音量を下げるボタンを同時に押す';
-  $('gmNote').innerHTML=(gmFor==='rp'?'位置が分かるように、公園と周りの道路が<b>ピンクの枠</b>に入るよう地図を動かして（2本指で拡大・縮小）':'公園が<b>ピンクの枠</b>いっぱいに入るよう地図を動かして（2本指で拡大・縮小）')+
-    '、<b>スクショ</b>を撮ってください（'+how+'）。撮ったら「② 撮ったスクショを選ぶ」。';
+  $('gmNote').innerHTML='Googleの地図はアプリから取り出せないため、<b>スクショ</b>を撮ってください（'+how+'）。撮ったら「撮ったスクショを選ぶ」。ピンクの枠の内側だけが使われます'+(gmFor==='plan'?'（あとで縮尺合わせが要ります）':'')+'。';
 }
 function gmGuideFit(){
   const g=$('gmGuide'), b=$('gmBox');
@@ -4246,47 +4295,38 @@ function gmGuideFit(){
   const W=b.clientWidth*0.9, H=b.clientHeight*0.85, r=RP_BOX_W/RP_BOX_H;
   const w=Math.min(W,H*r); g.style.width=w+'px'; g.style.height=(w/r)+'px'; g.style.display='block';
 }
-/* スクショからピンクの枠の内側だけを切り出す（見つからなければ null＝そのまま使う） */
-function gmCropShot(file){
-  return new Promise(res=>{
-    const url=URL.createObjectURL(file), im=new Image();
-    im.onload=()=>{
-      try{
-        const W=im.naturalWidth, H=im.naturalHeight, c=document.createElement('canvas'); c.width=W; c.height=H;
-        const g=c.getContext('2d'); g.drawImage(im,0,0); const d=g.getImageData(0,0,W,H).data;
-        const isPk=i=>d[i]>190&&d[i+1]<90&&d[i+2]>190;
-        const rows=[], cols=new Array(W).fill(0);
-        for(let y=0;y<H;y++){ let n=0; for(let x=0;x<W;x++){ if(isPk((y*W+x)*4)){ n++; cols[x]++; } } rows.push(n); }
-        const ry=[], cx=[]; rows.forEach((n,y)=>{ if(n>W*0.3) ry.push(y); }); cols.forEach((n,x)=>{ if(n>H*0.2) cx.push(x); });
-        if(ry.length<2||cx.length<2) throw 0;
-        const run=a=>{ let k=1; while(k<a.length&&a[k]===a[k-1]+1) k++; return k; };   // 枠の線の太さ
-        const top=ry[0]+run(ry), bot=ry[ry.length-1]-run(ry.slice().reverse().map(v=>-v))+1, left=cx[0]+run(cx), right=cx[cx.length-1]-run(cx.slice().reverse().map(v=>-v))+1;
-        const m=2, x0=left+m, y0=top+m, w=right-left-2*m, h=bot-top-2*m;
-        if(w<W*0.2||h<H*0.1) throw 0;
-        const o=document.createElement('canvas'); o.width=w; o.height=h; o.getContext('2d').drawImage(c,x0,y0,w,h,0,0,w,h);
-        o.toBlob(b=>{ URL.revokeObjectURL(url); res(b?new File([b],'gmap.png',{type:'image/png'}):null); },'image/png');
-      }catch(e){ URL.revokeObjectURL(url); res(null); }
-    };
-    im.onerror=()=>{ URL.revokeObjectURL(url); res(null); };
-    im.src=url;
-  });
+/* 「この枠で決める」：ピンクの枠の範囲を、そのまま図にする */
+async function gmTakeNow(){
+  if(!gmMap) return;
+  if(gmFor==='plan'&&!confirmReplaceImg()) return;
+  const gr=$('gmGuide').getBoundingClientRect(), mr=$('gmLeaf').getBoundingClientRect(), bw=4;
+  const nw=gmMap.containerPointToLatLng([gr.left-mr.left+bw, gr.top-mr.top+bw]), se=gmMap.containerPointToLatLng([gr.right-mr.left-bw, gr.bottom-mr.top-bw]);
+  const kind=gmT; $('gmTake').disabled=true;
+  try{
+    const r=await gsiCut(kind, nw.lat, nw.lng, se.lat, se.lng, gmMap.getZoom(), gmFor==='rp'?RP_BOX_W*3:2000, n=>{ $('gmNote').textContent=`地図を切り出しています…（${n}枚）`; });
+    if(gmFor==='rp'){ state.mapImg=r.url; $('rpMapBtn').firstChild.textContent='🖼 履行場所の図：選びました（変えるならもう一度）'; closeGmapShot(); }
+    else { state.geo=null; gsiApplyPlan(kind, r, ()=>closeGmapShot()); }
+  }catch(e){ alert(e.message||e); gmNoteSet(); }
+  $('gmTake').disabled=false;
 }
-function openGmapShot(forWhat){
+function openGmapShot(forWhat,mode){
   gmFor=forWhat;
-  $('gmTitle').textContent=forWhat==='rp'?'履行場所の図：Googleマップでスクショ':'図面：Googleマップでスクショ';
-  $('gmQ').value=gmQuery();
+  $('gmTitle').textContent=forWhat==='rp'?'履行場所の図をえらぶ':'地図から図面を作る';
+  const q=gmQuery(); if($('gmQ').value!==q){ $('gmQ').value=q; gmPos=null; }
   $('gmModal').classList.add('on');
   history.pushState({gm:1},'');
-  gmLoad(); setTimeout(gmGuideFit,50);
+  gmMode(mode||(gmT==='google'?'std':gmT));
+  if(gmPos&&gmMap) setTimeout(()=>gmMap.invalidateSize(),60);
 }
 function closeGmapShot(fromPop){ if(!$('gmModal').classList.contains('on'))return; $('gmModal').classList.remove('on'); if(!fromPop&&history.state&&history.state.gm) history.back(); }
 window.addEventListener('popstate',()=>closeGmapShot(true));
-window.addEventListener('resize',()=>{ if($('gmModal').classList.contains('on')) gmGuideFit(); });
+window.addEventListener('resize',()=>{ if($('gmModal').classList.contains('on')){ gmGuideFit(); if(gmMap) gmMap.invalidateSize(); } });
 $('gmBack').onclick=()=>closeGmapShot();
-$('gmGo').onclick=gmLoad;
-$('gmQ').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.isComposing){ e.preventDefault(); gmLoad(); } });
-$('gmTypeM').onclick=()=>{ gmType='m'; $('gmTypeM').classList.add('on'); $('gmTypeK').classList.remove('on'); gmLoad(); };
-$('gmTypeK').onclick=()=>{ gmType='k'; $('gmTypeK').classList.add('on'); $('gmTypeM').classList.remove('on'); gmLoad(); };
+$('gmGo').onclick=()=>{ gmPos=null; gmSearch(); };
+$('gmQ').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.isComposing){ e.preventDefault(); gmPos=null; gmSearch(); } });
+$('gmHere').onclick=gmHereGo;
+document.querySelectorAll('#gmModal .gmSeg button').forEach(b=>b.onclick=()=>gmMode(b.dataset.t));
+$('gmTake').onclick=gmTakeNow;
 $('gmPick').onclick=()=>{ $(gmFor==='rp'?'rpMapFile':'gmapFile').click(); };
 $('gmApp').onclick=()=>{ const q=($('gmQ').value||'').trim(); window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q||'公園'),'_blank'); };
 $('openMap').onclick=()=>openGmapShot('rp');
@@ -4300,7 +4340,7 @@ function loadJs(src){ return new Promise((res,rej)=>{ if(window.L&&window.L.map)
 $('mapPickBtn').onclick=()=>{ const o=$('mapPickOpts'); o.style.display=o.style.display==='none'?'':'none'; $('mapPickBtn').querySelector('.chv').textContent=o.style.display==='none'?'▸':'▾'; };
 $('gsiStdBtn').onclick=()=>openGsiPicker('std');
 $('gsiPhotoBtn').onclick=()=>openGsiPicker('photo');
-$('gmapShotBtn').onclick=()=>openGmapShot('plan');
+$('gmapShotBtn').onclick=()=>openGmapShot('plan','google');
 $('gmapFile').onchange=async e=>{ let f=e.target.files[0]; e.target.value=''; if(!f)return; if(!confirmReplaceImg())return; const cut=await gmCropShot(f); if(cut) f=cut; closeGmapShot(); state.geo=null; openMapFile(f);
   setTimeout(()=>alert('Googleマップのスクショを図面にしました。\n\n面積を出すには「① 縮尺合わせ」で、スクショの縮尺（左下の目盛りなど）の両端をタップして長さを入れてください。'),400); };
 function confirmReplaceImg(){ return !(state.img&&state.features.length) || confirm('いまの図面を入れ替えます。描いた図形はそのままの位置に残ります（ずれることがあります）。よろしいですか？'); }
@@ -4332,34 +4372,46 @@ $('gsiQ').onkeydown=e=>{ if(e.key==='Enter') gsiSearch(); };
 $('gsiHereBtn').onclick=gsiHere;
 $('gsiClose').onclick=()=>$('gsiModal').classList.remove('on');
 const wmPx=(lat,lng,z)=>{ const n=256*Math.pow(2,z), s=Math.sin(lat*Math.PI/180); return {x:(lng+180)/360*n, y:(0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n}; };
-$('gsiTake').onclick=async()=>{
-  if(!confirmReplaceImg()) return;
-  const b=gsiMap.getBounds(), maxZ=GSI_LAYERS[gsiKind].max;
-  let z=Math.min(maxZ, Math.round(gsiMap.getZoom())+1), p0, p1;
-  for(;;){ p0=wmPx(b.getNorth(),b.getWest(),z); p1=wmPx(b.getSouth(),b.getEast(),z); if((p1.x-p0.x)<=4096&&(p1.y-p0.y)<=4096||z<=14) break; z--; }
-  const x0=Math.floor(p0.x), y0=Math.floor(p0.y), W=Math.ceil(p1.x)-x0, H=Math.ceil(p1.y)-y0;
-  const f=Math.max(1,Math.min(4,Math.ceil(2000/Math.max(W,H))));   // 画面が小さくても図面は2000px程度に（拡大しても描いた線がきれい）
+/* 地理院タイルを、北西〜南東の範囲で1枚の画像に切り出す。minPx：出来上がりの長い辺をこのくらいに */
+async function gsiCut(kind, north, west, south, east, zoom, minPx, onProg){
+  const maxZ=GSI_LAYERS[kind].max;
+  let z=Math.min(maxZ, Math.round(zoom)+1), p0, p1;
+  for(;;){ p0=wmPx(north,west,z); p1=wmPx(south,east,z); if((p1.x-p0.x)<=4096&&(p1.y-p0.y)<=4096||z<=14) break; z--; }
+  const x0=Math.floor(p0.x), y0=Math.floor(p0.y), W=Math.max(1,Math.ceil(p1.x)-x0), H=Math.max(1,Math.ceil(p1.y)-y0);
+  const f=Math.max(1,Math.min(4,Math.ceil((minPx||2000)/Math.max(W,H))));   // 画面が小さくても図は minPx 程度に（拡大しても線がきれい）
   const c=document.createElement('canvas'); c.width=W*f; c.height=H*f; const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height); ctx.imageSmoothingQuality='high';
   const tiles=[]; for(let tx=Math.floor(x0/256); tx<=Math.floor((x0+W)/256); tx++) for(let ty=Math.floor(y0/256); ty<=Math.floor((y0+H)/256); ty++) tiles.push([tx,ty]);
-  $('gsiTake').disabled=true; $('gsiNote').textContent=`地図を切り出しています…（${tiles.length}枚）`;
+  if(onProg) onProg(tiles.length);
   let bad=0;
   await Promise.all(tiles.map(([tx,ty])=>new Promise(res=>{ const im=new Image(); im.crossOrigin='anonymous';
     im.onload=()=>{ ctx.drawImage(im,(tx*256-x0)*f,(ty*256-y0)*f,256*f,256*f); res(); }; im.onerror=()=>{ bad++; res(); };
-    im.src=GSI_LAYERS[gsiKind].url.replace('{z}',z).replace('{x}',tx).replace('{y}',ty); })));
-  ctx.font='bold 14px sans-serif'; ctx.fillStyle='rgba(255,255,255,.85)'; const cr='出典：国土地理院（'+GSI_LAYERS[gsiKind].name.replace('国土地理院の','')+'）'; const tw=ctx.measureText(cr).width, CW=c.width, CH=c.height; ctx.fillRect(CW-tw-14,CH-24,tw+12,22); ctx.fillStyle='#333'; ctx.fillText(cr,CW-tw-8,CH-8);
-  let url; try{ url=c.toDataURL(gsiKind==='photo'?'image/jpeg':'image/png',0.9); }
-  catch(e){ $('gsiTake').disabled=false; alert('この端末では地図を切り出せませんでした。Googleマップや地理院地図のスクショを「Googleマップのスクショを取り込む」から入れてください。'); return; }
-  $('gsiTake').disabled=false;
-  if(bad>=tiles.length){ alert('地図を取れませんでした（電波を確認してください）'); return; }
+    im.src=GSI_LAYERS[kind].url.replace('{z}',z).replace('{x}',tx).replace('{y}',ty); })));
+  const fs=Math.max(14,Math.round(c.width/110));
+  ctx.font='bold '+fs+'px sans-serif'; ctx.fillStyle='rgba(255,255,255,.85)'; const cr='出典：国土地理院（'+GSI_LAYERS[kind].name.replace('国土地理院の','')+'）'; const tw=ctx.measureText(cr).width, CW=c.width, CH=c.height; ctx.fillRect(CW-tw-fs,CH-fs*1.7,tw+fs*0.8,fs*1.55); ctx.fillStyle='#333'; ctx.fillText(cr,CW-tw-fs*0.6,CH-fs*0.55);
+  if(bad>=tiles.length) throw new Error('地図を取れませんでした（電波を確認してください）');
+  let url; try{ url=c.toDataURL(kind==='photo'?'image/jpeg':'image/png',0.9); }
+  catch(e){ throw new Error('この端末では地図を切り出せませんでした。「Google」に切り替えて、スクショで入れてください。'); }
+  return {url, z, x0, y0, f, latc:(north+south)/2};
+}
+/* 切り出した地理院の地図を図面にする（縮尺・緯度経度つき） */
+function gsiApplyPlan(kind, r, done){
   const im=new Image(); im.onload=()=>{
-    const latc=(b.getNorth()+b.getSouth())/2;
-    state.img=im; state.imgData=url; state.scale=156543.03392*Math.cos(latc*Math.PI/180)/Math.pow(2,z)/f;   // 1pxが何m
-    state.geo={kind:'wm', z, x0, y0, f, src:gsiKind};
+    state.img=im; state.imgData=r.url; state.scale=156543.03392*Math.cos(r.latc*Math.PI/180)/Math.pow(2,r.z)/r.f;   // 1pxが何m
+    state.geo={kind:'wm', z:r.z, x0:r.x0, y0:r.y0, f:r.f, src:kind};
     updateScaleBadge(); fit(); updateHint(); requestAnimationFrame(fit);
     $('secMap').classList.add('collapsed'); $('mapSt').textContent='読込済（国土地理院）'; const cs=$('calSt'); if(cs) cs.textContent='自動';
-    $('gsiModal').classList.remove('on');
-    alert(GSI_LAYERS[gsiKind].name+'から図面を作りました。\n縮尺は自動で合わせてあります（縮尺合わせは不要）。\n工事写真アプリの地図にも、木の位置がそのまま出ます。');
-  }; im.src=url;
+    if(done) done();
+    alert(GSI_LAYERS[kind].name+'から図面を作りました。\n縮尺は自動で合わせてあります（縮尺合わせは不要）。\n工事写真アプリの地図にも、木の位置がそのまま出ます。');
+  }; im.src=r.url;
+}
+$('gsiTake').onclick=async()=>{
+  if(!confirmReplaceImg()) return;
+  const b=gsiMap.getBounds();
+  $('gsiTake').disabled=true;
+  try{ const r=await gsiCut(gsiKind,b.getNorth(),b.getWest(),b.getSouth(),b.getEast(),gsiMap.getZoom(),2000,n=>{ $('gsiNote').textContent=`地図を切り出しています…（${n}枚）`; });
+    gsiApplyPlan(gsiKind,r,()=>$('gsiModal').classList.remove('on')); }
+  catch(e){ alert(e.message||e); }
+  $('gsiTake').disabled=false;
 };
 
 $('openJson').onclick=()=>$('jsonFile').click();
