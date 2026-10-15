@@ -261,7 +261,9 @@ async function openLAS(file) {
   const B = { a1: hb.getFloat64(179, true), a0: hb.getFloat64(187, true), b1: hb.getFloat64(195, true), b0: hb.getFloat64(203, true), c1: hb.getFloat64(211, true), c0: hb.getFloat64(219, true) };
   if (!(N > 0) || rl < 12) throw new Error('点が入っていません');
   N = Math.min(N, Math.floor((file.size - off) / rl));
-  const geo = Math.abs(B.a0) <= 180 && Math.abs(B.a1) <= 180 && Math.abs(B.b0) <= 90 && Math.abs(B.b1) <= 90 && (B.a1 - B.a0) < 0.05 && (B.b1 - B.b0) < 0.05;
+  // 見出しの範囲が入っていない（0のまま）書き出しもあるので、そのときは点を読んで範囲を出す
+  const okB = [B.a0, B.a1, B.b0, B.b1, B.c0, B.c1].every(Number.isFinite) && B.a1 > B.a0 && B.b1 > B.b0 && B.c1 >= B.c0 && !(B.a0 === 0 && B.a1 === 0);
+  const geo = okB && Math.abs(B.a0) <= 180 && Math.abs(B.a1) <= 180 && Math.abs(B.b0) <= 90 && Math.abs(B.b1) <= 90 && (B.a1 - B.a0) < 0.05 && (B.b1 - B.b0) < 0.05;
   const total = N * rl, CH = Math.max(1, Math.floor(CHUNK / rl)) * rl;
   async function stream(fn, onPart) {
     for (let pos = 0; pos < total; pos += CH) {
@@ -276,7 +278,7 @@ async function openLAS(file) {
       await tick();
     }
   }
-  return { type: 'LAS', N, geo, B, stream, defaultUp: () => { if (geo) return 'z'; const ex = B.a1 - B.a0, ey = B.b1 - B.b0, ez = B.c1 - B.c0; return (ey < ez && ey < ex) ? 'y' : 'z'; } };
+  return { type: 'LAS', N, geo, B: okB ? B : null, needSurvey: !okB, stream, defaultUp: () => { if (geo) return 'z'; const ex = B.a1 - B.a0, ey = B.b1 - B.b0, ez = B.c1 - B.c0; return (ey < ez && ey < ex) ? 'y' : 'z'; } };
 }
 
 /* ---------- 読み込み口：PLY（バイナリ・文字） ---------- */
@@ -349,8 +351,8 @@ async function openCloud(file) {
   throw new Error('LAS（.las）か PLY（.ply）の点群を選んでください');
 }
 
-/* PLY は範囲が見出しに無いので、1回読んで範囲を出し、上の向きも決める（地面が平らになる向き） */
-async function surveyPLY(rd, onPart) {
+/* PLY（と範囲の入っていない LAS）は、1回読んで範囲を出し、上の向きも決める（地面が平らになる向き） */
+async function survey(rd, onPart) {
   const B = { a0: Infinity, a1: -Infinity, b0: Infinity, b1: -Infinity, c0: Infinity, c1: -Infinity };
   const step = Math.max(1, Math.floor(rd.N / 200000)), S = []; let k = 0;
   await rd.stream((a, b, c) => {
@@ -451,10 +453,10 @@ async function analyze(file, opt, onProg) {
   const hm = opt.hm > 0 ? opt.hm : 1.2;
   const prog = (t, p) => { if (onProg) onProg(t, Math.max(0, Math.min(1, p))); };
   const rd = await openCloud(file);
-  const plyPass = rd.type === 'PLY';
+  const plyPass = rd.type === 'PLY' || rd.needSurvey;
   // 進み具合の配分
   const W0 = plyPass ? 0.2 : 0, part = (1 - W0) / 3.3;
-  if (plyPass) await surveyPLY(rd, p => prog('点群の範囲を調べています', W0 * p));
+  if (plyPass) await survey(rd, p => prog('点群の範囲を調べています', W0 * p));
   const up = rd.geo ? 'z' : (opt.up === 'y' || opt.up === 'z' ? opt.up : rd.defaultUp());
   const M = mapper(rd, up);
   const W = M.W, Hm = M.H;
