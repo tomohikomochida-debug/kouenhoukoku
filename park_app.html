@@ -3210,6 +3210,23 @@ function snapLen(ip,prev){
   const k=(sm/state.scale)/dpx;
   return {x:prev.x+dx*k, y:prev.y+dy*k};
 }
+// 両どなりの点 A・B があるとき：A からの長さと B までの長さを両方きざみにそろえる（2つの円の交点）
+function snapBoth(ip,A,B){
+  if(!SNAP_ON||!state.scale||!A||!B) return snapLen(ip,A);
+  const s=SNAP_M/state.scale, D=Math.hypot(B.x-A.x,B.y-A.y);
+  if(!(s>0)||D<1e-6) return snapLen(ip,A);
+  const r1o=Math.hypot(ip.x-A.x,ip.y-A.y)/s, r2o=Math.hypot(ip.x-B.x,ip.y-B.y)/s;
+  let best=null, bd=Infinity;
+  for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++){
+    const r1=(Math.round(r1o)+i)*s, r2=(Math.round(r2o)+j)*s; if(r1<=0||r2<=0) continue;
+    const a=(r1*r1-r2*r2+D*D)/(2*D), h2=r1*r1-a*a; if(h2<0) continue;
+    const h=Math.sqrt(h2), mx=A.x+a*(B.x-A.x)/D, my=A.y+a*(B.y-A.y)/D;
+    [[mx+h*(B.y-A.y)/D, my-h*(B.x-A.x)/D],[mx-h*(B.y-A.y)/D, my+h*(B.x-A.x)/D]].forEach(([x,y])=>{
+      const d=Math.hypot(x-ip.x,y-ip.y); if(d<bd){ bd=d; best={x,y}; } });
+  }
+  // 交点が遠すぎる（形が大きく変わる）ときは片側だけそろえる
+  return (best&&bd<=Math.max(s*1.5, 40/view.zoom))?best:snapLen(ip,A);
+}
 function lastDraftPt(){ return (draft&&draft.pts&&draft.pts.length)?draft.pts[draft.pts.length-1]:null; }
 // 1点目は前の点がないので、0.1mのます目に乗せる
 function snapGrid(ip){
@@ -3223,7 +3240,7 @@ function snapPt(ip,prev){
   // 長さを入れてあれば、前の点から向きはそのまま・長さはちょうどその値で置く（置いたら欄は空にする）
   const li=document.getElementById('dbLen'), L=li?parseFloat(li.value):NaN;
   if(prev&&L>0&&state.scale){ const dx=ip.x-prev.x, dy=ip.y-prev.y, d=Math.hypot(dx,dy);
-    if(d>1e-6){ li.value=''; li.blur(); const k=(L/state.scale)/d; return {x:prev.x+dx*k, y:prev.y+dy*k}; } }
+    if(d>1e-6){ li.value=''; li.blur(); if(draft) draft.exactLast=draft.pts.length; const k=(L/state.scale)/d; return {x:prev.x+dx*k, y:prev.y+dy*k}; } }
   return prev?snapLen(ip,prev):snapGrid(ip); }
 function addAreaPoint(ip){
   if(holeMode){ // 除外エリア（穴）＝多角形固定
@@ -3296,7 +3313,7 @@ cv.addEventListener('mousemove',e=>{
   if(lblDrag){const p=evtPos(e);moveLabelDrag(toImg(p.x,p.y));return;}
   if(draggingLegend){legendMoveTo(evtPos(e));return;}
   if(tool==='cal'){const p=evtPos(e),ip=toImg(p.x,p.y);if(calDragIdx!==null)draft.pts[calDragIdx]=ip;else if(draft)hover=ip;draw();return;}
-  if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(function(){const _p=ringPts(editV.f,editV.ring),_pv=_p.length>1?_p[(editV.idx-1+_p.length)%_p.length]:null,_s=snapLen(ip,_pv);_p[editV.idx]={x:_s.x,y:_s.y};})();recalcAreaFeature(editV.f);draw();return;}
+  if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(function(){const _p=ringPts(editV.f,editV.ring),_n=_p.length,_pv=_n>1?_p[(editV.idx-1+_n)%_n]:null,_cl=(editV.f.type==='area'&&!editV.f.strip&&_n>=3),_nx=_cl?_p[(editV.idx+1)%_n]:null,_s=_nx?snapBoth(ip,_pv,_nx):snapLen(ip,_pv);_p[editV.idx]={x:_s.x,y:_s.y};})();recalcAreaFeature(editV.f);draw();return;}
   if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(dragGroup?multiSel.forEach(g=>moveFeature(g,ip.x-dragLast.x,ip.y-dragLast.y)):moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y));dragLast=ip;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;draw();}
   if(!dragging&&!panning&&!editV&&!draft) hoverAt(evtPos(e));
@@ -3344,7 +3361,7 @@ cv.addEventListener('touchmove',e=>{
   if(lblDrag){const p=evtPos(e);moveLabelDrag(toImg(p.x,p.y));lastTouch=null;return;}
   if(draggingLegend){legendMoveTo(evtPos(e));lastTouch=null;return;}
   if(tool==='cal'&&calDragIdx!==null){const p=evtPos(e),ip=toImg(p.x,p.y);draft.pts[calDragIdx]=ip;lastTouch=null;draw();return;}
-  if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(function(){const _p=ringPts(editV.f,editV.ring),_pv=_p.length>1?_p[(editV.idx-1+_p.length)%_p.length]:null,_s=snapLen(ip,_pv);_p[editV.idx]={x:_s.x,y:_s.y};})();recalcAreaFeature(editV.f);lastTouch=null;draw();return;}
+  if(editV){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(function(){const _p=ringPts(editV.f,editV.ring),_n=_p.length,_pv=_n>1?_p[(editV.idx-1+_n)%_n]:null,_cl=(editV.f.type==='area'&&!editV.f.strip&&_n>=3),_nx=_cl?_p[(editV.idx+1)%_n]:null,_s=_nx?snapBoth(ip,_pv,_nx):snapLen(ip,_pv);_p[editV.idx]={x:_s.x,y:_s.y};})();recalcAreaFeature(editV.f);lastTouch=null;draw();return;}
   if(dragging){const p=evtPos(e),ip=toImg(p.x,p.y);if(dragSnap){undoStack.push(dragSnap);if(undoStack.length>100)undoStack.shift();redoStack=[];updateUndoButtons();dragSnap=null;}(dragGroup?multiSel.forEach(g=>moveFeature(g,ip.x-dragLast.x,ip.y-dragLast.y)):moveDrag(dragging,dragRing,ip.x-dragLast.x,ip.y-dragLast.y));dragLast=ip;lastTouch=null;draw();return;}
   if(panning){const p=evtPos(e);view.ox=p.x-panStart.x;view.oy=p.y-panStart.y;lastTouch=null;draw();}
 },{passive:false});
@@ -3403,6 +3420,10 @@ function finishArea(){
   }
   const cat=$('catSel').value,kind=$('kindSel').value;
   const geom=curGeom(), h=curHeightVal();
+  // 多角形を閉じるとき：最後の点を「前の点から」「始点まで」の両方がきざみにそろう所へ寄せる（始点へ戻る辺も切りのいい長さに）
+  if(tool!=='strip'&&geom!=='line'&&draft&&draft.pts.length>=3&&SNAP_ON&&state.scale&&draft.exactLast!==draft.pts.length-1){   // 長さを入れて置いた点は動かさない
+    const P=draft.pts, n=P.length; P[n-1]=snapBoth(P[n-1],P[n-2],P[0]);
+  }
   if(tool==='strip'){                       // 幅刈り：中心線＋区間ごとの幅
     if(!draft||draft.pts.length<2){return;}
     if(!state.scale){alert('先に「縮尺合わせ」を行ってください。');return;}
