@@ -3159,7 +3159,7 @@ async function deleteCase(){ if(!caseId||!casesIndex.length) return; if(!confirm
   else { caseId=newId(); state=emptyState(); }
   undoStack=[]; redoStack=[]; normalize(); await save(); syncMode(); renderTrees(); renderMap(); renderCaseBar(); setTimeout(()=>phCleanup().then(updateStorage).catch(()=>{}),3000); }
 async function backupAll(){ await save(); const out={version:1,cases:[]}; for(const c of casesIndex){ const st=await caseGet(c.id); out.cases.push({meta:c,state:st}); }
-  const blob=new Blob([JSON.stringify(out)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="現場調査_全案件バックアップ_"+new Date().toISOString().slice(0,10)+".json"; a.click(); }
+  const blob=new Blob([JSON.stringify(out)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="現場調査_全案件バックアップ_"+today()+".json"; a.click(); }
 function restoreAll(ev){ const f=ev.target.files[0]; if(!f) return; const rd=new FileReader();
   rd.onload=async()=>{ try{ const d=JSON.parse(rd.result); if(!d.cases) throw 0;
     for(const c of d.cases){ const id=(c.meta&&c.meta.id)||newId(); await casePut(id,c.state); if(!casesIndex.find(x=>x.id===id)) casesIndex.push(Object.assign({},c.meta,{id})); }

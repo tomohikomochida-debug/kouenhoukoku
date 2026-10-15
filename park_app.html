@@ -1964,7 +1964,7 @@ function owDoImport(){
     def._src=id; MASTER[p.c]=def; customWorksDefs[p.c]=def; nK++; });
   const prevFiles=(specSources[id]&&specSources[id].files)||[];
   const newFiles=ow.files.map(f=>({name:f.name,type:f.type,size:f.size}));
-  specSources[id]={id,name:ow.name,short:ow.short,date:new Date().toISOString().slice(0,10),files:prevFiles.concat(newFiles.filter(n=>!prevFiles.some(p=>p.name===n.name)))};
+  specSources[id]={id,name:ow.name,short:ow.short,date:jstYmd(),files:prevFiles.concat(newFiles.filter(n=>!prevFiles.some(p=>p.name===n.name)))};
   if(ow.files.length){ specDocsGet(id).then(old=>{ const list=(old||[]).filter(o=>!ow.files.some(f=>f.name===o.name)); return specDocsPut(id,list.concat(ow.files.map(f=>({name:f.name,type:f.type,blob:f})))); }); }
   ow.id=id;
   ow.undoMsg='「'+ow.short+'」から 工種'+nK+(nM?'・手入力'+nM:'')+' を借りました。';
@@ -3863,7 +3863,7 @@ async function importScanLas(file){
     const r=await scanLasProcess(file,(t,p)=>{ txt.textContent=t+'…　'+Math.round(p*100)+'%'; bar.style.width=Math.round(p*100)+'%'; });
     const c=document.createElement('canvas'); c.width=r.raster.w; c.height=r.raster.h;
     c.getContext('2d').putImageData(new ImageData(r.raster.data,r.raster.w,r.raster.h),0,0);
-    const d={kind:'park-scan',v:1,source:r.source,file:file.name,scanned:new Date().toISOString().slice(0,10),scale:r.scale,geo:r.geo,imgData:c.toDataURL('image/png'),trees:r.trees};
+    const d={kind:'park-scan',v:1,source:r.source,file:file.name,scanned:jstYmd(),scale:r.scale,geo:r.geo,imgData:c.toDataURL('image/png'),trees:r.trees};
     box.style.display='none';
     if(!d.trees.length){ alert('木が見つかりませんでした（'+r.points.toLocaleString()+'点を調べました）。\n幹の高さ1.2m付近まで写っているか確かめてください。'); return; }
     state.scanLast=d;                               // 取り込み用ファイルとしても保存できるように
@@ -4813,7 +4813,7 @@ function printPDF(){
   const park=$('parkName').value||'公園',contract=$('contractName').value||'',order=$('orderNo').value||'';
   $('printArea').innerHTML=
     `<h1>${park}　作業実績（求積・出来形）</h1>`+
-    `<div class="ph">委託：${contract}　／　指示番号：${order||'—'}　／　実施：${formatWareki($('workDate').value)||'—'}　／　出力：${formatWareki(new Date().toISOString().slice(0,10))}</div>`+
+    `<div class="ph">委託：${contract}　／　指示番号：${order||'—'}　／　実施：${formatWareki($('workDate').value)||'—'}　／　出力：${formatWareki(jstYmd())}</div>`+
     `<img src="${img}">`+aggHtmlForPrint()+buildTriSection();
   setTimeout(()=>window.print(),150);
 }
@@ -5626,12 +5626,17 @@ function rpB64ToBuf(b64){
   for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
   return u.buffer;
 }
+/* 日付はすべて日本時間（東京）で扱う。
+   Excelの日付は「その日の0時ちょうど」で渡す必要がある（ExcelJSは協定世界時で日数に直すので、
+   日本の0時＝前の日の15時で渡すと、表示が1日前にずれる） */
+function jstYmd(d){ const t=d||new Date(); try{ return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(t); }
+  catch(e){ const j=new Date(t.getTime()+9*3600000); return j.toISOString().slice(0,10); } }
 function rpDate(s){ if(!s)return null; const p=String(s).split('-'); if(p.length<3)return null;
-  const d=new Date(Number(p[0]),Number(p[1])-1,Number(p[2])); return isNaN(d)?null:d; }
+  const d=new Date(Date.UTC(Number(p[0]),Number(p[1])-1,Number(p[2]))); return isNaN(d)?null:d; }
 // 年度（4月始まり）→ 令和の年
 function rpReiwa(s){
-  const d=rpDate(s)||new Date();
-  const y=d.getFullYear()+((d.getMonth()+1)<4?-1:0);
+  const d=rpDate(s)||rpDate(jstYmd());
+  const y=d.getUTCFullYear()+((d.getUTCMonth()+1)<4?-1:0);
   return y-2018;
 }
 // 端末に覚えさせる（毎回変わらない項目だけ）
@@ -5648,8 +5653,7 @@ function rpLoadMeta(){
   set('rpKeiyaku', m.keiyaku); set('rpAtena', m.atena||'高津区役所道路公園センター所長');
   set('rpUkeoi', m.ukeoi||'株式会社グリーンネットワーク');
   set('contractName', m.contract); set('agentName', m.agent); set('supervisorName', m.supervisor);
-  if(!$('rpSubmit').value){ const t=new Date();
-    $('rpSubmit').value=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); }
+  if(!$('rpSubmit').value) $('rpSubmit').value=jstYmd();
 }
 // 規格の書き方を報告書に合わせる（"30〜60cm" → "幹周30cm以上60cm未満"）
 function rpBandText(rank){
