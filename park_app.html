@@ -167,6 +167,15 @@ input.kpIn{cursor:pointer;caret-color:transparent}
   .draftbar button.ok{background:var(--acc);color:#08110b;border-color:var(--acc)}
   .draftbar button:disabled{opacity:.4;cursor:default}
   .draftbar button:active{transform:scale(.96)}
+  .draftbar{flex-wrap:wrap;justify-content:center;max-width:calc(100% - 16px)}
+  .dbLenBox{display:inline-flex;align-items:center;gap:4px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:0 8px}
+  .dbLenBox input{width:68px;background:transparent;border:none;color:var(--ink);font-size:17px;font-weight:700;text-align:right;padding:9px 0;outline:none}
+  .dbLenBox b{font-size:14px;color:var(--mut)}
+  #dbSnap{font-size:13px;padding:11px 10px}
+  .snapBox{margin:4px 0 8px}.snapT{font-size:13px}.snapT small{display:block;color:var(--mut);font-size:11px;margin-top:2px}
+  .snapRow{display:flex;gap:4px;margin-top:6px}.snapRow button{flex:1;padding:9px 4px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  .snapRow button.on{background:var(--acc);border-color:var(--acc);color:#08110b}
+  .elQuick{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.elQuick button{flex:1;min-width:70px;padding:10px 6px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:9px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
   .tot{font-family:var(--mono);font-size:20px;font-weight:700}
   table{width:100%;border-collapse:collapse;font-size:12px}
   th,td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line)}
@@ -641,7 +650,8 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <button class="btn" id="toolSelect" data-tool="select">選択・編集・削除<small>クリックで選択／頂点ドラッグ移動・辺の○で追加・頂点ダブルタップで削除</small></button>
       <button class="btn" id="toolShoot" data-tool="shoot">📷 撮る木をえらぶ<small>撮る木をタップでえらんで「工事写真へ送る」→ 工事写真でまとめて撮る（その場で撮ることもできます）</small></button>
       <button class="btn" id="toolPan" data-tool="pan">✋ 地図を移動<small>地図右上の✋でも切替できます</small></button>
-      <button class="btn on" id="snapToggle">寸法を0.1m刻みにそろえる<small>2.01m → 2.00m。頂点を置く・動かすときに効きます</small></button>
+      <div id="snapToggle" class="snapBox"><div class="snapT">寸法のきざみ<small>点を置く・動かすとき、前の点からの長さをこの単位にそろえます</small></div>
+        <div class="snapRow"><button data-snap="0">自由</button><button data-snap="0.1">10cm</button><button data-snap="0.5">50cm</button><button data-snap="1">1m</button></div></div>
     </div>
 
     <div class="sec">
@@ -714,6 +724,8 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <span class="cp-r">その2点の実距離 <input id="calPopDist" type="number" step="0.1" min="0" inputmode="decimal"> m<button id="calPopX">やめる</button></span>
       <span class="cp-n" id="calPopNote"></span></div>
     <div class="draftbar" id="draftbar">
+      <span class="dbLenBox" id="dbLenBox"><input id="dbLen" type="number" inputmode="decimal" step="0.1" min="0" placeholder="長さ"><b>m</b></span>
+      <button id="dbSnap" title="タップで 自由→10cm→50cm→1m と切り替え">きざみ 50cm</button>
       <button id="dbFinish" class="ok">✓ 確定</button>
       <button id="dbUndo">↶ 1点戻す</button>
       <button id="dbCancel">✕ やめる</button>
@@ -810,6 +822,14 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
     <div id="modalBody"></div>
   </div>
 </div>
+<!-- 辺の長さを入れて直す -->
+<div id="edgeLenModal" class="sdModal"><div class="sdCard" style="width:min(380px,100%)">
+  <h3>辺の長さを直す<small>角<b id="elFrom"></b>は動かさず、角<b id="elTo"></b>を辺の向きのまま動かして長さを合わせます。今の長さ <b id="elNow"></b></small></h3>
+  <div style="display:flex;align-items:center;gap:8px"><input class="txt" id="elIn" type="number" inputmode="decimal" step="0.1" min="0" style="font-size:22px;font-weight:700;text-align:right;flex:1"><b style="font-size:18px">m</b></div>
+  <div class="elQuick" id="elQuick"></div>
+  <div style="display:flex;gap:8px;margin-top:12px"><button class="sdBtn sm" id="elCancel" style="flex:1;margin:0">やめる</button><button class="sdBtn sm ok" id="elOk" style="flex:1;margin:0">この長さにする</button></div>
+  <div class="legend" style="margin-top:8px">直したあとでも、上の「↶ 戻る」で元に戻せます。</div>
+</div></div>
 <!-- 他の委託から利用（画面の切替で左の列が隠れても出るよう、いちばん外に置く） -->
 <div id="owModal" class="sdModal"><div class="sdCard" id="owBody"></div></div>
 <input type="file" id="owFile" hidden multiple accept=".pdf,.xlsx,.xlsm,.xls,.csv,.txt,.tsv,application/pdf,image/*">
@@ -2092,6 +2112,9 @@ function owNew(id){
   $('owFile').addEventListener('change',e=>{ const fs=[...(e.target.files||[])]; e.target.value='';
     fs.forEach(f=>{ if(!ow.files.some(x=>x.name===f.name&&x.size===f.size)) ow.files.push(f); }); owRender(); });
   $('otherWorksBtn').onclick=openOtherWorks;
+  $('elCancel').onclick=closeEdgeLen; $('elOk').onclick=applyEdgeLen;
+  $('edgeLenModal').addEventListener('click',ev=>{ if(ev.target===$('edgeLenModal')) closeEdgeLen(); });
+  $('elIn').addEventListener('keydown',ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); applyEdgeLen(); } });
   $('manageWorksBtn').onclick=openWorksManager;
   $('nwManage').onclick=()=>{ closeWorkModal(); openWorksManager(); };
   // 「工種を追加」の画面も、新しい画面から開けるよう外に出す
@@ -2636,10 +2659,12 @@ function drawHandles(f){
     pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,vr,0,7);ctx.fillStyle=vcol;ctx.fill();ctx.lineWidth=1.6/view.zoom;ctx.strokeStyle='#fff';ctx.stroke();});
   });
 }
-// 選択中のみ：各辺の長さを辺の外側に表示（縮尺あり=m／なし=px）
+// 選択中のみ：各辺の長さを辺の外側に表示（縮尺あり=m／なし=px）。数字をタップすると長さを入れて直せる
+var _edgeHit=[], edgeEdit=null;
 function drawEdgeLengths(f){
+  _edgeHit=[];
   if(!f||!f.pts||f.pts.length<2)return;
-  const closed=f.type==='area', n=f.pts.length, off=15/view.zoom, fs=11/view.zoom, c=centroid(f.pts);
+  const closed=f.type==='area', n=f.pts.length, off=18/view.zoom, fs=13/view.zoom, c=centroid(f.pts);
   ctx.save();ctx.font=`700 ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.lineJoin='round';ctx.lineWidth=Math.max(3/view.zoom,fs*0.32);
   for(let i=0;i<(closed?n:n-1);i++){
@@ -2648,12 +2673,46 @@ function drawEdgeLengths(f){
     if((m.x-c.x)*nx+(m.y-c.y)*ny<0){nx=-nx;ny=-ny;}      // 外側へ
     const tx=m.x+nx*off,ty=m.y+ny*off;
     const txt=state.scale?(L*state.scale).toFixed(2)+' m':Math.round(L)+' px';
+    const on=edgeEdit&&edgeEdit.f===f&&edgeEdit.i===i;
+    if(on){ ctx.save(); ctx.strokeStyle='#ff3df0'; ctx.lineWidth=5/view.zoom; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); ctx.restore(); }
+    const tw=ctx.measureText(txt).width;
+    if(state.scale&&!f.strip){ // 押せる印（下線の枠）
+      ctx.save(); ctx.fillStyle=on?'rgba(255,61,240,.35)':'rgba(255,212,0,.16)'; ctx.strokeStyle=on?'#ff3df0':'rgba(255,212,0,.7)'; ctx.lineWidth=1/view.zoom;
+      const pw=tw/2+4/view.zoom, ph=fs*0.8; ctx.beginPath(); ctx.rect(tx-pw,ty-ph,pw*2,ph*2); ctx.fill(); ctx.stroke(); ctx.restore();
+      _edgeHit.push({f,i,x:tx,y:ty,w:tw/2+10/view.zoom,h:fs*0.8+8/view.zoom});
+    }
     ctx.strokeStyle='rgba(8,11,16,.92)';ctx.strokeText(txt,tx,ty);
-    ctx.fillStyle='#ffd400';ctx.fillText(txt,tx,ty);
+    ctx.fillStyle=on?'#ffd6fb':'#ffd400';ctx.fillText(txt,tx,ty);
   }
   ctx.restore();
 }
 
+/* 辺の長さを入れて直す：辺の始まりの角は動かさず、終わりの角を辺の向きのまま動かす */
+function openEdgeLen(f,i){
+  if(!state.scale){ alert('先に縮尺を合わせてください。'); return; }
+  const n=f.pts.length, a=f.pts[i], b=f.pts[(i+1)%n], cur=Math.hypot(b.x-a.x,b.y-a.y)*state.scale;
+  edgeEdit={f,i}; draw();
+  const m=$('edgeLenModal'); $('elNow').textContent=cur.toFixed(2)+' m';
+  $('elFrom').textContent=(i+1); $('elTo').textContent=((i+1)%n+1);
+  const st=SNAP_M>0?SNAP_M:0.1, sug=Math.max(st,Math.round(cur/st)*st);
+  $('elIn').value=+sug.toFixed(2);
+  $('elQuick').innerHTML=[...new Set([Math.floor(cur/st)*st,Math.round(cur/st)*st,Math.ceil(cur/st)*st,Math.round(cur)].filter(v=>v>0).map(v=>+v.toFixed(2)))].sort((x,y)=>x-y)
+    .map(v=>`<button data-v="${v}">${v} m</button>`).join('');
+  $('elQuick').querySelectorAll('[data-v]').forEach(bt=>bt.onclick=()=>{ $('elIn').value=bt.dataset.v; applyEdgeLen(); });
+  m.classList.add('on'); setTimeout(()=>{ try{ $('elIn').focus(); $('elIn').select(); }catch(e){} },60);
+}
+function closeEdgeLen(){ $('edgeLenModal').classList.remove('on'); edgeEdit=null; draw(); }
+function applyEdgeLen(){
+  const e=edgeEdit; if(!e) return closeEdgeLen();
+  const L=parseFloat(String($('elIn').value).replace(/[^\d.]/g,''));
+  if(!(L>0)){ alert('長さ（m）を入れてください。'); return; }
+  const f=e.f, n=f.pts.length, a=f.pts[e.i], bi=(e.i+1)%n, b=f.pts[bi], d=Math.hypot(b.x-a.x,b.y-a.y);
+  if(d<1e-6) return closeEdgeLen();
+  pushHistory();
+  const k=(L/state.scale)/d; f.pts[bi]={x:a.x+(b.x-a.x)*k, y:a.y+(b.y-a.y)*k};
+  recalcAreaFeature(f); recalcAll(); renderAgg(); renderSansha();
+  closeEdgeLen();
+}
 function syncDelBtn(){const n=multiSel.length,any=(n>0||selected),single=(n<=1); updateCopyWorksUI();
   const d=$('selActions');if(d)d.style.display=any?'flex':'none';
   const canRot=single&&selected&&((selected.type==='box'&&!selected.round)||(selected.pts&&selected.pts.length>=2));
@@ -3066,6 +3125,8 @@ function downCommon(p,ip){
   if(selected&&!multiSel.length&&rotHandleHit(selected,ip)){ startRotDragIP(ip); return 'rot'; }
   if(tool!=='cal'){ const lb=labelHitBox(ip); if(lb&&lb.f&&state.features.indexOf(lb.f)>=0){ startLabelDrag(lb,ip); return 'label'; } }
   if(holeMode)return null;                       // 除外エリア描画中は常にポチ追加
+  if(!draft&&tool!=='tree'&&selected&&_edgeHit.length){ const h=_edgeHit.find(z=>z.f===selected&&Math.abs(ip.x-z.x)<=z.w&&Math.abs(ip.y-z.y)<=z.h);
+    if(h){ openEdgeLen(h.f,h.i); return 'sel'; } }
   if(tool!=='tree'){                             // 樹木モードでは頂点編集を拾わない（面積の上に木を置けるように）
     const hnd=hitHandle(ip);
     if(hnd){
@@ -3126,12 +3187,20 @@ function refreshDraftBar(){
     $('dbFinish').style.display=canFin?'':'none';
     $('dbFinish').disabled=!(canFin&&draft.pts.length>=need);
     $('dbUndo').disabled=draft.pts.length===0;
+    const lb=$('dbLenBox'); if(lb) lb.style.display=(canFin&&state.scale&&draft.pts.length>=1)?'':'none';
+    const sb=$('dbSnap'); if(sb) sb.style.display=canFin?'':'none';
   }
 }
-/* --- 寸法を0.1m刻みにそろえる ---
-   直前の点からの距離を0.1mの倍数に丸める。向きは変えないので、線の傾きはそのまま。 */
-var SNAP_ON=true;
-const SNAP_M=0.1;
+/* --- 寸法のきざみ（自由・10cm・50cm・1m）にそろえる ---
+   直前の点からの距離を、選んだきざみの倍数に丸める。向きは変えないので、線の傾きはそのまま。 */
+var SNAP_M=(function(){ try{ const v=localStorage.getItem('park_snap_m'); if(v!==null&&!isNaN(parseFloat(v))) return parseFloat(v); }catch(e){} return 0.5; })();
+var SNAP_ON=SNAP_M>0;
+function setSnapStep(m){ SNAP_M=m; SNAP_ON=m>0; try{localStorage.setItem('park_snap_m',String(m));}catch(e){} syncSnapUI(); }
+function snapLabel(m){ return !(m>0)?'自由':(m<1?Math.round(m*100)+'cm':m+'m'); }
+function syncSnapUI(){
+  document.querySelectorAll('[data-snap]').forEach(b=>b.classList.toggle('on',parseFloat(b.dataset.snap)===SNAP_M));
+  const c=document.getElementById('dbSnap'); if(c) c.textContent='きざみ '+snapLabel(SNAP_M);
+}
 function snapLen(ip,prev){
   if(!SNAP_ON||!state.scale||!prev) return ip;
   const dx=ip.x-prev.x, dy=ip.y-prev.y, dpx=Math.hypot(dx,dy);
@@ -3145,12 +3214,17 @@ function lastDraftPt(){ return (draft&&draft.pts&&draft.pts.length)?draft.pts[dr
 // 1点目は前の点がないので、0.1mのます目に乗せる
 function snapGrid(ip){
   if(!SNAP_ON||!state.scale) return ip;
-  const g=SNAP_M/state.scale;                       // 0.1m が何pxか
+  const g=Math.min(SNAP_M,0.1)/state.scale;         // 1点目は10cmのます目（きざみが大きくても置いた所から離れすぎない）
   if(!isFinite(g)||g<=0) return ip;
   return {x:Math.round(ip.x/g)*g, y:Math.round(ip.y/g)*g};
 }
 // 前の点があれば距離でそろえ、なければます目に乗せる
-function snapPt(ip,prev){ return prev?snapLen(ip,prev):snapGrid(ip); }
+function snapPt(ip,prev){
+  // 長さを入れてあれば、前の点から向きはそのまま・長さはちょうどその値で置く（置いたら欄は空にする）
+  const li=document.getElementById('dbLen'), L=li?parseFloat(li.value):NaN;
+  if(prev&&L>0&&state.scale){ const dx=ip.x-prev.x, dy=ip.y-prev.y, d=Math.hypot(dx,dy);
+    if(d>1e-6){ li.value=''; li.blur(); const k=(L/state.scale)/d; return {x:prev.x+dx*k, y:prev.y+dy*k}; } }
+  return prev?snapLen(ip,prev):snapGrid(ip); }
 function addAreaPoint(ip){
   if(holeMode){ // 除外エリア（穴）＝多角形固定
     if(!draft)draft={pts:[],hole:true};
@@ -3205,6 +3279,7 @@ function undoDraftPoint(){
 function cancelDraft(){draft=null;calDragIdx=null;hover=null;holeMode=null;refreshDraftBar();updateHint();draw();}
 $('dbFinish').onclick=()=>{const need=holeMode?3:((tool==='strip'||curGeom()==='line')?2:3);if((tool==='area'||tool==='strip')&&draft&&draft.pts.length>=need)finishArea();};
 $('dbUndo').onclick=undoDraftPoint;
+$('dbSnap').onclick=()=>{ const L=[0,0.1,0.5,1]; const i=L.indexOf(SNAP_M); setSnapStep(L[(i+1)%L.length]); };
 $('dbCancel').onclick=cancelDraft;
 cv.addEventListener('mousedown',e=>{
   const p=evtPos(e),ip=toImg(p.x,p.y);
@@ -6041,11 +6116,8 @@ $('labelReset').onclick=()=>{
   if(!n){alert('手で動かした数字はありません。');return;}
   pushHistory(); state.features.forEach(f=>{delete f.lbl;delete f.glbl;}); draw();
 };
-$('snapToggle').onclick=()=>{
-  SNAP_ON=!SNAP_ON;
-  $('snapToggle').classList.toggle('on',SNAP_ON);
-  $('snapToggle').firstChild.textContent=SNAP_ON?'寸法を0.1m刻みにそろえる':'寸法はそろえない（自由）';
-};
+document.querySelectorAll('#snapToggle [data-snap]').forEach(b=>b.onclick=()=>setSnapStep(parseFloat(b.dataset.snap)));
+syncSnapUI();
 $('rpXlsx').onclick=exportReportXlsx;
 ['rpFy','rpKeiyaku','rpAtena','rpUkeoi','contractName','agentName','supervisorName'].forEach(id=>{
   const el=$(id); if(el)el.addEventListener('change',rpSaveMeta);
