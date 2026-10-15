@@ -24,7 +24,7 @@
  *    読めているかの確認：URLの後ろに ?app=dandori&action=colors を付けて開く
  ****************************************************************/
 
-var GEMINI_MODEL = 'gemini-2.5-flash';   // スクリプト プロパティ GEMINI_MODEL に書けば、コードを直さずに切り替えられる
+var GEMINI_MODEL = 'gemini-3.8-flash';   // スクリプト プロパティ GEMINI_MODEL に書けば、コードを直さずに切り替えられる
 var TZ = 'Asia/Tokyo';
 var PHOTO_FOLDER = '道具写真';
 var SHEET_NAME = '現場アプリデータ（段取り・道具・用語）';
@@ -160,7 +160,8 @@ function withLock_(fn) { var l = LockService.getScriptLock(); l.waitLock(25000);
  *  ・モデル欄に書けるもの：opus／sonnet／haiku（Claude）、gemini-flash／gemini-flash-lite（Gemini）
  *    （モデルの正式名 claude-… ／ gemini-… をそのまま書いてもよい）
  *  ・Claude のキー（ANTHROPIC_API_KEY）が未登録のあいだは、自動で Gemini を使う（今まで通り動く）
- *  ・混み合い・失敗のときは、1つ下のモデルへ自動で回す（opus→sonnet→gemini-flash→gemini-flash-lite）
+ *  ・混み合い・失敗のときは、1つ下のモデルへ自動で回す（opus→sonnet→gemini-flash→gemini-flash-lite→gemini-old）
+ *    gemini-flash＝Gemini 3.8 Flash、gemini-flash-lite＝Gemini 3.5 Flash-Lite、gemini-old＝Gemini 2.5 Flash（最後の予備）
  *  ・声（録音）を聞けるのは Gemini だけなので、録音を渡す用途は Claude を飛ばして Gemini で聞く
  *  ・使った量と概算の料金を「AIの利用記録」に1回ずつ残す
  *  ・上限：用途ごとの1日の回数（「AIの使い分け」の「1日の上限」）／1人1日の回数／月の概算額
@@ -177,9 +178,9 @@ var AI_MODELS = {
   'opus':              { provider: 'claude', id: 'claude-opus-5-5',       inUsd: 4,    outUsd: 20,   next: 'sonnet' },
   'sonnet':            { provider: 'claude', id: 'claude-sonnet-5-5',     inUsd: 2,    outUsd: 10,   next: 'gemini-flash' },
   'haiku':             { provider: 'claude', id: 'claude-haiku-5-5',      inUsd: 0.10, outUsd: 0.50, next: 'gemini-flash-lite' },
-  'gemini-flash':      { provider: 'gemini', id: '',                      inUsd: 0.30, outUsd: 2.50, next: 'gemini-flash-lite' },   // id はスクリプト プロパティ GEMINI_MODEL（既定 gemini-2.5-flash）
-  'gemini-flash-lite': { provider: 'gemini', id: 'gemini-2.5-flash-lite', inUsd: 0.10, outUsd: 0.40, next: 'gemini-lite-new' },
-  'gemini-lite-new':   { provider: 'gemini', id: 'gemini-3.5-flash-lite', inUsd: 0.10, outUsd: 0.40, next: '' }
+  'gemini-flash':      { provider: 'gemini', id: '',                      inUsd: 0.75, outUsd: 3.75, next: 'gemini-flash-lite' },   // id はスクリプト プロパティ GEMINI_MODEL（既定 gemini-3.8-flash）。2027年1月から値上げ（1.50／7.50）
+  'gemini-flash-lite': { provider: 'gemini', id: 'gemini-3.5-flash-lite', inUsd: 0.30, outUsd: 2.50, next: 'gemini-old' },
+  'gemini-old':        { provider: 'gemini', id: 'gemini-2.5-flash',      inUsd: 0.30, outUsd: 2.50, next: '' }   // 最後の予備。2.5 は前から使っていた人だけ使える（新しい人には出ない）
 };
 var AI_SAVING = { opus: 'gemini-flash', sonnet: 'gemini-flash', haiku: 'gemini-flash-lite' };   // 節約モードのときの代わり
 
@@ -267,6 +268,7 @@ function aiRoutes_() {
 }
 function aiRoute_(use) { var map = aiRoutes_(); return map[use] || map['その他'] || { use: use, model: 'sonnet', limit: 0 }; }
 function aiModel_(key) {
+  if (key === 'gemini-lite-new') key = 'gemini-flash-lite';   // 古い呼び名
   var m = AI_MODELS[key];
   if (m) return m.provider === 'gemini' && !m.id ? Object.assign({}, m, { id: prop_('GEMINI_MODEL', GEMINI_MODEL) }) : m;
   if (/^claude-/.test(key)) {   // 正式名で書かれたとき：料金は名前から近いものを使う
@@ -283,7 +285,7 @@ function aiChain_(start, saving) {
   if (saving && AI_SAVING[key]) key = AI_SAVING[key];
   var guard = 0;
   while (key && chain.indexOf(key) < 0 && guard++ < 10) { chain.push(key); key = AI_MODELS[key].next; }
-  ['gemini-flash', 'gemini-flash-lite', 'gemini-lite-new'].forEach(function (k) { if (chain.indexOf(k) < 0) chain.push(k); });   // 最後の頼みは Gemini
+  ['gemini-flash', 'gemini-flash-lite', 'gemini-old'].forEach(function (k) { if (chain.indexOf(k) < 0) chain.push(k); });   // 最後の頼みは Gemini
   return chain;
 }
 
@@ -387,7 +389,7 @@ function aiPage_(a) {
   var html = '<h2>AI窓口の状態</h2>';
   if (a === 'test') {
     html += '<h3>つながるかの確認</h3><ul>';
-    [['haiku', 'Claude'], ['gemini-flash-lite', 'Gemini']].forEach(function (x) {
+    [['haiku', 'Claude'], ['gemini-flash', 'Gemini（録音の聞き取りに使う）'], ['gemini-flash-lite', 'Gemini（予備）']].forEach(function (x) {
       var m = aiModel_(x[0]);
       if (!keys[m.provider]) { html += '<li>' + x[1] + '：キーが未登録</li>'; return; }
       var t0 = Date.now();
