@@ -91,6 +91,10 @@
 .owRanks{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:4px 10px;margin-top:6px}
 .owRanks div{display:flex;align-items:center;gap:6px;font-size:12px}.owRanks span{flex:0 0 86px;color:var(--mut)}.owRanks input{text-align:right}
 .owEx{font-size:11px;color:#ffb547;margin-top:4px}
+.wmCat{margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
+.wmHead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;font-weight:700}.wmHead small,.wmRow small{display:inline;color:var(--mut);font-weight:400;margin-left:2px}
+.wmRow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0 5px 12px;font-size:13px}
+.wmRow small{color:var(--mut)}.wmRow em{font-style:normal;font-size:11px;color:#ffb547;margin-left:8px}
 @media (max-width:600px){ .owSm [data-a=ranks],.owSm .owPrice{flex:1 1 100%} .owRanks span{flex-basis:78px} }
 #nuAll .nuOw{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
 #nuAll .nuOw button{flex:1;min-width:160px}
@@ -544,6 +548,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
       <select id="catSel"></select>
       <button class="btn ghost" id="addWorkBtn" style="margin-top:6px">＋ 工種を追加<small>登録されていない工種を、色・規格を決めて追加します</small></button>
       <button class="btn ghost" id="otherWorksBtn">📄 他の委託から利用<small>ほかの委託の仕様書・設計書（PDF・Excel）を読んで、工種と単価を借りてきます</small></button>
+      <button class="btn ghost" id="manageWorksBtn">🗑 追加した工種を消す<small>自分で追加した工種・他の委託から借りた工種を1つずつ消せます</small></button>
       <label class="fld">細別</label>
       <select id="kindSel"></select>
       <div id="copyWorksBox" style="display:none;margin-top:8px;padding:8px;border:1px dashed var(--line);border-radius:8px;background:rgba(124,58,237,.06)">
@@ -596,6 +601,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
           <button class="btn ghost" id="nwCancel" style="margin:0;text-align:center">やめる</button>
           <button class="btn" id="nwOk" style="margin:0;background:#1f6f43;border-color:#1f6f43;color:#fff;text-align:center">この内容で追加</button>
         </div>
+        <button class="btn ghost" id="nwManage" style="margin:10px 0 0;text-align:center">🗑 前に追加した工種を消す</button>
       </div>
     </div>
 
@@ -1768,6 +1774,7 @@ function owRender(){
         <div class="owBtns">${(s.files||[]).map((f,i)=>`<button class="owMini" data-a="doc" data-id="${e(id)}" data-i="${i}">📄 ${e(f.name)}</button>`).join('')}
         <button class="owMini" data-a="more" data-id="${e(id)}">＋ 読み足す</button><button class="owMini bad" data-a="rm" data-id="${e(id)}">外す</button></div></div>`); });
     H.push('<button class="sdBtn ok" data-a="new">＋ 仕様書・設計書を読む<small style="color:#d6f5e3">PDF・Excel・CSV。写真の場合は文字を貼り付けます</small></button>');
+    if(ids.length) H.push('<button class="sdBtn sm" data-a="manage">🗑 借りた工種を1つずつ消す</button>');
     H.push('<button class="sdBtn sm" data-a="close">閉じる</button>');
   }
   else if(ow.view==='read'){
@@ -1805,6 +1812,21 @@ function owRender(){
         </div></div>`); });
     H.push('<button class="owMini" data-a="addrow" style="margin:6px 0 4px">＋ 1行足す（手で入れる）</button>');
     H.push(`<div class="owFoot"><button class="sdBtn sm" data-a="back">← 読み直す</button><button class="sdBtn sm ok" data-a="import"${on?'':' disabled'}>✓ ${on}件を借りる</button></div>`);
+  }
+  else if(ow.view==='manage'){
+    H.push('<h3>🗑 追加した工種を消す<small>自分で追加した工種と、他の委託から借りた工種です。もとからある工種は消せません。</small></h3>');
+    if(wmUndo) H.push(`<div class="owNote">${e(wmUndo.msg)}<button class="owMini" data-a="wmundo">↩ 元に戻す</button></div>`);
+    const groups=wmGroups(); let any=false;
+    groups.forEach(gr=>{ if(!gr.cats.length&&!gr.mans.length) return; any=true;
+      H.push(`<div class="owSrc"><b>${e(gr.label)}</b>`);
+      gr.cats.forEach(c=>{ const m=MASTER[c]; const ks=Object.keys(m.kinds||{});
+        H.push(`<div class="wmCat"><div class="wmHead"><span>${e(c)}<small>（${e(m.unit)}）</small></span>${ks.length>1?`<button class="owMini bad" data-a="wmcat" data-c="${e(c)}">大分類ごと消す</button>`:''}</div>`
+          +ks.map(k=>{ const n=wmUseCount(c,k); return `<div class="wmRow"><span>${e(k)}${n?`<em>地図に${n}件</em>`:''}</span><button class="owMini bad" data-a="wmkind" data-c="${e(c)}" data-k="${e(k)}">消す</button></div>`; }).join('')+'</div>'); });
+      if(gr.mans.length) H.push('<div class="wmCat"><div class="wmHead"><span>その他（手入力）</span></div>'+gr.mans.map(k=>{ const n=state.manual.filter(r=>r.kind===k).length;
+        return `<div class="wmRow"><span>${e(k)}<small>（${e(MANUAL[k].unit)}）</small>${n?`<em>入力${n}件</em>`:''}</span><button class="owMini bad" data-a="wmman" data-k="${e(k)}">消す</button></div>`; }).join('')+'</div>');
+      H.push('</div>'); });
+    if(!any) H.push('<div class="owEmpty">自分で追加した工種・借りた工種はまだありません。</div>');
+    H.push('<button class="sdBtn sm ok" data-a="close">閉じる</button>');
   }
   else if(ow.view==='done'){
     H.push(`<h3>借りました<small>${e(ow.undoMsg)}</small></h3>`);
@@ -1954,6 +1976,63 @@ async function owOpenDoc(id,i){
   setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 function openOtherWorks(){ ow.view='home'; owShow(); }
+
+/* ---------- 追加した工種を消す（自分で追加・他の委託から借りた工種。もとからある工種は消せない） ---------- */
+let wmUndo=null;   // {msg, cats:{大分類:定義 or null}, mans:{項目:定義 or null}, srcs:{id:記録 or null}}
+function wmGroups(){
+  const own={label:'自分で追加した工種',cats:[],mans:[]}, by={};
+  Object.keys(customWorksDefs).forEach(c=>{ const d=customWorksDefs[c]; if(!d||!MASTER[c]) return;
+    if(d._src){ (by[d._src]=by[d._src]||{label:'他の委託：'+((specSources[d._src]||{}).short||'別の委託'),cats:[],mans:[]}).cats.push(c); } else own.cats.push(c); });
+  Object.keys(customManualDefs).forEach(k=>{ const d=customManualDefs[k]; if(!d||!MANUAL[k]) return;
+    if(d._src){ (by[d._src]=by[d._src]||{label:'他の委託：'+((specSources[d._src]||{}).short||'別の委託'),cats:[],mans:[]}).mans.push(k); } else own.mans.push(k); });
+  return [own].concat(Object.values(by));
+}
+function wmUseCount(c,k){ return state.features.filter(f=>f.cat===c&&(k==null||f.kind===k)).length; }
+function wmSnap(msg,cats,mans){
+  const u={msg,cats:{},mans:{},srcs:JSON.parse(JSON.stringify(specSources))};
+  cats.forEach(c=>{ u.cats[c]=customWorksDefs[c]?JSON.parse(JSON.stringify(customWorksDefs[c])):null; });
+  mans.forEach(k=>{ u.mans[k]=customManualDefs[k]?JSON.parse(JSON.stringify(customManualDefs[k])):null; });
+  return u;
+}
+function wmDropEmptySources(){   // 借りた工種が1つも残っていない委託は一覧から外す（ファイルは残す）
+  Object.keys(specSources).forEach(id=>{ if(!specSrcCats(id).length&&!specSrcManual(id).length) delete specSources[id]; });
+}
+function wmNoUse(n,what){ alert('地図に「'+what+'」で描いたものが '+n+' 件あります。\n先にそれを消すか、選んで別の工種に変えてから消してください。'); }
+function wmDelKind(c,k){
+  const m=MASTER[c]; if(!m||!customWorksDefs[c]) return;
+  const n=wmUseCount(c,k); if(n){ wmNoUse(n,c+' › '+k); return; }
+  const last=Object.keys(m.kinds||{}).length<=1;
+  if(!confirm('「'+c+(c!==k?' › '+k:'')+'」を消しますか？'+(last?'\n（大分類「'+c+'」もなくなります）':'')+'\n消したあとでも「元に戻す」で戻せます。')) return;
+  wmUndo=wmSnap('「'+c+(c!==k?' › '+k:'')+'」を消しました。',[c],[]);
+  if(last){ delete MASTER[c]; delete customWorksDefs[c]; }
+  else { delete m.kinds[k]; delete CUSTOM_COLORS[c+'/'+k]; customWorksDefs[c]=m; }
+  wmDropEmptySources(); owAfterChange(); owShow('manage');
+}
+function wmDelCat(c){
+  if(!MASTER[c]||!customWorksDefs[c]) return;
+  const n=wmUseCount(c,null); if(n){ wmNoUse(n,c); return; }
+  if(!confirm('大分類「'+c+'」を細別ごと全部消しますか？\n消したあとでも「元に戻す」で戻せます。')) return;
+  wmUndo=wmSnap('大分類「'+c+'」を消しました。',[c],[]);
+  delete MASTER[c]; delete customWorksDefs[c];
+  wmDropEmptySources(); owAfterChange(); owShow('manage');
+}
+function wmDelMan(k){
+  if(!MANUAL[k]||!customManualDefs[k]) return;
+  const n=state.manual.filter(r=>r.kind===k).length;
+  if(n){ alert('「その他（手入力）」に「'+k+'」が '+n+' 件入っています。\n先に右の ✕ で消してから消してください。'); return; }
+  if(!confirm('手入力の項目「'+k+'」を消しますか？\n消したあとでも「元に戻す」で戻せます。')) return;
+  wmUndo=wmSnap('「'+k+'」を消しました。',[],[k]);
+  delete MANUAL[k]; delete customManualDefs[k];
+  wmDropEmptySources(); owAfterChange(); owShow('manage');
+}
+function wmDoUndo(){
+  const u=wmUndo; if(!u) return; wmUndo=null;
+  Object.keys(u.cats).forEach(c=>{ const d=u.cats[c]; if(d){ MASTER[c]=d; customWorksDefs[c]=d; if(d._color) Object.keys(d.kinds||{}).forEach(k=>{ CUSTOM_COLORS[c+'/'+k]=d._color; }); } });
+  Object.keys(u.mans).forEach(k=>{ const d=u.mans[k]; if(d){ MANUAL[k]=d; customManualDefs[k]=d; } });
+  specSources=u.srcs;
+  owAfterChange(); owShow('manage');
+}
+function openWorksManager(){ owShow('manage'); }
 function owNew(id){
   const s=id?specSources[id]:null;
   ow={view:'read', id:id||null, name:s?s.name:'', short:s?s.short:'', files:[], text:'', groups:[], notes:[], open:{}, filter:'', undo:ow.undo, undoMsg:ow.undoMsg, busy:''};
@@ -1982,6 +2061,11 @@ function owNew(id){
       if(u){ last.unit=specNormUnit(u); last.use=specDefaultUse(last.unit)==='none'?'manual':specDefaultUse(last.unit); }
       owRender(); const ins=owEl().querySelectorAll('.owG [data-f="cat"]'); if(ins.length) ins[ins.length-1].focus(); }
     else if(a==='import') owDoImport();
+    else if(a==='manage') owShow('manage');
+    else if(a==='wmkind') wmDelKind(b.dataset.c,b.dataset.k);
+    else if(a==='wmcat') wmDelCat(b.dataset.c);
+    else if(a==='wmman') wmDelMan(b.dataset.k);
+    else if(a==='wmundo') wmDoUndo();
     else if(a==='undo'){ if(!ow.undo) return; const kept=owRestore(ow.undo); ow.undo=null;
       ow.undoMsg=''; if(kept.length) alert('地図に描いてある '+kept.join('・')+' は消さずに残しました。'); owShow('home'); }
   });
@@ -1990,6 +2074,8 @@ function owNew(id){
   $('owFile').addEventListener('change',e=>{ const fs=[...(e.target.files||[])]; e.target.value='';
     fs.forEach(f=>{ if(!ow.files.some(x=>x.name===f.name&&x.size===f.size)) ow.files.push(f); }); owRender(); });
   $('otherWorksBtn').onclick=openOtherWorks;
+  $('manageWorksBtn').onclick=openWorksManager;
+  $('nwManage').onclick=()=>{ closeWorkModal(); openWorksManager(); };
   // 「工種を追加」の画面も、新しい画面から開けるよう外に出す
   const wm=$('workModal'); if(wm&&wm.parentNode!==document.body) document.body.appendChild(wm);
 })();
@@ -6002,11 +6088,12 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     srcs.forEach(sr=>{ const nm=((typeof specSources!=='undefined'&&specSources[sr])||{}).short||'別の委託';
       h+=`<div class="cat" style="color:var(--acc);font-weight:700;margin-top:14px">📄 他の委託：${esc(nm)}</div>`;
       cats.filter(c=>MASTER[c]._src===sr).forEach(c=>{ h+=one(c); }); });
-    h+='<div class="nuOw"><button class="btn ghost" id="nuOwBtn">📄 他の委託から利用<small>ほかの委託の仕様書・設計書を読んで工種を借りる</small></button><button class="btn ghost" id="nuAddWork">＋ 工種を追加<small>色・規格を決めて1つ足す</small></button></div>';
+    h+='<div class="nuOw"><button class="btn ghost" id="nuOwBtn">📄 他の委託から利用<small>ほかの委託の仕様書・設計書を読んで工種を借りる</small></button><button class="btn ghost" id="nuAddWork">＋ 工種を追加<small>色・規格を決めて1つ足す</small></button><button class="btn ghost" id="nuManage">🗑 追加した工種を消す<small>自分で足した・借りた工種</small></button></div>';
     const a=$('nuAll'); a.innerHTML=h;
     a.querySelectorAll('.nu-chip[data-c]').forEach(b=>b.onclick=()=>{pick(b.dataset.c,b.dataset.k);a.classList.remove('on');});
     $('nuOwBtn').onclick=()=>{ a.classList.remove('on'); openOtherWorks(); };
     $('nuAddWork').onclick=()=>{ a.classList.remove('on'); $('addWorkBtn').click(); };
+    $('nuManage').onclick=()=>{ a.classList.remove('on'); openWorksManager(); };
   }
   function pick(c,k){
     if(!exists(c,k))return;
