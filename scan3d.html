@@ -69,6 +69,8 @@ textarea{min-height:52px;resize:vertical}
 .legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:12px}
 .legend span{display:inline-flex;align-items:center;gap:5px;background:var(--field);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
 .dot{width:11px;height:11px;border-radius:50%;display:inline-block;border:1px solid rgba(0,0,0,.35)}
+#elvCv{display:block;width:100%;max-width:360px;margin:0 auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+h3.elvh{font-size:13.5px;color:var(--leaf);margin:14px 0 6px;text-align:center}
 #secCv{display:block;width:100%;max-width:360px;aspect-ratio:1/1;margin:0 auto;border:1px solid var(--line);border-radius:8px;background:#fff}
 .secnav{display:flex;gap:6px;align-items:center;margin-bottom:8px}
 .secnav .no{flex:1;text-align:center;font-weight:700;font-size:16px}
@@ -407,6 +409,14 @@ function fitCircle(xs, ys, idx) {
 /* ---------- テープの巻き方の幹周 ----------
    中心から見て 2° ごとに、最初に当たる面（5cm 以上の切れ目までのまとまり）を幹とみて、その真ん中寄りの半径を取る。
    隣どうしでならして測りのばらつきを抑え、写っていない向きは両隣からつなぐ。外側を張った線（凸包）の長さが幹周。 */
+// まわりの地面の高い側：30° ごとに低いほう（10%）を地面とみて、そのいちばん高い向き。根張り・下草・柵は地面にしない
+function groundHigh(gz, ga, zg) {
+  if (!gz || gz.length < 20) return null;
+  const sec = Array.from({ length: 12 }, () => []);
+  for (let i = 0; i < gz.length; i++) sec[Math.min(11, Math.floor((ga[i] + Math.PI) / (Math.PI / 6)))].push(gz[i]);
+  let hi = -Infinity; for (const l of sec) if (l.length >= 8) hi = Math.max(hi, pct(l, 0.1));
+  return hi === -Infinity ? null : Math.round((hi - zg) * 1000) / 10;
+}
 const NB = 180, BW = 2 * Math.PI / NB;
 function tapeOutline(xs, ys, cx, cy, q) {
   q = q == null ? 0.6 : q;
@@ -537,15 +547,17 @@ async function analyze(file, opt, onProg) {
 
   // ---- 3回目：木ごとに「幹のまわりの低い側の地面」から測定の高さで測り直す ----
   if (acc.length) {
-    const tc = new Map(), RR = 1.0;
-    acc.forEach((t, ti) => { t.px = []; t.py = []; t.pz = []; t.gz = []; t.g0 = gH(t.cx, t.cy);
+    const tc = new Map(), RR = 1.0, EC = 2000;   // EC：立面図に残す点の数（木ごと、まんべんなく選ぶ）
+    acc.forEach((t, ti) => { t.px = []; t.py = []; t.pz = []; t.gz = []; t.ga = []; t.g0 = gH(t.cx, t.cy); t.ev = new Float32Array(EC * 3); t.en = 0;
       for (let i = Math.floor(t.cx - RR - 0.6); i <= Math.floor(t.cx + RR + 0.6); i++) for (let j = Math.floor(t.cy - RR - 0.6); j <= Math.floor(t.cy + RR + 0.6); j++) { const k = i * 65536 + j; let a = tc.get(k); if (!a) { a = []; tc.set(k, a); } a.push(ti); } });
     await S('幹周を測っています', W0 + 2.3 * part, part, (x, y, z) => {
       const a = tc.get(Math.floor(x) * 65536 + Math.floor(y)); if (!a) return;
-      for (const ti of a) { const t = acc[ti], dz = z - t.g0; if (dz < -1.2 || dz > hm + 0.4) continue;
+      for (const ti of a) { const t = acc[ti], dz = z - t.g0; if (dz < -1.2 || dz > hm + 0.9) continue;
         const ddx = x - t.cx, ddy = y - t.cy, d2 = ddx * ddx + ddy * ddy, ro = t.r + 0.6; if (d2 > ro * ro) continue; const ri = t.r + 0.12;
-        if (d2 >= ri * ri) { if (dz < 0.8) t.gz.push(z); }                    // まわりの地面
-        else if (dz > hm - 0.75) { t.px.push(x); t.py.push(y); t.pz.push(z); } }   // 幹（測定の高さの近く）
+        { t.en++; let k = -1; if (t.en <= EC) k = (t.en - 1) * 3; else { const j = (Math.random() * t.en) | 0; if (j < EC) k = j * 3; }   // 立面図用（くじ引きで均等に）
+          if (k >= 0) { t.ev[k] = ddx; t.ev[k + 1] = ddy; t.ev[k + 2] = dz; } }
+        if (d2 >= ri * ri) { if (dz < 0.8) { t.gz.push(z); t.ga.push(Math.atan2(ddy, ddx)); } }                    // まわりの地面
+        else if (dz > hm - 0.75 && dz < hm + 0.4) { t.px.push(x); t.py.push(y); t.pz.push(z); } }   // 幹（測定の高さの近く）
     });
   }
   prog('まとめています', 0.99);
@@ -581,6 +593,9 @@ async function analyze(file, opt, onProg) {
     const C = useTape ? Ctape : Ccircle;
     if (useTape && Math.abs(Ctape - Ccircle) > Math.max(6, 0.1 * Ccircle)) flags.push('mismatch');
     if (!t.sure) flags.push('unsure');
+    // 立面図の点：幹の中心・基準の地面（低い側）からの cm
+    const elev = []; for (let i = 0, n = t.ev ? Math.min(t.en, t.ev.length / 3) : 0; i < n; i++) elev.push([Math.round((t.cx + t.ev[i * 3] - cx) * 1000) / 10, Math.round((t.cy + t.ev[i * 3 + 1] - cy) * 1000) / 10, Math.round((t.g0 + t.ev[i * 3 + 2] - zg) * 1000) / 10]);
+    t.ev = null;
     // 断面の点（表示用・最大 700 点、中心からの cm）
     const st = Math.max(1, Math.ceil(sxs.length / 700)), pts = [];
     for (let i = 0; i < sxs.length; i += st) pts.push([Math.round((sxs[i] - cx) * 1000) / 10, Math.round((sys[i] - cy) * 1000) / 10]);
@@ -589,9 +604,9 @@ async function analyze(file, opt, onProg) {
       C: Math.round(C), Ctape: tp ? Math.round(Ctape * 10) / 10 : null, Ccircle: Math.round(Ccircle * 10) / 10,
       method: useTape ? 'tape' : 'circle', cover, gap: tp ? tp.gap : null,
       groundOffset: Math.round((zg - t.g0) * 100), hm, flags,
-      sect: { pts, r: tp ? tp.r : null, has: tp ? tp.has : null, hull: tp ? tp.hull : null, rc: Math.round(r * 1000) / 10 }
+      sect: { pts, r: tp ? tp.r : null, has: tp ? tp.has : null, hull: tp ? tp.hull : null, rc: Math.round(r * 1000) / 10, elev, ring: [Math.round((t.r + 0.12) * 100), Math.round((t.r + 0.6) * 100)], gHi: groundHigh(t.gz, t.ga, zg) }
     });
-    t.px = t.py = t.pz = t.gz = null;
+    t.px = t.py = t.pz = t.gz = t.ga = null;
   });
   // 株立ちの候補：測定の高さで 0.6m より近い幹
   trees.forEach((a, i) => trees.forEach((b, j) => { if (j > i && Math.hypot(a.x - b.x, a.y - b.y) < 0.6) { (a.near = a.near || []).push(j); (b.near = b.near || []).push(i); } }));
@@ -902,6 +917,53 @@ function drawSec(t) {
   g.fillStyle = '#22231F'; g.font = '11px sans-serif'; g.fillText('北↑', W - 34, 16);
   g.fillRect(10, W - 14, 10 * k, 3); g.fillText('10cm', 10, W - 18);
 }
+/* 立面図：幹とまわりの地面の点を横から見て、基準の地面と輪切りの高さを示す */
+let elvDir = 0;   // 0 南から・1 西から・2 北から・3 東から
+function drawElev(t) {
+  const cv = $('elvCv'); if (!cv) return; const S = SECT[t.id];
+  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1, W = r.width || 320, H = Math.round(W * 1.15);
+  cv.style.height = H + 'px'; cv.width = Math.round(W * d); cv.height = Math.round(H * d);
+  const g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
+  if (!S || !S.elev || !S.elev.length) { g.fillStyle = '#5B5750'; g.font = '13px sans-serif'; g.textAlign = 'center'; g.fillText('点群を選び直して測り直すと表示されます', W / 2, H / 2); return; }
+  const hmc = P.hm * 100, hx = [p => p[0], p => -p[1], p => -p[0], p => p[1]][elvDir];
+  let vmin = -10, vmax = hmc + 60, hmax = (S.ring ? S.ring[1] : 80);
+  for (const p of S.elev) { vmin = Math.min(vmin, p[2]); }
+  vmin = Math.max(vmin, -120) - 8;
+  const L = 46, R = 12, T = 22, B = 18, k = Math.min((W - L - R) / (2 * hmax), (H - T - B) / (vmax - vmin));
+  const cx = L + (W - L - R) / 2, X = h => cx + h * k, Y = v => H - B - (v - vmin) * k;
+  // 50cm ごとの升目
+  g.strokeStyle = '#F0EEE8'; g.lineWidth = 1;
+  for (let v = Math.ceil(vmin / 50) * 50; v <= vmax; v += 50) { g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(W - R, Y(v)); g.stroke(); }
+  for (let h = -Math.floor(hmax / 50) * 50; h <= hmax; h += 50) { g.beginPath(); g.moveTo(X(h), T); g.lineTo(X(h), H - B); g.stroke(); }
+  // 点：幹（灰）・まわりの地面（薄茶）・基準にした低い側の地面（茶）
+  const r0 = S.ring ? S.ring[0] : 0, r1 = S.ring ? S.ring[1] : 1e9;
+  for (const p of S.elev) { const dd = Math.hypot(p[0], p[1]), ring = dd >= r0 && dd <= r1, low = ring && p[2] <= 2.5;
+    g.fillStyle = low ? '#8B5A2B' : (ring ? '#CDBFA6' : '#77736B'); const rr = low ? 2.2 : 1.4;
+    g.beginPath(); g.arc(X(hx(p)), Y(p[2]), rr, 0, 7); g.fill(); }
+  // 輪切りの高さ（±5cm の帯と、幹の幅の赤い線）
+  g.fillStyle = 'rgba(192,57,43,.13)'; g.fillRect(L, Y(hmc + 5), W - L - R, Y(hmc - 5) - Y(hmc + 5));
+  let a0 = -(S.rc || 10), a1 = S.rc || 10;
+  if (S.r) { const NB = S.r.length, BW = 2 * Math.PI / NB; a0 = 1e9; a1 = -1e9; S.r.forEach((rv, i) => { const ang = (i + 0.5) * BW, p = [rv * 100 * Math.cos(ang), rv * 100 * Math.sin(ang)], h = hx(p); a0 = Math.min(a0, h); a1 = Math.max(a1, h); }); }
+  g.strokeStyle = '#C0392B'; g.lineWidth = 3; g.beginPath(); g.moveTo(X(a0) - 6, Y(hmc)); g.lineTo(X(a1) + 6, Y(hmc)); g.stroke();
+  // 基準の地面・幹の真ん中の地面
+  g.strokeStyle = '#8B5A2B'; g.lineWidth = 2; g.beginPath(); g.moveTo(L, Y(0)); g.lineTo(W - R, Y(0)); g.stroke();
+  const hi = S.gHi != null && S.gHi >= 3 ? S.gHi : null;
+  if (hi != null) { g.save(); g.setLineDash([5, 4]); g.strokeStyle = '#9A968C'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(L, Y(hi)); g.lineTo(W - R, Y(hi)); g.stroke(); g.restore(); }
+  // 寸法（左）
+  g.strokeStyle = '#22231F'; g.fillStyle = '#22231F'; g.lineWidth = 1.2; const ax = 22;
+  g.beginPath(); g.moveTo(ax, Y(0)); g.lineTo(ax, Y(hmc)); g.stroke();
+  [[Y(0), 1], [Y(hmc), -1]].forEach(([yy, s2]) => { g.beginPath(); g.moveTo(ax, yy); g.lineTo(ax - 4, yy - 7 * s2); g.lineTo(ax + 4, yy - 7 * s2); g.closePath(); g.fill(); g.beginPath(); g.moveTo(ax - 8, yy); g.lineTo(ax + 8, yy); g.stroke(); });
+  g.save(); g.translate(ax - 6, (Y(0) + Y(hmc)) / 2); g.rotate(-Math.PI / 2); g.font = 'bold 12px sans-serif'; g.textAlign = 'center'; g.fillText(P.hm.toFixed(2).replace(/0$/, '') + 'm', 0, 0); g.restore();
+  // 文字
+  const lab = (tx, x, y, col) => { g.font = 'bold 11.5px sans-serif'; g.lineWidth = 3.5; g.strokeStyle = 'rgba(255,255,255,.95)'; g.strokeText(tx, x, y); g.fillStyle = col; g.fillText(tx, x, y); };
+  g.textAlign = 'right';
+  lab(`${P.hm}m（ここで測った）`, W - R - 2, Y(hmc) - 8, '#C0392B');
+  lab('基準の地面（まわりの低い側）', W - R - 2, Y(0) + 14, '#8B5A2B');
+  if (hi != null) { g.textAlign = 'left'; lab(`高い側の地面（＋${Math.round(hi)}cm）`, L + 4, Y(hi) - 6, '#77736B'); g.textAlign = 'right'; }
+  g.textAlign = 'left'; g.font = '11px sans-serif'; g.fillStyle = '#5B5750';
+  g.fillText(['南から見た図（左が西・右が東）', '西から見た図（左が北・右が南）', '北から見た図（左が東・右が西）', '東から見た図（左が南・右が北）'][elvDir], L, 14);
+  g.fillText('升目 50cm', W - R - 58, H - 5);
+}
 function renderSec() {
   const box = $('secBody');
   if (!P || !sel || !byId(sel)) { $('secNo').textContent = '—'; box.innerHTML = '<div class="empty">位置図の丸をタップしてください</div>'; return; }
@@ -911,14 +973,18 @@ function renderSec() {
   const close = P.trees.filter(u => u !== t && !u.ex && Math.hypot(u.x - t.x, u.y - t.y) < 1.0 && (!t.kabu || u.kabu !== t.kabu));
   box.innerHTML = `
     ${SECT[t.id] ? `<canvas id="secCv"></canvas>
-    <div class="secleg"><span><i style="border-color:#C0392B"></i>テープの線</span><span><i style="border-color:#2F6FA8;border-top-style:dashed"></i>円</span><span><i style="border-color:rgba(217,130,43,.6);border-top-width:6px"></i>写っていない所</span></div>` : `<div class="empty" style="padding:14px">${t.manual ? '手で足した木です。テープで測った幹周を入れてください' : '断面の点がありません'}</div>`}
+    <div class="secleg"><span><i style="border-color:#C0392B"></i>テープの線</span><span><i style="border-color:#2F6FA8;border-top-style:dashed"></i>円</span><span><i style="border-color:rgba(217,130,43,.6);border-top-width:6px"></i>写っていない所</span></div>
+    <h3 class="elvh">立面図（どこで${P.hm}mを測ったか）</h3>
+    <div class="chips" style="justify-content:center;margin-bottom:6px">${['南から', '西から', '北から', '東から'].map((n, i) => `<button class="chip${elvDir === i ? ' on' : ''}" type="button" data-dir="${i}">${n}</button>`).join('')}</div>
+    <canvas id="elvCv"></canvas>
+    <div class="secleg"><span><i style="border-color:#8B5A2B;border-top-width:5px;border-top-style:dotted"></i>基準にした低い側の地面</span><span><i style="border-color:#C0392B"></i>${P.hm}mで輪切りにした所</span><span><i style="border-color:#9A968C;border-top-style:dashed"></i>高い側の地面</span></div>` : `<div class="empty" style="padding:14px">${t.manual ? '手で足した木です。テープで測った幹周を入れてください' : '断面の点がありません'}</div>`}
     <dl class="kv">
       <dt>幹周（採用）</dt><dd><span class="big tnum">${C ? C : '—'}</span> cm　<span style="color:var(--bark);font-weight:400">${esc(rk.label)}</span></dd>
       ${g.length > 1 ? `<dt>株立ち</dt><dd>${g.map(u => `No.${u.no}：${ownC(u) || '?'}cm`).join('、')}<br>合計 ${g.reduce((s, u) => s + (ownC(u) || 0), 0)}cm × ${opt().kabuK}</dd>` : ''}
       ${t.manual ? '' : `<dt>テープ式</dt><dd class="tnum">${t.Ctape != null ? t.Ctape + ' cm' : '—'}${t.method === 'circle' ? '（使っていません）' : ''}</dd>
       <dt>円で見ると</dt><dd class="tnum">${t.Ccircle != null ? t.Ccircle + ' cm' : '—'}</dd>
       <dt>写っている範囲</dt><dd class="tnum">${t.cover != null ? t.cover + '%' : '—'}</dd>
-      <dt>測った高さ</dt><dd>まわりの低い側の地面から ${P.hm}m${t.groundOffset ? `（幹の真ん中の地面より ${Math.abs(t.groundOffset)}cm ${t.groundOffset < 0 ? '低い' : '高い'}所が基準）` : ''}</dd>`}
+      <dt>測った高さ</dt><dd>まわりの低い側の地面から ${P.hm}m${SECT[t.id] && SECT[t.id].gHi >= 3 ? `（まわりの地面の高低差 ${Math.round(SECT[t.id].gHi)}cm）` : ''}</dd>`}
     </dl>
     ${iss.length ? `<div class="warnbox"><b>要確認</b><ul>${iss.map(s => `<li>${esc(s)}</li>`).join('')}</ul></div>` : (t.ex ? '' : `<div class="okbox">${t.meas > 0 ? '実測の値を使っています' : (t.ok ? '確認済み' : 'このままで大丈夫そうです')}</div>`)}
     ${t.ex ? `<button class="btn block" id="unexBtn" type="button">除外をやめる（木に戻す）</button>` : `
@@ -936,7 +1002,8 @@ function renderSec() {
         : (close.length ? `<button class="btn block" id="kabuBtn" type="button">株立ちにまとめる<small>No.${close.map(u => u.no).join('・No.')} と1本にする（幹周＝合計×${opt().kabuK}）</small></button>` : '')}
     </div>`}
     <datalist id="spList">${['ケヤキ', 'サクラ', 'ソメイヨシノ', 'イチョウ', 'クスノキ', 'コナラ', 'クヌギ', 'エノキ', 'ムクノキ', 'シラカシ', 'アラカシ', 'スダジイ', 'マテバシイ', 'ハナミズキ', 'トウカエデ', 'イロハモミジ', 'プラタナス', 'ユリノキ', 'メタセコイア', 'ヒマラヤスギ', 'クロマツ', 'アカマツ', 'ハナノキ', 'モミジバフウ', 'ナンキンハゼ', 'エンジュ', 'カツラ', 'ヤマモモ', 'クスノキ'].map(s => `<option value="${s}">`).join('')}</datalist>`;
-  requestAnimationFrame(() => drawSec(t));
+  requestAnimationFrame(() => { drawSec(t); drawElev(t); });
+  box.querySelectorAll('[data-dir]').forEach(b => b.onclick = () => { elvDir = +b.dataset.dir; box.querySelectorAll('[data-dir]').forEach(c => c.classList.toggle('on', +c.dataset.dir === elvDir)); drawElev(t); });
   const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
   const ch = (id, fn) => { const el = $(id); if (el) el.onchange = fn; };
   ch('measIn', () => { const v = $('measIn').value.trim(); push(); t.meas = v === '' ? null : Math.max(1, Math.round(+v)) || null; renderAll(); autosave(); });

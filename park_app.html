@@ -923,6 +923,14 @@ function fitCircle(xs, ys, idx) {
 /* ---------- テープの巻き方の幹周 ----------
    中心から見て 2° ごとに、最初に当たる面（5cm 以上の切れ目までのまとまり）を幹とみて、その真ん中寄りの半径を取る。
    隣どうしでならして測りのばらつきを抑え、写っていない向きは両隣からつなぐ。外側を張った線（凸包）の長さが幹周。 */
+// まわりの地面の高い側：30° ごとに低いほう（10%）を地面とみて、そのいちばん高い向き。根張り・下草・柵は地面にしない
+function groundHigh(gz, ga, zg) {
+  if (!gz || gz.length < 20) return null;
+  const sec = Array.from({ length: 12 }, () => []);
+  for (let i = 0; i < gz.length; i++) sec[Math.min(11, Math.floor((ga[i] + Math.PI) / (Math.PI / 6)))].push(gz[i]);
+  let hi = -Infinity; for (const l of sec) if (l.length >= 8) hi = Math.max(hi, pct(l, 0.1));
+  return hi === -Infinity ? null : Math.round((hi - zg) * 1000) / 10;
+}
 const NB = 180, BW = 2 * Math.PI / NB;
 function tapeOutline(xs, ys, cx, cy, q) {
   q = q == null ? 0.6 : q;
@@ -1053,15 +1061,17 @@ async function analyze(file, opt, onProg) {
 
   // ---- 3回目：木ごとに「幹のまわりの低い側の地面」から測定の高さで測り直す ----
   if (acc.length) {
-    const tc = new Map(), RR = 1.0;
-    acc.forEach((t, ti) => { t.px = []; t.py = []; t.pz = []; t.gz = []; t.g0 = gH(t.cx, t.cy);
+    const tc = new Map(), RR = 1.0, EC = 2000;   // EC：立面図に残す点の数（木ごと、まんべんなく選ぶ）
+    acc.forEach((t, ti) => { t.px = []; t.py = []; t.pz = []; t.gz = []; t.ga = []; t.g0 = gH(t.cx, t.cy); t.ev = new Float32Array(EC * 3); t.en = 0;
       for (let i = Math.floor(t.cx - RR - 0.6); i <= Math.floor(t.cx + RR + 0.6); i++) for (let j = Math.floor(t.cy - RR - 0.6); j <= Math.floor(t.cy + RR + 0.6); j++) { const k = i * 65536 + j; let a = tc.get(k); if (!a) { a = []; tc.set(k, a); } a.push(ti); } });
     await S('幹周を測っています', W0 + 2.3 * part, part, (x, y, z) => {
       const a = tc.get(Math.floor(x) * 65536 + Math.floor(y)); if (!a) return;
-      for (const ti of a) { const t = acc[ti], dz = z - t.g0; if (dz < -1.2 || dz > hm + 0.4) continue;
+      for (const ti of a) { const t = acc[ti], dz = z - t.g0; if (dz < -1.2 || dz > hm + 0.9) continue;
         const ddx = x - t.cx, ddy = y - t.cy, d2 = ddx * ddx + ddy * ddy, ro = t.r + 0.6; if (d2 > ro * ro) continue; const ri = t.r + 0.12;
-        if (d2 >= ri * ri) { if (dz < 0.8) t.gz.push(z); }                    // まわりの地面
-        else if (dz > hm - 0.75) { t.px.push(x); t.py.push(y); t.pz.push(z); } }   // 幹（測定の高さの近く）
+        { t.en++; let k = -1; if (t.en <= EC) k = (t.en - 1) * 3; else { const j = (Math.random() * t.en) | 0; if (j < EC) k = j * 3; }   // 立面図用（くじ引きで均等に）
+          if (k >= 0) { t.ev[k] = ddx; t.ev[k + 1] = ddy; t.ev[k + 2] = dz; } }
+        if (d2 >= ri * ri) { if (dz < 0.8) { t.gz.push(z); t.ga.push(Math.atan2(ddy, ddx)); } }                    // まわりの地面
+        else if (dz > hm - 0.75 && dz < hm + 0.4) { t.px.push(x); t.py.push(y); t.pz.push(z); } }   // 幹（測定の高さの近く）
     });
   }
   prog('まとめています', 0.99);
@@ -1097,6 +1107,9 @@ async function analyze(file, opt, onProg) {
     const C = useTape ? Ctape : Ccircle;
     if (useTape && Math.abs(Ctape - Ccircle) > Math.max(6, 0.1 * Ccircle)) flags.push('mismatch');
     if (!t.sure) flags.push('unsure');
+    // 立面図の点：幹の中心・基準の地面（低い側）からの cm
+    const elev = []; for (let i = 0, n = t.ev ? Math.min(t.en, t.ev.length / 3) : 0; i < n; i++) elev.push([Math.round((t.cx + t.ev[i * 3] - cx) * 1000) / 10, Math.round((t.cy + t.ev[i * 3 + 1] - cy) * 1000) / 10, Math.round((t.g0 + t.ev[i * 3 + 2] - zg) * 1000) / 10]);
+    t.ev = null;
     // 断面の点（表示用・最大 700 点、中心からの cm）
     const st = Math.max(1, Math.ceil(sxs.length / 700)), pts = [];
     for (let i = 0; i < sxs.length; i += st) pts.push([Math.round((sxs[i] - cx) * 1000) / 10, Math.round((sys[i] - cy) * 1000) / 10]);
@@ -1105,9 +1118,9 @@ async function analyze(file, opt, onProg) {
       C: Math.round(C), Ctape: tp ? Math.round(Ctape * 10) / 10 : null, Ccircle: Math.round(Ccircle * 10) / 10,
       method: useTape ? 'tape' : 'circle', cover, gap: tp ? tp.gap : null,
       groundOffset: Math.round((zg - t.g0) * 100), hm, flags,
-      sect: { pts, r: tp ? tp.r : null, has: tp ? tp.has : null, hull: tp ? tp.hull : null, rc: Math.round(r * 1000) / 10 }
+      sect: { pts, r: tp ? tp.r : null, has: tp ? tp.has : null, hull: tp ? tp.hull : null, rc: Math.round(r * 1000) / 10, elev, ring: [Math.round((t.r + 0.12) * 100), Math.round((t.r + 0.6) * 100)], gHi: groundHigh(t.gz, t.ga, zg) }
     });
-    t.px = t.py = t.pz = t.gz = null;
+    t.px = t.py = t.pz = t.gz = t.ga = null;
   });
   // 株立ちの候補：測定の高さで 0.6m より近い幹
   trees.forEach((a, i) => trees.forEach((b, j) => { if (j > i && Math.hypot(a.x - b.x, a.y - b.y) < 0.6) { (a.near = a.near || []).push(j); (b.near = b.near || []).push(i); } }));
