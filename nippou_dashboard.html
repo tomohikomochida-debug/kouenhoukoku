@@ -113,6 +113,27 @@ header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 @media (max-width:560px){ header{padding:12px 14px;gap:10px} header .mk{display:none} header h1{font-size:16px} .fysel{font-size:13px;padding:6px 10px;max-width:46%} }
 .stale{font-size:12px;color:var(--bark,#5B5750);background:#FBFAF6;border:1px solid #DCD9D0;border-left:3px solid #C77C30;border-radius:0 8px 8px 0;padding:8px 12px;margin:0 0 12px}
 .stale.err{border-left-color:#B0533F;color:#B0533F}
+/* 現場で絞り込み */
+.sitef{position:relative;margin:12px 0 0}
+.sf-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--bark)}
+.sf-box{position:relative;flex:1;max-width:460px}
+.sf-box input{width:100%;font-size:16px;padding:9px 40px 9px 12px;border:1px solid var(--line);border-radius:8px;font-family:inherit;background:var(--field);-webkit-appearance:none;appearance:none}
+.sf-box input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+.sf-box input:focus{outline:2px solid var(--leaf2);outline-offset:-1px;background:#fff}
+.sitef.on .sf-box input{border-color:var(--leaf);background:#fff;font-weight:700;color:var(--leaf)}
+.sf-x{position:absolute;right:4px;top:50%;transform:translateY(-50%);border:none;background:var(--soft);color:var(--bark);width:30px;height:30px;border-radius:999px;font-size:15px;cursor:pointer;line-height:1}
+.sf-sug{position:absolute;left:0;right:0;top:100%;margin-top:4px;max-width:520px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 14px 34px -14px rgba(0,0,0,.35);z-index:20;max-height:340px;overflow:auto;padding:4px}
+.sf-opt{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 10px;border-radius:7px;cursor:pointer;font-size:14px}
+.sf-opt:hover,.sf-opt.hi{background:var(--soft)}
+.sf-opt .sn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sf-opt .sv{flex-shrink:0;font-size:12px;color:var(--bark);font-variant-numeric:tabular-nums}
+.sf-opt.all{color:var(--leaf);font-weight:700;border-bottom:1px dashed var(--line);border-radius:7px 7px 0 0}
+.sf-opt.none{color:var(--bark);cursor:default}
+.sf-opt.none:hover{background:none}
+.sf-on{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:13px;background:var(--soft);border-left:3px solid var(--leaf);border-radius:0 8px 8px 0;padding:7px 10px}
+.sf-on b{color:var(--leaf)}
+.sf-on .sf-names{color:var(--bark);font-size:12px;flex-basis:100%}
+.sf-on button{margin-left:auto;border:1px solid var(--line);background:#fff;border-radius:7px;padding:4px 10px;font-family:inherit;font-size:12px;cursor:pointer}
 </style></head><body>
 <header><a class="home-btn" href="index.html" title="アプリ一覧にもどる" aria-label="アプリ一覧（ホーム）にもどる"><span class="hb-ic">🏠</span><span class="hb-t">ホーム</span></a><span class="mk">庭乃持田園</span><h1>日報ダッシュボード</h1>
   <select class="fysel" id="fySel"></select></header>
@@ -127,6 +148,16 @@ header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
       <button data-q="lastmonth">先月</button>
     </span>
     <span>期間 <input type="date" id="pFrom"> 〜 <input type="date" id="pTo"></span>
+  </div>
+  <div class="sitef" id="siteF">
+    <div class="sf-row"><span>現場</span>
+      <div class="sf-box">
+        <input id="sfQ" type="search" placeholder="現場名で絞り込み（例：等々力）" autocomplete="off" enterkeyhint="search" aria-label="現場名で絞り込み">
+        <button id="sfX" class="sf-x" type="button" hidden aria-label="現場の絞り込みを解除">✕</button>
+        <div class="sf-sug" id="sfSug" hidden></div>
+      </div>
+    </div>
+    <div class="sf-on" id="sfOn" hidden></div>
   </div>
   <div class="tabs">
     <button class="tab on" data-p="rank">現場別 人工</button>
@@ -179,6 +210,96 @@ function filterPeriod(records){
   if(!f && !t) return records;
   return records.filter(r=>{const d=r.date.slice(0,10); if(f&&d<f)return false; if(t&&d>t)return false; return true;});
 }
+/* ===== 現場で絞り込み（上の検索欄。全部のタブに効く） ===== */
+// ひらがな／カタカナ・全角／半角・大文字小文字・空白を区別せずに比べる
+function norm(s){ return String(s==null?'':s).normalize('NFKC').toLowerCase()
+  .replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60)).replace(/[\s・]/g,''); }
+let siteSel=null;   // null = 絞り込みなし／{q:'文字', exact:true=その現場だけ, false=その文字を含む現場すべて}
+function siteMatch(site){
+  if(!siteSel) return true;
+  if(!site) return false;
+  return siteSel.exact ? site===siteSel.q : norm(site).includes(norm(siteSel.q));
+}
+function bySite(records){ return siteSel ? records.filter(r=>siteMatch(r.site)) : records; }
+function siteLabel(){ return !siteSel ? '' : siteSel.exact ? siteSel.q : '「'+siteSel.q+'」を含む現場'; }
+// 候補：今の年度の人工が多い順 → ほかの年度にだけある現場
+function siteCandidates(){
+  const m={}; cur.forEach(r=>{ if(r.site) m[r.site]=(m[r.site]||0)+r.ninku; });
+  const now=Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([s,v])=>({s,v}));
+  const other=Object.keys(search).filter(s=>s&&!(s in m)).sort((a,b)=>a.localeCompare(b,'ja')).map(s=>({s,v:null}));
+  return now.concat(other);
+}
+let sfHi=-1;
+function drawSug(){
+  const box=document.getElementById('sfSug'), q=document.getElementById('sfQ').value.trim();
+  const nq=norm(q), all=siteCandidates();
+  const hits=nq ? all.filter(c=>norm(c.s).includes(nq)) : all;
+  let h='';
+  const nowHits=hits.filter(c=>c.v!=null);
+  if(nq && nowHits.length>1) h+=`<div class="sf-opt all" data-q="${esc(q)}" data-ex="0"><span class="sn">「${esc(q)}」を含む現場すべて</span><span class="sv">${nowHits.length}現場</span></div>`;
+  h+=hits.slice(0,40).map(c=>`<div class="sf-opt" data-q="${esc(c.s)}" data-ex="1"><span class="sn">${esc(c.s)}</span><span class="sv">${c.v!=null?Math.round(c.v*10)/10+'人工':'この年度は記録なし'}</span></div>`).join('');
+  if(!hits.length) h=`<div class="sf-opt none">「${esc(q)}」に当てはまる現場はありません</div>`;
+  box.innerHTML=h; box.hidden=false; sfHi=-1;
+}
+function closeSug(){ document.getElementById('sfSug').hidden=true; sfHi=-1; }
+function syncSiteUI(){
+  const inp=document.getElementById('sfQ'), on=document.getElementById('sfOn');
+  document.getElementById('siteF').classList.toggle('on',!!siteSel);
+  document.getElementById('sfX').hidden=!siteSel && !inp.value;
+  if(document.activeElement!==inp) inp.value=siteSel?siteSel.q:'';
+  if(!siteSel){ on.hidden=true; on.innerHTML=''; return; }
+  const n=filterPeriod(bySite(cur)).length;
+  let names='';
+  if(!siteSel.exact){ const ss=[...new Set(bySite(cur).map(r=>r.site))]; names=`<span class="sf-names">${esc(ss.join('・'))||'この年度は該当なし'}</span>`; }
+  on.innerHTML=`📍 <span><b>${esc(siteLabel())}</b> だけを表示中（日報${n}件）</span><button type="button" id="sfOff">絞り込みを解除</button>${names}`;
+  on.hidden=false;
+}
+function readSiteURL(){
+  const p=new URLSearchParams(location.search), s=p.get('site');
+  siteSel = s ? {q:s, exact:p.get('sm')!=='part'} : null;
+}
+function writeSiteURL(){
+  const p=new URLSearchParams(location.search);
+  if(siteSel){ p.set('site',siteSel.q); if(siteSel.exact) p.delete('sm'); else p.set('sm','part'); }
+  else { p.delete('site'); p.delete('sm'); }
+  const qs=p.toString();
+  try{ history.pushState({site:siteSel},'',location.pathname+(qs?'?'+qs:'')+location.hash); }catch(e){}
+}
+// 絞り込みを変える（スマホの「戻る」で1つ前の絞り込みに戻れるよう履歴にも残す）
+function setSite(sel){
+  if(sel && !String(sel.q).trim()) sel=null;
+  const same=JSON.stringify(sel)===JSON.stringify(siteSel);
+  siteSel=sel; closeSug();
+  const inp=document.getElementById('sfQ'); inp.value=sel?sel.q:''; inp.blur();
+  if(!same) writeSiteURL();
+  render();
+}
+function bindSiteFilter(){
+  const inp=document.getElementById('sfQ');
+  inp.addEventListener('focus',drawSug);
+  inp.addEventListener('input',()=>{ drawSug(); document.getElementById('sfX').hidden=!siteSel && !inp.value; });
+  inp.addEventListener('keydown',e=>{
+    const opts=[...document.querySelectorAll('#sfSug .sf-opt[data-q]')];
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){ if(!opts.length) return; e.preventDefault();
+      sfHi=(sfHi+(e.key==='ArrowDown'?1:-1)+opts.length)%opts.length;
+      opts.forEach((o,i)=>o.classList.toggle('hi',i===sfHi)); opts[sfHi].scrollIntoView({block:'nearest'}); return; }
+    if(e.key==='Escape'){ closeSug(); inp.value=siteSel?siteSel.q:''; inp.blur(); return; }
+    if(e.key==='Enter'){ e.preventDefault();
+      if(sfHi>=0 && opts[sfHi]){ const o=opts[sfHi]; setSite({q:o.dataset.q, exact:o.dataset.ex==='1'}); return; }
+      const q=inp.value.trim(); if(!q){ setSite(null); return; }
+      const nq=norm(q), hits=siteCandidates().filter(c=>norm(c.s).includes(nq));
+      const exact=hits.find(c=>c.s===q) || (hits.length===1?hits[0]:null);
+      setSite(exact?{q:exact.s,exact:true}:{q,exact:false}); }
+  });
+  // mousedown で拾う（blur より先に選べるように）
+  document.getElementById('sfSug').addEventListener('mousedown',e=>{ const o=e.target.closest('.sf-opt[data-q]'); if(!o) return;
+    e.preventDefault(); setSite({q:o.dataset.q, exact:o.dataset.ex==='1'}); });
+  document.getElementById('sfX').addEventListener('click',()=>{ if(siteSel) setSite(null); else { inp.value=''; document.getElementById('sfX').hidden=true; closeSug(); } });
+  document.getElementById('sfOn').addEventListener('click',e=>{ if(e.target.id==='sfOff') setSite(null); });
+  document.addEventListener('mousedown',e=>{ if(!e.target.closest('#siteF')){ closeSug(); if(document.activeElement===inp){ inp.value=siteSel?siteSel.q:''; } } });
+  document.addEventListener('touchstart',e=>{ if(!e.target.closest('#siteF')) closeSug(); },{passive:true});
+  window.addEventListener('popstate',()=>{ readSiteURL(); closeSug(); render(); });
+}
 function openSiteList(site){
   const list=cur.filter(x=>x.site===site).sort((a,b)=>a.date<b.date?1:-1);
   const inView=filterPeriod(list);
@@ -192,7 +313,7 @@ function drawCal(){
   const [y,m]=calYM.split('-').map(Number);
   document.getElementById('calM').textContent=`${y}年 ${m}月`;
   const first=new Date(y,m-1,1).getDay(), dim=new Date(y,m,0).getDate();
-  const byDay={};cur.filter(x=>x.date.slice(0,7)===calYM).forEach(x=>{(byDay[x.date.slice(0,10)]=byDay[x.date.slice(0,10)]||[]).push(x)});
+  const byDay={};bySite(cur).filter(x=>x.date.slice(0,7)===calYM).forEach(x=>{(byDay[x.date.slice(0,10)]=byDay[x.date.slice(0,10)]||[]).push(x)});
   let h=['日','月','火','水','木','金','土'].map(d=>`<div class="dow">${d}</div>`).join('');
   for(let i=0;i<first;i++)h+='<div class="cell empty"></div>';
   for(let d=1;d<=dim;d++){const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -254,7 +375,7 @@ function detailHTML(r){
 function goEdit(rid){ window.open(APP_URL+'?edit='+encodeURIComponent(rid),'_blank'); }
 function openDetail(rid){ const r=findRec(rid); if(!r)return; showModal(detailHTML(r)); }
 function openDayList(ds){
-  const list=cur.filter(x=>x.date.slice(0,10)===ds);
+  const list=bySite(cur).filter(x=>x.date.slice(0,10)===ds);
   const h=`<div class="dl-title">${ds} の日報（${list.length}件）</div>`+
     list.map(r=>`<div class="dl-row" data-rid="${r.rid}"><span class="dls">${esc(r.site)||'(現場名なし)'}</span><span class="dlm">${esc(r.author)}・人工${r.ninku}</span></div>`).join('');
   showModal(h);
@@ -281,9 +402,10 @@ function computeMissing(records){
 }
 function renderMissing(records){
   const miss=computeMissing(records);
+  if(siteSel) Object.keys(miss).forEach(p=>{ miss[p]=miss[p].filter(x=>x.sites.some(s=>siteMatch(s.site))); if(!miss[p].length) delete miss[p]; });
   const people=Object.keys(miss).sort((a,b)=>miss[b].length-miss[a].length);
   const el=document.getElementById('missList');
-  if(!people.length){ el.innerHTML='<div class="ok">未記入の日はありません。みんなちゃんと書いています。</div>'; return; }
+  if(!people.length){ el.innerHTML='<div class="ok">'+(siteSel?'この現場で未記入の日はありません。':'未記入の日はありません。みんなちゃんと書いています。')+'</div>'; return; }
   el.innerHTML=people.map(p=>{const days=miss[p];
     return `<div class="mcard"><div class="mhead">${p}<span class="mcount">未記入 ${days.length}日</span></div>`+
       days.map(x=>{
@@ -337,11 +459,11 @@ function renderRefl(records){
   el.innerHTML=h;
 }
 document.addEventListener('click',e=>{
-  const b=e.target.closest('#rfPeople button'); if(b){ rfWho=b.dataset.who||''; renderRefl(filterPeriod(cur)); return; }
+  const b=e.target.closest('#rfPeople button'); if(b){ rfWho=b.dataset.who||''; renderRefl(bySite(filterPeriod(cur))); return; }
   const it=e.target.closest('.rf-item'); if(it && it.dataset.rid) openDetail(it.dataset.rid);
 });
 function render(){
-  const view=filterPeriod(cur);
+  const all=filterPeriod(cur), view=bySite(all);
   const totalNinku=Math.round(sum(view,x=>x.ninku)*10)/10;
   const sites=new Set(view.filter(x=>x.site).map(x=>x.site)).size;
   const days=new Set(view.map(x=>x.date.slice(0,10))).size;
@@ -350,16 +472,18 @@ function render(){
   bars(document.getElementById('rankBars'),aggBy(view,x=>x.site).slice(0,12),false,true);
   bars(document.getElementById('monthBars'),aggBy(view,x=>x.date.slice(0,7)).sort((a,b)=>a[0]<b[0]?-1:1),false,false);
   bars(document.getElementById('catBars'),aggBy(view,x=>x.cat),true,false);
-  const lbl=(curFY!=null?curFY+'年度 ':'');
+  const lbl=(curFY!=null?curFY+'年度 ':'')+(siteSel?siteLabel()+' ':'');
   document.getElementById('rankH').textContent=lbl+'現場別 延べ人工';
   document.getElementById('monthH').textContent=lbl+'月別 延べ人工';
   document.getElementById('catH').textContent=lbl+'種類別 延べ人工';
   const _t=new Date(); const _tym=_t.getFullYear()+'-'+String(_t.getMonth()+1).padStart(2,'0');
   const _tfy=(_t.getMonth()+1<4)?_t.getFullYear()-1:_t.getFullYear();
-  if(curFY===_tfy) calYM=_tym;
-  else if(cur.length) calYM=cur.map(x=>x.date.slice(0,7)).sort().reverse()[0];
+  const _cs=bySite(cur);
+  if(curFY===_tfy && (!siteSel || _cs.some(x=>x.date.slice(0,7)===_tym))) calYM=_tym;
+  else if(_cs.length) calYM=_cs.map(x=>x.date.slice(0,7)).sort().reverse()[0];
+  else if(curFY===_tfy) calYM=_tym;
   else calYM=`${curFY}-04`;
-  drawCal(); renderMissing(view); renderRefl(view);
+  drawCal(); renderMissing(all); renderRefl(view); syncSiteUI();
 }
 function bindOnce(){
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
@@ -367,7 +491,11 @@ function bindOnce(){
     document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
     document.getElementById(t.dataset.p).classList.add('on');
     document.getElementById('fySel').style.visibility=(t.dataset.p==='search')?'hidden':'visible';
-    document.querySelector('.period').style.display=(t.dataset.p==='search')?'none':'';});
+    document.querySelector('.period').style.display=(t.dataset.p==='search')?'none':'';
+    document.getElementById('siteF').style.display=(t.dataset.p==='search')?'none':'';
+    if(t.dataset.p==='search' && siteSel){ const q=document.getElementById('q');
+      if(q.value!==siteSel.q){ q.value=siteSel.q; q.dispatchEvent(new Event('input'));
+        if(siteSel.exact && search[siteSel.q]) openSiteAnalysis(siteSel.q); } }});
   document.getElementById('prev').onclick=()=>{let[y,m]=calYM.split('-').map(Number);m--;if(m<1){m=12;y--}calYM=`${y}-${String(m).padStart(2,'0')}`;drawCal()};
   document.getElementById('next').onclick=()=>{let[y,m]=calYM.split('-').map(Number);m++;if(m>12){m=1;y++}calYM=`${y}-${String(m).padStart(2,'0')}`;drawCal()};
   document.getElementById('calGrid').onclick=e=>{const c=e.target.closest('.ev'); if(!c)return;
@@ -378,7 +506,7 @@ function bindOnce(){
   document.getElementById('modalBg').onclick=e=>{ if(e.target.id==='modalBg') closeModal(); };
   document.getElementById('q').oninput=e=>{const q=e.target.value.trim();const res=document.getElementById('res');
     if(!q){res.innerHTML='';return}
-    const hits=Object.keys(search).filter(s=>s&&s.includes(q)).slice(0,10);
+    const nq=norm(q); const hits=Object.keys(search).filter(s=>s&&norm(s).includes(nq)).slice(0,20);
     if(!hits.length){res.innerHTML='<div class="note">該当なし</div>';return}
     res.innerHTML=hits.map(s=>{const yrs=search[s];const total=Math.round(Object.values(yrs).reduce((a,b)=>a+b,0)*10)/10;
       const detail=Object.entries(yrs).sort((a,b)=>b[0]-a[0]).map(([y,v])=>`<span class="yr">${y}年度 ${Math.round(v*10)/10}</span>`).join('　');
@@ -386,6 +514,7 @@ function bindOnce(){
   document.getElementById('res').onclick=e=>{const r=e.target.closest('.clk-site'); if(r&&r.dataset.site) openSiteAnalysis(r.dataset.site);};
   document.getElementById('search').addEventListener('change',e=>{ if(e.target.id==='cmStart') renderContractBars(Number(e.target.value)); });
   document.getElementById('search').addEventListener('click',e=>{ const c=e.target.closest('#saList .dl-row'); if(c&&c.dataset.rid) openDetail(c.dataset.rid); });
+  bindSiteFilter();
   document.getElementById('fySel').onchange=e=>fetchYear(Number(e.target.value));
   document.getElementById('rankBars').onclick=e=>{const b=e.target.closest('.clk-bar'); if(b&&b.dataset.key) openSiteList(b.dataset.key);};
   document.getElementById('pFrom').onchange=()=>{clearQuick();render();};
@@ -432,6 +561,8 @@ function applyDash(d){
   if(!years.length) years=[curFY];
 }
 async function boot(){
+  readSiteURL();
+  try{ history.replaceState({site:siteSel},'',location.href); }catch(e){}
   const cached=await kvGet('dash');
   if(cached && cached.d && cached.d.cur){
     // 端末に前回ぶんがある → すぐ表示してから、裏で最新に差し替える
