@@ -149,6 +149,7 @@
   .thumb img{ cursor:pointer; }
   .thmove{ position:absolute; bottom:2px; left:2px; right:2px; display:flex; justify-content:space-between; gap:2px; }
   .thmove button{ background:rgba(0,0,0,.55); color:#fff; border:none; border-radius:4px; height:20px; min-width:24px; font-size:11px; padding:0; }
+  .thumb img[data-thk]:not([data-thk=""]), .pbitem img[data-thk]:not([data-thk=""]){ background:#e9ecef; }
   .addph{ width:88px; height:66px; border:1px dashed var(--line); border-radius:8px; display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.3; color:var(--sub); font-size:13px; position:relative; background:#fff; }
   .addph input{ position:absolute; inset:0; opacity:0; }
   .grid3{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
@@ -3089,7 +3090,12 @@ function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){ ret
 let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", maps:[], curMap:null, numMode:"seq", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] };
 let saveTimer=null;
 let undoStack=[], redoStack=[], lastKey=null, lastTime=0;
-function snapClone(){ return JSON.parse(JSON.stringify(state)); }
+/* 「元に戻す」の控え：入れ物（配列・オブジェクト）だけ作り直し、写真などの文字はそのまま共有する
+   （文字は書きかわらないので共有して安全。写真ごと文字に直して複製すると、古い iPad では重く、メモリも足りなくなる） */
+function deepCopy(v){ if(Array.isArray(v)) return v.map(deepCopy);
+  if(v&&typeof v==="object"){ const o={}; for(const k in v){ const x=v[k]; if(x!==undefined&&typeof x!=="function") o[k]=deepCopy(x); } return o; }
+  return v; }
+function snapClone(){ return deepCopy(state); }
 function pushUndo(key){ const now=Date.now();
   if(key&&key.indexOf("upd:")===0&&key===lastKey&&(now-lastTime)<1500){ lastTime=now; return; }
   undoStack.push(snapClone()); if(undoStack.length>60) undoStack.shift(); redoStack=[]; lastKey=key; lastTime=now; updUndoBtn(); }
@@ -3133,8 +3139,44 @@ function phCyrb(str,seed){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
   for(let i=0;i<str.length;i++){ const c=str.charCodeAt(i); h1=Math.imul(h1^c,2654435761); h2=Math.imul(h2^c,1597334677); }
   h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909); h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
   return (h2>>>0).toString(16).padStart(8,"0")+(h1>>>0).toString(16).padStart(8,"0"); }
-function phHashOf(v,cache){ let h=phHash.get(v); if(!h){ h=phCyrb(v,3)+phCyrb(v,11)+v.length.toString(16); if(cache) phHash.set(v,h); } return h; }
+function phHashOf(v,cache){ const k=phKey(v), e=phHash.get(k); if(e&&e.v===v) return e.h; // 目印で引いて、同じ写真か確かめる
+  const h=phCyrb(v,3)+phCyrb(v,11)+v.length.toString(16); if(cache) phHash.set(k,{v,h}); return h; }
 const isPhotoStr=v=>typeof v==="string"&&v.length>500&&v.startsWith("data:image/");
+/* 画面に並べる写真は小さい見本で出す（大きい写真を何十枚も画面に出すと、古い iPad ではメモリが足りず重くなる）
+   見本ができるまでは元の写真を blob で出し、できたら差しかえる。見本は1枚ずつ順に作る */
+const TH_MAX=400, TH_BLANK="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+const thMap=new Map(), thId=new Map(), thD=new Map(); let thQ=[], thBusy=false, thN=0;
+/* 写真の短い目印（長さ＋あちこちの数文字）。写真の文字をそのまま見出しにすると、探すたびに長い文字を比べて遅い */
+function phKey(d){ const n=d.length; return n+":"+d.slice(n>>2,(n>>2)+24)+d.slice(n>>1,(n>>1)+24)+d.slice((n*3)>>2,((n*3)>>2)+24)+d.slice(Math.max(0,n-60)); }
+/* 見本の URL。まだなら空の画像を返して、裏で作る（できたら data-thk の画像を差しかえる） */
+function thumbSrc(d){ if(typeof d!=="string"||!d.startsWith("data:image")) return d;
+  const k=phKey(d), e=thMap.get(k); if(e&&e.d===d) return e.u;
+  if(!thId.has(k)||(e&&e.d!==d&&!thQ.includes(d))){ if(!thId.has(k)) thId.set(k,++thN); thQ.push(d); setTimeout(thRun,0); }
+  thD.set(String(thId.get(k)),d);
+  return TH_BLANK; }
+const thKey=d=>(typeof d==="string"&&thId.get(phKey(d)))||"";
+function thImg(d,attrs){ const src=thumbSrc(d); return `<img src="${src}" data-thk="${src===TH_BLANK?thKey(d):""}" decoding="async" ${attrs||""}>`; }
+async function thRun(){ if(thBusy) return; thBusy=true;
+  try{ while(thQ.length){ const d=thQ.shift(), pk=phKey(d), e0=thMap.get(pk); if(e0&&e0.d===d) continue; let u;
+      try{ u=await makeThumb(d); }catch(e){ u=d; }
+      if(e0&&typeof e0.u==="string"&&e0.u.startsWith("blob:")) URL.revokeObjectURL(e0.u);
+      thMap.set(pk,{d,u}); thSwap();
+      await new Promise(r=>setTimeout(r,0)); } } // 1枚ごとに手を離す（その間も操作できる）
+  finally{ thBusy=false; }
+  thSwap(true); }
+/* 空のままの画像に、できた見本を入れる（描き直しと見本作りが行き違っても取りこぼさない） */
+function thSwap(requeue){ let add=false;
+  document.querySelectorAll('img[data-thk]').forEach(im=>{ const id=im.getAttribute("data-thk"); if(!id) return; const d=thD.get(id); if(!d) return;
+    const e=thMap.get(phKey(d)); if(e&&e.d===d){ im.src=e.u; im.removeAttribute("data-thk"); } else if(requeue&&!thQ.includes(d)){ thQ.push(d); add=true; } });
+  if(add) setTimeout(thRun,0); }
+function makeThumb(d){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>{ const k=Math.min(1,TH_MAX/Math.max(im.naturalWidth,im.naturalHeight)), w=Math.max(1,Math.round(im.naturalWidth*k)), h=Math.max(1,Math.round(im.naturalHeight*k));
+    const c=document.createElement("canvas"); c.width=w; c.height=h; c.getContext("2d").drawImage(im,0,0,w,h);
+    c.toBlob(b=>{ c.width=c.height=0; b?res(URL.createObjectURL(b)):rej(new Error("thumb")); },"image/jpeg",0.8); }; im.onerror=rej; im.src=d; }); }
+/* 案件を切りかえたら、前の案件の見本は捨てる（いま必要な分だけ覚えておく） */
+function thPrune(){ const keep=new Set(); (state.trees||[]).forEach(t=>(t.photos||[]).forEach(p=>{ if(typeof p==="string") keep.add(phKey(p)); }));
+  for(const [k,e] of thMap) if(!keep.has(k)){ if(e&&typeof e.u==="string"&&e.u.startsWith("blob:")) URL.revokeObjectURL(e.u); thMap.delete(k); }
+  for(const k of [...thId.keys()]) if(!keep.has(k)){ thD.delete(String(thId.get(k))); thId.delete(k); }
+  thQ=thQ.filter(d=>keep.has(phKey(d))); }
 function dataUrlToBlob(u){ const i=u.indexOf(","), mime=u.slice(5,u.indexOf(";")), b=atob(u.slice(i+1)), a=new Uint8Array(b.length);
   for(let k=0;k<b.length;k++) a[k]=b.charCodeAt(k); return new Blob([a],{type:mime}); }
 function blobToDataUrl(b){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsDataURL(b); }); }
@@ -3146,7 +3188,7 @@ function phRefs(v,out){ out=out||new Set();
 // 案件を置く（写真は置き場へ、案件には番号だけ）。cur：いま開いている案件（番号の控えを使い回す）
 async function casePut(id,st,cur){
   const known=await phKeys(), fresh={}, used=cur?new Map():null;
-  const walk=v=>{ if(isPhotoStr(v)){ const h=phHashOf(v,cur); if(used) used.set(v,h); if(!known.has(h)) fresh[h]=v; return PH_REF+h; }
+  const walk=v=>{ if(isPhotoStr(v)){ const h=phHashOf(v,cur); if(used) used.set(phKey(v),{v,h}); if(!known.has(h)) fresh[h]=v; return PH_REF+h; }
     if(Array.isArray(v)) return v.map(x=>x===undefined?null:walk(x));
     if(v&&typeof v==="object"){ const o={}; for(const k in v){ const x=v[k]; if(x!==undefined&&typeof x!=="function") o[k]=walk(x); } return o; }
     return v; };
@@ -3160,7 +3202,7 @@ async function caseGet(id,cur){
   const sk=await idbGet("case_"+id); if(!sk||!sk._ph) return sk;
   const map={}, miss=[];
   for(const h of phRefs(sk)){ const b=await idbGet(PH_KEY+h); if(b==null){ miss.push(h); continue; } map[h]=typeof b==="string"?b:await blobToDataUrl(b); }
-  if(cur){ phHash=new Map(); for(const h in map) phHash.set(map[h],h); }
+  if(cur){ phHash=new Map(); for(const h in map) if(typeof map[h]==="string") phHash.set(phKey(map[h]),{v:map[h],h}); }
   const back=v=>{ if(typeof v==="string") return PH_RE.test(v)?(map[v.slice(PH_REF.length)]||""):v;
     if(Array.isArray(v)) return v.filter(x=>!(typeof x==="string"&&PH_RE.test(x)&&!map[x.slice(PH_REF.length)])).map(back);   // 見つからない写真は並びから外す
     if(v&&typeof v==="object"){ const o={}; for(const k in v) if(k!=="_ph") o[k]=back(v[k]); return o; } return v; };
@@ -4097,7 +4139,7 @@ const ED_COLORS=[["#E53935","赤"],["#FDD835","黄"],["#1E88E5","青"],["#FFFFFF
 const ED_TOOLS=[["pen","✏️ ペン"],["marker","🖍 マーカー"],["circle","⭕ 丸"],["arrow","➡ 矢印"],["select","👆 選ぶ・動かす"],["crop","✂ 切り取り"]];
 const ED_SIZES=[["s","細",.004],["m","中",.008],["l","太",.016]];
 const ED={ tool:"pen", color:"#E53935", size:"m", snap:(()=>{ try{ return localStorage.getItem("gc_snap")!=="0"; }catch(e){ return true; } })() };   // snap：シェイプ認識（描き終わりで止めると形を整える）
-const edClone=a=>JSON.parse(JSON.stringify(a));
+const edClone=a=>deepCopy(a);
 function edSnap(){ edState.hist.push(edClone(edState.strokes)); if(edState.hist.length>60) edState.hist.shift(); }   // 「1つ戻す」用に、変える前を控える
 function editPhoto(i,k){ const ph=state.trees[i]&&state.trees[i].photos; if(!ph||!ph[k]) return; edState={i:i,k:k,url:ph[k],sel:null,strokes:[],hist:[],pick:-1};
   document.getElementById("photoEditor").style.display="flex"; document.body.style.overflow="hidden"; edTools(); edLoad(); }
@@ -4377,10 +4419,10 @@ function parseVoice(i,txt){ const t=state.trees[i]; const z=txt.replace(/[０-�
   markDirty(); }
 
 /* 描画：入力 */
-function normalize(){ normMaps(); if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; }); }
+function normalize(){ normMaps(); try{ thPrune(); }catch(e){} if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; }); }
 function opts(list,val){ return list.map(x=>`<option ${x===val?"selected":""}>${x}</option>`).join(""); }
 function photosHTML(t,i){ const ph=(state.trees[i].photos)||[];
-  const thumbs=ph.map((p,k)=>`<div class="thumb"><img src="${p}" onclick="editPhoto(${i},${k})"><button class="rm" onclick="delPhoto(${i},${k})">×</button><div class="thmove"><button onclick="movePhoto(${i},${k},-1)">◀</button><button onclick="editPhoto(${i},${k})">✎</button><button onclick="movePhoto(${i},${k},1)">▶</button></div></div>`).join("");
+  const thumbs=ph.map((p,k)=>`<div class="thumb">${thImg(p,`onclick="editPhoto(${i},${k})"`)}<button class="rm" onclick="delPhoto(${i},${k})">×</button><div class="thmove"><button onclick="movePhoto(${i},${k},-1)">◀</button><button onclick="editPhoto(${i},${k})">✎</button><button onclick="movePhoto(${i},${k},1)">▶</button></div></div>`).join("");
   return `<div class="photos">${thumbs}<label class="addph">📷 撮る<input type="file" accept="image/*" capture="environment" multiple onchange="addPhoto(${i},this)"></label><label class="addph">🖼 写真を<br>選ぶ<input type="file" accept="image/*" multiple onchange="addPhoto(${i},this)"></label>${camPhotoBtn(i)}</div>`;
 }
 function fieldsHTML(t,i){
@@ -4448,7 +4490,7 @@ function frameHTML(fr){ const t=fr.t, no=fr.no;
    var cap = t.type==="exterior"
      ? `<span class="bn">No.${no}</span><br><b>${esc(t.item)||"（品名未入力）"}</b><br>数量：${esc(t.qty)||"-"} ${esc(t.unit)}${prioOf(t)?`<br>優先度：<b>${esc(prioNames()[prioOf(t)-1])}</b>`:""}${t.memo?`<br>仕様：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`
      : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>幹周：${esc(t.c)||"-"} cm${prioOf(t)?`<br>優先度：<b>${esc(prioNames()[prioOf(t)-1])}</b>`:""}${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
-   return `<div class="pbitem"><div class="p">${fr.img?`<img src="${fr.img}">`:'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
+   return `<div class="pbitem"><div class="p">${fr.img?thImg(fr.img):'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
 }
 function renderBook(){
   const body=document.getElementById("bookBody"); let html="";
@@ -5310,7 +5352,8 @@ async function exportPdf(){
     h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909); h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
     return (h2>>>0).toString(16).padStart(8,"0")+(h1>>>0).toString(16).padStart(8,"0"); }
   const hashCache=new Map();
-  function hashOf(s){ let h=hashCache.get(s); if(!h){ h=cyrb(s,1)+cyrb(s,7)+s.length.toString(16); hashCache.set(s,h); } return h; }
+  function hashOf(s){ const k=phKey(s), e=hashCache.get(k); if(e&&e.v===s) return e.h; // 短い目印で引いて、同じ写真か確かめる
+    const h=cyrb(s,1)+cyrb(s,7)+s.length.toString(16); if(hashCache.size>500) hashCache.clear(); hashCache.set(k,{v:s,h}); return h; }
   const isImg=v=>typeof v==="string"&&v.length>500&&/^data:image\/[a-z+]+;base64,/.test(v);
   // 中の写真（data:image…）を「gcimg:番号」に置きかえた写しを作る
   function pack(st){ const imgs={};
