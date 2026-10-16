@@ -336,6 +336,9 @@ body.ui-new .app>.col{display:none!important}
 body.ui-new header{grid-column:1/-1;position:relative!important;flex-wrap:wrap;height:auto;min-height:50px;gap:8px;padding:6px 12px}
 body.ui-new header .meta,body.ui-new header .logo{display:none}
 body.ui-new header .park{width:200px;flex:0 1 200px;min-width:110px}
+body.ui-new header{flex-wrap:nowrap}   /* 1列におさめる（公園名と自動保存の表示が先に縮む） */
+body.ui-new header .sp{min-width:0}
+body.ui-new header>*{flex-shrink:0} body.ui-new header .park,body.ui-new header .autoSt,body.ui-new header .sp{flex-shrink:1}
 body.ui-new #nuMain{display:flex;flex-direction:column;min-height:0;min-width:0;position:relative}
 body.ui-new #nuMain .stage{flex:1 1 auto!important;min-height:0;height:auto!important;order:0}
 body.ui-new #nuSide{display:flex;flex-direction:column;overflow-y:auto;padding:12px 14px;border-left:1px solid var(--line);background:var(--bg);min-height:0;-webkit-overflow-scrolling:touch}
@@ -347,7 +350,7 @@ body.ui-new #nuSide{display:flex;flex-direction:column;overflow-y:auto;padding:1
 .nu-hbtn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:7px 11px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;align-items:center;gap:4px;touch-action:manipulation}
 .nu-hbtn.back{color:var(--mut);font-weight:600}
 .manual-btn{display:inline-flex;text-decoration:none;margin-right:6px}
-.autoSt{background:none;border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:5px 9px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;margin-right:6px;font-family:inherit}
+.autoSt{background:none;border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:5px 9px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;margin-right:6px;font-family:inherit;max-width:230px;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0}
 .autoSt.ok{color:var(--acc);border-color:#2b6b4c}.autoSt.wait{color:#ffd27a;border-color:#7a5a20}.autoSt.ng{color:#ff9f7a;border-color:#8a3a20}.autoSt.ro{color:#9cc8ff;border-color:#2c5a8a;background:#14243a}
 #roBar{display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:25;align-items:center;gap:10px;background:#14243a;border:1px solid #3d79c2;color:#dbeaff;border-radius:12px;padding:8px 10px 8px 14px;box-shadow:0 6px 20px #0008;font-size:14px;max-width:calc(100% - 20px)}
 #roBar small{display:block;font-size:11px;color:#9cc8ff;margin-top:1px}
@@ -365,7 +368,14 @@ body.hist #histBar{display:flex} body.hist #roBar{display:none}
 @media(max-width:900px){ .autoSt{padding:5px 7px;font-size:11px} }
 @media(max-width:600px){ #histBar>span{white-space:normal} #histBar{left:8px;right:60px;transform:none;max-width:none;flex-wrap:wrap;font-size:13px;padding:6px 8px} #histBar small{display:none} #histBar button{padding:7px 9px;font-size:13px} }
 @media(max-width:600px){ #roBar{left:8px;right:60px;transform:none;max-width:none;justify-content:space-between;padding:6px 6px 6px 10px;font-size:13px} #roBar small{display:none} #roBar span{white-space:nowrap} #roBar button{padding:8px 10px;font-size:13px} }
-@media(max-width:900px){ .manual-btn .mb-t{display:none} }
+@media(max-width:1300px){ .manual-btn .mb-t{display:none} }
+@media(max-width:1000px){ header .manual-btn{display:none!important} .ub-t{display:none} }   /* 狭いときは 説明書は「🎓 使い方」の中から */
+body.ui-new header .autoSt{min-width:44px}
+@media(max-width:1100px){ header .logo{display:none} }
+@media(max-width:900px){ .autoSt{max-width:130px} }
+@media(max-width:900px){ body.ui-new #nuSideBtn .nu-t{display:none} }
+@media(max-width:800px){ body.ui-new header .park{min-width:80px} body.ui-new header{gap:6px} }
+@media(max-width:600px){ .autoSt{max-width:none;min-width:0!important;padding:4px 6px;font-size:0!important} .autoSt::before{content:attr(data-ic);font-size:15px} }   /* スマホは印だけ（☁️・●・⚠・👀・🎓） */
 #nuSideBtn{display:none!important}
 .nu-grp{display:none}
 .nu-grp>.nu-h{font-size:12px;font-weight:700;color:var(--ink);margin:2px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
@@ -428,7 +438,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
 @media(max-width:600px){
   body.ui-new .nu-phone{display:block;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
   body.ui-new header{flex-wrap:nowrap;gap:6px;padding:5px 8px;min-height:0}
-  body.ui-new header .park,body.ui-new #nuSave,body.ui-new #uiBack{display:none!important}
+  body.ui-new header .park,body.ui-new #nuSave,body.ui-new #uiBack,body.ui-new header .manual-btn,body.ui-new header .tut-btn{display:none!important}   /* 説明書・使い方は右のパネル（☰）に */
   body.ui-new header .sp{display:none}
   body.ui-new .home-btn{padding:5px 8px}
   body.ui-new .nu-tabs{flex:1 1 auto;justify-content:space-between;padding:2px}
@@ -551,7 +561,7 @@ body.ui-new[data-nuview="prep"] #nuTools{display:none}
     <button class="nu-only nu-hbtn" id="nuSave">☁️ 保存</button>
     <button class="nu-only nu-hbtn" id="nuSideBtn">☰<span class="nu-t"> パネル</span></button>
     <a class="nu-hbtn manual-btn" href="park_manual.html" target="_blank" rel="noopener" title="使い方の説明書を別のタブで開きます（いまの作業はそのまま）">📖<span class="mb-t"> 説明書</span></a>
-    <button class="nu-only nu-hbtn back" id="uiBack" title="今までの画面にもどします（データはそのまま）">旧画面に戻す</button>
+    <button class="nu-only nu-hbtn back" id="uiBack" title="今までの画面にもどします（データはそのまま）">旧画面<span class="ub-t">に戻す</span></button>
     <button class="ui-try old-only" id="uiTry" title="入力と仕上げに分けた、すっきりした画面（データはそのまま・いつでも戻せます）">✨ 新しい画面を試す</button>
   </header>
 
@@ -3792,6 +3802,7 @@ async function draftGet(){ const db=await draftDB(); return new Promise((res)=>{
 async function draftSaveNow(){
   clearTimeout(draftT); draftT=null;
   if(typeof HIST!=='undefined'&&HIST.on) return;   // 前の版を見ている間は、端末の控えを上書きしない
+  if(typeof PRACTICE!=='undefined'&&PRACTICE) return;   // 練習用の図面は控えない
   if(!state.img&&!(state.features||[]).length) return;
   try{ const p=parkPayload(); await draftPut({at:Date.now(),park:p.park,n:(state.features||[]).length,cloudId:state.cloudId||null,cloudVer:state.cloudVer||null,ro:RO.on,owner:RO.owner,dirty:AUTO.dirty,json:JSON.stringify(p)}); }catch(e){}
 }
@@ -4831,6 +4842,7 @@ function openedCheck(it){
 }
 function autoReset(){ clearTimeout(AUTO.t); AUTO.t=null; AUTO.dirty=false; AUTO.stopped=''; AUTO.err=''; AUTO.at=''; autoStRender(); }
 function autoWhy(){   // 自動保存できない理由（空ならできる）
+  if(typeof PRACTICE!=='undefined'&&PRACTICE) return 'practice';
   if(RO.on) return 'ro';
   if(!(state.img||(state.features||[]).length)) return 'empty';
   if(!($('parkName').value||'').trim()) return 'park';
@@ -4838,7 +4850,7 @@ function autoWhy(){   // 自動保存できない理由（空ならできる）
   return '';
 }
 function autoLater(){
-  if(RO.on) return;
+  if(RO.on||(typeof PRACTICE!=='undefined'&&PRACTICE)) return;
   AUTO.dirty=true; clearTimeout(AUTO.t); AUTO.t=null;
   if(!AUTO.stopped){ const wait=Math.max(15000,60000-(Date.now()-AUTO.last)); AUTO.t=setTimeout(autoSaveNow,wait); }
   autoStRender();
@@ -4873,7 +4885,8 @@ function autoStRender(){
   b.style.display=(has||RO.on)?'':'none';
   let t='', c='';
   const why=autoWhy();
-  if(RO.on){ t='👀 見るだけ'; c='ro'; }
+  if(why==='practice'){ t='🎓 練習中（保存しません）'; c='wait'; }
+  else if(RO.on){ t='👀 見るだけ'; c='ro'; }
   else if(AUTO.busy){ t='☁️ 保存中…'; c='wait'; }
   else if(AUTO.stopped){ t='⚠ 自動保存を停止'; c='ng'; }
   else if(why==='park'){ t='自動保存：公園名を入れると開始'; c='wait'; }
@@ -4883,9 +4896,11 @@ function autoStRender(){
   else if(AUTO.at){ t='☁️ 自動保存 '+AUTO.at; c='ok'; }
   else if(state.cloudId){ t='☁️ 保存ずみ'; c='ok'; }
   else { t='☁️ 自動保存'; c='wait'; }
-  b.textContent=t; b.className='autoSt '+c;
+  b.textContent=t; b.className='autoSt '+c; b.title=t;
+  const m=t.match(/^(☁️|●|⚠|👀|🎓)/); b.dataset.ic=m?m[1]:'☁️';
 }
 $('autoSt').onclick=()=>{
+  if(typeof PRACTICE!=='undefined'&&PRACTICE){ if(confirm('いまは練習用の図面です（保存されません）。\n\n練習を終わって、元の画面にもどりますか？')) tutClose(true); return; }
   if(HIST.on){ guardEdit(); return; }
   if(RO.on){ openHist(); return; }
   if(AUTO.stopped){
@@ -6446,7 +6461,7 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     const side=document.createElement('div'); side.id='nuSide';
     side.innerHTML='<button id="nuSideClose">閉じる ✕</button>'+
       '<div class="nu-phone" id="nuPhoneTop"><label class="fld" style="margin-top:0">公園名</label><input class="txt" id="nuPark" placeholder="公園名（例：久地さくら緑地）">'+
-      '<div style="display:flex;gap:6px;margin-top:8px"><a class="btn" href="park_manual.html" target="_blank" rel="noopener" style="margin:0;width:auto;white-space:nowrap;text-decoration:none">📖 説明書</a><button class="btn" id="nuSave2" style="margin:0">☁️ クラウドに保存</button><button class="btn ghost" id="uiBack2" style="margin:0;width:auto;white-space:nowrap">旧画面に戻す</button></div></div>';
+      '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" onclick="document.body.classList.remove(\'nu-open\');tutMenu()" style="margin:0;width:auto;white-space:nowrap">🎓 使い方</button><a class="btn" href="park_manual.html" target="_blank" rel="noopener" style="margin:0;width:auto;white-space:nowrap;text-decoration:none">📖 説明書</a><button class="btn" id="nuSave2" style="margin:0">☁️ クラウドに保存</button><button class="btn ghost" id="uiBack2" style="margin:0;width:auto;white-space:nowrap">旧画面に戻す</button></div></div>';
     app.appendChild(main); app.appendChild(side);
     side.dataset.view=view;
   }
@@ -6746,5 +6761,308 @@ function kpOpen(o){
 }
 </script>
 
+<script>
+/* =====================================================================
+   🎓 使い方（チュートリアル）
+   ・3つのコース：はじめて（練習用の図面でさわる）／慣れてきた人／上級
+   ・画面の部品を光らせて、ふきだしで説明。「← 戻る」「次へ →」「やめる」
+   ・「やってみよう」の手順は、できたら ✓ が付く（とばすこともできる）
+   ・練習用の図面は保存されない。終わると元の記録にもどる
+   ===================================================================== */
+var PRACTICE=false;
+(function(){
+  const $=id=>document.getElementById(id);
+  const DONE_KEY='park_tut_done', SEEN_KEY='park_tut_seen';
+  const ls={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
+  const isNew=()=>document.body.classList.contains('ui-new');
+  const narrow=()=>window.matchMedia('(max-width:900px)').matches;
+  function shown(el){ if(!el) return false; const r=el.getBoundingClientRect(); if(r.width<2||r.height<2) return false; const cs=getComputedStyle(el); return cs.visibility!=='hidden'&&cs.display!=='none'; }
+  function vis(...sel){ for(const s of sel){ const el=typeof s==='function'?s():document.querySelector(s); if(shown(el)) return el; } return null; }
+  function secOf(id){ const e=$(id); return e?e.closest('.sec'):null; }
+  const nArea=()=>state.features.filter(f=>f.type==='area').length;
+  const nTree=()=>state.features.filter(f=>f.type==='tree').length;
+  function view(v){ if(isNew()&&window.parkUI){ try{ parkUI.setView(v); }catch(e){} if(v==='input') document.body.classList.remove('nu-open'); } }
+  function pick(c,k){ if(!MASTER[c]) return; if(isNew()&&window.parkUI){ try{ parkUI.pick(c,k); return; }catch(e){} }
+    $('catSel').value=c; fillKinds(); if(MASTER[c].kinds[k]){ $('kindSel').value=k; $('kindSel').onchange(); } setTool(MASTER[c].mode); }
+  function openAll(on){ if(!isNew()) return; const a=$('nuAll'); if(!a) return; if(on){ if(!a.classList.contains('on')) $('nuMore').click(); } else a.classList.remove('on'); }
+  const KIND_BTN=()=>isNew()?$('nuKinds'):$('catSel').closest('.sec');
+
+  /* ---------------- コース ---------------- */
+  const COURSES={
+    1:{name:'はじめて',icon:'🌱',sub:'練習用の図面で、描く・木を置く・戻る・保存までを実際にさわります（10分くらい）',practice:true,steps:[
+      {t:'ようこそ',d:'このアプリは、公園の図面に<b>作業した範囲や木</b>を描くと、<b>面積・本数・金額</b>が自動で出て、<b>報告書（Excel）</b>まで作れます。<br><br>これから<b>練習用の図面</b>で実際にさわります。保存されないので、自由に試してください。'},
+      {t:'画面の見かた',el:()=>$('cv'),pos:'top',pre:()=>view('input'),d:'まん中が<b>図面</b>です。<br>・指1本：描く・置く・選ぶ<br>・指2本：広げると拡大、動かすと移動<br>・右の ✋ を押すと、指1本で地図を動かせます（もう一度で元に）'},
+      {t:'公園名',el:()=>vis('#parkName','#nuPark'),d:'ここに<b>公園名</b>を入れます。公園名が入ると、<b>みんなの共有（Googleドライブ）へ自動で保存</b>されはじめます。<br>（練習中は保存しません）'},
+      {t:'縮尺（長さの基準）',el:()=>$('scaleBadge'),d:'図面の<b>長さの基準</b>です。本番では図面を読み込んだら最初に、ここを押して<b>長さの分かる2点</b>（例：10mの園路）をタップして合わせます。<br>練習用の図面は、もう合わせてあります。'},
+      {t:'工種を選ぶ',el:KIND_BTN,pre:()=>view('input'),d:'描く前に<b>工種</b>を選びます。<br>👉 <b>「除草工 ／ 機械除草Ⅰ（肩掛式）」</b>を選んでください。'+(' <small>（旧画面では左の「大分類」から）</small>'),
+        wait:()=>$('catSel').value==='除草工',ok:'できました！ 選んだ工種で描けます。'},
+      {t:'面積を描く',el:()=>$('cv'),pos:'top',pre:s=>{ view('input'); if(tool!=='area') setTool('area'); s.base=nArea(); },d:'図面の<b>芝生のまわり</b>を、<b>角ごとにタップ</b>していきます（4点くらい）。<br>最後に下の <b>「✓ 確定」</b> か、<b>最初の点をタップ</b>で閉じます。<br><small>長さは50cm単位にそろいます。点を間違えたら「↶ 1点戻す」</small>',
+        wait:s=>nArea()>s.base,ok:'できました！ 面積が計算されました。'},
+      {t:'数字を見る',el:()=>vis(()=>secOf('aggArea')),pre:()=>{ view('input'); },d:'描いた<b>面積</b>がここに出ます。工種ごとに合計されて、報告書にそのまま入ります。<br>図形を「選ぶ」でタップすると、<b>辺の長さ（黄色）</b>も出ます。黄色の数字をタップすると、長さを入れて直せます。'},
+      {t:'木を置く',el:()=>vis('#rankLegend','#cv'),pos:'top',pre:s=>{ view('input'); pick('基本剪定（落葉木）','落葉木'); s.base=nTree(); },d:'工種を<b>「基本剪定（落葉木）」</b>にしました。<br>下の<b>丸（規格＝幹周）</b>を選んで、図面の<b>木の上をタップ</b>すると1本置けます。<br><small>「📏 測る」にすると、置いたあと幹周を入れて規格が自動で決まります</small>',
+        wait:s=>nTree()>s.base,ok:'できました！ 本数が数えられました。'},
+      {t:'間違えたら戻る',el:()=>$('undoBtn'),d:'<b>「↶ 戻る」</b>で1つ前に戻ります。戻しすぎたら<b>「↷ 進む」</b>。<br>ためしに押してみてもOKです。'},
+      {t:'直す・消す',el:()=>vis('#toolSelect'),d:'<b>「選ぶ」</b>にして図形や木をタップすると、下に <b>複製・削除</b> が出ます。<br>面積の<b>角の赤い点</b>をドラッグすると形を直せます（離した所から50cm単位にそろいます）。'},
+      {t:'保存は自動',el:()=>vis('#autoSt'),d:'保存は<b>自動</b>です。ここに<b>「☁️ 自動保存 時刻」</b>が出ます。<br>押すと<b>履歴（前の版）</b>が出て、間違えて直したときに戻せます。<br><small>練習中は「🎓 練習中」と出て、保存しません</small>'},
+      {t:'報告書にする',el:()=>vis('#rpXlsx'),pre:()=>view('finish'),d:'仕事が終わったら<b>「仕上げ」</b>で、報告書の欄を入れて <b>Excelで書き出し</b>ます。'},
+      {t:'おつかれさまでした',pre:()=>view('input'),d:'基本はこれでおしまいです！<br>次は <b>🌿 慣れてきた人</b> で、切りのいい長さで描く・撮る木を送る などの便利な使い方を覚えましょう。<br><br>「おわる」を押すと、練習用の図面を閉じて元の画面にもどります。'},
+    ]},
+    2:{name:'慣れてきた人',icon:'🌿',sub:'切りのいい長さで描く・辺の長さを直す・まとめて選ぶ・撮る木を送る など',practice:true,steps:[
+      {t:'このコースで覚えること',d:'速く・きれいに描くコツと、工事写真やクラウドとのつなぎ方です。練習用の図面でためせます。'},
+      {t:'寸法のきざみ',el:()=>vis('#snapToggle'),pre:()=>view('finish'),d:'ポチポチ置いたときの長さを <b>自由／10cm／50cm／1m</b> にそろえます。はじめは<b>50cm</b>。<br>描いている途中でも、下のバーの<b>「きざみ」</b>を押すたびに切り替わります。'},
+      {t:'長さを決めて置く',el:()=>$('cv'),pos:'top',pre:s=>{ view('input'); pick('除草工','機械除草Ⅰ（肩掛式）'); s.base=nArea(); },d:'面積を描いている途中、下のバーの<b>「長さ」</b>に 6.3 などと入れてから次の点をタップすると、<b>ちょうど6.30m</b>で置けます。<br>👉 ためしに1つ描いてみましょう（3点以上で「✓ 確定」）。',
+        wait:s=>nArea()>s.base,ok:'できました！'},
+      {t:'辺の長さを直す',el:()=>vis('#toolSelect'),d:'<b>「選ぶ」</b>で図形をタップすると、各辺に<b>黄色の長さ</b>が出ます。その<b>数字をタップ</b>→長さを入れて「この長さにする」。<br>辺の始まりの角はそのままで、終わりの角が動きます。'},
+      {t:'四角・幅刈り',el:()=>vis('#placeRect','#toolStrip'),pre:()=>{ view('input'); },d:'<b>四角</b>：長さ×奥行を入れてタップするだけで置けます（生垣・植込みなど）。<br><b>幅刈り</b>：道や法面に沿ってタップし、線に幅をつけて面積にします。'},
+      {t:'幹周を測って置く',el:()=>vis('#rankLegend'),pre:()=>{ view('input'); pick('基本剪定（落葉木）','落葉木'); },d:'規格の丸のいちばん左 <b>「📏 測る」</b> にすると、木を置いたあと<b>幹周（C）</b>を入れる画面が出て、規格が<b>自動</b>で決まります。株立ちもOK。'},
+      {t:'まとめて選ぶ・まとめ表示',el:()=>vis('#multiToggle'),d:'<b>「多」</b>：タップした図形を次々に足して、まとめて動かす・消す。<br><b>「×N」</b>：近くの同じ木・中木を「○○ × 5本」のようにまとめて表示します。'},
+      {t:'同じ範囲を別の工種でも',el:()=>vis('#copyWorksBox'),pre:()=>{ view('input'); pick('中低木刈込工','低木刈込'); },d:'低木の刈込範囲を、そのまま<b>「つる性植物除去」「低木内除草清掃」</b>でも数えたいとき。刈込の範囲を選んで<b>「この範囲をコピー」</b>。'},
+      {t:'撮る木を工事写真へ',el:()=>vis('#toolShoot'),pre:()=>view('input'),d:'<b>「📷撮る」</b>で撮る木をタップで選び、<b>「工事写真へ送る」</b>。工事写真アプリの「撮り残し」→「まとめて撮る」で順に撮れます。'},
+      {t:'みんなの記録を開く',el:()=>vis('#cloudOpen'),pre:()=>view('prep'),d:'<b>「クラウドから開く」</b>で、みんなが保存した公園の一覧から開けます。<br>ほかの人が記入した記録は<b>👀 見るだけ</b>で開き、描こうとすると「編集しますか？」と確認します。'},
+      {t:'説明書',el:()=>vis('.manual-btn'),pre:()=>view('input'),d:'くわしいことは<b>「📖 説明書」</b>に全部書いてあります。困ったときは「困ったとき」の章へ。<br><br>次は <b>🌳 上級</b> で、他の委託の工種・3Dスキャン・履歴などを。'},
+    ]},
+    3:{name:'上級',icon:'🌳',sub:'他の委託の工種を借りる・工種の追加と削除・除外エリア・3Dスキャン・履歴・まとめ集計',practice:false,steps:[
+      {t:'このコースで覚えること',d:'いざというときに役立つ機能です。説明だけなので、いまの記録はさわりません。'},
+      {t:'他の委託から利用',el:()=>vis('#nuOwBtn','#otherWorksBtn'),pre:()=>{ view('input'); openAll(true); },post:()=>openAll(false),d:'ほかの委託の<b>仕様書・設計書（PDF・Excel）</b>を読んで、この委託にない工種を<b>単価ごと借りて</b>きます。使うものに ✓ を入れて「借りる」。<br>借りた工種は「他の委託：○○」でまとまって出ます。'},
+      {t:'工種を追加・消す',el:()=>vis('#nuAddWork','#addWorkBtn'),pre:()=>{ view('input'); openAll(true); },post:()=>openAll(false),d:'<b>「＋ 工種を追加」</b>：色・規格・単価を決めて1つ足す。<br><b>「🗑 追加した工種を消す」</b>：自分で足した・借りた工種を消す（地図に描いてある工種は消せません）。'},
+      {t:'刈らない所を除く',el:()=>vis(()=>secOf('sansha')),pre:()=>view('input'),d:'面積を<b>「選ぶ」</b>でタップすると、ここ（求積）に<b>「除外エリア」</b>が出ます。木・ベンチなど刈らない部分の外周を描くと、全体から差し引きます。<br>斜面の係数もここで。'},
+      {t:'3Dスキャンの木を取り込む',el:()=>vis('#scanSec'),pre:()=>view('prep'),d:'iPhone・iPadの3Dスキャン（LAS・PLY）を選ぶと、<b>木の位置・幹周</b>を探して<b>仮置き</b>します。仮置きの木をタップして工種を決めます。'},
+      {t:'履歴（前の版）',el:()=>vis('#histBtn'),pre:()=>view('prep'),d:'<b>30分に1回</b>と、<b>ほかの人が直す前</b>の版を10個まで残しています。選ぶと見るだけで表示 →<b>「↩ この版に戻す」</b>。戻し間違えてもまた戻せます。'},
+      {t:'発生材を残材処分の記録から',el:()=>vis('#genzaiFetch'),pre:()=>view('finish'),d:'計量伝票を残材処分で記録しておくと、<b>同じ公園名</b>の記録から発生材の数量（t）を取ってこられます。'},
+      {t:'何か所ぶんをまとめて集計',el:()=>vis(()=>secOf('aggMulti')),pre:()=>view('finish'),d:'公園ごとに保存した記録（.json）を<b>まとめて選ぶ</b>と、工種ごとの合計表（Excel・CSV）が作れます。'},
+      {t:'撮影の状況',el:()=>vis('#shotListBtn'),pre:()=>view('finish'),d:'工種・規格ごとに<b>撮る数・そろった数・残り</b>が一覧でわかります（写真は工事写真アプリで）。'},
+      {t:'おわり',pre:()=>view('input'),d:'これで全部の機能を回りました！ 分からなくなったら、いつでも <b>🎓 使い方</b> からもう一度見られます。'},
+    ]},
+  };
+
+  /* ---------------- 練習用の図面 ---------------- */
+  function practiceMap(){
+    const W=1600,H=1000,c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d');
+    x.fillStyle='#f4f1e8'; x.fillRect(0,0,W,H);
+    x.fillStyle='#cfe3b5'; x.strokeStyle='#5c8a3a'; x.lineWidth=3;
+    x.beginPath(); x.moveTo(220,180); x.lineTo(980,160); x.lineTo(1040,560); x.lineTo(260,600); x.closePath(); x.fill(); x.stroke();   // 芝生
+    x.fillStyle='#e2d3b0'; x.fillRect(0,690,W,110); x.fillRect(1120,0,110,H);                                                              // 園路
+    x.fillStyle='#8fb878'; x.strokeStyle='#3f6b2a'; x.fillRect(1280,160,240,70); x.strokeRect(1280,160,240,70); x.fillRect(1280,300,240,70); x.strokeRect(1280,300,240,70);   // 生垣
+    [[420,330,34],[640,280,44],[820,420,52],[470,500,28],[1350,520,40],[1460,620,30],[300,850,36],[700,880,46]].forEach(([cx,cy,r])=>{ x.fillStyle='#6fa856'; x.beginPath(); x.arc(cx,cy,r,0,7); x.fill(); x.fillStyle='#5b3b1f'; x.beginPath(); x.arc(cx,cy,6,0,7); x.fill(); });
+    x.fillStyle='#b9a37a'; x.fillRect(560,860,90,40);   // ベンチ
+    x.fillStyle='#38424f'; x.font='bold 40px sans-serif'; x.fillText('練習用の公園',40,70);
+    x.font='24px sans-serif'; x.fillText('芝生',560,390); x.fillText('園路',60,755); x.fillText('生垣',1360,140);
+    x.strokeStyle='#38424f'; x.lineWidth=4; x.beginPath(); x.moveTo(40,950); x.lineTo(540,950); x.stroke(); x.fillText('10m',260,940);
+    return c.toDataURL('image/jpeg',0.85);
+  }
+  const PR={back:null};
+  function practiceStart(){
+    if(PRACTICE) return Promise.resolve();
+    if(typeof HIST!=='undefined'&&HIST.on) histLatest();
+    const has=!!(state.img||state.features.length);
+    PR.back={json:has?JSON.stringify(parkPayload()):null,cloudId:state.cloudId,cloudVer:state.cloudVer,ro:RO.on,owner:RO.owner,undo:undoStack.slice(),redo:redoStack.slice(),at:AUTO.at,dirty:AUTO.dirty,
+      park:$('parkName').value,tool};
+    clearTimeout(AUTO.t); AUTO.t=null;
+    PRACTICE=true; document.body.classList.add('practice');
+    return new Promise(res=>{
+      const url=practiceMap(), im=new Image();
+      im.onload=()=>{
+        state.img=im; state.imgData=url; state.scale=0.02; state.features=[]; state.manual=[]; state.scan=[]; state.mapImg=null; state.cloudId=null; state.cloudVer=null;
+        selected=null; multiSel=[]; draft=null; undoStack=[]; redoStack=[]; updateUndoButtons();
+        $('parkName').value='練習用の公園'; if($('nuPark')) $('nuPark').value='練習用の公園';
+        setReadOnly(false); AUTO.dirty=false; AUTO.stopped=''; AUTO.err='';
+        try{ renderScanInfo(); }catch(e){} recalcAll(); updateScaleBadge(); renderAgg(); renderSansha(); fit(); requestAnimationFrame(fit); autoStRender();
+        res();
+      };
+      im.src=url;
+    });
+  }
+  function practiceEnd(){
+    if(!PRACTICE) return;
+    const b=PR.back; PRACTICE=false; document.body.classList.remove('practice');
+    if(b&&b.json){
+      try{ applyParkJson(b.json); }catch(e){}
+      state.cloudId=b.cloudId; state.cloudVer=b.cloudVer; undoStack=b.undo||[]; redoStack=b.redo||[]; updateUndoButtons();
+      setReadOnly(b.ro,b.owner); AUTO.at=b.at||''; if(b.dirty){ AUTO.dirty=true; autoLater(); }
+    }else{
+      state.img=null; state.imgData=null; state.scale=null; state.features=[]; state.manual=[]; state.scan=[]; state.cloudId=null; state.cloudVer=null;
+      selected=null; multiSel=[]; draft=null; undoStack=[]; redoStack=[]; updateUndoButtons();
+      $('parkName').value=(b&&b.park)||''; if($('nuPark')) $('nuPark').value=$('parkName').value;
+      setReadOnly(false); autoReset(); try{ renderScanInfo(); }catch(e){} recalcAll(); updateScaleBadge(); renderAgg(); renderSansha(); draw();
+    }
+    PR.back=null; autoStRender(); try{ setTool(b&&b.tool||'area'); }catch(e){}
+  }
+  // 練習中は、クラウドに保存・開く・履歴などは使わない（元の記録をまちがえて触らないように）
+  document.addEventListener('click',e=>{
+    if(!PRACTICE) return;
+    const b=e.target&&e.target.closest&&e.target.closest('#cloudSave,#nuSave,#nuSave2,#cloudOpen,#histBtn,#openJson,#pbSend,#shootFab');
+    if(!b) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    if(confirm('いまは練習中です（練習用の図面は保存されません）。\n\n練習を終わって、元の画面にもどりますか？')) tutClose(true);
+  },true);
+
+  /* ---------------- 画面（光る枠・ふきだし・コースの選び方） ---------------- */
+  const css=document.createElement('style'); css.textContent=`
+  #tutSpot{position:fixed;z-index:9000;pointer-events:none;border-radius:12px;box-shadow:0 0 0 9999px rgba(4,8,14,.58);outline:3px solid #ffd400;outline-offset:2px;transition:all .25s;animation:tutPulse 1.6s infinite}
+  #tutSpot.none{left:50%!important;top:50%!important;width:0!important;height:0!important;outline:none;animation:none}
+  @keyframes tutPulse{0%,100%{outline-color:#ffd400}50%{outline-color:#fff3a0}}
+  #tutBox{position:fixed;z-index:9001;width:min(380px,calc(100vw - 24px));background:#fffdf5;color:#1d232b;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.45);padding:14px 16px 12px;font-size:15px;line-height:1.65;transition:top .25s,left .25s}
+  #tutBox{pointer-events:none}#tutBox button{pointer-events:auto}   /* ふきだしの文字の上をタップしても、下の図面に届く（ボタンだけ押せる） */
+  #tutBox.thru{opacity:.35}
+  #tutBox.mini{width:auto;max-width:calc(100vw - 80px);padding:6px 8px;border-radius:22px;background:#fffdf5ee}
+  #tutBox .pl{display:flex;align-items:center;gap:6px;font-size:13px;line-height:1.3}
+  #tutBox .pl span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  @media(max-width:600px){ #tutBox .pl .hm{display:none} }
+  #tutBox .pl button{flex:0 0 auto;width:auto;margin:0;border:1px solid #d6d0bf;background:#fff;border-radius:16px;padding:6px 10px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;color:#1d232b}
+  #tutBox .pl .x{border:none;background:none;color:#6b7480;padding:6px 4px}
+  #tutBox .tb .nx.tr{background:#d08a1c;border-color:#d08a1c}
+  #tutBox .tc{font-size:11px;color:#7a6a3a;font-weight:700;letter-spacing:.5px}
+  #tutBox h4{margin:2px 0 6px;font-size:18px}
+  #tutBox small{color:#6b7480}
+  #tutBox .tw{margin-top:8px;padding:7px 10px;border-radius:9px;background:#fff1c7;color:#7a4a00;font-weight:700;font-size:14px}
+  #tutBox .tw.ok{background:#dff5e6;color:#14632f}
+  #tutBox .tb{display:flex;gap:6px;margin-top:10px;align-items:center}
+  #tutBox .tb button{border:1px solid #d6d0bf;background:#fff;color:#1d232b;border-radius:10px;padding:10px 12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+  #tutBox .tb .nx{margin-left:auto;background:#1f6f43;border-color:#1f6f43;color:#fff}
+  #tutBox .tb .nx:disabled{opacity:.4}
+  #tutBox .tb .sk{border:none;background:none;color:#8a6a2a;font-size:13px;padding:10px 4px;text-decoration:underline}
+  #tutBox .tb .x{border:none;background:none;color:#6b7480;font-size:13px;padding:10px 4px}
+  #tutBox .dots{display:flex;gap:4px;margin-top:8px}#tutBox .dots i{flex:1;height:4px;border-radius:2px;background:#e6dfcc}#tutBox .dots i.on{background:#1f6f43}
+  .tutCard{display:flex;gap:12px;align-items:flex-start;text-align:left;width:100%;background:var(--panel2);border:2px solid var(--line);color:var(--ink);border-radius:12px;padding:12px;margin-bottom:8px;cursor:pointer;font-family:inherit}
+  .tutCard .ic{font-size:30px;line-height:1}.tutCard b{font-size:16px}.tutCard small{display:block;color:var(--mut);font-size:12px;margin-top:3px;line-height:1.5}
+  .tutCard .dn{margin-left:auto;color:var(--acc);font-size:12px;font-weight:700;white-space:nowrap}
+  .tutCard:hover{border-color:var(--acc)}
+  #tutOffer{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:85;background:#163428;border:1px solid #3ecf8e;color:#fff;border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:calc(100% - 24px);font-size:14px}
+  #tutOffer button{border:none;border-radius:8px;padding:8px 12px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}#tutOffer .go{background:#3ecf8e;color:#0b2015}#tutOffer .x{background:transparent;color:#cfe;}
+  body.practice #autoSt{color:#ffd27a;border-color:#7a5a20}
+  .tut-btn{display:inline-flex;text-decoration:none;margin-right:6px}
+  @media(max-width:1300px){ .tut-btn .tb-t{display:none} }`;
+  document.head.appendChild(css);
+  const spot=document.createElement('div'); spot.id='tutSpot'; spot.style.display='none';
+  const box=document.createElement('div'); box.id='tutBox'; box.style.display='none';
+  document.body.appendChild(spot); document.body.appendChild(box);
+  const modal=document.createElement('div'); modal.id='tutModal'; modal.className='sdModal';
+  document.body.appendChild(modal);
+
+  // 見出しに「🎓 使い方」
+  const mb=document.querySelector('.manual-btn');
+  if(mb){ const b=document.createElement('button'); b.className='nu-hbtn tut-btn'; b.id='tutBtn'; b.title='使い方を、画面をさわりながら覚えます'; b.innerHTML='🎓<span class="tb-t"> 使い方</span>'; mb.parentNode.insertBefore(b,mb); b.onclick=()=>tutMenu(); }
+
+  function done(){ try{ return JSON.parse(ls.get(DONE_KEY)||'{}')||{}; }catch(e){ return {}; } }
+  function tutMenu(){
+    ls.set(SEEN_KEY,'1'); const o=$('tutOffer'); if(o) o.remove();
+    const D=done();
+    modal.innerHTML='<div class="sdCard" style="width:min(460px,100%)"><h3>🎓 使い方<small>コースを選ぶと、画面の部品を光らせながら説明します。途中で「← 戻る」「やめる」もできます。</small></h3>'+
+      [1,2,3].map(n=>{ const c=COURSES[n]; return `<button class="tutCard" data-n="${n}"><span class="ic">${c.icon}</span><span><b>${c.name}</b><small>${c.sub}</small></span>${D[n]?'<span class="dn">✓ 済み</span>':''}</button>`; }).join('')+
+      '<a class="sdBtn sm" href="park_manual.html" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">📖 説明書をひらく（くわしい説明・困ったとき）</a>'+
+      '<button class="sdBtn sm" id="tutMenuX" style="margin-top:4px">閉じる</button></div>';
+    modal.classList.add('on');
+    modal.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>{ modal.classList.remove('on'); tutStart(+b.dataset.n); });
+    $('tutMenuX').onclick=()=>modal.classList.remove('on');
+  }
+  modal.addEventListener('click',e=>{ if(e.target===modal) modal.classList.remove('on'); });
+
+  let T=null, poll=null;   // T={n,i,steps,st:{}}
+  async function tutStart(n){
+    const c=COURSES[n]; if(!c) return;
+    if(c.practice&&!PRACTICE){
+      const has=!!(state.img||state.features.length);
+      if(has&&!confirm('練習用の図面に切り替えて始めます。\nいまの記録はそのまま残り、終わると元にもどります。\n\nはじめますか？')) return;
+      await practiceStart();
+    }
+    if(isNew()) document.body.classList.remove('nu-open');
+    T={n,i:0,steps:c.steps,st:{},did:{}}; enter(); clearInterval(poll); poll=setInterval(tick,350);
+    document.addEventListener('keydown',onKey,true);
+  }
+  function onKey(e){ if(!T) return; if(e.key==='Escape'){ e.preventDefault(); tutClose(false); } }
+  function cur(){ return T&&T.steps[T.i]; }
+  function enter(){
+    const s=cur(); if(!s) return; const myT=T;
+    T.st={}; T.ok=!!T.did[T.i]; T.mini=false;   // 一度できた手順は、戻ってきても ✓ のまま
+    try{ if(s.pre) s.pre(T.st); }catch(e){}
+    setTimeout(()=>{ if(T!==myT||cur()!==s) return; render(); place(); },60);
+  }
+  function leave(){ const s=cur(); try{ if(s&&s.post) s.post(); }catch(e){} }
+  function render(){
+    const s=cur(), c=COURSES[T.n], last=T.i===T.steps.length-1, waiting=!!s.wait&&!T.ok, onMap=s.pos==='top';
+    box.classList.toggle('mini',!!T.mini);
+    if(T.mini){   // 図面をさわっている間は、小さな札だけにする（図面を広く使える）
+      box.innerHTML=`<div class="pl"><span>${c.icon} ${T.i+1}/${T.steps.length} <b>${s.t}</b><i class="hm" style="font-style:normal">　👉 やってみてください</i></span><button class="ex">説明 ▾</button><button class="x" title="やめる">✕</button></div>`;
+      box.style.display='block';
+      box.querySelector('.ex').onclick=()=>{ T.mini=false; render(); place(); };
+      box.querySelector('.x').onclick=()=>tutClose(false);
+      return;
+    }
+    box.innerHTML=`<div class="tc">${c.icon} ${c.name}　${T.i+1} / ${T.steps.length}${PRACTICE?'　・練習中（保存されません）':''}</div><h4>${s.t}</h4><div>${s.d}</div>`+
+      (s.wait?`<div class="tw${T.ok?' ok':''}">${T.ok?'✓ '+(s.ok||'できました！'):'👉 やってみてください'}</div>`:'')+
+      `<div class="tb"><button class="bk"${T.i?'':' disabled'}>← 戻る</button><button class="x">やめる</button>${waiting?'<button class="sk">とばす</button>':''}${waiting&&onMap?'<button class="nx tr">▶ やってみる</button>':`<button class="nx"${waiting?' disabled':''}>${last?'おわる ✓':'次へ →'}</button>`}</div>`+
+      `<div class="dots">${T.steps.map((_,k)=>`<i class="${k<=T.i?'on':''}"></i>`).join('')}</div>`;
+    box.style.display='block';
+    box.querySelector('.bk').onclick=()=>{ if(T&&T.i>0){ leave(); T.i--; enter(); } };
+    box.querySelector('.x').onclick=()=>tutClose(false);
+    const sk=box.querySelector('.sk'); if(sk) sk.onclick=()=>next();
+    const nb=box.querySelector('.nx');
+    nb.onclick=()=>{ if(nb.classList.contains('tr')){ T.mini=true; render(); place(); } else next(); };
+  }
+  function next(){ if(!T) return; leave(); if(T.i>=T.steps.length-1){ const D=done(); D[T.n]=1; ls.set(DONE_KEY,JSON.stringify(D)); tutClose(true); return; } T.i++; enter(); }
+  function tick(){
+    if(!T) return;
+    const s=cur();
+    if(s.wait&&!T.ok){ let v=false; try{ v=s.wait(T.st); }catch(e){} if(v){ T.ok=true; T.did[T.i]=1; T.mini=false; render(); } }
+    place();
+  }
+  function place(){
+    if(!T) return;
+    const s=cur(); let el=null; try{ el=s.el?s.el():null; }catch(e){}
+    if(el&&!shown(el)) el=null;
+    if(el) scrollInto(el);
+    const vw=innerWidth, vh=innerHeight, bw=box.offsetWidth||360, bh=box.offsetHeight||200, pad=6;
+    if(T.mini){   // 小さな札：図面の上、左の道具ボタンと右の地図ボタンのあいだ
+      const cr=cv.getBoundingClientRect(), tl=$('nuTools'), mc=$('mapctl');
+      const L=(tl&&shown(tl))?tl.getBoundingClientRect().right+6:cr.left+8, R=(mc&&shown(mc))?mc.getBoundingClientRect().left-6:cr.right-8;
+      spot.style.display='none'; box.style.maxWidth=Math.max(160,R-L)+'px'; box.style.left=Math.round(L)+'px'; box.style.top=Math.round(Math.max(8,cr.top+8))+'px'; return; }
+    box.style.maxWidth='';
+    if(!el){ spot.className='none'; spot.style.display='block'; box.style.left=Math.round((vw-bw)/2)+'px'; box.style.top=Math.round(Math.max(12,(vh-bh)/2))+'px'; return; }
+    const r=el.getBoundingClientRect(), L=Math.max(4,r.left-pad), Tp=Math.max(4,r.top-pad), R=Math.min(vw-4,r.right+pad), B=Math.min(vh-4,r.bottom+pad);
+    spot.className=''; spot.style.display='block'; spot.style.left=L+'px'; spot.style.top=Tp+'px'; spot.style.width=(R-L)+'px'; spot.style.height=(B-Tp)+'px';
+    let top, left=Math.min(vw-bw-12,Math.max(12,(L+R)/2-bw/2));
+    if(s.pos==='top'||(B-Tp)>vh*0.55){   // 図面をさわる手順・大きい所は、図面の上の方に（ふきだしの文字の上をタップしても図面に届く）
+      const cr=cv.getBoundingClientRect(); top=Math.max(64,cr.top+8); left=narrow()?Math.round((vw-bw)/2):Math.min(vw-bw-12,Math.max(12,cr.left+(cr.width-bw)/2)); }
+    else if(B+12+bh<vh) top=B+12;
+    else if(Tp-12-bh>0) top=Tp-12-bh;
+    else top=Math.max(12,vh-bh-12);
+    box.style.left=Math.round(left)+'px'; box.style.top=Math.round(top)+'px';
+  }
+  // 見えていない部品は、入っている列（左右のパネル）だけをスクロールして見せる（画面全体は動かさない）
+  function scrollInto(el){
+    let p=el.parentElement;
+    while(p&&p!==document.body&&p!==document.documentElement){
+      const cs=getComputedStyle(p);
+      if(/(auto|scroll)/.test(cs.overflowY)&&p.scrollHeight>p.clientHeight+2){
+        const pr=p.getBoundingClientRect(), er=el.getBoundingClientRect();
+        if(er.top<pr.top+8||er.bottom>pr.bottom-8) p.scrollTop+=er.top-pr.top-Math.max(20,(pr.height-er.height)/3);
+        return;
+      }
+      p=p.parentElement;
+    }
+  }
+  function tutClose(endPractice){
+    if(T){ leave(); }
+    T=null; clearInterval(poll); poll=null; spot.style.display='none'; box.style.display='none';
+    document.removeEventListener('keydown',onKey,true);
+    if(PRACTICE&&(endPractice||confirm('練習用の図面を閉じて、元の画面にもどりますか？\n（キャンセル＝練習用の図面でもう少しさわる）'))) practiceEnd();
+  }
+  window.tutClose=tutClose; window.tutMenu=tutMenu; window.tutStart=tutStart;
+  window.addEventListener('resize',()=>{ if(T) place(); });
+  let thruT=null;
+  ['touchstart','mousedown'].forEach(tp=>window.addEventListener(tp,e=>{ if(!T||e.target!==cv) return; box.classList.add('thru'); clearTimeout(thruT); thruT=setTimeout(()=>box.classList.remove('thru'),1500); },true));
+
+  // はじめて開いた人に、そっと案内（何も開いていないとき）
+  setTimeout(()=>{
+    if(ls.get(SEEN_KEY)||state.img||state.features.length||document.querySelector('.resumeBar')) return;
+    const o=document.createElement('div'); o.id='tutOffer';
+    o.innerHTML='<span>はじめての方へ：<b>🎓 使い方</b>（練習用の図面でさわれます）</span><button class="go">見る</button><button class="x">あとで</button>';
+    document.body.appendChild(o);
+    o.querySelector('.go').onclick=()=>{ o.remove(); tutMenu(); };
+    o.querySelector('.x').onclick=()=>{ ls.set(SEEN_KEY,'1'); o.remove(); };
+    setTimeout(()=>{ if(o.isConnected) o.remove(); },20000);
+  },1800);
+})();
+</script>
 </body>
 </html>
