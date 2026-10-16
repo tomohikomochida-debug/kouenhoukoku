@@ -62,6 +62,18 @@
   .numsel button{ border:1px solid var(--line); background:#fff; padding:6px 10px; font-size:13px; margin-left:-1px; color:var(--ink); font-family:inherit; }
   .numsel button:first-of-type{ border-radius:8px 0 0 8px; margin-left:6px; } .numsel button:last-of-type{ border-radius:0 8px 8px 0; }
   .numsel button.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .mtab.all b{ background:#fff3e0; color:#E8711A; } .mtab.on.all b{ background:#fff; }
+  .mtab.cut{ border-color:#E8711A; color:#E8711A; font-weight:700; }
+  .frsvg{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+  .frsvg polygon{ stroke-width:3; }
+  .frlb{ position:absolute; transform:translate(-50%,-50%); color:#fff; font-weight:800; font-size:20px; padding:2px 10px; border-radius:8px; border:2px solid #fff; box-shadow:0 1px 5px rgba(0,0,0,.35); pointer-events:none; line-height:1.15; text-align:center; white-space:nowrap; }
+  .frlb small{ display:block; font-size:11px; font-weight:700; }
+  .mapimgwrap.cutting{ touch-action:none; cursor:crosshair; outline:3px solid #E8711A; outline-offset:-3px; }
+  .cutrect{ position:absolute; border:3px dashed #E8711A; background:rgba(232,113,26,.15); pointer-events:none; }
+  .cutmenu{ position:fixed; left:50%; bottom:90px; transform:translateX(-50%); z-index:120; background:#fff; border-radius:14px; box-shadow:0 6px 24px rgba(0,0,0,.3); padding:14px; display:flex; flex-direction:column; gap:8px; min-width:280px; max-width:92vw; }
+  .cutmenu b{ font-size:15px; }
+  .cutmenu button{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:11px; font-size:15px; color:var(--ink); font-family:inherit; }
+  .cutmenu .pri{ background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700; }
   .mapcap{ position:absolute; left:8px; top:8px; z-index:3; font-size:13.5px; font-weight:700; color:var(--accent); background:rgba(255,255,255,.92); border:1px solid var(--line); border-radius:8px; padding:3px 9px; line-height:1.4; pointer-events:none; max-width:calc(100% - 16px); }
   .zsel{ font-size:13px; padding:5px 6px; border:1px solid var(--line); border-radius:8px; background:#fff; max-width:150px; }
   .mk{ position:absolute; transform:translate(-50%,-50%); min-width:24px; height:24px; padding:0 4px; border-radius:12px; touch-action:none; cursor:move;
@@ -377,9 +389,10 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
         <div class="maptabs" id="maptabs" style="display:none"></div>
         <div class="mapbox" id="mapbox"></div>
         <div class="maptools" id="maptools" style="display:none">
-          <span class="muted">空きをタップで番号カードを追加／番号をタップでその木へ移動／番号をドラッグで位置調整</span>
+          <span class="muted" id="mkhelp">空きをタップで番号カードを追加／番号をタップでその木へ移動／番号をドラッグで位置調整</span>
           <span class="muted" id="mkcount"></span>
-          <button class="iconbtn" onclick="clearMarkers()">番号を全消去</button>
+          <button class="iconbtn" id="cutBtn" onclick="toggleCut()" style="display:none">✂ 囲んで区画を作る</button>
+          <button class="iconbtn" id="clearPinsBtn" onclick="clearMarkers()">番号を全消去</button>
           <button class="iconbtn" id="gsiBtn" onclick="gsiOpen()">🛰 線画・地理院で作り直す</button>
           <button class="iconbtn" id="refBtn" onclick="refOpen()" style="display:none">📍 目印で地図と合わせる</button>
           <button class="iconbtn" onclick="gmOpen()">🗺 Googleマップで作り直す</button>
@@ -3317,12 +3330,16 @@ const newMid=()=>"m"+Date.now().toString(36)+Math.random().toString(36).slice(2,
 function maps(){ if(!Array.isArray(state.maps)) state.maps=[]; return state.maps; }
 function CM(){ const ms=maps(); return ms.find(m=>m.id===state.curMap)||ms[0]||null; }
 function mapById(id){ return id?maps().find(m=>m.id===id)||null:null; }
-function zoneCode(m){ const k=maps().indexOf(m); return k<0?"?":(ZONE_CH[k]||String(k+1)); }
-function mapTitle(m){ return (m&&m.name)||(maps().length>1?"区画"+zoneCode(m):"位置図"); }
-function zoneOf(t){ const ms=maps(); if(!ms.length||!t) return null; return mapById(t.zone)||(ms.length===1?ms[0]:null); }
+/* 全体図（kind:"all"）：区画の範囲を枠で見せる図面。番号は置かない。図面の並びの先頭に置く */
+const isAll=m=>!!m&&m.kind==="all";
+function zoneMaps(){ return maps().filter(m=>!isAll(m)); }
+function overview(){ return maps().find(isAll)||null; }
+function zoneCode(m){ if(isAll(m)) return "全"; const k=zoneMaps().indexOf(m); return k<0?"?":(ZONE_CH[k]||String(k+1)); }
+function mapTitle(m){ if(isAll(m)) return m.name||"全体図"; return (m&&m.name)||(maps().length>1?"区画"+zoneCode(m):"位置図"); }
+function zoneOf(t){ const zs=zoneMaps(); if(!zs.length||!t) return null; const m=mapById(t.zone); return (m&&!isAll(m))?m:(zs.length===1&&!overview()?zs[0]:null); }
 function onMap(t,m){ return !!m&&t.mx!=null&&t.my!=null&&zoneOf(t)===m; }
 function ensureMap(){ let m=CM(); if(!m){ m={id:newMid(),name:"",image:"",geo:null,size:null,ref:null}; maps().push(m); state.curMap=m.id; } return m; }
-const zoneMode=()=>state.numMode==="zone"&&maps().length>=2;
+const zoneMode=()=>state.numMode==="zone"&&zoneMaps().length>=2;
 /* 入力画面の番号（並びは state.trees の順） */
 function noLabels(){ if(!zoneMode()) return state.trees.map((t,i)=>String(i+1));
   const cnt={}; return state.trees.map(t=>{ const m=zoneOf(t), c=m?zoneCode(m):"?"; cnt[c]=(cnt[c]||0)+1; return c+"-"+cnt[c]; }); }
@@ -3335,19 +3352,21 @@ function normMaps(){ maps();
   if(!state.maps.find(m=>m.id===state.curMap)) state.curMap=state.maps[0]?state.maps[0].id:null;
   if(state.numMode!=="zone") state.numMode="seq"; }
 /* 図面のタブ（区画の切りかえ・追加・名前・削除・番号の付け方） */
-function renderMapTabs(){ const el=document.getElementById("maptabs"); if(!el) return; const ms=maps(), cur=CM();
+function renderMapTabs(){ const el=document.getElementById("maptabs"); if(!el) return; const ms=maps(), cur=CM(), ov=overview();
   if(!ms.length||(ms.length===1&&!ms[0].image)){ el.innerHTML=""; el.style.display="none"; return; }
   el.style.display="flex";
   let h="";
   if(ms.length>=2){ h+=ms.map(m=>{ const n=state.trees.filter(t=>zoneOf(t)===m).length;
-      return `<button type="button" class="mtab${m===cur?" on":""}" onclick="selMap('${m.id}')"><b>${esc(zoneCode(m))}</b>${esc(mapTitle(m))}<small>${n}件</small></button>`; }).join(""); }
-  h+=`<button type="button" class="mtab add" onclick="addMap()">＋ 図面を追加${ms.length<2?"（敷地が広いとき区画に分ける）":""}</button>`;
-  if(ms.length>=2){ h+=`<span class="mtsp"></span><span class="numsel">番号：<button type="button" class="${!zoneMode()?"on":""}" onclick="setNumMode('seq')">通し</button><button type="button" class="${zoneMode()?"on":""}" onclick="setNumMode('zone')">区画ごと</button></span>`+
-    `<button type="button" class="mtab sm" onclick="renameMap()">✎ 名前</button><button type="button" class="mtab sm del" onclick="delMap()">この図面を削除</button>`; }
+      return `<button type="button" class="mtab${m===cur?" on":""}${isAll(m)?" all":""}" onclick="selMap('${m.id}')"><b>${esc(zoneCode(m))}</b>${esc(mapTitle(m))}${isAll(m)?"":`<small>${n}件</small>`}</button>`; }).join(""); }
+  if(ms.length===1&&!ov) h+=`<button type="button" class="mtab cut" onclick="makeOverview()">✂ この図面を全体図にして、区画に分ける</button>`;
+  h+=`<button type="button" class="mtab add" onclick="addMap()">＋ 区画の図面を追加</button>`;
+  if(!ov&&ms.length>=2) h+=`<button type="button" class="mtab add" onclick="addOverview()">＋ 全体図</button>`;
+  if(zoneMaps().length>=2) h+=`<span class="mtsp"></span><span class="numsel">番号：<button type="button" class="${!zoneMode()?"on":""}" onclick="setNumMode('seq')">通し</button><button type="button" class="${zoneMode()?"on":""}" onclick="setNumMode('zone')">区画ごと</button></span>`;
+  if(ms.length>=2){ h+=(zoneMaps().length>=2?"":`<span class="mtsp"></span>`)+`<button type="button" class="mtab sm" onclick="renameMap()">✎ 名前</button><button type="button" class="mtab sm del" onclick="delMap()">この図面を削除</button>`; }
   el.innerHTML=h; }
-function selMap(id){ if(!mapById(id)) return; state.curMap=id; renderMap(); }
-function addMap(){ pushUndo("addmap"); const ms=maps();
-  if(ms.length===1) state.trees.forEach(t=>{ if(!t.zone) t.zone=ms[0].id; }); // いままでの木は最初の図面（区画A）に
+function selMap(id){ if(!mapById(id)) return; state.curMap=id; cutMode=false; cutCancel(); renderMap(); }
+function addMap(){ pushUndo("addmap"); const ms=maps(), zs=zoneMaps();
+  if(zs.length===1&&!overview()) state.trees.forEach(t=>{ if(!t.zone) t.zone=zs[0].id; }); // いままでの木は最初の図面（区画A）に
   const m={id:newMid(),name:"",image:"",geo:null,size:null,ref:null}; ms.push(m); state.curMap=m.id;
   markDirty(); renderTrees(); toast("区画"+zoneCode(m)+"の図面を追加しました。地図を作るか、図面の画像を選んでください",5000);
   const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
@@ -3365,13 +3384,94 @@ function setNumMode(v){ if(state.numMode===v) return; pushUndo("nummode"); state
 function setZone(i,id){ const t=state.trees[i]; if(!t) return; pushUndo("zone"+i);
   const m=mapById(id); if(zoneOf(t)!==m){ t.mx=null; t.my=null; t.mauto=false; }
   t.zone=m?m.id:null; t.zoneManual=!!m; autoPlace(); markDirty(); renderTrees(); }
-function zoneSelHTML(t,i){ const ms=maps(); if(ms.length<2) return ""; const z=zoneOf(t);
+function zoneSelHTML(t,i){ const ms=zoneMaps(); if(ms.length<2&&!(overview()&&ms.length)) return ""; const z=zoneOf(t);
   return `<select class="zsel" onchange="setZone(${i},this.value)" title="区画（図面）">${ms.map(m=>`<option value="${m.id}"${m===z?" selected":""}>${esc(zoneCode(m))} ${esc(mapTitle(m))}</option>`).join("")}<option value=""${z?"":" selected"}>区画なし</option></select>`; }
+
+/* ---- 全体図：区画の範囲の枠。全体図の上を囲むと、その範囲の拡大図（区画）ができる ---- */
+function makeOverview(){ const m=CM(); if(!m||!m.image||overview()) return; pushUndo("overview");
+  state.trees.forEach(t=>{ if(onMap(t,m)){ t.allx=t.mx; t.ally=t.my; } if(zoneOf(t)===m||t.zone===m.id){ t.mx=null; t.my=null; t.mauto=false; t.zone=null; t.zoneManual=false; } });
+  m.kind="all"; const ms=maps(); ms.splice(ms.indexOf(m),1); ms.unshift(m); state.curMap=m.id; cutMode=true;
+  markDirty(); renderTrees(); toast("全体図にしました。区画にしたい範囲を指でなぞって囲んでください（囲むたびに区画A・B…の拡大図ができます）",7000); }
+function addOverview(){ if(overview()) return; pushUndo("overview"); const m={id:newMid(),kind:"all",name:"",image:"",geo:null,size:null,ref:null};
+  maps().unshift(m); state.curMap=m.id; markDirty(); renderTrees();
+  toast("全体図を追加しました。地図を作ると、区画の範囲が枠で出ます（出ないときは「✂ 囲んで区画を作る」で枠を描けます）",7000); }
+const rectPts=R=>[[R.x,R.y],[R.x+R.w,R.y],[R.x+R.w,R.y+R.h],[R.x,R.y+R.h]];
+function inPoly(p,pts){ let c=false; for(let i=0,j=pts.length-1;i<pts.length;j=i++){ const a=pts[i], b=pts[j]; if(((a[1]>p[1])!==(b[1]>p[1]))&&(p[0]<(b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0])) c=!c; } return c; }
+/* 区画の図面の四隅 → 全体図の上の場所（手で描いた枠／地図の位置から計算） */
+function zoneToAll(z,ov){ if(z.inAll&&Array.isArray(z.inAll.pts)) return z.inAll.pts;
+  const Tz=mapTransform(z), To=mapTransform(ov); if(!Tz||!To) return null;
+  return [[0,0],[1,0],[1,1],[0,1]].map(uv=>To.fwd(Tz.inv(uv))); }
+const FR_COL=["#1E88E5","#D81B60","#F57C00","#8E24AA","#2E7D32","#00838F","#6D4C41"];
+function allFrames(ov){ ov=ov||overview(); if(!ov||!ov.image) return []; const zs=zoneMaps();
+  return zs.map((z,k)=>({ z, pts:zoneToAll(z,ov), code:zoneCode(z), name:z.name||"", col:FR_COL[k%FR_COL.length] })).filter(f=>f.pts); }
+const frCenter=pts=>[pts.reduce((a,p)=>a+p[0],0)/pts.length, pts.reduce((a,p)=>a+p[1],0)/pts.length];
+function framesHTML(ov){ const fs=allFrames(ov); if(!fs.length) return "";
+  return `<svg class="frsvg" viewBox="0 0 100 100" preserveAspectRatio="none">${fs.map(f=>`<polygon points="${f.pts.map(p=>(p[0]*100).toFixed(2)+","+(p[1]*100).toFixed(2)).join(" ")}" fill="${f.col}" fill-opacity="0.13" stroke="${f.col}" vector-effect="non-scaling-stroke"/>`).join("")}</svg>`+
+    fs.map(f=>{ const c=frCenter(f.pts); return `<div class="frlb" style="left:${c[0]*100}%;top:${c[1]*100}%;background:${f.col}">${esc(f.code)}${f.name?`<small>${esc(f.name)}</small>`:""}</div>`; }).join(""); }
+/* 枠を描く（PDF・Excel用）。ox,oy,w,h は画像を置いた場所、U は文字の大きさの基準 */
+function drawFrames(x,fs,ox,oy,w,h,U){
+  for(const f of fs){ x.beginPath(); f.pts.forEach((p,k)=>{ const px=ox+p[0]*w, py=oy+p[1]*h; k?x.lineTo(px,py):x.moveTo(px,py); }); x.closePath();
+    x.globalAlpha=0.13; x.fillStyle=f.col; x.fill(); x.globalAlpha=1; x.lineWidth=3.5*U; x.strokeStyle=f.col; x.stroke(); }
+  for(const f of fs){ const c=frCenter(f.pts), cx=ox+c[0]*w, cy=oy+c[1]*h;
+    x.font=`bold ${Math.round(22*U)}px sans-serif`; const t1=f.code, w1=x.measureText(t1).width; x.font=`bold ${Math.round(12*U)}px sans-serif`; const w2=f.name?x.measureText(f.name).width:0;
+    const bw=Math.max(w1,w2)+20*U, bh=(f.name?44:32)*U; x.fillStyle=f.col; x.strokeStyle="#fff"; x.lineWidth=2.5*U;
+    x.beginPath(); x.rect(cx-bw/2,cy-bh/2,bw,bh); x.fill(); x.stroke();
+    x.fillStyle="#fff"; x.textAlign="center"; x.textBaseline="middle"; x.font=`bold ${Math.round(22*U)}px sans-serif`; x.fillText(t1,cx,cy-(f.name?7*U:0));
+    if(f.name){ x.font=`bold ${Math.round(12*U)}px sans-serif`; x.fillText(f.name,cx,cy+13*U); } }
+  x.textAlign="left"; x.textBaseline="alphabetic"; }
+async function bakeFrames(src,fs){ const im=await loadImgEl(src), c=document.createElement("canvas"); c.width=im.naturalWidth; c.height=im.naturalHeight;
+  const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0); drawFrames(x,fs,0,0,c.width,c.height,c.width/900); return c.toDataURL("image/jpeg",0.9); }
+/* 全体図の枠が変わるとき：位置から計算できる区画は、描いた枠を消して計算に任せる */
+function refreshFrames(){ const ov=overview(); if(!ov||!mapTransform(ov)) return; zoneMaps().forEach(z=>{ if(z.inAll&&mapTransform(z)) z.inAll=null; }); }
+let cutMode=false, cutSt=null;
+function toggleCut(){ cutMode=!cutMode; cutCancel(); renderMap(); toast(cutMode?"区画にしたい範囲を、指で斜めになぞって囲んでください":"囲むのをやめました"); }
+function cutDown(ev){ if(!cutMode) return; const img=ev.currentTarget.querySelector("img"); if(!img) return; ev.preventDefault(); ev.stopPropagation();
+  const r=img.getBoundingClientRect(), u=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width)), v=Math.max(0,Math.min(1,(ev.clientY-r.top)/r.height));
+  cutSt={r,x0:u,y0:v,x1:u,y1:v}; window.addEventListener("pointermove",cutMove); window.addEventListener("pointerup",cutUp); window.addEventListener("pointercancel",cutUp); cutShow(); }
+function cutMove(ev){ if(!cutSt||cutSt.R) return; const r=cutSt.r; cutSt.x1=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width)); cutSt.y1=Math.max(0,Math.min(1,(ev.clientY-r.top)/r.height)); cutShow(); }
+function cutUp(){ window.removeEventListener("pointermove",cutMove); window.removeEventListener("pointerup",cutUp); window.removeEventListener("pointercancel",cutUp);
+  window.__jd=Date.now(); if(!cutSt||cutSt.R) return; const R=cutRectOf(); if(R.w<0.03||R.h<0.03){ cutSt=null; cutShow(); return; } cutMenu(R); }
+function cutRectOf(){ const c=cutSt; return { x:Math.min(c.x0,c.x1), y:Math.min(c.y0,c.y1), w:Math.abs(c.x1-c.x0), h:Math.abs(c.y1-c.y0) }; }
+function cutShow(){ const el=document.getElementById("cutRect"); if(!el) return; if(!cutSt){ el.style.display="none"; return; } const R=cutSt.R||cutRectOf();
+  el.style.cssText=`display:block;left:${R.x*100}%;top:${R.y*100}%;width:${R.w*100}%;height:${R.h*100}%`; }
+function cutMenu(R){ cutSt.R=R; let el=document.getElementById("cutMenu"); if(!el){ el=document.createElement("div"); el.id="cutMenu"; el.className="cutmenu"; document.body.appendChild(el); }
+  const nx=ZONE_CH[zoneMaps().length]||"?";
+  el.innerHTML=`<b>囲んだ範囲を…</b><button type="button" class="pri" onclick="cutNew()">新しい区画${nx}にする（この範囲の拡大図を作る）</button>`+
+    zoneMaps().map(z=>`<button type="button" onclick="cutAssign('${z.id}')">区画${esc(zoneCode(z))}${z.name?"（"+esc(z.name)+"）":""}の枠にする</button>`).join("")+`<button type="button" onclick="cutCancel()">やめる</button>`;
+  el.style.display="flex"; }
+function cutCancel(){ cutSt=null; cutShow(); const el=document.getElementById("cutMenu"); if(el) el.style.display="none"; }
+function cutAssign(id){ const z=mapById(id); if(!z||!cutSt||!cutSt.R) return; const R=cutSt.R; cutCancel(); pushUndo("frame"); z.inAll={pts:rectPts(R)}; markDirty(); renderMap(); toast("区画"+zoneCode(z)+"の枠を描きました"); }
+const frameOfAspect=a=>a>1.2?"wide":a<0.83?"tall":"sq";
+async function cutNew(){ const ov=CM(); if(!cutSt||!cutSt.R||!isAll(ov)) return; const R=cutSt.R; cutCancel();
+  toast("区画の拡大図を作っています…",20000);
+  let image, size, geo=null, ref=null;
+  try{
+    if(ov.geo){ // 地理院・線画の全体図：その範囲を細かい地図で取り直す
+      const G0=ov.geo, c=geoTransform(G0).inv([R.x+R.w/2,R.y+R.h/2]), w=R.w*G0.w, h=R.h*G0.h, ar=w/h;
+      geo={ layer:G0.layer, frame:frameOfAspect(ar), x0:c[0]-w/2, y0:c[1]-h/2, w, h }; if(G0.rot) geo.rot=G0.rot;
+      const OW=ar>=1?GSI_OUT:Math.round(GSI_OUT*ar), OH=ar>=1?Math.round(GSI_OUT/ar):GSI_OUT, r=await gsiRender(geo,OW,OH);
+      if(!r.ok) throw new Error("地図を取れませんでした（ネットにつながっているか確かめてください）");
+      image=r.url; size=[OW,OH];
+    } else { // スクショ・図面の画像：その範囲を切り出して大きくする（目印で合わせてあれば、それも引き継ぐ）
+      const im=await loadImgEl(ov.image), iw=im.naturalWidth, ih=im.naturalHeight, sx=R.x*iw, sy=R.y*ih, sw=R.w*iw, sh=R.h*ih;
+      const k=Math.min(4,1800/Math.max(sw,sh)), OW=Math.max(1,Math.round(sw*k)), OH=Math.max(1,Math.round(sh*k));
+      const cv=document.createElement("canvas"); cv.width=OW; cv.height=OH; const x=cv.getContext("2d"); x.imageSmoothingQuality="high"; x.drawImage(im,sx,sy,sw,sh,0,0,OW,OH);
+      image=cv.toDataURL("image/jpeg",0.88); size=[OW,OH];
+      if(ov.ref&&ov.ref.pairs) ref={ pairs:ov.ref.pairs.map(p=>({ m:p.m.slice(), uv:[(p.uv[0]-R.x)/R.w,(p.uv[1]-R.y)/R.h] })) };
+    }
+  }catch(e){ toast("区画の図面を作れませんでした"); alert("区画の図面を作れませんでした："+(e&&e.message?e.message:e)); return; }
+  pushUndo("cut");
+  const z={ id:newMid(), name:"", image, geo, size, ref, inAll:{pts:rectPts(R)} }; maps().push(z);
+  state.trees.forEach(t=>{ if(t.allx!=null&&!zoneOf(t)&&t.allx>=R.x&&t.allx<=R.x+R.w&&t.ally>=R.y&&t.ally<=R.y+R.h){ // 全体図に置いてあった番号は、この区画の図面へ移す
+    t.zone=z.id; t.zoneManual=true; t.mx=(t.allx-R.x)/R.w; t.my=(t.ally-R.y)/R.h; t.mauto=false; } });
+  const res=autoPlace(); markDirty(); renderTrees();
+  toast("区画"+zoneCode(z)+"の拡大図を作りました"+(res.n?"（位置から番号"+res.n+"本）":"")+"。続けて囲めます。上のタブで開くと番号を置けます",6000); }
 
 /* 地図 */
 async function setMap(input){ if(!input.files[0]) return; await setMapUrl(await shrink(input.files[0],1800)); }
 async function setMapUrl(url){ pushUndo("map"); const m=ensureMap(); m.image=url; m.ref=null;
   m.geo=null; m.size=await imgSize(url);
+  if(isAll(m)) zoneMaps().forEach(z=>{ z.inAll=null; }); // 全体図を替えたら、描いた枠は描き直し（位置の分かる区画は自動で出る）
   state.trees.forEach(t=>{ if(t.mauto&&zoneOf(t)===m){ t.mx=null; t.my=null; t.mauto=false; } }); autoPlace(); markDirty(); renderTrees(); }
 /* ---- Googleマップのスクショから位置図（Googleの地図をアプリが取りに行くのではなく、人が撮ったスクショを使う） ---- */
 function gmMapsUrl(){
@@ -3513,7 +3613,7 @@ function refDel(){ if(!RF) return; RF.pairs[RF.i]={uv:null,m:null}; refUI(); ref
 function refApply(){ if(!RF) return; const r=refFit(); if(r.n<2||r.spread<10) return;
   pushUndo("mapref");
   const cm=RF.map; cm.ref={ pairs:RF.pairs.filter(p=>p.uv&&p.m).map(p=>({ m:[+p.m[0].toFixed(9),+p.m[1].toFixed(9)], uv:[+(p.uv[0]/RF.iw).toFixed(5),+(p.uv[1]/RF.ih).toFixed(5)] })) };
-  if(!cm.size) cm.size=[RF.iw,RF.ih];
+  if(!cm.size) cm.size=[RF.iw,RF.ih]; refreshFrames();
   const res=autoPlace(); markDirty(); refClose(); renderTrees();
   toast("地図と合わせました。"+(res.n?"位置のある木"+res.n+"本の番号を置きました":"木の位置を測ると、番号が自動で置かれます")+(res.out?"（範囲の外："+res.out+"本）":""),6000);
   const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
@@ -3522,18 +3622,21 @@ function clearMap(){ const m=CM(); if(!m) return; pushUndo("map"); m.image=""; m
 const MAP_CHOOSE=`<div class="mapchoose"><button type="button" class="mapbig" onclick="gmOpen()">🗺 Googleマップのスクショから作る<br><small style="font-weight:400">新しい航空写真</small></button><button type="button" class="mapbig" onclick="gsiOpen()">🛰 線画・地理院の地図から作る<br><small style="font-weight:400">範囲を決めるだけ・番号も自動</small></button><label class="mapbig">🖼 ほかの画像を選ぶ<input type="file" accept="image/*" onchange="setMap(this)" hidden></label></div>`;
 let activePlace=-1;
 function renderMap(){ const box=document.getElementById("mapbox"); const tools=document.getElementById("maptools");
-  renderMapTabs(); const cm=CM(), L=noLabels(), multi=maps().length>=2;
+  renderMapTabs(); const cm=CM(), L=noLabels(), multi=maps().length>=2, all=isAll(cm);
   if(cm&&cm.image){
-    const mks=state.trees.map((t,i)=>onMap(t,cm)?`<div class="mk${t.mauto?" auto":""}" data-i="${i}" title="${t.mauto?"位置から自動で置いた番号。":""}タップでその木のカードへ／ドラッグで移動" onpointerdown="mkDown(event,${i})" onclick="mkAbsorb(event)" style="left:${t.mx*100}%;top:${t.my*100}%;${mkColor(t)?"background:"+mkColor(t):""}">${esc(L[i])}</div>`:"").join("");
-    box.innerHTML = (multi?`<div class="mapcap">${esc(zoneCode(cm))}　${esc(mapTitle(cm))}</div>`:"")+`<div class="mapimgwrap" onclick="mapClick(event)"><img src="${cm.image}" onload="mapLoaded(this)">${mks}</div>`;
+    const mks=all?framesHTML(cm)+`<div id="cutRect" class="cutrect" style="display:none"></div>`:state.trees.map((t,i)=>onMap(t,cm)?`<div class="mk${t.mauto?" auto":""}" data-i="${i}" title="${t.mauto?"位置から自動で置いた番号。":""}タップでその木のカードへ／ドラッグで移動" onpointerdown="mkDown(event,${i})" onclick="mkAbsorb(event)" style="left:${t.mx*100}%;top:${t.my*100}%;${mkColor(t)?"background:"+mkColor(t):""}">${esc(L[i])}</div>`:"").join("");
+    box.innerHTML = (multi?`<div class="mapcap">${all?"全体図"+(cm.name?"　"+esc(cm.name):"")+(cutMode?"：範囲を指でなぞって囲む":"：枠をタップでその区画へ"):esc(zoneCode(cm))+"　"+esc(mapTitle(cm))}</div>`:"")+`<div class="mapimgwrap${all&&cutMode?" cutting":""}" onclick="mapClick(event)"${all?` onpointerdown="cutDown(event)"`:""}><img src="${cm.image}" onload="mapLoaded(this)">${mks}</div>`;
     if(tools){ tools.style.display="flex"; const c=document.getElementById("mkcount");
       const here=state.trees.filter(t=>onMap(t,cm)).length, placed=state.trees.filter(t=>t.mx!=null).length;
-      if(c) c.textContent = activePlace>=0 ? ("No."+(L[activePlace]||activePlace+1)+"の位置をタップ") : (multi?"この図面 "+here+"件／配置 "+placed+"/"+state.trees.length:"配置 "+placed+"/"+state.trees.length);
+      if(c) c.textContent = all ? ("区画 "+zoneMaps().length+"／枠 "+allFrames(cm).length) : activePlace>=0 ? ("No."+(L[activePlace]||activePlace+1)+"の位置をタップ") : (multi?"この図面 "+here+"件／配置 "+placed+"/"+state.trees.length:"配置 "+placed+"/"+state.trees.length);
+      const cb=document.getElementById("cutBtn"); if(cb){ cb.style.display=all?"":"none"; cb.textContent=cutMode?"✂ 囲むのをやめる":"✂ 囲んで区画を作る"; cb.style.background=cutMode?"#fff3e0":""; }
+      const cp=document.getElementById("clearPinsBtn"); if(cp) cp.style.display=all?"none":"";
+      const hp=document.getElementById("mkhelp"); if(hp) hp.textContent=all?"全体図：枠をタップでその区画へ／「✂ 囲んで区画を作る」で範囲を囲むと拡大図の区画ができます":"空きをタップで番号カードを追加／番号をタップでその木へ移動／番号をドラッグで位置調整";
       const gb=document.getElementById("gsiBtn"); if(gb) gb.textContent=cm.geo?"🛰 範囲・地図を変える":"🛰 線画・地理院で作り直す";
       const rb=document.getElementById("refBtn"); if(rb){ rb.style.display=cm.geo?"none":""; rb.textContent=cm.ref?"📍 目印を直す":"📍 目印で地図と合わせる"; }
       const hn=document.getElementById("mkhint"); if(hn){ const h=mapHint(); hn.textContent=h; hn.style.display=h?"block":"none"; } }
   } else {
-    box.innerHTML = (cm&&multi?`<div class="mapcap">${esc(zoneCode(cm))}　${esc(mapTitle(cm))}：この区画の図面を作ります</div>`:"")+MAP_CHOOSE;
+    box.innerHTML = (cm&&multi?`<div class="mapcap">${all?"全体図を作ります（区画の範囲が枠で出ます）":esc(zoneCode(cm))+"　"+esc(mapTitle(cm))+"：この区画の図面を作ります"}</div>`:"")+MAP_CHOOSE;
     if(tools) tools.style.display="none";
     const hn=document.getElementById("mkhint"); if(hn) hn.style.display="none";
   }
@@ -3546,6 +3649,9 @@ function mapClick(ev){ if(Date.now()-(window.__jd||0)<300) return;
   const r=img.getBoundingClientRect(); let x=(ev.clientX-r.left)/r.width, y=(ev.clientY-r.top)/r.height;
   if(x<0||x>1||y<0||y>1) return;
   const cm=CM(); if(!cm) return;
+  if(isAll(cm)){ if(cutMode) return; const f=allFrames(cm).find(f=>inPoly([x,y],f.pts));
+    if(f){ selMap(f.z.id); toast("区画"+f.code+"を開きました"); const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
+    else toast("全体図には番号を置けません。枠をタップするか、上のタブで区画を開いてください"); return; }
   pushUndo("pin"); let idx=activePlace; if(idx<0){ addTree(false,true); idx=state.trees.length-1; }
   state.trees[idx].mx=x; state.trees[idx].my=y; state.trees[idx].mauto=false; state.trees[idx].zone=cm.id; state.trees[idx].zoneManual=true; activePlace=-1; autoPlace(); markDirty(); renderTrees(); renderMap(); }
 let dragIdx=-1, dragRect=null, dragStart=null, dragMoved=false;
@@ -3689,7 +3795,7 @@ function mapTransform(m){ m=m||CM(); if(!m||!m.image) return null;
 /* 位置のある木の番号を地図に置く（手で置いた番号はそのまま）。図面が何枚もあるときは、その木が入る図面に置く
    （区画を手で決めた木はその図面だけ。決めていない木は、いまの区画 → ほかの図面の順に探す） */
 function autoPlace(){
-  const ms=maps().filter(m=>m.image), Ts=new Map(ms.map(m=>[m,mapTransform(m)])); let n=0, out=0;
+  const ms=zoneMaps().filter(m=>m.image), Ts=new Map(ms.map(m=>[m,mapTransform(m)])); let n=0, out=0;
   for(const t of state.trees){
     if(t.mx!=null&&!t.mauto) continue;
     const g=itemGeo(t), p=g?merc(g.lat,g.lon):null, z=mapById(t.zone);
@@ -3704,6 +3810,9 @@ function autoPlace(){
 /* 位置図の下の案内 */
 function mapHint(){
   const cm=CM(); const withGeo=state.trees.filter(t=>itemGeo(t)).length; if(!cm||!cm.image) return "";
+  if(isAll(cm)){ const zs=zoneMaps(), nf=allFrames(cm).length;
+    if(!zs.length) return "「✂ 囲んで区画を作る」で、区画にしたい範囲を指でなぞって囲むと、その範囲の拡大図が区画A・B…としてできます";
+    return (nf<zs.length?"枠の出ていない区画が"+(zs.length-nf)+"つあります。「✂ 囲んで区画を作る」で範囲を囲み「区画○の枠にする」を選ぶと枠を描けます。":"")+"枠をタップするとその区画の図面へ。番号は区画の図面に置きます"; }
   const auto=state.trees.filter(t=>t.mauto&&onMap(t,cm)).length;
   if(cm.geo){ const miss=state.trees.filter(t=>t.mx==null).length;
     return (auto?"位置から自動で置いた番号："+auto+"本（ずれていたらドラッグで直せます）":"位置のある木はまだありません")+(miss?"／位置のない"+miss+"本は、カードの📍を押してから地図をタップ":""); }
@@ -3790,7 +3899,7 @@ function gsiPaint(){
     x.beginPath(); pts.forEach((p,k)=>k?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])); x.closePath(); x.fillStyle="rgba(30,136,229,.10)"; x.fill();
     x.setLineDash([8,6]); x.lineWidth=2.5; x.strokeStyle="#1E88E5"; x.stroke(); x.setLineDash([]);
     const c=pts.reduce((a,p)=>[a[0]+p[0]/4,a[1]+p[1]/4],[0,0]); x.font="bold 15px sans-serif"; x.textAlign="center"; x.textBaseline="middle";
-    const lb="区画"+zoneCode(m)+(m.name?" "+m.name:""), tw=x.measureText(lb).width; x.fillStyle="rgba(255,255,255,.88)"; x.fillRect(c[0]-tw/2-6,c[1]-11,tw+12,22); x.fillStyle="#1565C0"; x.fillText(lb,c[0],c[1]+0.5); });
+    const lb=isAll(m)?"全体図":"区画"+zoneCode(m)+(m.name?" "+m.name:""), tw=x.measureText(lb).width; x.fillStyle="rgba(255,255,255,.88)"; x.fillRect(c[0]-tw/2-6,c[1]-11,tw+12,22); x.fillStyle="#1565C0"; x.fillText(lb,c[0],c[1]+0.5); });
   // 位置のある木
   const GL=noLabels();
   state.trees.forEach((t,i)=>{ const g=itemGeo(t); if(!g) return; const p=merc(g.lat,g.lon), q=rotV([(p[0]-GV.cx)*S,(p[1]-GV.cy)*S],GV.rot||0), px=W/2+q[0], py=H/2+q[1];
@@ -3871,14 +3980,9 @@ function tileImg(url){ return new Promise((res,rej)=>{ const ac=new AbortControl
   fetch(url,{mode:"cors",signal:ac.signal}).then(r=>{ if(r.status===404) return "none"; if(!r.ok) throw new Error(r.status); return r.blob(); })
     .then(b=>{ if(b==="none") return res("none"); const u=URL.createObjectURL(b), im=new Image(); im.onload=()=>{ URL.revokeObjectURL(u); res(im); }; im.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error("img")); }; im.src=u; })
     .catch(rej).finally(()=>clearTimeout(to)); }); }
-async function gsiMake(){
-  if(!GV) return;
-  const btn=document.getElementById("gsiMakeBtn"); btn.disabled=true; btn.textContent="地図を取っています…";
-  try{
-    const f=gsiFrameRect(), {W,H}=gsiView(), S=2**GV.z, rot=GV.rot||0;
-    const fc=rotV([(f.x+f.w/2-W/2)/S,(f.y+f.h/2-H/2)/S],-rot), cx=GV.cx+fc[0], cy=GV.cy+fc[1]; // 枠の中心（メルカトル）
-    const G={ layer:GV.layer, frame:GV.frame, x0:cx-f.w/S/2, y0:cy-f.h/S/2, w:f.w/S, h:f.h/S }; if(rot) G.rot=+rot.toFixed(6);
-    const r=FRAMES[GV.frame].r, OW=r>=1?GSI_OUT:Math.round(GSI_OUT*r), OH=r>=1?Math.round(GSI_OUT/r):GSI_OUT;
+/* 地図の範囲 G（回転も）を、OW×OH の画像にする（縮尺・方位・出典を書き込む） */
+async function gsiRender(G,OW,OH){
+  const rot=G.rot||0, cx=G.x0+G.w/2, cy=G.y0+G.h/2;
     const z=Math.max(2,Math.min(GSI_MAX,Math.ceil(Math.log2(OW/G.w)-1e-9))), n=2**z, s=256;
     const ca=Math.abs(Math.cos(rot)), sa=Math.abs(Math.sin(rot)), bw=ca*G.w+sa*G.h, bh=sa*G.w+ca*G.h; // 回した枠を囲む範囲だけタイルを取る
     const fx=(cx-bw/2)/256*n*s, fy=(cy-bh/2)/256*n*s, px0=Math.floor(fx), py0=Math.floor(fy), CW=Math.ceil(fx+bw/256*n*s)-px0, CH=Math.ceil(fy+bh/256*n*s)-py0;
@@ -3888,7 +3992,7 @@ async function gsiMake(){
     const worker=async()=>{ while(i<jobs.length){ const [tx,ty]=jobs[i++];
       try{ const im=await tileImg(tileURL(G.layer,z,tx,ty)); if(im!=="none"){ sx.drawImage(im,tx*s-px0,ty*s-py0,s,s); ok++; } }catch(e){ ng++; } } };
     await Promise.all(Array.from({length:8},worker));
-    if(!ok){ alert("地図を取れませんでした。ネットにつながっているか確かめて、もう一度お試しください。"); return; }
+    if(!ok) return {ok:0,ng,url:""};
     const out=document.createElement("canvas"); out.width=OW; out.height=OH; const x=out.getContext("2d");
     x.imageSmoothingEnabled=true; x.imageSmoothingQuality="high"; x.fillStyle="#fff"; x.fillRect(0,0,OW,OH);
     { const k=OW/G.w*256/(n*s); x.save(); x.translate(OW/2,OH/2); if(rot) x.rotate(rot); x.scale(k,k); x.translate(-(cx/256*n*s-px0),-(cy/256*n*s-py0)); x.drawImage(src,0,0); x.restore(); }
@@ -3916,6 +4020,18 @@ async function gsiMake(){
     x.font=`${Math.round(10*U)}px sans-serif`; const cw=x.measureText(cr).width;
     x.fillStyle="rgba(255,255,255,.82)"; x.fillRect(0,OH-18*U,cw+12*U,18*U); x.fillStyle="#000"; x.textAlign="left"; x.textBaseline="middle"; x.fillText(cr,6*U,OH-9*U);
     const url=out.toDataURL("image/jpeg",0.86);
+  return {ok,ng,url};
+}
+async function gsiMake(){
+  if(!GV) return;
+  const btn=document.getElementById("gsiMakeBtn"); btn.disabled=true; btn.textContent="地図を取っています…";
+  try{
+    const f=gsiFrameRect(), {W,H}=gsiView(), S=2**GV.z, rot=GV.rot||0;
+    const fc=rotV([(f.x+f.w/2-W/2)/S,(f.y+f.h/2-H/2)/S],-rot), cx=GV.cx+fc[0], cy=GV.cy+fc[1]; // 枠の中心（メルカトル）
+    const G={ layer:GV.layer, frame:GV.frame, x0:cx-f.w/S/2, y0:cy-f.h/S/2, w:f.w/S, h:f.h/S }; if(rot) G.rot=+rot.toFixed(6);
+    const r=FRAMES[GV.frame].r, OW=r>=1?GSI_OUT:Math.round(GSI_OUT*r), OH=r>=1?Math.round(GSI_OUT/r):GSI_OUT;
+    const {ok,ng,url}=await gsiRender(G,OW,OH);
+    if(!ok){ alert("地図を取れませんでした。ネットにつながっているか確かめて、もう一度お試しください。"); return; }
     // 手で置いた番号は、前の地図での場所 → 緯度・経度 → 新しい地図 に移す（移せないものは外す）
     const T=mapTransform(); let lost=0;
     pushUndo("map"); const cm=ensureMap();
@@ -3926,7 +4042,7 @@ async function gsiMake(){
       const [u,v]=geoTransform(G).fwd(T.inv([t.mx,t.my]));
       if(u>=0&&u<=1&&v>=0&&v<=1){ t.mx=u; t.my=v; } else { t.mx=null; t.my=null; lost++; }
     }
-    cm.image=url; cm.geo=G; cm.size=[OW,OH]; cm.ref=null;
+    cm.image=url; cm.geo=G; cm.size=[OW,OH]; cm.ref=null; refreshFrames();
     const res=autoPlace(); markDirty(); gsiClose(); renderTrees();
     const noGeo=state.trees.filter(t=>t.mx==null&&!itemGeo(t)).length;
     toast(["位置図を作りました",res.n?"番号を"+res.n+"本置きました":"",res.out?"範囲の外："+res.out+"本":"",lost?"前の地図の番号"+lost+"本は置き直してください":"",noGeo?"位置のない"+noGeo+"本は手で置いてください":"",ng?"（取れなかった地図"+ng+"枚は白）":""].filter(Boolean).join("。"),6000);
@@ -3938,7 +4054,7 @@ window.addEventListener("resize",()=>{ if(GV) gsiResize(); });
 
 /* モデル */
 function addTree(scroll,noUndo){ if(scroll===undefined) scroll=true; if(!noUndo) pushUndo("add"); state.trees.push(state.mode==="exterior"?{type:"exterior",item:"",qty:"",unit:"",memo:"",photos:[]}:{type:"tree",species:"",h:"",c:"",work:"強剪定",memo:"",photos:[]});
-  if(maps().length>=2&&CM()) state.trees[state.trees.length-1].zone=CM().id; // 図面が分かれているときは、いま開いている区画に
+  if((zoneMaps().length>=2||overview())&&CM()&&!isAll(CM())) state.trees[state.trees.length-1].zone=CM().id; // 図面が分かれているときは、いま開いている区画に
   camOnAdd(state.trees[state.trees.length-1]); markDirty(); renderTrees(); if(scroll){ const el=document.querySelector("#trees .tree:last-child"); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"center"}); } }
 function delTree(i){ if(confirm(noOfIdx(i)+"番を削除しますか？")){ pushUndo("del"); state.trees.splice(i,1); autoPlace(); markDirty(); renderTrees(); } }
 function move(i,d){ const j=i+d; if(j<0||j>=state.trees.length) return; pushUndo("move"); [state.trees[i],state.trees[j]]=[state.trees[j],state.trees[i]]; markDirty(); renderTrees(); }
@@ -4314,7 +4430,7 @@ function renderBook(){
   const body=document.getElementById("bookBody"); let html="";
   const OT=outTrees(); renderPrioBar();
   for(const om of outMaps(OT)){ const mks=om.mks.map(([u,v,n,col])=>`<div class="mk" style="left:${u*100}%;top:${v*100}%;${col?"background:"+col:""}">${esc(n)}</div>`).join("");
-    html+=`<div class="page">${pageHead("位置図"+(om.title?"　"+om.title:""))}<div class="mapwrap"><div class="mapimgwrap" style="max-width:100%"><img src="${om.m.image}">${mks}</div></div>${prioLegendHTML(OT)}</div>`; }
+    html+=`<div class="page">${pageHead("位置図"+(om.title?"　"+om.title:""))}<div class="mapwrap"><div class="mapimgwrap" style="max-width:100%"><img src="${om.m.image}">${isAll(om.m)?framesHTML(om.m):mks}</div></div>${isAll(om.m)?"":prioLegendHTML(OT)}</div>`; }
   if(!state.trees.length && !maps().some(m=>m.image)){ body.innerHTML='<div class="empty">まだデータがありません。</div>'; return; }
   if(state.trees.length&&!OT.length){ body.innerHTML='<div class="empty">出力に選んだ優先度の項目がありません。上の「出力」で選び直してください。</div>'; return; }
   let frames=[];
@@ -4823,7 +4939,7 @@ const anyPrio=()=>state.trees.some(t=>prioOf(t));
 function mkColor(t){ const p=prioOf(t); return p?PRIO_COLORS[p-1]:(anyPrio()?PRIO_NONE:""); }   // 位置図の番号の色（優先度を使っていなければ今までの赤）
 function outFilter(){ const f=state.outFilter||{}; return { p:Array.isArray(f.p)?f.p:[1,2,3,0], renum:f.renum!==false }; }
 function outTrees(){
-  const f=outFilter(), zm=zoneMode(), L=noLabels(), ms=maps();
+  const f=outFilter(), zm=zoneMode(), L=noLabels(), ms=zoneMaps();
   const list=state.trees.map((t,i)=>({t,i,z:zoneOf(t)})).filter(x=>f.p.includes(prioOf(x.t)));
   if(zm){ const ord=m=>{ const k=ms.indexOf(m); return k<0?999:k; }; list.sort((a,b)=>ord(a.z)-ord(b.z)||a.i-b.i); } // 区画ごとの番号は区画の順に並べる
   const cnt={};
@@ -4835,7 +4951,7 @@ function outTrees(){
 }
 /* 出力する位置図：画像のある図面ごとに { m, title, mks:[[左,上,番号,色]…] } */
 function outMaps(OT){ const ms=maps(), multi=ms.length>=2;
-  return ms.filter(m=>m.image).map(m=>({ m, title:multi?"区画"+zoneCode(m)+(m.name?"　"+m.name:""):(m.name||""),
+  return ms.filter(m=>m.image).map(m=>isAll(m)?{ m, title:"全体図"+(m.name?"　"+m.name:""), mks:[], frames:allFrames(m) }:({ m, title:multi?"区画"+zoneCode(m)+(m.name?"　"+m.name:""):(m.name||""), frames:[],
     mks:OT.filter(t=>t.__zid===m.id&&t.mx!=null&&t.my!=null).map(t=>[t.mx,t.my,t.__no,mkColor(t)]) })); }
 const outAll=()=>outFilter().p.length===4;
 function outSuffix(){ if(outAll()) return ""; const n=prioNames(); return "_"+outFilter().p.slice().sort().map(p=>p?n[p-1]:"未設定").join(""); }
@@ -4979,8 +5095,9 @@ async function exportExcel(){
     var xmaps = [], oms = outMaps(OT);
     for(var omi=0; omi<oms.length; omi++){ var om=oms[omi], mapImg=om.m.image;
       var msz = om.m.size || await imgSize(mapImg);
-      if(!/^data:image\/jpeg/.test(mapImg)) mapImg = await toJpeg(mapImg); // Excel には jpeg として入れる
-      xmaps.push({ sheet: oms.length>1 ? "位置図"+zoneCode(om.m) : "位置図", title: om.title, map: mapImg, mapW: msz&&msz[0], mapH: msz&&msz[1],
+      if(om.frames.length) mapImg = await bakeFrames(mapImg, om.frames); // 全体図は区画の枠を描き込む
+      else if(!/^data:image\/jpeg/.test(mapImg)) mapImg = await toJpeg(mapImg); // Excel には jpeg として入れる
+      xmaps.push({ sheet: isAll(om.m) ? "位置図_全体" : oms.length>1 ? "位置図"+zoneCode(om.m) : "位置図", title: om.title, map: mapImg, mapW: msz&&msz[0], mapH: msz&&msz[1],
         markers: om.mks.map(function(k){ return {x:k[0], y:k[1], img:markerPng(k[2],k[3])}; }) }); }
     var wb=window.buildTreeWorkbook(window.ExcelJS, stCopy, {maps: xmaps});
     var buf=await wb.xlsx.writeBuffer();
@@ -5048,8 +5165,9 @@ function pdfLayout(name,date){
     newPage(ar>=1); // 横長の地図は横向きのページに
     let w=CW, h=w/ar; if(h>FULL-TH){ h=FULL-TH; w=h*ar; }
     title("位置図",om.title);
-    const yy=y, ox=X0+(CW-w)/2, src=om.m.image, mks=om.mks;
+    const yy=y, ox=X0+(CW-w)/2, src=om.m.image, mks=om.mks, frs=om.frames;
     add(async x=>{ const im=await loadImgEl(src); x.imageSmoothingQuality="high"; x.drawImage(im,ox,yy,w,h); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,yy,w,h);
+      if(frs.length) drawFrames(x,frs,ox,yy,w,h,w/900);
       const d=Math.max(28,Math.min(46,w*0.032));
       for(const [u,v,n,col] of mks){ const cx=ox+u*w, cy=yy+v*h;
         x.beginPath(); x.arc(cx,cy,d/2,0,Math.PI*2); x.fillStyle=col||"rgba(214,40,40,.92)"; x.fill(); x.lineWidth=d*0.08; x.strokeStyle="#fff"; x.stroke();
