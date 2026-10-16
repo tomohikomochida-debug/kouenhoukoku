@@ -28,7 +28,8 @@
   .newcase{ background:#E8711A; color:#fff; border:none; border-radius:10px; padding:11px 18px; font-size:16px; font-weight:700; min-height:44px; box-shadow:0 2px 6px rgba(0,0,0,.18); white-space:nowrap; }
   .newcase:active{ transform:translateY(1px); box-shadow:0 1px 3px rgba(0,0,0,.18); }
   .casebar .delcase{ color:#b3261e; font-size:13px; padding:7px 9px; }
-  .casebar2{ display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+  .casebar2{ display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .origbtn{ border-color:#1E88E5 !important; color:#1565C0 !important; font-weight:700; background:#EEF5FD !important; }
   .modebar{ display:flex; gap:8px; margin-bottom:12px; }
   .modebar .mbtn{ flex:1; padding:11px; border:1px solid var(--accent); background:#fff; color:var(--accent); border-radius:10px; font-weight:700; font-size:15px; }
   .modebar .mbtn.on{ background:var(--accent); color:#fff; }
@@ -295,6 +296,8 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
 #cph .clens button{background:#0009;color:#fff;border:1px solid #fff6;border-radius:20px;min-width:52px;height:38px;font-size:14px;font-weight:700}#cph .clens button.on{background:#FDD835;color:#111;border-color:#FDD835}
 #cph .crow{display:flex;align-items:center;justify-content:space-between}
 #cph .cposrow{display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:10px;font-size:13px}
+#cph .corig{background:#1565C0e6!important;border-color:#fff!important}
+#cph .cpos.hidden{display:none}
 #cph .cpos,#cph .cnext{background:#0009;color:#fff;border:1px solid #fff6;border-radius:20px;height:38px;padding:0 14px;font-size:14px;font-weight:700}
 #cph .cthumb{display:flex;gap:4px;width:96px;height:64px}
 #cph .cth{width:40px;height:54px;object-fit:cover;border-radius:6px;border:3px solid #FB8C00}#cph .cth.ok{border-color:#43A047}#cph .cth.ng{border-color:#E53935}
@@ -373,6 +376,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     <div class="casebar2">
       <span class="muted" id="capText"></span>
       <span style="flex:1"></span>
+      <button class="iconbtn origbtn" id="origBtn" onclick="origSave()" style="display:none"></button>
       <button class="iconbtn" id="lightBtn" onclick="capBox(true)">容量</button>
       <button class="iconbtn" onclick="backupAll()">バックアップ</button>
       <button class="iconbtn" onclick="document.getElementById('impAll').click()">復元</button>
@@ -4124,9 +4128,10 @@ function addTree(scroll,noUndo){ if(scroll===undefined) scroll=true; if(!noUndo)
   camOnAdd(state.trees[state.trees.length-1]); markDirty(); renderTrees(); if(scroll){ const el=document.querySelector("#trees .tree:last-child"); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"center"}); } }
 function delTree(i){ if(confirm(noOfIdx(i)+"番を削除しますか？")){ pushUndo("del"); state.trees.splice(i,1); autoPlace(); markDirty(); renderTrees(); } }
 function move(i,d){ const j=i+d; if(j<0||j>=state.trees.length) return; pushUndo("move"); [state.trees[i],state.trees[j]]=[state.trees[j],state.trees[i]]; markDirty(); renderTrees(); }
-async function addPhoto(i,input){ if(!input.files||!input.files.length) return; pushUndo("photo"+i);
+async function addPhoto(i,input,keepOrig){ if(!input.files||!input.files.length) return; pushUndo("photo"+i);
   const t=state.trees[i]; t.photos=t.photos||[];
   const files=[...input.files], exs=await Promise.all(files.map(exifInfo)); // 縮めると位置情報が消えるので先に読む
+  if(keepOrig){ for(const f of files) await ORIG.add(f,"現場調査_"+(state.caseName||"")+"_No"+noOfIdx(i)); origRefresh(); } // カメラで撮った元の写真は、あとで写真アプリへまとめて保存
   for(const f of files){ t.photos.push(await shrink(f,PHOTO_MAX,PHOTO_Q)); }
   input.value=""; markDirty(); renderTrees();
   if(!t.pgeo) photosGeo(files,exs).then(g=>{ if(!g||t.pgeo||!state.trees.includes(t)) return; t.pgeo=g; autoPlace(); markDirty(); renderTrees(); }); }
@@ -4423,7 +4428,7 @@ function normalize(){ normMaps(); try{ thPrune(); }catch(e){} if(state.bookTitle
 function opts(list,val){ return list.map(x=>`<option ${x===val?"selected":""}>${x}</option>`).join(""); }
 function photosHTML(t,i){ const ph=(state.trees[i].photos)||[];
   const thumbs=ph.map((p,k)=>`<div class="thumb">${thImg(p,`onclick="editPhoto(${i},${k})"`)}<button class="rm" onclick="delPhoto(${i},${k})">×</button><div class="thmove"><button onclick="movePhoto(${i},${k},-1)">◀</button><button onclick="editPhoto(${i},${k})">✎</button><button onclick="movePhoto(${i},${k},1)">▶</button></div></div>`).join("");
-  return `<div class="photos">${thumbs}<label class="addph">📷 撮る<input type="file" accept="image/*" capture="environment" multiple onchange="addPhoto(${i},this)"></label><label class="addph">🖼 写真を<br>選ぶ<input type="file" accept="image/*" multiple onchange="addPhoto(${i},this)"></label>${camPhotoBtn(i)}</div>`;
+  return `<div class="photos">${thumbs}<label class="addph">📷 撮る<input type="file" accept="image/*" capture="environment" multiple onchange="addPhoto(${i},this,true)"></label><label class="addph">🖼 写真を<br>選ぶ<input type="file" accept="image/*" multiple onchange="addPhoto(${i},this)"></label>${camPhotoBtn(i)}</div>`;
 }
 function fieldsHTML(t,i){
   if(t.type==="exterior"){
@@ -4713,6 +4718,41 @@ function shrinkBlob(file,max){ return new Promise((res,rej)=>{ const u=URL.creat
     c.getContext("2d").drawImage(im,0,0,c.width,c.height); res({ blob:await canvasBlob(c,.88), w:c.width, h:c.height }); };
   im.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error("写真を読めませんでした")); }; im.src=u; }); }
 // 送れていない写真は iPhone の中（IndexedDB）に残し、ページを閉じても次に開いたときに送る
+/* =========================================================
+   元の写真をためて、まとめて写真アプリに保存する（iPad の「📷 撮る」・iPhone カメラで撮った写真）
+   アプリの中には軽い写真だけを入れる。元の写真はこの端末の中だけにため（共有には送らない）、
+   「写真アプリへ」で共有の画面を出して「○枚の画像を保存」を押すと写真アプリに入る。保存できたら消す
+   ========================================================= */
+const ORIG={
+  db:null, BATCH:20,
+  open(){ return this.db||(this.db=new Promise((res,rej)=>{ const r=indexedDB.open("gc_orig",1); r.onupgradeneeded=()=>r.result.createObjectStore("q",{keyPath:"id"}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); })); },
+  async run(mode,fn){ const db=await this.open(); return new Promise((res,rej)=>{ const tx=db.transaction("q",mode); const rq=fn(tx.objectStore("q")); tx.oncomplete=()=>res(rq&&rq.result); tx.onerror=()=>rej(tx.error); }); },
+  async add(blob,base){ try{ const d=new Date(), p=n=>String(n).padStart(2,"0"), at=Date.now();
+      const stamp=d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"_"+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds());
+      const name=(String(base||"現場調査").replace(/[\/:*?"<>|\s]+/g,"_")+"_"+stamp+"_"+String(at%1000).padStart(3,"0")+".jpg");
+      await this.run("readwrite",s=>s.put({id:"o"+at.toString(36)+Math.random().toString(36).slice(2,6),blob,name,at})); }catch(e){} },
+  count(){ return this.run("readonly",s=>s.count()).catch(()=>0); },
+  all(){ return this.run("readonly",s=>s.getAll()).catch(()=>[]); },
+  del(ids){ return this.run("readwrite",s=>{ ids.forEach(id=>s.delete(id)); }).catch(()=>{}); },
+  clear(){ return this.run("readwrite",s=>s.clear()).catch(()=>{}); },
+  /* 共有の画面を出す（ボタンを押した流れの中で呼ぶ）。保存できたら消す。戻り値：残りの枚数 */
+  async save(){
+    const items=(await this.all()).sort((a,b)=>a.at-b.at).slice(0,this.BATCH); if(!items.length) return 0;
+    const files=items.map(it=>new File([it.blob],it.name,{type:it.blob.type||"image/jpeg"}));
+    if(!navigator.canShare||!navigator.canShare({files})){
+      alert("この端末では、写真アプリにまとめて保存できません（共有の機能がありません）。iPadOS・iOS を新しくするとできます。"); return await this.count(); }
+    try{ await navigator.share({files}); }
+    catch(e){ if(e&&e.name==="AbortError") return await this.count(); alert("写真アプリに保存できませんでした："+(e&&e.message||e)); return await this.count(); }
+    if(confirm(files.length+"枚の写真を、写真アプリに保存できましたか？\n「OK」で、アプリにためておいた元の写真を消します。\n（「画像を保存」を押さなかったときは「キャンセル」）")) await this.del(items.map(it=>it.id));
+    return await this.count(); },
+};
+const origLabel=n=>"📥 元の写真を写真アプリへ（"+n+"枚）";
+async function origRefresh(){ const b=document.getElementById("origBtn"); if(!b) return; const n=await ORIG.count();
+  b.style.display=n?"":"none"; b.textContent=origLabel(n); b.title="カメラで撮った元の写真が、この端末に"+n+"枚たまっています。押すと写真アプリにまとめて保存できます（1回で"+ORIG.BATCH+"枚まで）"; }
+async function origSave(){ const left=await ORIG.save(); await origRefresh();
+  if(left) toast("まだ"+left+"枚あります。もう一度押すと続きを保存できます",4000); else toast("元の写真をアプリから片づけました"); }
+setTimeout(()=>{ if(!(typeof CAM_MODE!=="undefined"&&CAM_MODE)) origRefresh(); },1500);
+
 const CAMQ={
   db:null,
   open(){ return this.db||(this.db=new Promise((res,rej)=>{ const r=indexedDB.open("gc_camq",1); r.onupgradeneeded=()=>r.result.createObjectStore("q",{keyPath:"id"}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); })); },
@@ -4734,11 +4774,12 @@ async function camPhone(hostId){
   const flash=hEl("div",{class:"cflash"}), list=hEl("div",{class:"clist hidden"});
   const nextBtn=hEl("button",{type:"button",class:"cnext"},"＋ 次の番号");
   const posBtn=hEl("button",{type:"button",class:"cpos"},"📍 位置"), posInfo=hEl("span",{},"GPS …");
+  const origBtn=hEl("button",{type:"button",class:"cpos corig hidden"},"📥 0");
   const sleepStat=hEl("span",{}), sleepNote=hEl("span",{});
   const sleepEl=hEl("button",{type:"button",class:"csleep hidden"},hEl("b",{},"👆 タップで撮影に戻る"),sleepStat,sleepNote);
   const root=hEl("div",{id:"cph"},video,flash,
     hEl("div",{class:"ctop"},dot,stat),tgt,list,sleepEl,
-    hEl("div",{class:"cbot"},hEl("div",{class:"cposrow"},nextBtn,posBtn,posInfo),lens,hEl("div",{class:"crow"},thumb,shutter,stdBtn,std)));
+    hEl("div",{class:"cbot"},hEl("div",{class:"cposrow"},origBtn),hEl("div",{class:"cposrow"},nextBtn,posBtn,posInfo),lens,hEl("div",{class:"crow"},thumb,shutter,stdBtn,std)));
   document.body.append(root);
   let peer=null, conn=null, connecting=false, last=null, stream=null, devs=[], lastPong=0, hiddenAt=0;
   const pending=new Map();
@@ -4863,17 +4904,26 @@ async function camPhone(hostId){
     pending.set(it.id,{msg,el:addThumb(blob,"wait")});
   }
   if(pending.size){ if(conn&&conn.open) for(const [,it] of pending) send1(it); else setStat("まだ送れていない写真が"+pending.size+"枚あります。iPadにつながったら送ります","wait"); }
+  // 元の写真：iPhone の中にためて、「写真アプリへ」でまとめて保存
+  const origPaint=async()=>{ const n=await ORIG.count(); origBtn.textContent="📥 元の写真を写真アプリへ（"+n+"枚）"; origBtn.classList.toggle("hidden",!n); };
+  origBtn.onclick=async()=>{ const left=await ORIG.save(); await origPaint(); if(left) setStat("まだ"+left+"枚あります。もう一度押すと続きを保存できます","wait"); };
+  origPaint();
+  const itemName=()=>"現場調査_"+(last?(last.title?last.title+"_":"")+String(last.label||"").split(" ")[0]:"写真");
   shutter.onclick=async()=>{
     if(!video.videoWidth) return;
     flash.classList.remove("go"); void flash.offsetWidth; flash.classList.add("go");
     if(navigator.vibrate) try{ navigator.vibrate(30); }catch(e){}
-    const s=Math.min(1,2000/Math.max(video.videoWidth,video.videoHeight));
-    const c=document.createElement("canvas"); c.width=Math.round(video.videoWidth*s); c.height=Math.round(video.videoHeight*s);
-    c.getContext("2d").drawImage(video,0,0,c.width,c.height);
+    const full=document.createElement("canvas"); full.width=video.videoWidth; full.height=video.videoHeight;   // カメラの映像そのままの大きさ（元の写真）
+    full.getContext("2d").drawImage(video,0,0,full.width,full.height);
+    const s=Math.min(1,2000/Math.max(full.width,full.height));
+    const c=document.createElement("canvas"); c.width=Math.round(full.width*s); c.height=Math.round(full.height*s);
+    c.getContext("2d").drawImage(full,0,0,c.width,c.height);
     await send(await canvasBlob(c,.88),c.width,c.height);
+    canvasBlob(full,.92).then(b=>b&&ORIG.add(b,itemName())).then(origPaint);
   };
   stdBtn.onclick=()=>std.click();
   std.onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return;
+    ORIG.add(f,itemName()).then(origPaint);   // 標準カメラの元の写真（いちばん細かい）
     const ex=await exifInfo(f); const r=await shrinkBlob(f,2000);
     await send(r.blob,r.w,r.h,ex&&ex.lat!=null?{lat:ex.lat,lon:ex.lon,acc:ex.acc,ts:ex.time||Date.now(),src:"iphone"}:null); };
   // 画面を消さない（つながりを保つ）。そのうえで電池を節約する：
@@ -5155,7 +5205,7 @@ async function exportExcel(){
     var stCopy = Object.assign({}, state); stCopy.trees = [];
     for(var i=0;i<OT.length;i++){
       var t=OT[i]; var src=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
-      var cropped=[]; for(var pi=0; pi<src.length; pi++){ cropped.push(await cropCover(src[pi],250,330)); }
+      var cropped=[]; for(var pi=0; pi<src.length; pi++){ cropped.push(await cropCover(src[pi],650,858)); } // 枠（250×330）の約2.6倍の細かさで入れる（印刷してもぼやけない）
       stCopy.trees.push(Object.assign({}, t, {photos:cropped}));
     }
     var xmaps = [], oms = outMaps(OT);
