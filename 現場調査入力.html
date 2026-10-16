@@ -49,7 +49,22 @@
   .mapclear{ position:absolute; top:6px; right:6px; background:rgba(0,0,0,.55); color:#fff; border:none; border-radius:6px; padding:4px 8px; font-size:12px; }
   .mapimgwrap{ position:relative; display:inline-block; width:100%; line-height:0; }
   .mapimgwrap img{ width:100%; display:block; }
-  .mk{ position:absolute; transform:translate(-50%,-50%); min-width:24px; height:24px; padding:0 2px; border-radius:50%; touch-action:none; cursor:move;
+  .maptabs{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:2px 0 8px; }
+  .mtab{ border:1px solid var(--line); background:#fff; border-radius:9px; padding:7px 11px; font-size:14px; color:var(--ink); display:inline-flex; align-items:center; gap:6px; font-family:inherit; }
+  .mtab b{ display:inline-grid; place-items:center; min-width:22px; height:22px; border-radius:6px; background:#e8eee9; color:var(--accent); font-size:13px; }
+  .mtab small{ color:var(--sub); font-size:11.5px; }
+  .mtab.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .mtab.on b{ background:#fff; } .mtab.on small{ color:#dfe9e2; }
+  .mtab.add{ border-style:dashed; color:var(--accent); font-weight:700; }
+  .mtab.sm{ font-size:12.5px; padding:6px 9px; color:var(--sub); } .mtab.del{ color:#b3261e; }
+  .mtsp{ flex:1; }
+  .numsel{ display:inline-flex; align-items:center; gap:0; font-size:13px; color:var(--sub); margin-right:4px; }
+  .numsel button{ border:1px solid var(--line); background:#fff; padding:6px 10px; font-size:13px; margin-left:-1px; color:var(--ink); font-family:inherit; }
+  .numsel button:first-of-type{ border-radius:8px 0 0 8px; margin-left:6px; } .numsel button:last-of-type{ border-radius:0 8px 8px 0; }
+  .numsel button.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .mapcap{ position:absolute; left:8px; top:8px; z-index:3; font-size:13.5px; font-weight:700; color:var(--accent); background:rgba(255,255,255,.92); border:1px solid var(--line); border-radius:8px; padding:3px 9px; line-height:1.4; pointer-events:none; max-width:calc(100% - 16px); }
+  .zsel{ font-size:13px; padding:5px 6px; border:1px solid var(--line); border-radius:8px; background:#fff; max-width:150px; }
+  .mk{ position:absolute; transform:translate(-50%,-50%); min-width:24px; height:24px; padding:0 4px; border-radius:12px; touch-action:none; cursor:move;
        background:rgba(214,40,40,.9); color:#fff; font-weight:800; font-size:13px; line-height:24px; text-align:center;
        border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.45); cursor:pointer; }
   .maptools{ display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap; }
@@ -359,6 +374,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       <div><label>写真帳の見出し</label><input id="bookTitle" placeholder="写真帳" oninput="setBookTitle(this.value)"></div>
       <div class="maprow">
         <label>位置図 — 写真帳の1ページ目になります</label>
+        <div class="maptabs" id="maptabs" style="display:none"></div>
         <div class="mapbox" id="mapbox"></div>
         <div class="maptools" id="maptools" style="display:none">
           <span class="muted">空きをタップで番号カードを追加／番号をタップでその木へ移動／番号をドラッグで位置調整</span>
@@ -664,17 +680,19 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       });
     });
 
-    /* ===== 位置図（マーカーは独立オブジェクト＝Excelで移動/削除可） ===== */
-    if (imgs.map) {
+    /* ===== 位置図（マーカーは独立オブジェクト＝Excelで移動/削除可）。図面が何枚もあれば、区画ごとにシートを分ける ===== */
+    var mapList = imgs.maps || (imgs.map ? [{ sheet: "位置図", title: "", map: imgs.map, mapW: imgs.mapW, mapH: imgs.mapH, markers: imgs.markers }] : []);
+    mapList.forEach(function (mm) { mapSheet(mm); });
+    function mapSheet(mm) {
       /* 地図と番号はすべて A列の中に、位置を EMU で直接置く。
          列の幅の px は Excel・端末のフォントで変わり、ExcelJS は「何列目の何割」を列幅×10000 EMU で計算する
          （幅8の列なら本当は約58万 EMU なのに 8万 EMU）ので、列をまたいで置くと番号が最大1列分ずれていた */
       var EMU = 9525, R1 = 32, RH = 20; // 1行目 24pt＝32px、ほかの行 15pt＝20px（行の高さは pt なので端末によらず同じ）
-      var mp = wb.addWorksheet("位置図", { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1 } });
+      var mp = wb.addWorksheet(String(mm.sheet || "位置図").replace(/[\[\]:*?\/\\]/g, "").slice(0, 31), { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1 } });
       mp.getColumn(1).width = 150; // 地図（最大900px）より十分広く
-      mp.getCell("A1").value = "位置図　" + name; mp.getCell("A1").font = font(14, true);
+      mp.getCell("A1").value = "位置図　" + (mm.title ? mm.title + "　" : "") + name; mp.getCell("A1").font = font(14, true);
       var MW = 900, MH = 620, ox = 24, oy = R1 + 12, sz = 42;
-      if (imgs.mapW && imgs.mapH) { var fs = Math.min(900 / imgs.mapW, 620 / imgs.mapH); MW = Math.round(imgs.mapW * fs); MH = Math.round(imgs.mapH * fs); } // 縦横比を変えない（縮尺が狂わない）
+      if (mm.mapW && mm.mapH) { var fs = Math.min(900 / mm.mapW, 620 / mm.mapH); MW = Math.round(mm.mapW * fs); MH = Math.round(mm.mapH * fs); } // 縦横比を変えない（縮尺が狂わない）
       var nRows = Math.ceil((oy + MH + sz - R1) / RH) + 2;
       mp.getRow(1).height = 24; for (var gr = 2; gr <= nRows; gr++) mp.getRow(gr).height = 15;
       var at = function (x, y) {
@@ -682,9 +700,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
         var row = y < R1 ? 0 : 1 + Math.floor((y - R1) / RH), off = y < R1 ? y : (y - R1) - (row - 1) * RH;
         return { nativeCol: 0, nativeColOff: Math.round(x * EMU), nativeRow: row, nativeRowOff: Math.round(off * EMU) };
       };
-      var mid = wb.addImage({ base64: raw(imgs.map), extension: "jpeg" });
+      var mid = wb.addImage({ base64: raw(mm.map), extension: "jpeg" });
       mp.addImage(mid, { tl: at(ox, oy), ext: { width: MW, height: MH }, editAs: "oneCell" });
-      (imgs.markers || []).forEach(function (mk) {
+      (mm.markers || []).forEach(function (mk) {
         if (!mk || !mk.img) return;
         var cx = ox + mk.x * MW, cy = oy + mk.y * MH;
         var kid = wb.addImage({ base64: raw(mk.img), extension: "png" });
@@ -3051,7 +3069,7 @@ const UNITS=["㎡","m","箇所","本","式","㎥","t","台","枚","組"];
 function today(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
 /* HTML挿し込み用エスケープ（メモ等に " や < が入っても崩れないように） */
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", mapImage:"", mapGeo:null, mapSize:null, mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] };
+let state={ mode:"tree", bookTitle:"写真帳", caseName:"", caseDate:today(), place:"", maps:[], curMap:null, numMode:"seq", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] };
 let saveTimer=null;
 let undoStack=[], redoStack=[], lastKey=null, lastTime=0;
 function snapClone(){ return JSON.parse(JSON.stringify(state)); }
@@ -3141,7 +3159,7 @@ function markDirty(){ document.getElementById("saveState").textContent="保存�
   clearTimeout(saveTimer); saveTimer=setTimeout(save,500); }
 let caseId=null, casesIndex=[];
 function newId(){ return "c"+Date.now()+Math.floor(Math.random()*1000); }
-function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", mapImage:"", mapGeo:null, mapSize:null, mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] }; }
+function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", maps:[], curMap:null, numMode:(state&&state.numMode)||"seq", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] }; }
 function touchIndex(){ const meta={id:caseId,name:state.caseName||"(無題)",date:state.caseDate||"",updatedAt:Date.now(),n:(state.trees||[]).length}; const e=casesIndex.find(c=>c.id===caseId); if(e) Object.assign(e,meta); else casesIndex.unshift(meta); }
 async function save(){ try{ if(!caseId) caseId=newId(); touchIndex();
   await casePut(caseId, state, true); await idbSet("cases",casesIndex); await idbSet("current",caseId);
@@ -3286,11 +3304,75 @@ async function lightenPhotos(){
   const mb=x=>(x*3/4/1048576).toFixed(1);
   alert(n?("写真 "+n+"枚を軽くしました。\n写真の合計：約"+mb(before)+"MB → 約"+mb(after)+"MB"):"軽くできる写真はありませんでした（もう十分に軽いです）。"); }
 
+/* =========================================================
+   図面（区画）：広い敷地は図面を何枚にも分ける
+   state.maps = [ { id, name, image, geo, size, ref } … ]　いま開いている図面は state.curMap（id）
+     image：画像　geo：地理院・線画で作った範囲　size：画像の大きさ　ref：目印で合わせた対応点
+   木の番号の場所：t.zone（どの図面か・区画）＋ t.mx, t.my（その図面の左から何割・上から何割）
+     t.zoneManual＝区画を手で決めた（位置からの自動配置でほかの図面へ移さない）
+   番号の付け方：state.numMode = "seq"（通し 1,2,3…）｜"zone"（区画ごと A-1, A-2, B-1…）
+   ========================================================= */
+const ZONE_CH="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const newMid=()=>"m"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function maps(){ if(!Array.isArray(state.maps)) state.maps=[]; return state.maps; }
+function CM(){ const ms=maps(); return ms.find(m=>m.id===state.curMap)||ms[0]||null; }
+function mapById(id){ return id?maps().find(m=>m.id===id)||null:null; }
+function zoneCode(m){ const k=maps().indexOf(m); return k<0?"?":(ZONE_CH[k]||String(k+1)); }
+function mapTitle(m){ return (m&&m.name)||(maps().length>1?"区画"+zoneCode(m):"位置図"); }
+function zoneOf(t){ const ms=maps(); if(!ms.length||!t) return null; return mapById(t.zone)||(ms.length===1?ms[0]:null); }
+function onMap(t,m){ return !!m&&t.mx!=null&&t.my!=null&&zoneOf(t)===m; }
+function ensureMap(){ let m=CM(); if(!m){ m={id:newMid(),name:"",image:"",geo:null,size:null,ref:null}; maps().push(m); state.curMap=m.id; } return m; }
+const zoneMode=()=>state.numMode==="zone"&&maps().length>=2;
+/* 入力画面の番号（並びは state.trees の順） */
+function noLabels(){ if(!zoneMode()) return state.trees.map((t,i)=>String(i+1));
+  const cnt={}; return state.trees.map(t=>{ const m=zoneOf(t), c=m?zoneCode(m):"?"; cnt[c]=(cnt[c]||0)+1; return c+"-"+cnt[c]; }); }
+const noOfIdx=i=>noLabels()[i]||String(i+1);
+/* 古い案件（地図1枚：state.mapImage …）を図面の並びに移す */
+function normMaps(){ maps();
+  if(state.mapImage){ const m={id:newMid(),name:state.maps.length?"追加の図面":"",image:state.mapImage,geo:state.mapGeo||null,size:state.mapSize||null,ref:state.mapRef||null};
+    state.maps.push(m); if(state.maps.length===1) (state.trees||[]).forEach(t=>{ if(t.mx!=null&&!t.zone) t.zone=m.id; }); }
+  delete state.mapImage; delete state.mapGeo; delete state.mapSize; delete state.mapRef;
+  if(!state.maps.find(m=>m.id===state.curMap)) state.curMap=state.maps[0]?state.maps[0].id:null;
+  if(state.numMode!=="zone") state.numMode="seq"; }
+/* 図面のタブ（区画の切りかえ・追加・名前・削除・番号の付け方） */
+function renderMapTabs(){ const el=document.getElementById("maptabs"); if(!el) return; const ms=maps(), cur=CM();
+  if(!ms.length||(ms.length===1&&!ms[0].image)){ el.innerHTML=""; el.style.display="none"; return; }
+  el.style.display="flex";
+  let h="";
+  if(ms.length>=2){ h+=ms.map(m=>{ const n=state.trees.filter(t=>zoneOf(t)===m).length;
+      return `<button type="button" class="mtab${m===cur?" on":""}" onclick="selMap('${m.id}')"><b>${esc(zoneCode(m))}</b>${esc(mapTitle(m))}<small>${n}件</small></button>`; }).join(""); }
+  h+=`<button type="button" class="mtab add" onclick="addMap()">＋ 図面を追加${ms.length<2?"（敷地が広いとき区画に分ける）":""}</button>`;
+  if(ms.length>=2){ h+=`<span class="mtsp"></span><span class="numsel">番号：<button type="button" class="${!zoneMode()?"on":""}" onclick="setNumMode('seq')">通し</button><button type="button" class="${zoneMode()?"on":""}" onclick="setNumMode('zone')">区画ごと</button></span>`+
+    `<button type="button" class="mtab sm" onclick="renameMap()">✎ 名前</button><button type="button" class="mtab sm del" onclick="delMap()">この図面を削除</button>`; }
+  el.innerHTML=h; }
+function selMap(id){ if(!mapById(id)) return; state.curMap=id; renderMap(); }
+function addMap(){ pushUndo("addmap"); const ms=maps();
+  if(ms.length===1) state.trees.forEach(t=>{ if(!t.zone) t.zone=ms[0].id; }); // いままでの木は最初の図面（区画A）に
+  const m={id:newMid(),name:"",image:"",geo:null,size:null,ref:null}; ms.push(m); state.curMap=m.id;
+  markDirty(); renderTrees(); toast("区画"+zoneCode(m)+"の図面を追加しました。地図を作るか、図面の画像を選んでください",5000);
+  const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
+function renameMap(){ const m=CM(); if(!m) return; const v=prompt("この図面（区画"+zoneCode(m)+"）の名前（例：北側駐車場）",m.name||""); if(v===null) return;
+  pushUndo("mapname"); m.name=v.trim(); markDirty(); renderTrees(); }
+function delMap(){ const m=CM(); if(!m||maps().length<2) return;
+  const n=state.trees.filter(t=>zoneOf(t)===m).length;
+  if(!confirm("「"+zoneCode(m)+" "+mapTitle(m)+"」の図面を削除しますか？"+(n?"\nこの区画の"+n+"件は、区画なしになります（木のカード・写真は消えません）。":"")+"\n（「↶」で元に戻せます）")) return;
+  pushUndo("delmap"); const ms=maps(), k=ms.indexOf(m); ms.splice(k,1);
+  state.trees.forEach(t=>{ if(t.zone===m.id){ t.zone=null; t.zoneManual=false; t.mx=null; t.my=null; t.mauto=false; } });
+  state.curMap=(ms[Math.min(k,ms.length-1)]||{}).id||null; autoPlace(); markDirty(); renderTrees(); }
+function setNumMode(v){ if(state.numMode===v) return; pushUndo("nummode"); state.numMode=v==="zone"?"zone":"seq"; markDirty(); renderTrees();
+  const bk=document.getElementById("book"); if(bk&&bk.style.display!=="none") renderBook();
+  toast(v==="zone"?"番号を区画ごと（A-1, B-1 …）にしました":"番号を通し番号にしました"); }
+function setZone(i,id){ const t=state.trees[i]; if(!t) return; pushUndo("zone"+i);
+  const m=mapById(id); if(zoneOf(t)!==m){ t.mx=null; t.my=null; t.mauto=false; }
+  t.zone=m?m.id:null; t.zoneManual=!!m; autoPlace(); markDirty(); renderTrees(); }
+function zoneSelHTML(t,i){ const ms=maps(); if(ms.length<2) return ""; const z=zoneOf(t);
+  return `<select class="zsel" onchange="setZone(${i},this.value)" title="区画（図面）">${ms.map(m=>`<option value="${m.id}"${m===z?" selected":""}>${esc(zoneCode(m))} ${esc(mapTitle(m))}</option>`).join("")}<option value=""${z?"":" selected"}>区画なし</option></select>`; }
+
 /* 地図 */
 async function setMap(input){ if(!input.files[0]) return; await setMapUrl(await shrink(input.files[0],1800)); }
-async function setMapUrl(url){ pushUndo("map"); state.mapImage=url; state.mapRef=null;
-  state.mapGeo=null; state.mapSize=await imgSize(state.mapImage);
-  state.trees.forEach(t=>{ if(t.mauto){ t.mx=null; t.my=null; t.mauto=false; } }); autoPlace(); markDirty(); renderTrees(); }
+async function setMapUrl(url){ pushUndo("map"); const m=ensureMap(); m.image=url; m.ref=null;
+  m.geo=null; m.size=await imgSize(url);
+  state.trees.forEach(t=>{ if(t.mauto&&zoneOf(t)===m){ t.mx=null; t.my=null; t.mauto=false; } }); autoPlace(); markDirty(); renderTrees(); }
 /* ---- Googleマップのスクショから位置図（Googleの地図をアプリが取りに行くのではなく、人が撮ったスクショを使う） ---- */
 function gmMapsUrl(){
   const gs=state.trees.map(itemGeo).filter(Boolean);
@@ -3321,19 +3403,19 @@ async function gmDone(url){ // 切り取った地図に「地図データ ©Goog
 
 /* =========================================================
    目印で地図と合わせる：スクショの上の場所 ⇔ 地図（線画・地理院）の上の同じ場所 を2〜4組
-   state.mapRef = { pairs:[ { m:[メルカトルx,y], uv:[画像の左から何割, 上から何割] } … ] }
+   図面の ref = { pairs:[ { m:[メルカトルx,y], uv:[画像の左から何割, 上から何割] } … ] }
    ========================================================= */
 const REF_COL=["#E53935","#1E88E5","#F57C00","#8E24AA"], REF_N=4;
 let RF=null;
-function refOpen(){ if(!state.mapImage) return;
+function refOpen(){ const cm=CM(); if(!cm||!cm.image) return;
   const img=new Image(); img.onload=()=>{
-    const old=state.mapRef&&state.mapRef.pairs||[], iw=img.naturalWidth, ih=img.naturalHeight;
-    RF={ img, iw, ih, i:0, layer:gsiLastLayer(), pairs:Array.from({length:REF_N},(_,k)=>old[k]?{uv:[old[k].uv[0]*iw,old[k].uv[1]*ih],m:old[k].m.slice()}:{uv:null,m:null}),
+    const old=cm.ref&&cm.ref.pairs||[], iw=img.naturalWidth, ih=img.naturalHeight;
+    RF={ map:cm, img, iw, ih, i:0, layer:gsiLastLayer(), pairs:Array.from({length:REF_N},(_,k)=>old[k]?{uv:[old[k].uv[0]*iw,old[k].uv[1]*ih],m:old[k].m.slice()}:{uv:null,m:null}),
          A:{id:"refA",kind:"A",cx:0,cy:0,s:1}, B:{id:"refB",kind:"B",cx:0,cy:0,s:2**18} };
     RF.i=Math.max(0,RF.pairs.findIndex(p=>!p.uv||!p.m)); if(RF.i<0) RF.i=0;
     document.getElementById("refDlg").style.display="flex"; document.body.style.overflow="hidden";
     refResize(); refFitA(); refCenterB(); refUI(); refDraw();
-  }; img.src=state.mapImage; }
+  }; img.src=cm.image; }
 function refClose(){ document.getElementById("refDlg").style.display="none"; document.body.style.overflow=""; RF=null; }
 function refResize(){ if(!RF) return; const d=window.devicePixelRatio||1;
   for(const V of [RF.A,RF.B]){ const cv=document.getElementById(V.id); V.W=cv.clientWidth||300; V.H=cv.clientHeight||200; cv.width=Math.round(V.W*d); cv.height=Math.round(V.H*d); } refDraw(); }
@@ -3383,11 +3465,12 @@ function refPaint(V,r){
     x.fillStyle="rgba(255,255,255,.8)"; x.font="10px sans-serif"; x.textAlign="left"; x.textBaseline="bottom"; x.fillText(GSI[RF.layer].tag,4,H-3);
   }
   // 位置のある木（地図には実際の位置、スクショには合わせた結果の位置）
+  const RL=noLabels();
   state.trees.forEach((t,i)=>{ const g=itemGeo(t); if(!g) return; let w=merc(g.lat,g.lon);
     if(V.kind==="A"){ if(!r.f) return; w=r.f(w); }
     const p=sc(w[0],w[1]); if(p[0]<-20||p[1]<-20||p[0]>W+20||p[1]>H+20) return;
     x.beginPath(); x.arc(p[0],p[1],9,0,Math.PI*2); x.fillStyle="rgba(46,125,50,.85)"; x.fill(); x.lineWidth=2; x.strokeStyle="#fff"; x.stroke();
-    x.fillStyle="#fff"; x.font="bold 10px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(i+1),p[0],p[1]+0.5); });
+    x.fillStyle="#fff"; x.font="bold "+(RL[i].length>2?9:10)+"px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(RL[i],p[0],p[1]+0.5); });
   // 目印
   RF.pairs.forEach((pr,k)=>{ const w=V.kind==="A"?pr.uv:pr.m; if(!w) return; const p=sc(w[0],w[1]);
     if(k===RF.i){ x.beginPath(); x.arc(p[0],p[1],19,0,Math.PI*2); x.lineWidth=3; x.strokeStyle=REF_COL[k]; x.stroke(); }
@@ -3429,40 +3512,42 @@ function refBind(which){ const cv=document.getElementById(which==="A"?"refA":"re
 function refDel(){ if(!RF) return; RF.pairs[RF.i]={uv:null,m:null}; refUI(); refDraw(); }
 function refApply(){ if(!RF) return; const r=refFit(); if(r.n<2||r.spread<10) return;
   pushUndo("mapref");
-  state.mapRef={ pairs:RF.pairs.filter(p=>p.uv&&p.m).map(p=>({ m:[+p.m[0].toFixed(9),+p.m[1].toFixed(9)], uv:[+(p.uv[0]/RF.iw).toFixed(5),+(p.uv[1]/RF.ih).toFixed(5)] })) };
-  if(!state.mapSize) state.mapSize=[RF.iw,RF.ih];
+  const cm=RF.map; cm.ref={ pairs:RF.pairs.filter(p=>p.uv&&p.m).map(p=>({ m:[+p.m[0].toFixed(9),+p.m[1].toFixed(9)], uv:[+(p.uv[0]/RF.iw).toFixed(5),+(p.uv[1]/RF.ih).toFixed(5)] })) };
+  if(!cm.size) cm.size=[RF.iw,RF.ih];
   const res=autoPlace(); markDirty(); refClose(); renderTrees();
   toast("地図と合わせました。"+(res.n?"位置のある木"+res.n+"本の番号を置きました":"木の位置を測ると、番号が自動で置かれます")+(res.out?"（範囲の外："+res.out+"本）":""),6000);
   const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
 refBind("A"); refBind("B");
-function clearMap(){ pushUndo("map"); state.mapImage=""; state.mapGeo=null; state.mapSize=null; state.mapRef=null; markDirty(); renderMap(); }
+function clearMap(){ const m=CM(); if(!m) return; pushUndo("map"); m.image=""; m.geo=null; m.size=null; m.ref=null; markDirty(); renderMap(); }
 const MAP_CHOOSE=`<div class="mapchoose"><button type="button" class="mapbig" onclick="gmOpen()">🗺 Googleマップのスクショから作る<br><small style="font-weight:400">新しい航空写真</small></button><button type="button" class="mapbig" onclick="gsiOpen()">🛰 線画・地理院の地図から作る<br><small style="font-weight:400">範囲を決めるだけ・番号も自動</small></button><label class="mapbig">🖼 ほかの画像を選ぶ<input type="file" accept="image/*" onchange="setMap(this)" hidden></label></div>`;
 let activePlace=-1;
 function renderMap(){ const box=document.getElementById("mapbox"); const tools=document.getElementById("maptools");
-  if(state.mapImage){
-    const mks=state.trees.map((t,i)=>(t.mx!=null&&t.my!=null)?`<div class="mk${t.mauto?" auto":""}" data-i="${i}" title="${t.mauto?"位置から自動で置いた番号。":""}タップでその木のカードへ／ドラッグで移動" onpointerdown="mkDown(event,${i})" onclick="mkAbsorb(event)" style="left:${t.mx*100}%;top:${t.my*100}%;${mkColor(t)?"background:"+mkColor(t):""}">${i+1}</div>`:"").join("");
-    box.innerHTML = `<div class="mapimgwrap" onclick="mapClick(event)"><img src="${state.mapImage}" onload="mapLoaded(this)">${mks}</div>`;
+  renderMapTabs(); const cm=CM(), L=noLabels(), multi=maps().length>=2;
+  if(cm&&cm.image){
+    const mks=state.trees.map((t,i)=>onMap(t,cm)?`<div class="mk${t.mauto?" auto":""}" data-i="${i}" title="${t.mauto?"位置から自動で置いた番号。":""}タップでその木のカードへ／ドラッグで移動" onpointerdown="mkDown(event,${i})" onclick="mkAbsorb(event)" style="left:${t.mx*100}%;top:${t.my*100}%;${mkColor(t)?"background:"+mkColor(t):""}">${esc(L[i])}</div>`:"").join("");
+    box.innerHTML = (multi?`<div class="mapcap">${esc(zoneCode(cm))}　${esc(mapTitle(cm))}</div>`:"")+`<div class="mapimgwrap" onclick="mapClick(event)"><img src="${cm.image}" onload="mapLoaded(this)">${mks}</div>`;
     if(tools){ tools.style.display="flex"; const c=document.getElementById("mkcount");
-      const placed=state.trees.filter(t=>t.mx!=null).length;
-      if(c) c.textContent = activePlace>=0 ? ("No."+(activePlace+1)+"の位置をタップ") : ("配置 "+placed+"/"+state.trees.length);
-      const gb=document.getElementById("gsiBtn"); if(gb) gb.textContent=state.mapGeo?"🛰 範囲・地図を変える":"🛰 線画・地理院で作り直す";
-      const rb=document.getElementById("refBtn"); if(rb){ rb.style.display=state.mapGeo?"none":""; rb.textContent=state.mapRef?"📍 目印を直す":"📍 目印で地図と合わせる"; }
+      const here=state.trees.filter(t=>onMap(t,cm)).length, placed=state.trees.filter(t=>t.mx!=null).length;
+      if(c) c.textContent = activePlace>=0 ? ("No."+(L[activePlace]||activePlace+1)+"の位置をタップ") : (multi?"この図面 "+here+"件／配置 "+placed+"/"+state.trees.length:"配置 "+placed+"/"+state.trees.length);
+      const gb=document.getElementById("gsiBtn"); if(gb) gb.textContent=cm.geo?"🛰 範囲・地図を変える":"🛰 線画・地理院で作り直す";
+      const rb=document.getElementById("refBtn"); if(rb){ rb.style.display=cm.geo?"none":""; rb.textContent=cm.ref?"📍 目印を直す":"📍 目印で地図と合わせる"; }
       const hn=document.getElementById("mkhint"); if(hn){ const h=mapHint(); hn.textContent=h; hn.style.display=h?"block":"none"; } }
   } else {
-    box.innerHTML = MAP_CHOOSE;
+    box.innerHTML = (cm&&multi?`<div class="mapcap">${esc(zoneCode(cm))}　${esc(mapTitle(cm))}：この区画の図面を作ります</div>`:"")+MAP_CHOOSE;
     if(tools) tools.style.display="none";
     const hn=document.getElementById("mkhint"); if(hn) hn.style.display="none";
   }
 }
-function placeTarget(i){ if(state.trees[i].mx!=null){ pushUndo("pin"); state.trees[i].mx=null; state.trees[i].my=null; state.trees[i].mauto=false; if(activePlace===i) activePlace=-1; autoPlace(); markDirty(); renderTrees(); renderMap(); return; }
+function placeTarget(i){ const cm=CM(); if(state.trees[i].mx!=null&&(!cm||!cm.image||onMap(state.trees[i],cm))){ pushUndo("pin"); state.trees[i].mx=null; state.trees[i].my=null; state.trees[i].mauto=false; if(activePlace===i) activePlace=-1; autoPlace(); markDirty(); renderTrees(); renderMap(); return; }
   activePlace=(activePlace===i?-1:i); renderTrees(); renderMap();
   const mb=document.getElementById("mapbox"); if(activePlace>=0&&mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
 function mapClick(ev){ if(Date.now()-(window.__jd||0)<300) return;
   const wrap=ev.currentTarget; const img=wrap.querySelector("img"); if(!img) return;
   const r=img.getBoundingClientRect(); let x=(ev.clientX-r.left)/r.width, y=(ev.clientY-r.top)/r.height;
   if(x<0||x>1||y<0||y>1) return;
+  const cm=CM(); if(!cm) return;
   pushUndo("pin"); let idx=activePlace; if(idx<0){ addTree(false,true); idx=state.trees.length-1; }
-  state.trees[idx].mx=x; state.trees[idx].my=y; state.trees[idx].mauto=false; activePlace=-1; autoPlace(); markDirty(); renderTrees(); renderMap(); }
+  state.trees[idx].mx=x; state.trees[idx].my=y; state.trees[idx].mauto=false; state.trees[idx].zone=cm.id; state.trees[idx].zoneManual=true; activePlace=-1; autoPlace(); markDirty(); renderTrees(); renderMap(); }
 let dragIdx=-1, dragRect=null, dragStart=null, dragMoved=false;
 function mkAbsorb(ev){ ev.stopPropagation(); }
 function mkDown(ev,i){ ev.preventDefault(); ev.stopPropagation(); dragIdx=i; dragMoved=false; dragStart={x:ev.clientX,y:ev.clientY};
@@ -3476,7 +3561,7 @@ function mkMove(ev){ if(dragIdx<0||!dragRect) return;
   const el=document.querySelector('#mapbox .mk[data-i="'+dragIdx+'"]'); if(el){ el.style.left=(x*100)+"%"; el.style.top=(y*100)+"%"; } }
 function mkUp(){ if(dragIdx<0) return; const i=dragIdx, moved=dragMoved; window.__jd=Date.now(); dragIdx=-1; dragRect=null; dragStart=null; dragMoved=false;
   window.removeEventListener("pointermove",mkMove); window.removeEventListener("pointerup",mkUp);
-  if(moved){ if(state.trees[i]) state.trees[i].mauto=false; autoPlace(); markDirty(); renderTrees(); } else { scrollToTree(i); } }
+  if(moved){ if(state.trees[i]){ state.trees[i].mauto=false; state.trees[i].zoneManual=true; } autoPlace(); markDirty(); renderTrees(); } else { scrollToTree(i); } }
 /* マーカー番号をタップ→その入力カードへスクロール＋一瞬ハイライト */
 function scrollToTree(i){ const cards=document.querySelectorAll('#trees .tree'); const el=cards[i]; if(!el||!el.scrollIntoView) return;
   el.scrollIntoView({behavior:"smooth",block:"center"}); el.classList.add("flash"); setTimeout(function(){ el.classList.remove("flash"); },1400); }
@@ -3485,13 +3570,13 @@ function toMap(){ const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIn
 function updateToMap(){ const b=document.getElementById("toMapBtn"); if(!b) return;
   const inp=document.getElementById("input"); const onInput=inp&&inp.style.display!=="none";
   const mb=document.getElementById("mapbox"); let show=false;
-  if(onInput&&state.mapImage&&mb){ const r=mb.getBoundingClientRect(); if(r.bottom<80) show=true; }
+  if(onInput&&maps().some(m=>m.image)&&mb){ const r=mb.getBoundingClientRect(); if(r.bottom<80) show=true; }
   b.style.display=show?"block":"none"; }
 window.addEventListener("scroll",updateToMap,{passive:true});
-function clearMarkers(){ if(!state.trees.some(t=>t.mx!=null)) return; if(confirm("地図の番号配置を全て消去しますか？")){ pushUndo("clearpins"); state.trees.forEach(t=>{t.mx=null;t.my=null;}); activePlace=-1; markDirty(); renderTrees(); renderMap(); } }
+function clearMarkers(){ const cm=CM(); if(!state.trees.some(t=>onMap(t,cm))) return; if(confirm((maps().length>1?"この図面（区画"+zoneCode(cm)+"）の":"地図の")+"番号配置を全て消去しますか？")){ pushUndo("clearpins"); state.trees.forEach(t=>{ if(onMap(t,cm)){ t.mx=null; t.my=null; t.mauto=false; } }); activePlace=-1; markDirty(); renderTrees(); renderMap(); } }
 function markerPng(n,color){ const S=84, cv=document.createElement("canvas"); cv.width=S; cv.height=S; const x=cv.getContext("2d");
   x.beginPath(); x.arc(S/2,S/2,S/2-5,0,Math.PI*2); x.fillStyle=color||"rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=6; x.strokeStyle="#fff"; x.stroke();
-  x.fillStyle="#fff"; x.font="bold 44px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(n),S/2,S/2);
+  const lb=String(n); x.fillStyle="#fff"; x.font="bold "+[44,44,44,34,27,22][Math.min(5,lb.length)]+"px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(lb,S/2,S/2+1);
   return cv.toDataURL("image/png"); }
 
 /* =========================================================
@@ -3499,9 +3584,9 @@ function markerPng(n,color){ const S=84, cv=document.createElement("canvas"); cv
    t.pos  = 木（項目）の横で測った位置   { lat, lon, acc（m）, ts, src:'gps' }
    t.pgeo = 写真の撮影位置（最初に位置が取れた写真） { …, src:'exif'|'gps' }
    t.mauto = 番号を位置から自動で置いた（手で置いた・動かした番号は false）
-   state.mapGeo = 地理院タイルから作った位置図の範囲（メルカトル座標・ズーム0で 256 が世界一周）
+   図面の geo = 地理院タイルから作った位置図の範囲（メルカトル座標・ズーム0で 256 が世界一周）
                   { layer, x0, y0, w, h }　スクショの地図は null
-   state.mapSize = 地図の画像の大きさ [幅, 高さ]（px）
+   図面の size = 地図の画像の大きさ [幅, 高さ]（px）
    ========================================================= */
 const GEO_SRC={ exif:"写真の位置", gps:"端末の位置", pos:"その場で測定", iphone:"iPhoneの位置" };
 const accText=a=>a==null?"":a<1?"±"+Math.round(a*100)+"cm":"±"+Math.round(a)+"m";
@@ -3581,7 +3666,7 @@ function fitSimilarity(pairs){
   return z=>{ const zx=z[0]-zc[0], zy=z[1]-zc[1]; return [wc[0]+ar*zx-ai*zy, wc[1]+ai*zx+ar*zy]; };
 }
 /* 手で置いた番号のうち、位置もある木（スクショの地図の目印） */
-function mapAnchors(){ return state.trees.filter(t=>t.mx!=null&&t.my!=null&&!t.mauto&&itemGeo(t)); }
+function mapAnchors(m){ m=m||CM(); return state.trees.filter(t=>onMap(t,m)&&!t.mauto&&itemGeo(t)); }
 function anchorsSpread(an){ let mx=0; for(let a=0;a<an.length;a++) for(let b=a+1;b<an.length;b++) mx=Math.max(mx,geoDist(itemGeo(an[a]),itemGeo(an[b]))); return mx; }
 /* 回転（画面の向き：+ で時計回り） */
 const rotV=(v,a)=>{ if(!a) return [v[0],v[1]]; const c=Math.cos(a), s=Math.sin(a); return [c*v[0]-s*v[1], s*v[0]+c*v[1]]; };
@@ -3590,37 +3675,39 @@ function geoTransform(G){ const c=[G.x0+G.w/2,G.y0+G.h/2], a=+G.rot||0;
   return { fwd:p=>{ const d=rotV([p[0]-c[0],p[1]-c[1]],a); return [d[0]/G.w+0.5,d[1]/G.h+0.5]; },
            inv:uv=>{ const d=rotV([(uv[0]-0.5)*G.w,(uv[1]-0.5)*G.h],-a); return [c[0]+d[0],c[1]+d[1]]; } }; }
 /* 位置図の上の場所（0〜1）⇔ メルカトル。作れないときは null */
-function mapTransform(){
-  const G=state.mapGeo;
+function mapTransform(m){ m=m||CM(); if(!m||!m.image) return null;
+  const G=m.geo;
   if(G) return geoTransform(G);
-  const sz=state.mapSize; if(!state.mapImage||!sz) return null;
-  const R=state.mapRef&&state.mapRef.pairs; let pairs;
+  const sz=m.size; if(!sz) return null;
+  const R=m.ref&&m.ref.pairs; let pairs;
   if(R&&R.length>=2) pairs=R.map(p=>[p.m,[p.uv[0]*sz[0],p.uv[1]*sz[1]]]); // 目印で合わせた地図
-  else { const an=mapAnchors(); if(an.length<2||anchorsSpread(an)<4) return null; // 近すぎる2本では向き・縮尺が決まらない
+  else { const an=mapAnchors(m); if(an.length<2||anchorsSpread(an)<4) return null; // 近すぎる2本では向き・縮尺が決まらない
     pairs=an.map(t=>{ const g=itemGeo(t); return [merc(g.lat,g.lon),[t.mx*sz[0],t.my*sz[1]]]; }); }
   const f=fitSimilarity(pairs), b=fitSimilarity(pairs.map(p=>[p[1],p[0]])); if(!f||!b) return null;
   return { fwd:p=>{ const q=f(p); return [q[0]/sz[0],q[1]/sz[1]]; }, inv:uv=>b([uv[0]*sz[0],uv[1]*sz[1]]) };
 }
-/* 位置のある木の番号を地図に置く（手で置いた番号はそのまま） */
+/* 位置のある木の番号を地図に置く（手で置いた番号はそのまま）。図面が何枚もあるときは、その木が入る図面に置く
+   （区画を手で決めた木はその図面だけ。決めていない木は、いまの区画 → ほかの図面の順に探す） */
 function autoPlace(){
-  const T=mapTransform(); let n=0, out=0;
+  const ms=maps().filter(m=>m.image), Ts=new Map(ms.map(m=>[m,mapTransform(m)])); let n=0, out=0;
   for(const t of state.trees){
     if(t.mx!=null&&!t.mauto) continue;
-    const g=itemGeo(t);
-    if(!T||!g){ if(t.mauto){ t.mx=null; t.my=null; t.mauto=false; } continue; }
-    const uv=T.fwd(merc(g.lat,g.lon));
-    if(!(uv[0]>=-0.01&&uv[0]<=1.01&&uv[1]>=-0.01&&uv[1]<=1.01)){ if(t.mauto){ t.mx=null; t.my=null; t.mauto=false; } out++; continue; }
-    t.mx=Math.max(0,Math.min(1,uv[0])); t.my=Math.max(0,Math.min(1,uv[1])); t.mauto=true; n++;
+    const g=itemGeo(t), p=g?merc(g.lat,g.lon):null, z=mapById(t.zone);
+    const cand=t.zoneManual&&z?[z]:z?[z,...ms.filter(m=>m!==z)]:ms;
+    let hit=null, uv=null, tried=false;
+    if(p) for(const m of cand){ const T=Ts.get(m); if(!T) continue; tried=true; const q=T.fwd(p); if(q[0]>=-0.01&&q[0]<=1.01&&q[1]>=-0.01&&q[1]<=1.01){ hit=m; uv=q; break; } }
+    if(!hit){ if(t.mauto){ t.mx=null; t.my=null; t.mauto=false; } if(tried) out++; continue; }
+    t.zone=hit.id; t.mx=Math.max(0,Math.min(1,uv[0])); t.my=Math.max(0,Math.min(1,uv[1])); t.mauto=true; n++;
   }
   return {n,out};
 }
 /* 位置図の下の案内 */
 function mapHint(){
-  const withGeo=state.trees.filter(t=>itemGeo(t)).length; if(!state.mapImage) return "";
-  const auto=state.trees.filter(t=>t.mauto&&t.mx!=null).length;
-  if(state.mapGeo){ const miss=state.trees.filter(t=>t.mx==null).length;
+  const cm=CM(); const withGeo=state.trees.filter(t=>itemGeo(t)).length; if(!cm||!cm.image) return "";
+  const auto=state.trees.filter(t=>t.mauto&&onMap(t,cm)).length;
+  if(cm.geo){ const miss=state.trees.filter(t=>t.mx==null).length;
     return (auto?"位置から自動で置いた番号："+auto+"本（ずれていたらドラッグで直せます）":"位置のある木はまだありません")+(miss?"／位置のない"+miss+"本は、カードの📍を押してから地図をタップ":""); }
-  if(state.mapRef) return withGeo?"目印で地図と合わせ済み。位置から自動で置いた番号："+auto+"本（ずれていたらドラッグで直せます）":"目印で地図と合わせ済み。木の位置を測ると、番号が自動で置かれます";
+  if(cm.ref) return withGeo?"目印で地図と合わせ済み。位置から自動で置いた番号："+auto+"本（ずれていたらドラッグで直せます）":"目印で地図と合わせ済み。木の位置を測ると、番号が自動で置かれます";
   if(!withGeo) return "";
   if(mapTransform()) return "位置から自動で置いた番号："+auto+"本（手で置いた番号を目印に合わせています）";
   const an=mapAnchors();
@@ -3628,7 +3715,7 @@ function mapHint(){
   return "「📍 目印で地図と合わせる」で建物の角などを2か所合わせるか、位置のある木を"+(2-an.length)+"本手で置くと、残りは自動で置かれます";
 }
 function imgSize(src){ return new Promise(res=>{ const im=new Image(); im.onload=()=>res([im.naturalWidth,im.naturalHeight]); im.onerror=()=>res(null); im.src=src; }); }
-function mapLoaded(img){ if(!state.mapSize&&img&&img.naturalWidth){ state.mapSize=[img.naturalWidth,img.naturalHeight]; if(autoPlace().n){ markDirty(); renderTrees(); } } }
+function mapLoaded(img){ const cm=CM(); if(cm&&!cm.size&&img&&img.naturalWidth){ cm.size=[img.naturalWidth,img.naturalHeight]; if(autoPlace().n){ markDirty(); renderTrees(); } } }
 let toastTimer=null;
 function toast(msg,ms){ let el=document.getElementById("toast"); if(!el){ el=document.createElement("div"); el.id="toast"; el.className="toast"; document.body.appendChild(el); }
   el.textContent=msg; el.classList.add("on"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("on"),ms||3200); }
@@ -3655,7 +3742,7 @@ function tileGet(url){ let e=tileCache.get(url); if(e) return e;
   if(tileCache.size>600){ const k=tileCache.keys().next().value; tileCache.delete(k); }
   return e; }
 function gsiOpen(){
-  const G=state.mapGeo, fr=G&&G.frame&&FRAMES[G.frame]?G.frame:"wide";
+  const G=CM()&&CM().geo, fr=G&&G.frame&&FRAMES[G.frame]?G.frame:"wide";
   GV={ layer:G&&GSI[G.layer]?G.layer:gsiLastLayer(), frame:fr, cx:0, cy:0, z:17, rot:G&&+G.rot||0 };
   document.getElementById("gsiDlg").style.display="flex";
   document.body.style.overflow="hidden";
@@ -3697,11 +3784,19 @@ function gsiPaint(){
     if(e.ok) x.drawImage(e.img,sx,sy,ts+0.5,ts+0.5);
   }
   x.restore();
+  // ほかの図面（区画）の範囲
+  maps().forEach(m=>{ if(!m.geo||m===CM()) return; const T=geoTransform(m.geo);
+    const pts=[[0,0],[1,0],[1,1],[0,1]].map(uv=>{ const w=T.inv(uv), q=rotV([(w[0]-GV.cx)*S,(w[1]-GV.cy)*S],GV.rot||0); return [W/2+q[0],H/2+q[1]]; });
+    x.beginPath(); pts.forEach((p,k)=>k?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])); x.closePath(); x.fillStyle="rgba(30,136,229,.10)"; x.fill();
+    x.setLineDash([8,6]); x.lineWidth=2.5; x.strokeStyle="#1E88E5"; x.stroke(); x.setLineDash([]);
+    const c=pts.reduce((a,p)=>[a[0]+p[0]/4,a[1]+p[1]/4],[0,0]); x.font="bold 15px sans-serif"; x.textAlign="center"; x.textBaseline="middle";
+    const lb="区画"+zoneCode(m)+(m.name?" "+m.name:""), tw=x.measureText(lb).width; x.fillStyle="rgba(255,255,255,.88)"; x.fillRect(c[0]-tw/2-6,c[1]-11,tw+12,22); x.fillStyle="#1565C0"; x.fillText(lb,c[0],c[1]+0.5); });
   // 位置のある木
+  const GL=noLabels();
   state.trees.forEach((t,i)=>{ const g=itemGeo(t); if(!g) return; const p=merc(g.lat,g.lon), q=rotV([(p[0]-GV.cx)*S,(p[1]-GV.cy)*S],GV.rot||0), px=W/2+q[0], py=H/2+q[1];
     if(px<-20||py<-20||px>W+20||py>H+20) return;
     x.beginPath(); x.arc(px,py,11,0,Math.PI*2); x.fillStyle="rgba(214,40,40,.92)"; x.fill(); x.lineWidth=2; x.strokeStyle="#fff"; x.stroke();
-    x.fillStyle="#fff"; x.font="bold 12px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(i+1),px,py+0.5); });
+    x.fillStyle="#fff"; x.font="bold "+(GL[i].length>2?10:12)+"px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(GL[i],px,py+0.5); });
   // 枠（外を暗く）
   const f=gsiFrameRect(); x.fillStyle="rgba(0,0,0,.38)";
   x.fillRect(0,0,W,f.y); x.fillRect(0,f.y+f.h,W,H-f.y-f.h); x.fillRect(0,f.y,f.x,f.h); x.fillRect(f.x+f.w,f.y,W-f.x-f.w,f.h);
@@ -3823,15 +3918,15 @@ async function gsiMake(){
     const url=out.toDataURL("image/jpeg",0.86);
     // 手で置いた番号は、前の地図での場所 → 緯度・経度 → 新しい地図 に移す（移せないものは外す）
     const T=mapTransform(); let lost=0;
-    pushUndo("map");
+    pushUndo("map"); const cm=ensureMap();
     for(const t of state.trees){
-      if(t.mx==null) continue;
+      if(!onMap(t,cm)) continue;
       if(t.mauto){ t.mx=null; t.my=null; t.mauto=false; continue; }
       if(!T){ t.mx=null; t.my=null; lost++; continue; }
       const [u,v]=geoTransform(G).fwd(T.inv([t.mx,t.my]));
       if(u>=0&&u<=1&&v>=0&&v<=1){ t.mx=u; t.my=v; } else { t.mx=null; t.my=null; lost++; }
     }
-    state.mapImage=url; state.mapGeo=G; state.mapSize=[OW,OH]; state.mapRef=null;
+    cm.image=url; cm.geo=G; cm.size=[OW,OH]; cm.ref=null;
     const res=autoPlace(); markDirty(); gsiClose(); renderTrees();
     const noGeo=state.trees.filter(t=>t.mx==null&&!itemGeo(t)).length;
     toast(["位置図を作りました",res.n?"番号を"+res.n+"本置きました":"",res.out?"範囲の外："+res.out+"本":"",lost?"前の地図の番号"+lost+"本は置き直してください":"",noGeo?"位置のない"+noGeo+"本は手で置いてください":"",ng?"（取れなかった地図"+ng+"枚は白）":""].filter(Boolean).join("。"),6000);
@@ -3843,8 +3938,9 @@ window.addEventListener("resize",()=>{ if(GV) gsiResize(); });
 
 /* モデル */
 function addTree(scroll,noUndo){ if(scroll===undefined) scroll=true; if(!noUndo) pushUndo("add"); state.trees.push(state.mode==="exterior"?{type:"exterior",item:"",qty:"",unit:"",memo:"",photos:[]}:{type:"tree",species:"",h:"",c:"",work:"強剪定",memo:"",photos:[]});
+  if(maps().length>=2&&CM()) state.trees[state.trees.length-1].zone=CM().id; // 図面が分かれているときは、いま開いている区画に
   camOnAdd(state.trees[state.trees.length-1]); markDirty(); renderTrees(); if(scroll){ const el=document.querySelector("#trees .tree:last-child"); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"center"}); } }
-function delTree(i){ if(confirm((i+1)+"番を削除しますか？")){ pushUndo("del"); state.trees.splice(i,1); autoPlace(); markDirty(); renderTrees(); } }
+function delTree(i){ if(confirm(noOfIdx(i)+"番を削除しますか？")){ pushUndo("del"); state.trees.splice(i,1); autoPlace(); markDirty(); renderTrees(); } }
 function move(i,d){ const j=i+d; if(j<0||j>=state.trees.length) return; pushUndo("move"); [state.trees[i],state.trees[j]]=[state.trees[j],state.trees[i]]; markDirty(); renderTrees(); }
 async function addPhoto(i,input){ if(!input.files||!input.files.length) return; pushUndo("photo"+i);
   const t=state.trees[i]; t.photos=t.photos||[];
@@ -4141,7 +4237,7 @@ function parseVoice(i,txt){ const t=state.trees[i]; const z=txt.replace(/[０-�
   markDirty(); }
 
 /* 描画：入力 */
-function normalize(){ if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; }); }
+function normalize(){ normMaps(); if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; }); }
 function opts(list,val){ return list.map(x=>`<option ${x===val?"selected":""}>${x}</option>`).join(""); }
 function photosHTML(t,i){ const ph=(state.trees[i].photos)||[];
   const thumbs=ph.map((p,k)=>`<div class="thumb"><img src="${p}" onclick="editPhoto(${i},${k})"><button class="rm" onclick="delPhoto(${i},${k})">×</button><div class="thmove"><button onclick="movePhoto(${i},${k},-1)">◀</button><button onclick="editPhoto(${i},${k})">✎</button><button onclick="movePhoto(${i},${k},1)">▶</button></div></div>`).join("");
@@ -4185,16 +4281,17 @@ function renderTrees(){
   renderMap();
   const box=document.getElementById("trees");
   if(!state.trees.length){ box.innerHTML='<div class="empty">「＋ 木を追加」から1本ずつ登録します。</div>'; renderPrioBar(); camAfterRender(); return; }
-  box.innerHTML=state.trees.map(treeCardHTML).join("");
+  CARD_L=noLabels(); box.innerHTML=state.trees.map(treeCardHTML).join("");
   renderPrioBar();
   if(typeof updateToMap==="function") updateToMap();
   camAfterRender();
 }
+let CARD_L=[];
 function treeCardHTML(t,i){ return `
    <div class="tree">
-     <div class="top"><div class="no ${prioOf(t)?"p"+prioOf(t):""}">${i+1}</div><button class="iconbtn drag" onpointerdown="rowDown(event,${i})" title="ドラッグで並べ替え">⠿</button>
+     <div class="top"><div class="no ${prioOf(t)?"p"+prioOf(t):""}">${esc(CARD_L[i]||String(i+1))}</div><button class="iconbtn drag" onpointerdown="rowDown(event,${i})" title="ドラッグで並べ替え">⠿</button>
        <div class="typ"><button class="tbtn ${t.type!=='exterior'?'on':''}" onclick="setType(${i},'tree')">樹木</button><button class="tbtn ${t.type==='exterior'?'on':''}" onclick="setType(${i},'exterior')">外構</button></div>
-       <button class="iconbtn pin ${t.mx!=null?'set':''} ${activePlace===i?'act':''}" onclick="placeTarget(${i})">📍${t.mx!=null?'✓':''}</button>
+       <button class="iconbtn pin ${t.mx!=null?'set':''} ${activePlace===i?'act':''}" onclick="placeTarget(${i})">📍${t.mx!=null?'✓':''}</button>${zoneSelHTML(t,i)}
        <div class="sp"></div>
        <button class="iconbtn" onclick="move(${i},-1)">▲</button>
        <button class="iconbtn" onclick="move(${i},1)">▼</button>
@@ -4216,9 +4313,9 @@ function frameHTML(fr){ const t=fr.t, no=fr.no;
 function renderBook(){
   const body=document.getElementById("bookBody"); let html="";
   const OT=outTrees(); renderPrioBar();
-  if(state.mapImage){ const mks=OT.map(t=>(t.mx!=null&&t.my!=null)?`<div class="mk" style="left:${t.mx*100}%;top:${t.my*100}%;${mkColor(t)?"background:"+mkColor(t):""}">${t.__no}</div>`:"").join("");
-    html+=`<div class="page">${pageHead("位置図")}<div class="mapwrap"><div class="mapimgwrap" style="max-width:100%"><img src="${state.mapImage}">${mks}</div></div>${prioLegendHTML(OT)}</div>`; }
-  if(!state.trees.length && !state.mapImage){ body.innerHTML='<div class="empty">まだデータがありません。</div>'; return; }
+  for(const om of outMaps(OT)){ const mks=om.mks.map(([u,v,n,col])=>`<div class="mk" style="left:${u*100}%;top:${v*100}%;${col?"background:"+col:""}">${esc(n)}</div>`).join("");
+    html+=`<div class="page">${pageHead("位置図"+(om.title?"　"+om.title:""))}<div class="mapwrap"><div class="mapimgwrap" style="max-width:100%"><img src="${om.m.image}">${mks}</div></div>${prioLegendHTML(OT)}</div>`; }
+  if(!state.trees.length && !maps().some(m=>m.image)){ body.innerHTML='<div class="empty">まだデータがありません。</div>'; return; }
   if(state.trees.length&&!OT.length){ body.innerHTML='<div class="empty">出力に選んだ優先度の項目がありません。上の「出力」で選び直してください。</div>'; return; }
   let frames=[];
   OT.forEach(t=>{ const no=t.__no; const ph=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
@@ -4287,7 +4384,7 @@ function camId(){ let id=camLS("gc_camid"); if(!id){ id="genba-"+Math.random().t
 function camUrl(){ let u=location.origin+location.pathname+"?cam="+encodeURIComponent(CAM.id||camId()); const o=camLS("gc_peer"); if(o) u+="&ps="+encodeURIComponent(btoa(o)); return u; }
 const camOn=()=>CAM.conns.size>0;
 function itemCid(t){ if(!t.cid) t.cid="i"+Date.now().toString(36)+Math.random().toString(36).slice(2,6); return t.cid; }   // 並べ替えても変わらない目印
-function itemLabel(t,i){ return (i+1)+"番 "+(t.type==="exterior"?(t.item||"品名未入力"):(t.species||"樹種未入力")); }
+function itemLabel(t,i){ return noOfIdx(i)+"番 "+(t.type==="exterior"?(t.item||"品名未入力"):(t.species||"樹種未入力")); }
 function camItem(cid){ const i=cid?state.trees.findIndex(t=>t.cid===cid):-1; return i<0?null:{t:state.trees[i],i}; }
 function camFixTarget(){ if(CAM.target&&camItem(CAM.target)) return; const n=state.trees.length; CAM.target=n?itemCid(state.trees[n-1]):null; }   // 送り先が消えたら、いちばん下の番号へ
 
@@ -4300,7 +4397,7 @@ function camStart(){
   p.on("open",()=>{ CAM.status="ready"; camUI(); });
   p.on("connection",c=>{
     c.on("open",()=>{ c._last=Date.now(); CAM.conns.add(c); camUI(); camSync(); renderTrees(); camWake();
-      const x=camItem(CAM.target); toast("📱 iPhoneカメラがつながりました"+(x?"。次の写真は"+(x.i+1)+"番に入ります":""));
+      const x=camItem(CAM.target); toast("📱 iPhoneカメラがつながりました"+(x?"。次の写真は"+noOfIdx(x.i)+"番に入ります":""));
       if(CAM.closeOnJoin){ CAM.closeOnJoin=false; const d=document.getElementById("dlgCam"); setTimeout(()=>{ if(d.open) d.close(); },1200); } });   // 番号の「つなぐ」から開いたときは、つながったら閉じる
     c.on("data",d=>{
       c._last=Date.now();
@@ -4358,7 +4455,7 @@ async function camData(c,d){
     const x=camItem(d.item)||camItem(CAM.target), g=validGeo(d.geo,"iphone");
     if(!x||!g){ c.send({type:"posack",ok:false,msg:x?"位置が取れていません":"iPadで番号を追加してください"}); return; }
     pushUndo("geo"+x.i); x.t.pos=g; const r=autoPlace(); markDirty(); renderTrees();
-    toast("📱 "+(x.i+1)+"番の位置を記録しました（"+accText(g.acc)+"）"+(r.n?"。地図に番号を置きました":""));
+    toast("📱 "+noOfIdx(x.i)+"番の位置を記録しました（"+accText(g.acc)+"）"+(r.n?"。地図に番号を置きました":""));
     c.send({type:"posack",ok:true,label:itemLabel(x.t,x.i)+" の位置（"+accText(g.acc)+"）"}); return;
   }
   if(d.type!=="photo") return;
@@ -4650,7 +4747,7 @@ function toggleKabu(i){ const t=state.trees[i]; if(!t) return; pushUndo("kabu"+i
   markDirty(); refreshCard(i);
   if(t.kabu) npOpen(i,"s"+(numsOf(t.stems).length?t.stems.length:0)); else npClose(); }
 function npVal(t,f){ if(f[0]==="s") return (t.stems||[])[+f.slice(1)]||""; return t[f]||""; }
-function npLabel(t,i,f){ return (i+1)+"番　"+(f==="h"?"高さ (m)":f==="c"?"幹周 (cm)":"株立ち　幹"+(+f.slice(1)+1)+" の幹周 (cm)"); }
+function npLabel(t,i,f){ return noOfIdx(i)+"番　"+(f==="h"?"高さ (m)":f==="c"?"幹周 (cm)":"株立ち　幹"+(+f.slice(1)+1)+" の幹周 (cm)"); }
 function npOpen(i,f){
   const t=state.trees[i]; if(!t) return;
   if(f[0]==="s"){ t.stems=t.stems||[]; const k=+f.slice(1); if(k>=t.stems.length){ t.stems.push(""); refreshCard(i); } }
@@ -4726,9 +4823,20 @@ const anyPrio=()=>state.trees.some(t=>prioOf(t));
 function mkColor(t){ const p=prioOf(t); return p?PRIO_COLORS[p-1]:(anyPrio()?PRIO_NONE:""); }   // 位置図の番号の色（優先度を使っていなければ今までの赤）
 function outFilter(){ const f=state.outFilter||{}; return { p:Array.isArray(f.p)?f.p:[1,2,3,0], renum:f.renum!==false }; }
 function outTrees(){
-  const f=outFilter(), list=state.trees.map((t,i)=>({t,i})).filter(x=>f.p.includes(prioOf(x.t)));
-  return list.map((x,k)=>Object.assign({},x.t,{ __no:f.renum?k+1:x.i+1, __i:x.i }));
+  const f=outFilter(), zm=zoneMode(), L=noLabels(), ms=maps();
+  const list=state.trees.map((t,i)=>({t,i,z:zoneOf(t)})).filter(x=>f.p.includes(prioOf(x.t)));
+  if(zm){ const ord=m=>{ const k=ms.indexOf(m); return k<0?999:k; }; list.sort((a,b)=>ord(a.z)-ord(b.z)||a.i-b.i); } // 区画ごとの番号は区画の順に並べる
+  const cnt={};
+  return list.map((x,k)=>{ let no;
+    if(!zm) no=f.renum?k+1:x.i+1;
+    else if(f.renum){ const c=x.z?zoneCode(x.z):"?"; cnt[c]=(cnt[c]||0)+1; no=c+"-"+cnt[c]; }
+    else no=L[x.i];
+    return Object.assign({},x.t,{ __no:no, __i:x.i, __zid:x.z?x.z.id:null }); });
 }
+/* 出力する位置図：画像のある図面ごとに { m, title, mks:[[左,上,番号,色]…] } */
+function outMaps(OT){ const ms=maps(), multi=ms.length>=2;
+  return ms.filter(m=>m.image).map(m=>({ m, title:multi?"区画"+zoneCode(m)+(m.name?"　"+m.name:""):(m.name||""),
+    mks:OT.filter(t=>t.__zid===m.id&&t.mx!=null&&t.my!=null).map(t=>[t.mx,t.my,t.__no,mkColor(t)]) })); }
 const outAll=()=>outFilter().p.length===4;
 function outSuffix(){ if(outAll()) return ""; const n=prioNames(); return "_"+outFilter().p.slice().sort().map(p=>p?n[p-1]:"未設定").join(""); }
 function prioRowHTML(t,i){
@@ -4776,6 +4884,8 @@ const filled=x=>String(x==null?"":x).trim()!=="";
 function missingOf(t){ return (t.type==="exterior"?["item","qty","unit"]:["species","work","h","c"]).filter(k=>!filled(t[k])); }
 function mc(t,k){ return SHOW_MISS&&missingOf(t).includes(k)?" miss":""; }
 function checkBeforeExport(kind){
+  if(zoneMode()){ const nz=state.trees.filter(t=>!zoneOf(t)).length;
+    if(nz&&!confirm(kind+"に書き出す前の確認\n区画が決まっていない項目が"+nz+"件あります（番号が「?-1」のようになります）。\nカードの区画の欄で選べます。\n\nこのまま書き出しますか？")) return false; }
   const list=outTrees().map(t=>({ t, m:missingOf(t) })).filter(x=>x.m.length);
   if(!list.length){ if(SHOW_MISS){ SHOW_MISS=false; renderTrees(); } return true; }
   const lines=list.slice(0,15).map(x=>"・"+x.t.__no+"番："+x.m.map(k=>MISS_LABEL[k]).join("・"));
@@ -4866,12 +4976,13 @@ async function exportExcel(){
       var cropped=[]; for(var pi=0; pi<src.length; pi++){ cropped.push(await cropCover(src[pi],250,330)); }
       stCopy.trees.push(Object.assign({}, t, {photos:cropped}));
     }
-    var mapImg = state.mapImage || null;
-    var markers = [];
-    for(var mmi=0; mmi<OT.length; mmi++){ var tt=OT[mmi]; if(tt.mx!=null&&tt.my!=null) markers.push({x:tt.mx,y:tt.my,img:markerPng(tt.__no,mkColor(tt))}); }
-    var msz = mapImg ? (state.mapSize || await imgSize(mapImg)) : null;
-    if(mapImg && !/^data:image\/jpeg/.test(mapImg)) mapImg = await toJpeg(mapImg); // Excel には jpeg として入れる
-    var wb=window.buildTreeWorkbook(window.ExcelJS, stCopy, {map: mapImg, mapW: msz&&msz[0], mapH: msz&&msz[1], markers: markers});
+    var xmaps = [], oms = outMaps(OT);
+    for(var omi=0; omi<oms.length; omi++){ var om=oms[omi], mapImg=om.m.image;
+      var msz = om.m.size || await imgSize(mapImg);
+      if(!/^data:image\/jpeg/.test(mapImg)) mapImg = await toJpeg(mapImg); // Excel には jpeg として入れる
+      xmaps.push({ sheet: oms.length>1 ? "位置図"+zoneCode(om.m) : "位置図", title: om.title, map: mapImg, mapW: msz&&msz[0], mapH: msz&&msz[1],
+        markers: om.mks.map(function(k){ return {x:k[0], y:k[1], img:markerPng(k[2],k[3])}; }) }); }
+    var wb=window.buildTreeWorkbook(window.ExcelJS, stCopy, {maps: xmaps});
     var buf=await wb.xlsx.writeBuffer();
     var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
@@ -4932,17 +5043,17 @@ function pdfLayout(name,date){
     row(vals,false); });
 
   /* 2. 位置図：空きが足りなければ次のページ。番号は地図の同じ割合の位置に */
-  if(state.mapImage){
-    const sz=state.mapSize||[1800,1240], ar=sz[0]/sz[1];
+  for(const om of outMaps(trees)){
+    const sz=om.m.size||[1800,1240], ar=sz[0]/sz[1];
     newPage(ar>=1); // 横長の地図は横向きのページに
     let w=CW, h=w/ar; if(h>FULL-TH){ h=FULL-TH; w=h*ar; }
-    title("位置図");
-    const yy=y, ox=X0+(CW-w)/2, src=state.mapImage, mks=trees.map(t=>t.mx!=null&&t.my!=null?[t.mx,t.my,t.__no,mkColor(t)]:null).filter(Boolean);
+    title("位置図",om.title);
+    const yy=y, ox=X0+(CW-w)/2, src=om.m.image, mks=om.mks;
     add(async x=>{ const im=await loadImgEl(src); x.imageSmoothingQuality="high"; x.drawImage(im,ox,yy,w,h); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,yy,w,h);
       const d=Math.max(28,Math.min(46,w*0.032));
       for(const [u,v,n,col] of mks){ const cx=ox+u*w, cy=yy+v*h;
         x.beginPath(); x.arc(cx,cy,d/2,0,Math.PI*2); x.fillStyle=col||"rgba(214,40,40,.92)"; x.fill(); x.lineWidth=d*0.08; x.strokeStyle="#fff"; x.stroke();
-        const lb=String(n); x.fillStyle="#fff"; x.font=pfont(Math.round(d*(lb.length>2?0.42:0.55)),true); x.textAlign="center"; x.textBaseline="middle"; x.fillText(lb,cx,cy+1); }
+        const lb=String(n); x.fillStyle="#fff"; x.font=pfont(Math.round(d*[0.55,0.55,0.55,0.42,0.34,0.28][Math.min(5,lb.length)]),true); x.textAlign="center"; x.textBaseline="middle"; x.fillText(lb,cx,cy+1); }
       x.textAlign="left"; x.textBaseline="alphabetic"; });
     y+=h;
   }
@@ -5097,7 +5208,7 @@ async function exportPdf(){
   async function upload(id){
     const st=await caseGet(id); if(!st) return;
     const m=M(id), seq=m.seq, info=casesIndex.find(c=>c.id===id)||{};
-    if(!m.ver && !String(st.caseName||"").trim() && !(st.trees||[]).length && !st.mapImage){ m.dirty=false; await saveMeta(); return; }   // 空の案件は送らない
+    if(!m.ver && !String(st.caseName||"").trim() && !(st.trees||[]).length && !st.mapImage && !(st.maps||[]).some(m=>m&&m.image)){ m.dirty=false; await saveMeta(); return; }   // 空の案件は送らない
     const p=pack(st), hs=Object.keys(p.imgs);
     if(hs.length){
       const h=await post({mode:"have",hashes:hs}); if(!h.ok) throw new Error(notUpdated(h.error));
