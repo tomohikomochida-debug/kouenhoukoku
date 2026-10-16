@@ -37,6 +37,10 @@
   .typ .tbtn.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
   .iconbtn.pin.set{ color:#d62828; border-color:#d62828; }
   .iconbtn.pin.act{ background:#d62828; color:#fff; border-color:#d62828; }
+  .iconbtn.pin{ -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; touch-action:manipulation; }
+  .iconbtn.pin.hold{ background:#ffe3e3; transition:background .5s; }
+  @keyframes mkpulse{ 0%{ box-shadow:0 0 0 0 rgba(232,113,26,.95); } 100%{ box-shadow:0 0 0 24px rgba(232,113,26,0); } }
+  #mapbox .mk.flash{ animation:mkpulse .9s ease-out 3; outline:3px solid #E8711A; outline-offset:2px; z-index:6; }
   input,select,textarea{ font-size:16px; width:100%; padding:9px 10px; border:1px solid var(--line);
     border-radius:9px; background:#fff; color:var(--ink); }
   .row2{ display:flex; gap:8px; } .row2>div{ flex:1; }
@@ -3641,6 +3645,26 @@ function renderMap(){ const box=document.getElementById("mapbox"); const tools=d
     const hn=document.getElementById("mkhint"); if(hn) hn.style.display="none";
   }
 }
+/* カードの📍：置いてあればタップで地図のその番号へ飛ぶ（ドラッグで動かせる）。長押しで番号を外す。置いていなければ置く準備 */
+let pinTimer=null, pinStart=null, pinLongAt=0;
+function pinBtn(i){ if(Date.now()-pinLongAt<900) return; const t=state.trees[i]; if(!t) return;
+  if(t.mx!=null) jumpToPin(i); else placeTarget(i); }
+function jumpToPin(i){ const t=state.trees[i], z=zoneOf(t);
+  if(z&&z!==CM()){ state.curMap=z.id; cutMode=false; if(typeof cutCancel==="function") cutCancel(); renderMap(); }
+  const el=document.querySelector('#mapbox .mk[data-i="'+i+'"]');
+  if(!el){ toMap(); return; }
+  el.scrollIntoView({behavior:"smooth",block:"center"});
+  el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); setTimeout(()=>el.classList.remove("flash"),2800);
+  toast(noOfIdx(i)+"番：ドラッグで動かせます（番号をタップでカードへ戻る）",2600); }
+function pinPress(ev,i){ const t=state.trees[i]; if(!t||t.mx==null) return; pinStart={x:ev.clientX,y:ev.clientY}; const btn=ev.currentTarget; clearTimeout(pinTimer);
+  btn.classList.add("hold");
+  pinTimer=setTimeout(()=>{ pinTimer=null; btn.classList.remove("hold"); pinLongAt=Date.now(); if(navigator.vibrate) try{ navigator.vibrate(30); }catch(e){}
+    if(confirm(noOfIdx(i)+"番の、地図の番号を外しますか？\n（「↶」で元に戻せます）")) unpin(i); pinLongAt=Date.now(); },650); }
+function pinMove(ev){ if(pinTimer&&pinStart&&Math.hypot(ev.clientX-pinStart.x,ev.clientY-pinStart.y)>10) pinRelease(); }
+function pinRelease(){ if(pinTimer){ clearTimeout(pinTimer); pinTimer=null; } pinStart=null; document.querySelectorAll(".iconbtn.pin.hold").forEach(b=>b.classList.remove("hold")); }
+function unpin(i){ const t=state.trees[i]; if(!t) return; pushUndo("pin"); t.mx=null; t.my=null; t.mauto=false; if(activePlace===i) activePlace=-1;
+  autoPlace(); markDirty(); renderTrees();
+  toast(t.mx!=null?"位置（座標）のある木は自動で置き直されます。外したいときは「位置を消す」も押してください":noOfIdx(i)+"番の番号を外しました（↶で戻せます）",4500); }
 function placeTarget(i){ const cm=CM(); if(state.trees[i].mx!=null&&(!cm||!cm.image||onMap(state.trees[i],cm))){ pushUndo("pin"); state.trees[i].mx=null; state.trees[i].my=null; state.trees[i].mauto=false; if(activePlace===i) activePlace=-1; autoPlace(); markDirty(); renderTrees(); renderMap(); return; }
   activePlace=(activePlace===i?-1:i); renderTrees(); renderMap();
   const mb=document.getElementById("mapbox"); if(activePlace>=0&&mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
@@ -4407,7 +4431,7 @@ function treeCardHTML(t,i){ return `
    <div class="tree">
      <div class="top"><div class="no ${prioOf(t)?"p"+prioOf(t):""}">${esc(CARD_L[i]||String(i+1))}</div><button class="iconbtn drag" onpointerdown="rowDown(event,${i})" title="ドラッグで並べ替え">⠿</button>
        <div class="typ"><button class="tbtn ${t.type!=='exterior'?'on':''}" onclick="setType(${i},'tree')">樹木</button><button class="tbtn ${t.type==='exterior'?'on':''}" onclick="setType(${i},'exterior')">外構</button></div>
-       <button class="iconbtn pin ${t.mx!=null?'set':''} ${activePlace===i?'act':''}" onclick="placeTarget(${i})">📍${t.mx!=null?'✓':''}</button>${zoneSelHTML(t,i)}
+       <button class="iconbtn pin ${t.mx!=null?'set':''} ${activePlace===i?'act':''}" onclick="pinBtn(${i})" onpointerdown="pinPress(event,${i})" onpointermove="pinMove(event)" onpointerup="pinRelease()" onpointercancel="pinRelease()" onpointerleave="pinRelease()" oncontextmenu="return false" title="${t.mx!=null?"タップで地図のこの番号へ／長押しで番号を外す":"タップしてから地図をタップすると番号を置けます"}">📍${t.mx!=null?'✓':''}</button>${zoneSelHTML(t,i)}
        <div class="sp"></div>
        <button class="iconbtn" onclick="move(${i},-1)">▲</button>
        <button class="iconbtn" onclick="move(${i},1)">▼</button>
