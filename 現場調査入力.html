@@ -345,6 +345,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   .ochk{ display:inline-flex; align-items:center; gap:4px; font-size:13.5px; white-space:nowrap; }
   .ochk input{ width:18px; height:18px; margin:0; }
   .osep{ width:1px; height:20px; background:var(--line); margin:0 2px; }
+  .obreak{ flex-basis:100%; height:0; }
   .ocnt{ margin-left:auto; color:var(--sub); }
   .pleg{ display:flex; gap:12px; justify-content:center; font-size:13px; margin-top:6px; }
   .pleg i{ display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:4px; vertical-align:-1px; }
@@ -715,11 +716,14 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
          列の幅の px は Excel・端末のフォントで変わり、ExcelJS は「何列目の何割」を列幅×10000 EMU で計算する
          （幅8の列なら本当は約58万 EMU なのに 8万 EMU）ので、列をまたいで置くと番号が最大1列分ずれていた */
       var EMU = 9525, R1 = 32, RH = 20; // 1行目 24pt＝32px、ほかの行 15pt＝20px（行の高さは pt なので端末によらず同じ）
-      var mp = wb.addWorksheet(String(mm.sheet || "位置図").replace(/[\[\]:*?\/\\]/g, "").slice(0, 31), { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1 } });
-      mp.getColumn(1).width = 150; // 地図（最大900px）より十分広く
+      // 地図を置く枠（px）：A4 横 900×620。A3 は用紙いっぱいに大きく（Excel の「1ページに合わせる」は縮めるだけで広げないので、枠そのものを大きくする）
+      var portrait = mm.orient === "portrait", a3 = mm.paper === 8, BOX = a3 ? (portrait ? [1000, 1420] : [1450, 960]) : (portrait ? [620, 900] : [900, 620]), BW = BOX[0], BH = BOX[1];
+      var ps = { orientation: portrait ? "portrait" : "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1 }; if (mm.paper) ps.paperSize = mm.paper; // 8＝A3、9＝A4
+      var mp = wb.addWorksheet(String(mm.sheet || "位置図").replace(/[\[\]:*?\/\\]/g, "").slice(0, 31), { pageSetup: ps });
       mp.getCell("A1").value = "位置図　" + (mm.title ? mm.title + "　" : "") + name; mp.getCell("A1").font = font(14, true);
-      var MW = 900, MH = 620, ox = 24, oy = R1 + 12, sz = 42;
-      if (mm.mapW && mm.mapH) { var fs = Math.min(900 / mm.mapW, 620 / mm.mapH); MW = Math.round(mm.mapW * fs); MH = Math.round(mm.mapH * fs); } // 縦横比を変えない（縮尺が狂わない）
+      var MW = BW, MH = BH, ox = 24, oy = R1 + 12, sz = 42;
+      if (mm.mapW && mm.mapH) { var fs = Math.min(BW / mm.mapW, BH / mm.mapH); MW = Math.round(mm.mapW * fs); MH = Math.round(mm.mapH * fs); } // 縦横比を変えない（縮尺が狂わない）
+      mp.getColumn(1).width = (portrait || a3) ? Math.min(255, Math.ceil((MW + ox * 2) / 7) + 4) : 150; // 地図より十分広く（A3・縦の用紙は余白が出ないように地図に合わせる）
       var nRows = Math.ceil((oy + MH + sz - R1) / RH) + 2;
       mp.getRow(1).height = 24; for (var gr = 2; gr <= nRows; gr++) mp.getRow(gr).height = 15;
       var at = function (x, y) {
@@ -5157,8 +5161,13 @@ function outPanelHTML(){   // 出力する項目（写真帳・Excel・PDF）
   return `<div class="pbrow out"><b>出力</b>`+[1,2,3,0].map(k=>`<label class="ochk"><input type="checkbox" ${f.p.includes(k)?"checked":""} onchange="setOutPrio(${k},this.checked)">${k?esc(n[k-1]):"未設定"}</label>`).join("")+
     `<span class="osep"></span><label class="ochk"><input type="radio" name="${nm}" ${f.renum?"checked":""} onchange="setRenum(true)">選んだものだけで1から番号</label>`+
     `<label class="ochk"><input type="radio" name="${nm}" ${f.renum?"":"checked"} onchange="setRenum(false)">元の番号のまま</label>`+
-    `<span class="ocnt">${state.trees.length}件中 <b>${out}件</b> を出します</span></div>`;
+    `<span class="ocnt">${state.trees.length}件中 <b>${out}件</b> を出します</span>`+allPaperHTML()+`</div>`;
 }
+function allPaperHTML(){ const p=ovPlanNow(); if(!p) return ""; const v=state.allPaper||"auto";
+  const o=[["auto","自動"],["a4","A4"],["a3","A3"],["split","A3を2枚に分ける"]];
+  return `<span class="obreak"></span><label class="ochk">全体図の用紙 <select class="psel" onchange="setAllPaper(this.value)">${o.map(([k,t])=>`<option value="${k}" ${k===v?"selected":""}>${t}</option>`).join("")}</select></label>`+
+    `<span class="ocnt" style="margin-left:2px">${p.auto?"→ いまは ":"→ "}<b>${paperLabel(p)}</b>${p.crowd?"（丸の重なり "+p.crowd+"個）":""}</span>`; }
+function setAllPaper(v){ state.allPaper=v; markDirty(); renderPrioBar(); }
 function setOutPrio(k,on){ const f=outFilter(); let p=f.p.filter(x=>x!==k); if(on) p.push(k); state.outFilter={p,renum:f.renum}; markDirty(); renderPrioBar(); if(document.getElementById("book").style.display!=="none") renderBook(); }
 function setRenum(v){ const f=outFilter(); state.outFilter={p:f.p,renum:v}; markDirty(); renderPrioBar(); if(document.getElementById("book").style.display!=="none") renderBook(); }
 function setPrioSet(k){ pushUndo("prioset"); state.prioSet=k; window.surveyText.setPrio(k); markDirty(); renderTrees(); }
@@ -5277,9 +5286,20 @@ async function exportExcel(){
     var xmaps = [], oms = outMaps(OT);
     for(var omi=0; omi<oms.length; omi++){ var om=oms[omi], mapImg=om.m.image;
       var msz = om.m.size || await imgSize(mapImg);
+      var plan = isAll(om.m) ? ovPlan(om) : null;
+      if(plan && plan.split){ // 全体図を A3 2枚に：半分ずつのシートにする（番号はその半分の中の割合に直す）
+        for(var pk=0; pk<plan.parts.length; pk++){ var pt=plan.parts[pk], pw=pt.u1-pt.u0, ph=pt.v1-pt.v0;
+          var pimg = await cropPart(om.m.image, om.frames, pt);
+          xmaps.push({ sheet: "位置図_全体_"+pt.label.slice(0,1), title: om.title+"　"+pt.label+"（"+(pk+1)+"/2）", map: pimg, mapW: msz[0]*pw, mapH: msz[1]*ph,
+            paper: 8, orient: plan.land ? "landscape" : "portrait",
+            markers: om.mks.filter(function(k){ return k[0]>=pt.u0-0.005&&k[0]<=pt.u1+0.005&&k[1]>=pt.v0-0.005&&k[1]<=pt.v1+0.005; })
+              .map(function(k){ return {x:(k[0]-pt.u0)/pw, y:(k[1]-pt.v0)/ph, img:markerPng(k[2],k[3])}; }) }); }
+        continue;
+      }
       if(om.frames.length) mapImg = await bakeFrames(mapImg, om.frames); // 全体図は区画の枠を描き込む
       else if(!/^data:image\/jpeg/.test(mapImg)) mapImg = await toJpeg(mapImg); // Excel には jpeg として入れる
       xmaps.push({ sheet: isAll(om.m) ? "位置図_全体" : oms.length>1 ? "位置図"+zoneCode(om.m) : "位置図", title: om.title, map: mapImg, mapW: msz&&msz[0], mapH: msz&&msz[1],
+        paper: plan ? (plan.paper==="a3" ? 8 : 9) : undefined,
         markers: om.mks.map(function(k){ return {x:k[0], y:k[1], img:markerPng(k[2],k[3])}; }) }); }
     var wb=window.buildTreeWorkbook(window.ExcelJS, stCopy, {maps: xmaps});
     var buf=await wb.xlsx.writeBuffer();
@@ -5294,11 +5314,67 @@ async function exportExcel(){
 /* =========================================================
    PDF 書き出し：調査マスター → 位置図 → 写真帳 を1つの PDF に
    iPhone の印刷（window.print）は白紙になることがあるので使わない。
-   ページ（A4 縦・150dpi）を画像に描き、その画像を並べた PDF を端末の上で作る。
+   ページ（A4 縦・150dpi。全体図は込み合っていれば A3／A3 2枚）を画像に描き、その画像を並べた PDF を端末の上で作る。
    シート（調査マスター・位置図・写真帳）ごとに新しいページから始める。シートの中は空きがあれば続けて詰め、白紙のページは作らない。
    位置図の番号は、アプリと同じ「地図の左から何割・上から何割」で描く（ずれない）
    ========================================================= */
 const PDF_DPI=150, PDF_W=1240, PDF_H=1754, PDF_M=64;
+const PAPER={ a4:[1240,1754], a3:[1754,2480] }; // 150dpi の [幅, 高さ]（縦向き）
+/* ===== 全体図の用紙：A4 → A3 → A3を2枚に分ける =====
+   state.allPaper："auto"（番号の丸の重なりで決める）／"a4"／"a3"／"split"
+   2枚に分けるときは長い方向で半分に（横長＝左右、縦長＝上下）。継ぎ目は両方のページに少し重ねて入れる */
+const OV_OVL=0.03, MAP_TH=58;
+const mkDia=w=>Math.max(28,Math.min(46,w*0.032));       // PDF の番号の丸の大きさ（地図の幅に合わせる）
+function mapBox(paper,land){ const P=PAPER[paper]||PAPER.a4, W=land?P[1]:P[0], H=land?P[0]:P[1]; return [W-PDF_M*2, H-PDF_M-28-(PDF_M+64)-MAP_TH]; }
+function fitIn(ar,box){ let w=box[0], h=w/ar; if(h>box[1]){ h=box[1]; w=h*ar; } return [w,h]; }
+function splitParts(ar){ const a=0.5+OV_OVL, b=0.5-OV_OVL;
+  return ar>=1 ? [{u0:0,u1:a,v0:0,v1:1,label:"左半分",k:0,lr:true},{u0:b,u1:1,v0:0,v1:1,label:"右半分",k:1,lr:true}]
+               : [{u0:0,u1:1,v0:0,v1:a,label:"上半分",k:0,lr:false},{u0:0,u1:1,v0:b,v1:1,label:"下半分",k:1,lr:false}]; }
+/* 丸が他の丸と重なる番号の数（W×H は印刷される地図全体の大きさ） */
+function mkCrowd(mks,W,H,d){ const lim=(d*0.8)**2, P=mks.map(k=>[k[0]*W,k[1]*H]); let n=0;
+  for(let i=0;i<P.length;i++) for(let j=0;j<P.length;j++){ if(i===j) continue; const dx=P[i][0]-P[j][0], dy=P[i][1]-P[j][1]; if(dx*dx+dy*dy<lim){ n++; break; } }
+  return n; }
+function ovLayouts(ar){ const L=[];
+  for(const paper of ["a4","a3"]){ const land=ar>=1, [w,h]=fitIn(ar,mapBox(paper,land)); L.push({mode:paper,paper,land,split:false,size:[w,h],W:w,H:h}); }
+  const parts=splitParts(ar), pa=ar*(parts[0].u1-parts[0].u0)/(parts[0].v1-parts[0].v0);
+  const fl=[false,true].map(land=>({land,sz:fitIn(pa,mapBox("a3",land))})).sort((a,b)=>b.sz[0]-a.sz[0])[0];
+  L.push({mode:"split",paper:"a3",land:fl.land,split:true,parts,size:fl.sz,W:fl.sz[0]/(parts[0].u1-parts[0].u0),H:fl.sz[1]/(parts[0].v1-parts[0].v0)});
+  return L; }
+function ovPlan(om){ const sz=om.m.size||[1800,1240], ar=sz[0]/sz[1], L=ovLayouts(ar), mode=state.allPaper||"auto";
+  L.forEach(l=>{ l.crowd=mkCrowd(om.mks,l.W,l.H,mkDia(l.W)); });
+  if(mode!=="auto"){ const l=L.find(l=>l.mode===mode); if(l) return Object.assign({auto:false},l); }
+  const ok=Math.max(2,Math.round(om.mks.length*0.05)); // 重なりがこれ以下なら、その用紙で足りる
+  return Object.assign({auto:true},L.find(l=>l.crowd<=ok)||L[2]); }
+const paperLabel=p=>p.split?"A3を2枚に分ける（"+(p.parts[0].lr?"左右":"上下")+"）":p.paper==="a3"?"A3":"A4";
+function ovPlanNow(){ const ov=overview(); if(!ov||!ov.image) return null; const om=outMaps(outTrees()).find(o=>isAll(o.m)); return om?ovPlan(om):null; }
+/* PDF・Excel 共通：番号の丸 */
+function drawMk(x,cx,cy,d,n,col){
+  x.beginPath(); x.arc(cx,cy,d/2,0,Math.PI*2); x.fillStyle=col||"rgba(214,40,40,.92)"; x.fill(); x.lineWidth=d*0.08; x.strokeStyle="#fff"; x.stroke();
+  const lb=String(n); x.fillStyle="#fff"; x.font=pfont(Math.round(d*[0.55,0.55,0.55,0.42,0.34,0.28][Math.min(5,lb.length)]),true); x.textAlign="center"; x.textBaseline="middle"; x.fillText(lb,cx,cy+1);
+  x.textAlign="left"; x.textBaseline="alphabetic"; }
+/* 分けた図の継ぎ目（点線と「続く」の札）。fx,fy,FW,FH は地図全体を置いたときの位置と大きさ */
+function drawSeam(x,pt,fx,fy,FW,FH,ox,oy,w,h,U){
+  const fs=Math.round(12*U), other=pt.lr?(pt.k?"左":"右"):(pt.k?"上":"下");
+  const txt=(pt.lr?(pt.k?"◀ ":""):(pt.k?"▲ ":""))+other+"のページへ続く"+(pt.lr?(pt.k?"":" ▶"):(pt.k?"":" ▼"));
+  x.save(); x.setLineDash([14*U,9*U]); x.lineWidth=2.5*U; x.strokeStyle="rgba(33,74,55,.9)"; x.beginPath();
+  if(pt.lr){ const sx=fx+0.5*FW; x.moveTo(sx,oy); x.lineTo(sx,oy+h); } else { const sy=fy+0.5*FH; x.moveTo(ox,sy); x.lineTo(ox+w,sy); }
+  x.stroke(); x.setLineDash([]);
+  x.font=pfont(fs,true); const tw=x.measureText(txt).width+fs, th=fs*1.7;
+  let bx, by; if(pt.lr){ bx=pt.k?ox+8*U:ox+w-tw-8*U; by=oy+8*U; } else { bx=ox+w-tw-8*U; by=pt.k?oy+8*U:oy+h-th-8*U; }
+  x.fillStyle="rgba(33,74,55,.92)"; x.fillRect(bx,by,tw,th); x.fillStyle="#fff"; x.textBaseline="middle"; x.fillText(txt,bx+fs/2,by+th/2+1); x.textBaseline="alphabetic";
+  x.restore(); }
+/* 分けた図の小さな案内（どちらの半分か） */
+function drawKey(x,pt,rx,ry,kw,kh){ x.save(); x.strokeStyle="#214A37"; x.lineWidth=2; x.fillStyle="#fff"; x.fillRect(rx,ry,kw,kh); x.strokeRect(rx,ry,kw,kh);
+  x.fillStyle="rgba(33,74,55,.75)"; if(pt.lr) x.fillRect(rx+(pt.k?kw/2:0),ry,kw/2,kh); else x.fillRect(rx,ry+(pt.k?kh/2:0),kw,kh/2);
+  x.beginPath(); if(pt.lr){ x.moveTo(rx+kw/2,ry); x.lineTo(rx+kw/2,ry+kh); } else { x.moveTo(rx,ry+kh/2); x.lineTo(rx+kw,ry+kh/2); } x.stroke(); x.restore(); }
+/* Excel 用：分けた半分の画像（区画の枠と継ぎ目を描き込む） */
+async function cropPart(src,frs,pt){ const im=await loadImgEl(src), nw=im.naturalWidth, nh=im.naturalHeight;
+  const c=document.createElement("canvas"); c.width=Math.round(nw*(pt.u1-pt.u0)); c.height=Math.round(nh*(pt.v1-pt.v0));
+  const x=c.getContext("2d"), U=Math.max(c.width,c.height)/900, fx=-pt.u0*nw, fy=-pt.v0*nh;
+  x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(im,fx,fy,nw,nh);
+  if(frs.length) drawFrames(x,frs,fx,fy,nw,nh,U);
+  drawSeam(x,pt,fx,fy,nw,nh,0,0,c.width,c.height,U);
+  return c.toDataURL("image/jpeg",0.9); }
 const PDF_FONT='"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,sans-serif';
 function loadImgEl(src){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error("画像を読めませんでした")); im.src=src; }); }
 async function toJpeg(src){ const im=await loadImgEl(src), c=document.createElement("canvas"); c.width=im.naturalWidth; c.height=im.naturalHeight;
@@ -5316,10 +5392,10 @@ function pdfLayout(name,date){
   const X0=PDF_M, TOP=PDF_M+64; let CW, BOT, FULL;
   const pages=[]; let y=TOP;
   const add=fn=>pages[pages.length-1].steps.push(fn);
-  const newPage=land=>{ const [W,H]=land?[PDF_H,PDF_W]:[PDF_W,PDF_H]; pages.push({land:!!land,steps:[]}); CW=W-PDF_M*2; BOT=H-PDF_M-28; FULL=BOT-TOP; y=TOP; };
+  const newPage=(land,paper)=>{ const P=PAPER[paper]||PAPER.a4, [W,H]=land?[P[1],P[0]]:[P[0],P[1]]; pages.push({land:!!land,W,H,steps:[]}); CW=W-PDF_M*2; BOT=H-PDF_M-28; FULL=BOT-TOP; y=TOP; };
   newPage(false);
   const room=()=>BOT-y;
-  const TH=58; // 見出しの高さ
+  const TH=MAP_TH; // 見出しの高さ
   const title=(t,sub)=>{ const yy=y; add(x=>{ x.fillStyle="#214A37"; x.fillRect(X0,yy+6,8,34); x.fillStyle="#000"; x.font=pfont(30,true); x.textAlign="left"; x.fillText(t,X0+20,yy+34); const tw=x.measureText(t).width;
       if(sub){ x.font=pfont(19); x.fillStyle="#555"; x.fillText(sub,X0+20+tw+18,yy+34); x.fillStyle="#000"; } }); y+=TH; };
 
@@ -5327,8 +5403,8 @@ function pdfLayout(name,date){
   const trees=outTrees(), heads=["番号","区分","品名","仕様","数量","単位","摘要"], ws=[6,8,22,22,7,7,16], sum=ws.reduce((a,b)=>a+b,0);
   const cw=ws.map(w=>w/sum*CW), center=[true,true,false,false,true,true,false], FS=21, LH=30, PAD=10;
   const rowH=(vals,head)=>{ mx.font=pfont(FS,head); return Math.max(1,...vals.map((v,k)=>pdfWrap(mx,v,cw[k]-PAD*2).length))*LH+PAD*2-6; };
-  const row=(vals,head)=>{ const yy=y, h=rowH(vals,head); add(x=>{ x.font=pfont(FS,head); let cx=X0;
-      if(head){ x.fillStyle="#8c8c8c"; x.fillRect(X0,yy,CW,h); }
+  const row=(vals,head)=>{ const yy=y, h=rowH(vals,head), RW=CW; add(x=>{ x.font=pfont(FS,head); let cx=X0;
+      if(head){ x.fillStyle="#8c8c8c"; x.fillRect(X0,yy,RW,h); }
       vals.forEach((v,k)=>{ x.strokeStyle="#bbb"; x.lineWidth=1.5; x.strokeRect(cx,yy,cw[k],h); x.fillStyle=head?"#fff":"#000";
         const c=center[k]||head; x.textAlign=c?"center":"left";
         pdfWrap(x,v,cw[k]-PAD*2).forEach((ln,li)=>x.fillText(ln,c?cx+cw[k]/2:cx+PAD,yy+PAD+FS+li*LH-2)); cx+=cw[k]; });
@@ -5341,20 +5417,37 @@ function pdfLayout(name,date){
     if(rowH(vals,false)>room()){ newPage(); row(heads,true); }
     row(vals,false); });
 
-  /* 2. 位置図：空きが足りなければ次のページ。番号は地図の同じ割合の位置に */
+  /* 2. 位置図：空きが足りなければ次のページ。番号は地図の同じ割合の位置に
+     全体図は、番号の丸が重なるほど込み合っていれば A3、それでも足りなければ A3 を2枚に分ける（出力の「全体図の用紙」で変えられる） */
   for(const om of outMaps(trees)){
-    const sz=om.m.size||[1800,1240], ar=sz[0]/sz[1];
-    newPage(ar>=1); // 横長の地図は横向きのページに
+    const sz=om.m.size||[1800,1240], ar=sz[0]/sz[1], src=om.m.image, mks=om.mks, frs=om.frames;
+    const plan=isAll(om.m)?ovPlan(om):null;
+    if(plan&&plan.split){
+      for(const pt of plan.parts){
+        newPage(plan.land,"a3");
+        title("位置図",om.title+"　"+pt.label+"（"+(pt.k+1)+"/2）・A3");
+        const [w,h]=plan.size, yy=y, ox=X0+(CW-w)/2, FW=w/(pt.u1-pt.u0), FH=h/(pt.v1-pt.v0), fx=ox-pt.u0*FW, fy=yy-pt.v0*FH, d=mkDia(FW), U=Math.min(2.6,FW/900);
+        { const [kw,kh]=fitIn(ar,[90,40]), ky=yy-TH+6+(40-kh)/2, kx=X0+CW-kw; add(x=>drawKey(x,pt,kx,ky,kw,kh)); } // 右上に「どちらの半分か」（CW は後のページで変わるので先に決める）
+        add(async x=>{ const im=await loadImgEl(src), nw=im.naturalWidth, nh=im.naturalHeight; x.imageSmoothingQuality="high";
+          x.drawImage(im,pt.u0*nw,pt.v0*nh,(pt.u1-pt.u0)*nw,(pt.v1-pt.v0)*nh,ox,yy,w,h);
+          x.save(); x.beginPath(); x.rect(ox,yy,w,h); x.clip();
+          if(frs.length) drawFrames(x,frs,fx,fy,FW,FH,U);
+          for(const [u,v,n,col] of mks){ const cx=fx+u*FW, cy=fy+v*FH; if(cx<ox-d||cx>ox+w+d||cy<yy-d||cy>yy+h+d) continue; drawMk(x,cx,cy,d,n,col); }
+          drawSeam(x,pt,fx,fy,FW,FH,ox,yy,w,h,U);
+          x.restore(); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,yy,w,h); });
+        y+=h;
+      }
+      continue;
+    }
+    const paper=plan?plan.paper:"a4";
+    newPage(ar>=1,paper); // 横長の地図は横向きのページに
     let w=CW, h=w/ar; if(h>FULL-TH){ h=FULL-TH; w=h*ar; }
-    title("位置図",om.title);
-    const yy=y, ox=X0+(CW-w)/2, src=om.m.image, mks=om.mks, frs=om.frames;
+    title("位置図",om.title+(paper==="a3"?"・A3":""));
+    const yy=y, ox=X0+(CW-w)/2;
     add(async x=>{ const im=await loadImgEl(src); x.imageSmoothingQuality="high"; x.drawImage(im,ox,yy,w,h); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,yy,w,h);
-      if(frs.length) drawFrames(x,frs,ox,yy,w,h,w/900);
-      const d=Math.max(28,Math.min(46,w*0.032));
-      for(const [u,v,n,col] of mks){ const cx=ox+u*w, cy=yy+v*h;
-        x.beginPath(); x.arc(cx,cy,d/2,0,Math.PI*2); x.fillStyle=col||"rgba(214,40,40,.92)"; x.fill(); x.lineWidth=d*0.08; x.strokeStyle="#fff"; x.stroke();
-        const lb=String(n); x.fillStyle="#fff"; x.font=pfont(Math.round(d*[0.55,0.55,0.55,0.42,0.34,0.28][Math.min(5,lb.length)]),true); x.textAlign="center"; x.textBaseline="middle"; x.fillText(lb,cx,cy+1); }
-      x.textAlign="left"; x.textBaseline="alphabetic"; });
+      if(frs.length) drawFrames(x,frs,ox,yy,w,h,Math.min(2.6,w/900));
+      const d=mkDia(w);
+      for(const [u,v,n,col] of mks) drawMk(x,ox+u*w,yy+v*h,d,n,col); });
     y+=h;
   }
 
@@ -5386,7 +5479,7 @@ function pdfLayout(name,date){
 }
 /* 1ページを描いて JPEG に（キャンバスは1枚を使い回す） */
 async function pdfRender(cv,pg,no,total,name,date){
-  const [W,H]=pg.land?[PDF_H,PDF_W]:[PDF_W,PDF_H]; if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
+  const W=pg.W||(pg.land?PDF_H:PDF_W), H=pg.H||(pg.land?PDF_W:PDF_H); if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
   const x=cv.getContext("2d"); x.setTransform(1,0,0,1,0,0); x.fillStyle="#fff"; x.fillRect(0,0,W,H); x.fillStyle="#000"; x.textBaseline="alphabetic"; x.textAlign="left";
   // 上：案件名と日付、下：ページ番号
   x.font=pfont(22,true); x.fillText(((state.bookTitle&&state.bookTitle!=="写真帳")?state.bookTitle+"　":"現地調査　")+(name||""),PDF_M,PDF_M+26);
