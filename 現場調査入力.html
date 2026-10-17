@@ -555,7 +555,8 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       if (t.memo) s += "\n仕様：" + t.memo;
       return s;
     }
-    var c = "No." + no + "　" + (t.species || "") + pr + "\n" + (t.work || "") + "\nH=" + (t.h || "") + "m　C=" + (t.c || "") + "cm";
+    var hc = [String(t.h == null ? "" : t.h).trim() ? "H=" + t.h + "m" : "", String(t.c == null ? "" : t.c).trim() ? "C=" + t.c + "cm" : ""].filter(Boolean).join("　"); // 入っていない方は出さない
+    var c = "No." + no + "　" + (t.species || "") + pr + "\n" + (t.work || "") + (hc ? "\n" + hc : "");
     if (t.memo) c += "\n備考：" + t.memo;
     return c;
   }
@@ -4480,7 +4481,7 @@ function fieldsHTML(t,i){
      <div class="grid3">
        <div class="fld"><label>樹種</label><input list="splist" class="yellow${mc(t,'species')}" value="${esc(t.species)}" oninput="upd(${i},'species',this.value)" placeholder="樹種"></div>
        <div class="fld"><label>作業方針</label><select class="yellow${mc(t,'work')}" onchange="upd(${i},'work',this.value)">${opts(WORKS,t.work)}</select></div>
-       <div class="fld"><label>高さ (m)</label><input class="yellow numin${mc(t,'h')}" id="np-${i}-h" readonly inputmode="none" value="${esc(t.h)}" onclick="npOpen(${i},'h')" placeholder="タップで入力"></div>
+       <div class="fld"><label>高さ (m)　<span class="muted" style="font-weight:400">任意</span></label><input class="yellow numin${mc(t,'h')}" id="np-${i}-h" readonly inputmode="none" value="${esc(t.h)}" onclick="npOpen(${i},'h')" placeholder="測らなければ空のままで"></div>
        ${girthHTML(t,i)}
        <div class="fld"><label>単価(円)</label><input class="yellow" inputmode="numeric" value="${esc(t.up)}" oninput="upd(${i},'up',this.value)" placeholder="任意"></div>
      </div>
@@ -4530,7 +4531,7 @@ function pageHead(sub){ return `<div class="pghead"><h2>${esc(state.bookTitle||"
 function frameHTML(fr){ const t=fr.t, no=fr.no;
    var cap = t.type==="exterior"
      ? `<span class="bn">No.${no}</span><br><b>${esc(t.item)||"（品名未入力）"}</b><br>数量：${esc(t.qty)||"-"} ${esc(t.unit)}${prioOf(t)?`<br>優先度：<b>${esc(prioNames()[prioOf(t)-1])}</b>`:""}${t.memo?`<br>仕様：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`
-     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}<br>高さ：${esc(t.h)||"-"} m<br>幹周：${esc(t.c)||"-"} cm${prioOf(t)?`<br>優先度：<b>${esc(prioNames()[prioOf(t)-1])}</b>`:""}${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
+     : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}${String(t.h??"").trim()?`<br>高さ：${esc(t.h)} m`:""}<br>幹周：${esc(t.c)||"-"} cm${prioOf(t)?`<br>優先度：<b>${esc(prioNames()[prioOf(t)-1])}</b>`:""}${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
    return `<div class="pbitem"><div class="p">${fr.img?thImg(fr.img):'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
 }
 function renderBook(){
@@ -5149,7 +5150,7 @@ function prioLegendHTML(OT){   // 位置図の下の色の説明
 let SHOW_MISS=false;
 const MISS_LABEL={ species:"樹種", work:"作業方針", h:"高さ", c:"幹周", item:"品名", qty:"数量", unit:"単位" };
 const filled=x=>String(x==null?"":x).trim()!=="";
-function missingOf(t){ return (t.type==="exterior"?["item","qty","unit"]:["species","work","h","c"]).filter(k=>!filled(t[k])); }
+function missingOf(t){ return (t.type==="exterior"?["item","qty","unit"]:["species","work","c"]).filter(k=>!filled(t[k])); } // 高さ（H）は測らないことも多いので確認しない
 function mc(t,k){ return SHOW_MISS&&missingOf(t).includes(k)?" miss":""; }
 function checkBeforeExport(kind){
   if(zoneMode()){ const nz=state.trees.filter(t=>!zoneOf(t)).length;
