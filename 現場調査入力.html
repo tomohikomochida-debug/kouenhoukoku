@@ -27,6 +27,7 @@
   .casebar select{ flex:1 1 220px; min-width:0; font-size:15px; min-height:44px; }
   .newcase{ background:#E8711A; color:#fff; border:none; border-radius:10px; padding:11px 18px; font-size:16px; font-weight:700; min-height:44px; box-shadow:0 2px 6px rgba(0,0,0,.18); white-space:nowrap; }
   .newcase:active{ transform:translateY(1px); box-shadow:0 1px 3px rgba(0,0,0,.18); }
+  .casebar .copycase{ font-size:13px; padding:7px 9px; }
   .casebar .delcase{ color:#b3261e; font-size:13px; padding:7px 9px; }
   .casebar2{ display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
   .origbtn{ border-color:#1E88E5 !important; color:#1565C0 !important; font-weight:700; background:#EEF5FD !important; }
@@ -87,6 +88,8 @@
   .maptools{ display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap; }
   .maphint{ margin-top:4px; }
   #mapbox .mk.auto{ border-style:dashed; }
+  #mapbox .mk.ov{ cursor:pointer; touch-action:manipulation; z-index:2; }   /* 全体図に写した番号（動かせない・タップでその区画へ） */
+  .mapimgwrap.cutting .mk.ov{ pointer-events:none; opacity:.5; }
   .mapchoose{ display:flex; flex-wrap:wrap; gap:10px; padding:18px; justify-content:center; width:100%; }
   .mapbig{ flex:1 1 220px; max-width:320px; padding:16px 12px; border-radius:10px; border:1px solid var(--accent); background:#fff; color:var(--accent); font-weight:700; font-size:15px; text-align:center; cursor:pointer; font-family:inherit; }
   .geoln{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; margin:-2px 0 8px; }
@@ -371,6 +374,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     <div class="casebar">
       <button class="newcase" onclick="newCase()">＋ 新しい現場調査</button>
       <select id="caseSel" onchange="switchCase(this.value)" title="これまでの案件を開く"></select>
+      <button class="iconbtn copycase" onclick="copyCase()" title="この案件をまるごと複製して、別の案件として直せるようにします（元の案件はそのまま）">⧉ この案件をコピー</button>
       <button class="iconbtn delcase" onclick="deleteCase()">この案件を削除</button>
     </div>
     <div class="casebar2">
@@ -3238,6 +3242,15 @@ function renderCaseBar(){ const sel=document.getElementById("caseSel"); if(!sel)
 async function updateStorage(){ try{ if(navigator.storage&&navigator.storage.estimate){ const e=await navigator.storage.estimate(); const mb=((e.usage||0)/1048576).toFixed(1); const el=document.getElementById("capText"); if(el) el.textContent="使用容量 "+mb+"MB／案件 "+casesIndex.length+"件"; } }catch(e){} }
 async function newCase(){ await save(); caseId=newId(); state=emptyState(); undoStack=[]; redoStack=[]; normalize(); await save(); syncMode(); renderTrees(); renderMap(); renderCaseBar(); showTab("input"); window.scrollTo({top:0,behavior:"smooth"}); toast("新しい現場調査を作りました。案件名から入れてください"); }
 async function switchCase(id){ if(!id||id===caseId){ return; } await save(); const st=await caseGet(id,true); if(!st) return; state=st; caseId=id; undoStack=[]; redoStack=[]; normalize(); await idbSet("current",id); syncMode(); renderTrees(); renderMap(); renderCaseBar(); updUndoBtn(); showTab("input"); }
+/* 案件をまるごとコピー（写真・図面・番号も）。元の案件はそのまま、コピーのほうを開く。いらなければ「この案件を削除」 */
+async function copyCase(){ if(!caseId) return; await save();
+  const base=state.caseName||"(無題)", v=prompt("コピーした案件の名前（元の案件はそのまま残ります）",base+"（コピー）"); if(v===null) return;
+  const st=JSON.parse(JSON.stringify(state)); st.caseName=String(v).trim()||base+"（コピー）";
+  const from=base; caseId=newId(); state=st; undoStack=[]; redoStack=[]; normalize();
+  await save(); markDirty(); syncMode(); renderTrees(); renderMap(); renderCaseBar(); updUndoBtn(); showTab("input");
+  const cn=document.getElementById("caseName"); if(cn) cn.value=state.caseName;
+  window.scrollTo({top:0,behavior:"smooth"});
+  toast("「"+from+"」をコピーして「"+state.caseName+"」を作りました。元の案件は案件の選択から開けます（いらなければ「この案件を削除」）",6000); }
 async function deleteCase(){ if(!caseId||!casesIndex.length) return; if(!confirm("この案件を削除しますか？（元に戻せません）")) return;
   casesIndex=casesIndex.filter(c=>c.id!==caseId); try{ await idbDel("case_"+caseId); }catch(e){}
   if(casesIndex.length){ caseId=casesIndex[0].id; state=(await caseGet(caseId,true))||emptyState(); }
@@ -3455,20 +3468,34 @@ function inPoly(p,pts){ let c=false; for(let i=0,j=pts.length-1;i<pts.length;j=i
 function zoneToAll(z,ov){ if(z.inAll&&Array.isArray(z.inAll.pts)) return z.inAll.pts;
   const Tz=mapTransform(z), To=mapTransform(ov); if(!Tz||!To) return null;
   return [[0,0],[1,0],[1,1],[0,1]].map(uv=>To.fwd(Tz.inv(uv))); }
+/* 区画の図面の中の点（左から何割 u・上から何割 v）→ 全体図の上の点。地図の位置が分かれば正確に、分からなければ枠の四隅から割り出す */
+function zonePtToAll(z,ov,u,v){
+  if(!(z.inAll&&Array.isArray(z.inAll.pts))){ const Tz=mapTransform(z), To=mapTransform(ov); if(Tz&&To){ try{ const p=To.fwd(Tz.inv([u,v])); if(p&&isFinite(p[0])&&isFinite(p[1])) return p; }catch(e){} } }
+  const P=zoneToAll(z,ov); if(!P||P.length<4) return null;
+  const f=k=>(1-u)*(1-v)*P[0][k]+u*(1-v)*P[1][k]+u*v*P[2][k]+(1-u)*v*P[3][k];
+  return [f(0),f(1)]; }
+const inUnit=p=>p&&p[0]>=-0.01&&p[0]<=1.01&&p[1]>=-0.01&&p[1]<=1.01;
+/* 全体図に出す番号：区画に置いた番号を全体図の上に写す（全体図に直接置いたままの番号もそのまま） */
+function allMarks(ov,list){ ov=ov||overview(); if(!ov||!ov.image) return []; const out=[];
+  list.forEach(x=>{ const t=x.t;
+    if(t.mx!=null&&t.my!=null){ const z=x.z; if(z&&!isAll(z)){ const p=zonePtToAll(z,ov,t.mx,t.my); if(inUnit(p)) out.push({i:x.i,u:p[0],v:p[1],no:x.no,col:mkColor(t)}); return; } }
+    if(t.allx!=null&&t.ally!=null&&!x.z) out.push({i:x.i,u:t.allx,v:t.ally,no:x.no,col:mkColor(t)}); });
+  return out; }
 const FR_COL=["#1E88E5","#D81B60","#F57C00","#8E24AA","#2E7D32","#00838F","#6D4C41"];
 function allFrames(ov){ ov=ov||overview(); if(!ov||!ov.image) return []; const zs=zoneMaps();
   return zs.map((z,k)=>({ z, pts:zoneToAll(z,ov), code:zoneCode(z), name:z.name||"", col:FR_COL[k%FR_COL.length] })).filter(f=>f.pts); }
 const frCenter=pts=>[pts.reduce((a,p)=>a+p[0],0)/pts.length, pts.reduce((a,p)=>a+p[1],0)/pts.length];
+const frCorner=pts=>pts.reduce((m,p)=>(p[0]+p[1]<m[0]+m[1]?p:m),pts[0]);   // 枠の左上の角（名札を置く所。まん中は番号と重なるので）
 function framesHTML(ov){ const fs=allFrames(ov); if(!fs.length) return "";
   return `<svg class="frsvg" viewBox="0 0 100 100" preserveAspectRatio="none">${fs.map(f=>`<polygon points="${f.pts.map(p=>(p[0]*100).toFixed(2)+","+(p[1]*100).toFixed(2)).join(" ")}" fill="${f.col}" fill-opacity="0.13" stroke="${f.col}" vector-effect="non-scaling-stroke"/>`).join("")}</svg>`+
-    fs.map(f=>{ const c=frCenter(f.pts); return `<div class="frlb" style="left:${c[0]*100}%;top:${c[1]*100}%;background:${f.col}">${esc(f.code)}${f.name?`<small>${esc(f.name)}</small>`:""}</div>`; }).join(""); }
+    fs.map(f=>{ const c=frCorner(f.pts); return `<div class="frlb" style="left:${c[0]*100}%;top:${c[1]*100}%;transform:translate(4px,4px);background:${f.col}">${esc(f.code)}${f.name?`<small>${esc(f.name)}</small>`:""}</div>`; }).join(""); }
 /* 枠を描く（PDF・Excel用）。ox,oy,w,h は画像を置いた場所、U は文字の大きさの基準 */
 function drawFrames(x,fs,ox,oy,w,h,U){
   for(const f of fs){ x.beginPath(); f.pts.forEach((p,k)=>{ const px=ox+p[0]*w, py=oy+p[1]*h; k?x.lineTo(px,py):x.moveTo(px,py); }); x.closePath();
     x.globalAlpha=0.13; x.fillStyle=f.col; x.fill(); x.globalAlpha=1; x.lineWidth=3.5*U; x.strokeStyle=f.col; x.stroke(); }
-  for(const f of fs){ const c=frCenter(f.pts), cx=ox+c[0]*w, cy=oy+c[1]*h;
+  for(const f of fs){ const c=frCorner(f.pts);
     x.font=`bold ${Math.round(22*U)}px sans-serif`; const t1=f.code, w1=x.measureText(t1).width; x.font=`bold ${Math.round(12*U)}px sans-serif`; const w2=f.name?x.measureText(f.name).width:0;
-    const bw=Math.max(w1,w2)+20*U, bh=(f.name?44:32)*U; x.fillStyle=f.col; x.strokeStyle="#fff"; x.lineWidth=2.5*U;
+    const bw=Math.max(w1,w2)+20*U, bh=(f.name?44:32)*U, cx=ox+c[0]*w+6*U+bw/2, cy=oy+c[1]*h+6*U+bh/2;   /* 名札は枠の左上の内側 */ x.fillStyle=f.col; x.strokeStyle="#fff"; x.lineWidth=2.5*U;
     x.beginPath(); x.rect(cx-bw/2,cy-bh/2,bw,bh); x.fill(); x.stroke();
     x.fillStyle="#fff"; x.textAlign="center"; x.textBaseline="middle"; x.font=`bold ${Math.round(22*U)}px sans-serif`; x.fillText(t1,cx,cy-(f.name?7*U:0));
     if(f.name){ x.font=`bold ${Math.round(12*U)}px sans-serif`; x.fillText(f.name,cx,cy+13*U); } }
@@ -3678,14 +3705,14 @@ let activePlace=-1;
 function renderMap(){ const box=document.getElementById("mapbox"); const tools=document.getElementById("maptools");
   renderMapTabs(); const cm=CM(), L=noLabels(), multi=maps().length>=2, all=isAll(cm);
   if(cm&&cm.image){
-    const mks=all?framesHTML(cm)+`<div id="cutRect" class="cutrect" style="display:none"></div>`:state.trees.map((t,i)=>onMap(t,cm)?`<div class="mk${t.mauto?" auto":""}" data-i="${i}" title="${t.mauto?"位置から自動で置いた番号。":""}タップでその木のカードへ／ドラッグで移動" onpointerdown="mkDown(event,${i})" onclick="mkAbsorb(event)" style="left:${t.mx*100}%;top:${t.my*100}%;${mkColor(t)?"background:"+mkColor(t):""}">${esc(L[i])}</div>`:"").join("");
-    box.innerHTML = (multi?`<div class="mapcap">${all?"全体図"+(cm.name?"　"+esc(cm.name):"")+(cutMode?"：範囲を指でなぞって囲む":"：枠をタップでその区画へ"):esc(zoneCode(cm))+"　"+esc(mapTitle(cm))}</div>`:"")+`<div class="mapimgwrap${all&&cutMode?" cutting":""}" onclick="mapClick(event)"${all?` onpointerdown="cutDown(event)"`:""}><img src="${cm.image}" onload="mapLoaded(this)">${mks}</div>`;
+    const mks=all?framesHTML(cm)+allMarks(cm,state.trees.map((t,i)=>({t,i,z:zoneOf(t),no:L[i]}))).map(k=>`<div class="mk ov" data-i="${k.i}" title="${esc(String(k.no))}番：タップでその区画の番号へ" onclick="ovMkTap(event,${k.i})" style="left:${k.u*100}%;top:${k.v*100}%;${k.col?"background:"+k.col:""}">${esc(String(k.no))}</div>`).join("")+`<div id="cutRect" class="cutrect" style="display:none"></div>`:state.trees.map((t,i)=>onMap(t,cm)?`<div class="mk${t.mauto?" auto":""}" data-i="${i}" title="${t.mauto?"位置から自動で置いた番号。":""}タップでその木のカードへ／ドラッグで移動" onpointerdown="mkDown(event,${i})" onclick="mkAbsorb(event)" style="left:${t.mx*100}%;top:${t.my*100}%;${mkColor(t)?"background:"+mkColor(t):""}">${esc(L[i])}</div>`:"").join("");
+    box.innerHTML = (multi?`<div class="mapcap">${all?"全体図"+(cm.name?"　"+esc(cm.name):"")+(cutMode?"：範囲を指でなぞって囲む":"：枠・番号をタップでその区画へ"):esc(zoneCode(cm))+"　"+esc(mapTitle(cm))}</div>`:"")+`<div class="mapimgwrap${all&&cutMode?" cutting":""}" onclick="mapClick(event)"${all?` onpointerdown="cutDown(event)"`:""}><img src="${cm.image}" onload="mapLoaded(this)">${mks}</div>`;
     if(tools){ tools.style.display="flex"; const c=document.getElementById("mkcount");
       const here=state.trees.filter(t=>onMap(t,cm)).length, placed=state.trees.filter(t=>t.mx!=null).length;
       if(c) c.textContent = all ? ("区画 "+zoneMaps().length+"／枠 "+allFrames(cm).length) : activePlace>=0 ? ("No."+(L[activePlace]||activePlace+1)+"の位置をタップ") : (multi?"この図面 "+here+"件／配置 "+placed+"/"+state.trees.length:"配置 "+placed+"/"+state.trees.length);
       const cb=document.getElementById("cutBtn"); if(cb){ cb.style.display=all?"":"none"; cb.textContent=cutMode?"✂ 囲むのをやめる":"✂ 囲んで区画を作る"; cb.style.background=cutMode?"#fff3e0":""; }
       const cp=document.getElementById("clearPinsBtn"); if(cp) cp.style.display=all?"none":"";
-      const hp=document.getElementById("mkhelp"); if(hp) hp.textContent=all?"全体図：枠をタップでその区画へ／「✂ 囲んで区画を作る」で範囲を囲むと拡大図の区画ができます":"空きをタップで番号カードを追加／番号をタップでその木へ移動／番号をドラッグで位置調整";
+      const hp=document.getElementById("mkhelp"); if(hp) hp.textContent=all?"全体図：区画に置いた番号も出ます。番号・枠をタップでその区画へ／「✂ 囲んで区画を作る」で範囲を囲むと拡大図の区画ができます":"空きをタップで番号カードを追加／番号をタップでその木へ移動／番号をドラッグで位置調整";
       const gb=document.getElementById("gsiBtn"); if(gb) gb.textContent=cm.geo?"🛰 範囲・地図を変える":"🛰 線画・地理院で作り直す";
       const rb=document.getElementById("refBtn"); if(rb){ rb.style.display=cm.geo?"none":""; rb.textContent=cm.ref?"📍 目印を直す":"📍 目印で地図と合わせる"; }
       const hn=document.getElementById("mkhint"); if(hn){ const h=mapHint(); hn.textContent=h; hn.style.display=h?"block":"none"; } }
@@ -3718,6 +3745,7 @@ function unpin(i){ const t=state.trees[i]; if(!t) return; pushUndo("pin"); t.mx=
 function placeTarget(i){ const cm=CM(); if(state.trees[i].mx!=null&&(!cm||!cm.image||onMap(state.trees[i],cm))){ pushUndo("pin"); state.trees[i].mx=null; state.trees[i].my=null; state.trees[i].mauto=false; if(activePlace===i) activePlace=-1; autoPlace(); markDirty(); renderTrees(); renderMap(); return; }
   activePlace=(activePlace===i?-1:i); renderTrees(); renderMap();
   const mb=document.getElementById("mapbox"); if(activePlace>=0&&mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
+function ovMkTap(ev,i){ ev.stopPropagation(); ev.preventDefault(); if(cutMode) return; jumpToPin(i); }   // 全体図の番号：その区画の図面を開いて、その番号を光らせる
 function mapClick(ev){ if(Date.now()-(window.__jd||0)<300) return;
   const wrap=ev.currentTarget; const img=wrap.querySelector("img"); if(!img) return;
   const r=img.getBoundingClientRect(); let x=(ev.clientX-r.left)/r.width, y=(ev.clientY-r.top)/r.height;
@@ -5104,7 +5132,8 @@ function outTrees(){
 }
 /* 出力する位置図：画像のある図面ごとに { m, title, mks:[[左,上,番号,色]…] } */
 function outMaps(OT){ const ms=maps(), multi=ms.length>=2;
-  return ms.filter(m=>m.image).map(m=>isAll(m)?{ m, title:"全体図"+(m.name?"　"+m.name:""), mks:[], frames:allFrames(m) }:({ m, title:multi?"区画"+zoneCode(m)+(m.name?"　"+m.name:""):(m.name||""), frames:[],
+  return ms.filter(m=>m.image).map(m=>isAll(m)?{ m, title:"全体図"+(m.name?"　"+m.name:""), frames:allFrames(m),
+    mks:allMarks(m,OT.map(t=>({t,i:t.__i,z:mapById(t.__zid),no:t.__no}))).map(k=>[k.u,k.v,k.no,k.col]) }:({ m, title:multi?"区画"+zoneCode(m)+(m.name?"　"+m.name:""):(m.name||""), frames:[],
     mks:OT.filter(t=>t.__zid===m.id&&t.mx!=null&&t.my!=null).map(t=>[t.mx,t.my,t.__no,mkColor(t)]) })); }
 const outAll=()=>outFilter().p.length===4;
 function outSuffix(){ if(outAll()) return ""; const n=prioNames(); return "_"+outFilter().p.slice().sort().map(p=>p?n[p-1]:"未設定").join(""); }
@@ -5681,6 +5710,23 @@ async function exportPdf(){
   // 開いてしばらくしたら先に読んでおく（電波が切れても、開いている間は書き出せるように）
   function later() { (window.requestIdleCallback || function (f) { setTimeout(f, 1500); })(function () { window.loadExcelJS().catch(function () {}); }, { timeout: 8000 }); }
   if (document.readyState === 'complete') setTimeout(later, 3000); else window.addEventListener('load', function () { setTimeout(later, 3000); });
+})();
+</script>
+<script>
+/* iPad：文字を入れているときに「⌨ キーボードを閉じる」を出す（キーボードのすぐ上） */
+(function(){
+  const touch=window.matchMedia&&window.matchMedia('(pointer:coarse)').matches; if(!touch) return;
+  const b=document.createElement('button'); b.type='button'; b.id='kbClose'; b.textContent='⌨ キーボードを閉じる';
+  b.style.cssText='position:fixed;right:12px;z-index:2147483000;display:none;border:none;border-radius:20px;padding:10px 16px;font-size:15px;font-weight:700;background:#263238;color:#fff;box-shadow:0 3px 12px rgba(0,0,0,.35);font-family:inherit';
+  const isText=el=>!!el&&(el.tagName==='TEXTAREA'||(el.tagName==='INPUT'&&!/^(checkbox|radio|button|submit|reset|file|range|color|date|time|datetime-local|month|week|image|hidden)$/i.test(el.type||'text'))||el.isContentEditable);
+  function place(){ const vv=window.visualViewport; const bottom=vv?(vv.offsetTop+vv.height):innerHeight; b.style.top=Math.max(8,Math.round(bottom-b.offsetHeight-10))+'px'; }
+  function show(el){ const host=(el.closest&&el.closest('dialog[open]'))||document.body; if(b.parentNode!==host) host.appendChild(b); b.style.display='block'; place(); setTimeout(place,350); setTimeout(place,800); }
+  function hide(){ b.style.display='none'; }
+  document.addEventListener('focusin',e=>{ if(isText(e.target)) show(e.target); else hide(); });
+  document.addEventListener('focusout',()=>setTimeout(()=>{ if(!isText(document.activeElement)) hide(); },150));
+  if(window.visualViewport){ visualViewport.addEventListener('resize',()=>{ if(b.style.display!=='none') place(); }); visualViewport.addEventListener('scroll',()=>{ if(b.style.display!=='none') place(); }); }
+  b.addEventListener('pointerdown',e=>e.preventDefault());   // 押した瞬間に文字欄から外れて、ボタンが動かないように
+  b.addEventListener('click',()=>{ const a=document.activeElement; if(a&&a.blur) a.blur(); hide(); });
 })();
 </script>
 </body>
