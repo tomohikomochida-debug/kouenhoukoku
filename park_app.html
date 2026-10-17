@@ -6461,7 +6461,7 @@ new ResizeObserver(resize).observe(cv.parentElement);resize();
     const side=document.createElement('div'); side.id='nuSide';
     side.innerHTML='<button id="nuSideClose">閉じる ✕</button>'+
       '<div class="nu-phone" id="nuPhoneTop"><label class="fld" style="margin-top:0">公園名</label><input class="txt" id="nuPark" placeholder="公園名（例：久地さくら緑地）">'+
-      '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" onclick="document.body.classList.remove(\'nu-open\');tutMenu()" style="margin:0;width:auto;white-space:nowrap">🎓 使い方</button><a class="btn" href="park_manual.html" target="_blank" rel="noopener" style="margin:0;width:auto;white-space:nowrap;text-decoration:none">📖 説明書</a><button class="btn" id="nuSave2" style="margin:0">☁️ クラウドに保存</button><button class="btn ghost" id="uiBack2" style="margin:0;width:auto;white-space:nowrap">旧画面に戻す</button></div></div>';
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button class="btn" id="nuSave2" style="margin:0;flex:1 1 100%;text-align:center">☁️ クラウドに保存</button><button class="btn" onclick="document.body.classList.remove(\'nu-open\');tutMenu()" style="margin:0;flex:1 1 0;white-space:nowrap;text-align:center">🎓 使い方</button><a class="btn" href="park_manual.html" target="_blank" rel="noopener" style="margin:0;flex:1 1 0;white-space:nowrap;text-decoration:none;text-align:center">📖 説明書</a><button class="btn ghost" id="uiBack2" style="margin:0;flex:1 1 0;white-space:nowrap;text-align:center">旧画面に戻す</button></div></div>';
     app.appendChild(main); app.appendChild(side);
     side.dataset.view=view;
   }
@@ -6785,53 +6785,86 @@ var PRACTICE=false;
   function pick(c,k){ if(!MASTER[c]) return; if(isNew()&&window.parkUI){ try{ parkUI.pick(c,k); return; }catch(e){} }
     $('catSel').value=c; fillKinds(); if(MASTER[c].kinds[k]){ $('kindSel').value=k; $('kindSel').onchange(); } setTool(MASTER[c].mode); }
   function openAll(on){ if(!isNew()) return; const a=$('nuAll'); if(!a) return; if(on){ if(!a.classList.contains('on')) $('nuMore').click(); } else a.classList.remove('on'); }
+  // スマホ：見出しに出ないボタン（説明書・旧画面）は、☰ のパネルを開いて見せる
+  function phonePanel(on){ if(!isNew()||!window.matchMedia('(max-width:600px)').matches) return; document.body.classList.toggle('nu-open',!!on); }
   const KIND_BTN=()=>isNew()?$('nuKinds'):$('catSel').closest('.sec');
 
   /* ---------------- コース ---------------- */
+  const P=(t)=>`<div class="tp">💡 ${t}</div>`;   // ポイント（ちょっとしたコツ）
+  const TOOLS=()=>vis('#nuTools',()=>secOf('toolArea'));
   const COURSES={
-    1:{name:'はじめて',icon:'🌱',sub:'練習用の図面で、描く・木を置く・戻る・保存までを実際にさわります（10分くらい）',practice:true,steps:[
-      {t:'ようこそ',d:'このアプリは、公園の図面に<b>作業した範囲や木</b>を描くと、<b>面積・本数・金額</b>が自動で出て、<b>報告書（Excel）</b>まで作れます。<br><br>これから<b>練習用の図面</b>で実際にさわります。保存されないので、自由に試してください。'},
-      {t:'画面の見かた',el:()=>$('cv'),pos:'top',pre:()=>view('input'),d:'まん中が<b>図面</b>です。<br>・指1本：描く・置く・選ぶ<br>・指2本：広げると拡大、動かすと移動<br>・右の ✋ を押すと、指1本で地図を動かせます（もう一度で元に）'},
-      {t:'公園名',el:()=>vis('#parkName','#nuPark'),d:'ここに<b>公園名</b>を入れます。公園名が入ると、<b>みんなの共有（Googleドライブ）へ自動で保存</b>されはじめます。<br>（練習中は保存しません）'},
-      {t:'縮尺（長さの基準）',el:()=>$('scaleBadge'),d:'図面の<b>長さの基準</b>です。本番では図面を読み込んだら最初に、ここを押して<b>長さの分かる2点</b>（例：10mの園路）をタップして合わせます。<br>練習用の図面は、もう合わせてあります。'},
-      {t:'工種を選ぶ',el:KIND_BTN,pre:()=>view('input'),d:'描く前に<b>工種</b>を選びます。<br>👉 <b>「除草工 ／ 機械除草Ⅰ（肩掛式）」</b>を選んでください。'+(' <small>（旧画面では左の「大分類」から）</small>'),
-        wait:()=>$('catSel').value==='除草工',ok:'できました！ 選んだ工種で描けます。'},
-      {t:'面積を描く',el:()=>$('cv'),pos:'top',pre:s=>{ view('input'); if(tool!=='area') setTool('area'); s.base=nArea(); },d:'図面の<b>芝生のまわり</b>を、<b>角ごとにタップ</b>していきます（4点くらい）。<br>最後に下の <b>「✓ 確定」</b> か、<b>最初の点をタップ</b>で閉じます。<br><small>長さは50cm単位にそろいます。点を間違えたら「↶ 1点戻す」</small>',
+    1:{name:'はじめて',icon:'🌱',sub:'練習用の図面で、図面の見かた・工種の選び方・面積を描く・木を置く・直す・戻す・保存・報告書までを、1つずつ実際にさわります（15分くらい）',practice:true,steps:[
+      {t:'ようこそ',d:'このアプリは、公園の図面に<b>作業した範囲や木</b>を描いていくと、<b>面積（㎡）・本数・金額</b>が自動で出て、最後に<b>報告書（Excel）</b>まで作れます。<br><br>仕事の流れは3つだけです。<br>① <b>準備</b>：図面を読み込んで、長さの基準（縮尺）を合わせる<br>② <b>入力</b>：工種を選んで、図面に描く・木を置く<br>③ <b>仕上げ</b>：数量を確かめて、報告書を書き出す<br><br>これから<b>練習用の図面</b>でさわります。保存されないので、まちがえても大丈夫です。'},
+      {t:'画面の切り替え（準備・入力・仕上げ）',el:()=>vis('#nuTabs','header'),d:'上の <b>「準備」「入力」「仕上げ」</b> で画面を切り替えます。<br>・<b>準備</b>：図面の読み込み・縮尺・クラウドから開く<br>・<b>入力</b>：図面に描く（ふだんはここ）<br>・<b>仕上げ</b>：報告書・書き出し・表示の設定'+P('準備が終わると、自動で「入力」に切り替わります。')},
+      {t:'図面のさわり方',el:()=>$('cv'),pos:'top',pre:()=>view('input'),d:'まん中が<b>図面</b>です。<br>・<b>指1本</b>：描く・置く・選ぶ（いま選んでいる道具しだい）<br>・<b>指2本</b>：つまんで広げると拡大、2本のまま動かすと移動<br>・パソコンは、マウスのホイールで拡大・縮小'+P('指1本で地図を動かしたいときは、右上の ✋ を押します（もう一度押すと元の道具にもどります）。')},
+      {t:'地図のボタン',el:()=>vis('#mapctl'),d:'図面の右上のボタンです。<br>・<b>✋</b>：地図を動かすだけにする<br>・<b>＋ ／ －</b>：拡大・縮小<br>・<b>⤢</b>：図面全体が見えるように戻す<br>・<b>多</b>：図形をいくつもまとめて選ぶ（あとのコースで）<br>・<b>×N</b>：近くの同じ木をまとめて表示（あとのコースで）'+P('迷子になったら ⤢ で全体表示。')},
+      {t:'公園名',el:()=>vis('#parkName','#nuPark'),d:'ここに<b>公園名</b>を入れます（例：久地さくら緑地）。<br>公園名が入ると、<b>みんなの共有（Googleドライブ）へ自動で保存</b>されはじめます。報告書のファイル名にも使われます。'+P('同じ公園でも、実施日がちがえば別の記録として保存されます。')+'<small>（練習中は保存しません）</small>'},
+      {t:'図面を用意する',el:()=>vis('#loadImg',()=>secOf('loadImg')),pre:()=>view('prep'),d:'本番では最初に<b>公園の図面</b>を用意します。<br>・<b>公園図面を読み込む</b>：図面の画像（写真・PNG・JPG）を選ぶ<br>・<b>🗺 地図から選ぶ</b>：国土地理院の地図・航空写真、Googleマップのスクショから切り出す'+P('図面が手元にない公園は「地図から選ぶ」が早いです。')+'<small>練習用の図面は、もう読み込んであります。</small>'},
+      {t:'縮尺（長さの基準）を合わせる',el:()=>$('scaleBadge'),pre:()=>view('input'),d:'図面の右下の<b>縮尺のバッジ</b>です。ここを押すと縮尺合わせが始まります。<br>① 長さの分かる所（園路の幅・区画の一辺など）の<b>実際の長さ（m）</b>を入れる<br>② 図面でその<b>両端の2点</b>をタップ（押したまま動かすと微調整）<br>合うと、バッジが「縮尺：1px ≈ 0.02 m」のように変わります。'+P('バッジがオレンジの「未設定」のままだと、面積（㎡）が出ません。本数だけなら縮尺なしでも数えられます。')+'<small>練習用の図面は、合わせてあります。</small>'},
+      {t:'工種を選ぶ',el:KIND_BTN,pre:()=>view('input'),d:'描く前に、下のボタンで<b>工種</b>を選びます。<br>・小さい字＝<b>大分類</b>（除草工・中低木刈込工・基本剪定 など）<br>・大きい字＝<b>細別</b>（機械除草Ⅰ・低木刈込・落葉木 など）<br>・最近使った工種が前に並びます。ないときは<b>「＋ ほかの工種」</b>で全部から選べます<br><br>👉 <b>「除草工 ／ 機械除草Ⅰ（肩掛式）」</b>を選んでください。',
+        wait:()=>$('catSel').value==='除草工',ok:'できました！ 描くものは、選んだ工種として記録されます。'},
+      {t:'道具は工種で自動で変わる',el:TOOLS,pre:()=>view('input'),d:'左の道具は、選んだ工種に合わせて<b>自動</b>で切り替わります。<br>・<b>面積</b>：範囲を描く（除草・刈込など ㎡ のもの）<br>・<b>樹木</b>：1本ずつ置く（剪定・撤去など 本 のもの）<br>・<b>四角</b>・<b>幅刈り</b>：寸法で置く・道に沿って描く<br>・<b>選ぶ</b>：描いたものを直す・消す<br>・<b>📷撮る</b>：工事写真で撮る木を選ぶ'+P('描いた後で工種は変えられません。まちがえたら消して描き直します。')},
+      {t:'面積を描く',el:()=>$('cv'),pos:'top',pre:s=>{ view('input'); if(tool!=='area') setTool('area'); s.base=nArea(); },d:'図面の<b>芝生のまわり</b>を、<b>角ごとにタップ</b>していきます（4点くらい）。<br>描いている間は下にバーが出ます。<br>・<b>✓ 確定</b>：描き終わり（<b>最初の点をタップ</b>しても閉じます）<br>・<b>↶ 1点戻す</b>：最後の点だけ取り消す<br>・<b>✕ やめる</b>：描くのをやめる'+P('長さは自動で50cm単位にそろいます。細かい数字になりません。'),
         wait:s=>nArea()>s.base,ok:'できました！ 面積が計算されました。'},
-      {t:'数字を見る',el:()=>vis(()=>secOf('aggArea')),pre:()=>{ view('input'); },d:'描いた<b>面積</b>がここに出ます。工種ごとに合計されて、報告書にそのまま入ります。<br>図形を「選ぶ」でタップすると、<b>辺の長さ（黄色）</b>も出ます。黄色の数字をタップすると、長さを入れて直せます。'},
-      {t:'木を置く',el:()=>vis('#rankLegend','#cv'),pos:'top',pre:s=>{ view('input'); pick('基本剪定（落葉木）','落葉木'); s.base=nTree(); },d:'工種を<b>「基本剪定（落葉木）」</b>にしました。<br>下の<b>丸（規格＝幹周）</b>を選んで、図面の<b>木の上をタップ</b>すると1本置けます。<br><small>「📏 測る」にすると、置いたあと幹周を入れて規格が自動で決まります</small>',
+      {t:'集計の見かた',el:()=>vis(()=>secOf('aggArea')),pre:()=>view('input'),d:'描いたものは、ここに<b>工種ごとに合計</b>されます。<br>・<b>この公園の集計</b>：面積（㎡）<br>・<b>本数集計</b>：木や巣の数<br>・<b>その他（手入力）</b>：図面に描かないもの<br>・<b>概算</b>：登録単価からの参考の金額<br>この数字が、そのまま報告書に入ります。'},
+      {t:'図面の上の数字',el:()=>$('cv'),pos:'top',d:'描いた範囲の近くに<b>「① 機械除草Ⅰ 121.6㎡」</b>のような札が出ます。<br>・札は<b>指で動かせます</b>（重なって見にくいとき）<br>・動かした札は、仕上げの「工種の数字の位置を戻す」で元にもどせます'+P('札の出し方（番号だけ・工種と数量・出さない）は、仕上げの「画面に出すもの」で変えられます。')},
+      {t:'木を置く',el:()=>vis('#rankLegend','#cv'),pos:'top',pre:s=>{ view('input'); pick('基本剪定（落葉木）','落葉木'); s.base=nTree(); },d:'工種を<b>「基本剪定（落葉木）」</b>にしました。<br>① 下の<b>丸（規格＝幹周のランク）</b>から、木の太さに合う丸を選ぶ<br>② 図面の<b>木の上をタップ</b>すると1本置けます<br>面積の上に重ねて置いても大丈夫です。'+P('「📏 測る」にすると、置いたあと幹周（C）を入れる画面が出て、規格が自動で決まります。'),
         wait:s=>nTree()>s.base,ok:'できました！ 本数が数えられました。'},
-      {t:'間違えたら戻る',el:()=>$('undoBtn'),d:'<b>「↶ 戻る」</b>で1つ前に戻ります。戻しすぎたら<b>「↷ 進む」</b>。<br>ためしに押してみてもOKです。'},
-      {t:'直す・消す',el:()=>vis('#toolSelect'),d:'<b>「選ぶ」</b>にして図形や木をタップすると、下に <b>複製・削除</b> が出ます。<br>面積の<b>角の赤い点</b>をドラッグすると形を直せます（離した所から50cm単位にそろいます）。'},
-      {t:'保存は自動',el:()=>vis('#autoSt'),d:'保存は<b>自動</b>です。ここに<b>「☁️ 自動保存 時刻」</b>が出ます。<br>押すと<b>履歴（前の版）</b>が出て、間違えて直したときに戻せます。<br><small>練習中は「🎓 練習中」と出て、保存しません</small>'},
-      {t:'報告書にする',el:()=>vis('#rpXlsx'),pre:()=>view('finish'),d:'仕事が終わったら<b>「仕上げ」</b>で、報告書の欄を入れて <b>Excelで書き出し</b>ます。'},
-      {t:'おつかれさまでした',pre:()=>view('input'),d:'基本はこれでおしまいです！<br>次は <b>🌿 慣れてきた人</b> で、切りのいい長さで描く・撮る木を送る などの便利な使い方を覚えましょう。<br><br>「おわる」を押すと、練習用の図面を閉じて元の画面にもどります。'},
+      {t:'木の色と大きさ・凡例',el:()=>$('cv'),pos:'top',d:'木の丸は、<br>・<b>色</b>＝工種（基本剪定・軽剪定・撤去 など）<br>・<b>大きさ</b>＝規格（太い木ほど大きい丸）<br>で見分けます。<br>図面の右下の<b>凡例</b>に、色・工種・本数が出ます。凡例はタップでたたむ・ドラッグで動かせます。'+P('撮影の印（撮った・まだ）は、仕上げの「撮影の印」で出す・かくすを切り替えられます。')},
+      {t:'選んで直す',el:()=>vis('#toolSelect'),pre:()=>{ view('input'); },d:'<b>「選ぶ」</b>を押してから、描いた<b>芝生の範囲</b>か<b>木</b>をタップしてみてください。<br>選ぶと、<br>・<b>赤い角</b>をドラッグ＝形を直す<br>・<b>辺の ＋</b> をタップ＝角を足す<br>・<b>角をダブルタップ</b>＝角を消す<br>・<b>範囲の中</b>をドラッグ＝まるごと移動',
+        wait:()=>!!selected||multiSel.length>0,ok:'できました！ 選ぶと、下に複製・削除のボタンが出ます。'},
+      {t:'複製・削除・回転',el:()=>vis('#selActions','#cv'),d:'選んでいるときは、下にボタンが出ます。<br>・<b>⧉ 複製</b>：同じ形をもう1つ<br>・<b>🗑 削除</b>：消す<br>・<b>選択解除</b>：選ぶのをやめる<br>・<b>↺ ↻</b>：回す（四角や範囲）'+P('重なっている所は、同じ場所を続けてタップすると下の図形に切り替わります。')},
+      {t:'まちがえたら戻る',el:()=>$('undoBtn'),d:'<b>「↶ 戻る」</b>で1つ前に戻ります。何回でも戻れます。<br>戻しすぎたら<b>「↷ 進む」</b>。<br>ためしに押してみてもOKです（あとで「進む」で戻せます）。'+P('次の日になってから戻したいときは、自動保存の「履歴」から前の版に戻せます。')},
+      {t:'図面に描かないもの（その他）',el:()=>vis(()=>secOf('manualRows')),pre:()=>view('input'),d:'発生材の運搬・処分、トラックの台数など、<b>図面に置けないもの</b>はここに入れます。<br>① 項目を選ぶ　② 数量を入れる　③ <b>追加</b><br>入れたものは集計と報告書に入ります。まちがえたら右の ✕ で消せます。'},
+      {t:'保存は自動',el:()=>vis('#autoSt'),d:'保存は<b>自動</b>です。変えてから少しすると、みんなの共有（Googleドライブ）に保存されます。<br>・<b>☁️ 自動保存 9:46</b>：最後に保存した時刻<br>・<b>● 未保存</b>：これから保存<br>・<b>⚠ 未保存</b>：電波がない（戻ると自動でもう一度）<br>押すと<b>履歴（前の版）</b>が出ます。'+P('練習中は「🎓 練習中」と出て、保存しません。')},
+      {t:'続きを開く',el:()=>vis('#cloudOpen'),pre:()=>view('prep'),d:'別の日・別の端末で続けるときは、<b>「☁️ クラウドから開く」</b>で一覧から選びます。<br>公園名・日付・名前で探せます。'+P('ほかの人が記入した記録は「👀 見るだけ」で開きます。直すときは「✏️ 編集する」。')},
+      {t:'報告書にする',el:()=>vis('#rpXlsx'),pre:()=>view('finish'),d:'仕事が終わったら<b>「仕上げ」</b>で、<br>① <b>⚙ 施工条件・報告書の設定</b>：実施日・現場代理人・監督員・年度・第何回 など<br>② <b>🖼 履行場所の図</b>：位置図の画像を選ぶ<br>③ <b>📄 報告書のExcelを書き出す</b><br>報告書・配置図・求積図が1つのExcelで出ます。'+P('Excelの書き出しだけは電波が要ります。年度・契約番号・あて先などは次から覚えています。')},
+      {t:'おつかれさまでした',pre:()=>view('input'),d:'基本はこれでおしまいです！<br>・工種を選ぶ → 描く・置く → 自動保存 → 仕上げで報告書<br>この流れだけ覚えれば、現場は回せます。<br><br>次は <b>🌿 慣れてきた人</b> で、切りのいい長さで描く・四角・幅刈り・撮る木を送る などを覚えましょう。<br>「おわる」を押すと、練習用の図面を閉じて元の画面にもどります。'},
     ]},
-    2:{name:'慣れてきた人',icon:'🌿',sub:'切りのいい長さで描く・辺の長さを直す・まとめて選ぶ・撮る木を送る など',practice:true,steps:[
-      {t:'このコースで覚えること',d:'速く・きれいに描くコツと、工事写真やクラウドとのつなぎ方です。練習用の図面でためせます。'},
-      {t:'寸法のきざみ',el:()=>vis('#snapToggle'),pre:()=>view('finish'),d:'ポチポチ置いたときの長さを <b>自由／10cm／50cm／1m</b> にそろえます。はじめは<b>50cm</b>。<br>描いている途中でも、下のバーの<b>「きざみ」</b>を押すたびに切り替わります。'},
-      {t:'長さを決めて置く',el:()=>$('cv'),pos:'top',pre:s=>{ view('input'); pick('除草工','機械除草Ⅰ（肩掛式）'); s.base=nArea(); },d:'面積を描いている途中、下のバーの<b>「長さ」</b>に 6.3 などと入れてから次の点をタップすると、<b>ちょうど6.30m</b>で置けます。<br>👉 ためしに1つ描いてみましょう（3点以上で「✓ 確定」）。',
+    2:{name:'慣れてきた人',icon:'🌿',sub:'縮尺のやり直し・寸法のきざみ・長さを決めて描く・辺の長さを直す・四角/幅刈り・生垣/管理柵・範囲のコピー・撮る木を送る・表示の切り替え など',practice:true,steps:[
+      {t:'このコースで覚えること',d:'<b>速く・きれいに・数字が合うように</b>描くコツと、工事写真やクラウドとのつなぎ方です。<br>練習用の図面で、実際にためせます。'},
+      {t:'縮尺をやり直す',el:()=>$('scaleBadge'),pre:()=>view('input'),d:'縮尺がずれていると、面積が全部ずれます。<br>バッジを押すと<b>いつでも測り直せます</b>。測り直すと、描いてある面積は<b>新しい縮尺で計算し直し</b>されます。'+P('長い所（20m以上）で合わせるほど正確です。短い所で合わせると誤差が大きくなります。')},
+      {t:'寸法のきざみ',el:()=>vis('#snapToggle'),pre:()=>view('finish'),d:'ポチポチ置いたときの長さを<b>自由／10cm／50cm／1m</b> にそろえます。はじめは<b>50cm</b>。<br>・<b>1点目</b>：10cmのます目に乗る<br>・<b>2点目から</b>：前の点からの長さがきざみの倍数に（7.23m→7.00m）<br>・<b>閉じるとき</b>：始点へ戻る辺もそろうよう最後の点を少し寄せる'+P('描いている途中でも、下のバーの「きざみ」を押すたびに 自由→10cm→50cm→1m と切り替わります。')},
+      {t:'長さを決めて置く',el:()=>$('cv'),pos:'top',pre:s=>{ view('input'); pick('除草工','機械除草Ⅰ（肩掛式）'); s.base=nArea(); },d:'描いている途中、下のバーの<b>「長さ」</b>に 6.3 などと入れてから次の点をタップすると、<b>向きはタップした方へ、長さはちょうど6.30m</b>で置けます。置くと欄は空に戻ります。<br>👉 1点目を置いて → 「長さ」に数字 → 2点目… と1つ描いて「✓ 確定」してみましょう。'+P('巻尺で測った長さをそのまま入れると、報告の数字と図が合います。'),
         wait:s=>nArea()>s.base,ok:'できました！'},
-      {t:'辺の長さを直す',el:()=>vis('#toolSelect'),d:'<b>「選ぶ」</b>で図形をタップすると、各辺に<b>黄色の長さ</b>が出ます。その<b>数字をタップ</b>→長さを入れて「この長さにする」。<br>辺の始まりの角はそのままで、終わりの角が動きます。'},
-      {t:'四角・幅刈り',el:()=>vis('#placeRect','#toolStrip'),pre:()=>{ view('input'); },d:'<b>四角</b>：長さ×奥行を入れてタップするだけで置けます（生垣・植込みなど）。<br><b>幅刈り</b>：道や法面に沿ってタップし、線に幅をつけて面積にします。'},
-      {t:'幹周を測って置く',el:()=>vis('#rankLegend'),pre:()=>{ view('input'); pick('基本剪定（落葉木）','落葉木'); },d:'規格の丸のいちばん左 <b>「📏 測る」</b> にすると、木を置いたあと<b>幹周（C）</b>を入れる画面が出て、規格が<b>自動</b>で決まります。株立ちもOK。'},
-      {t:'まとめて選ぶ・まとめ表示',el:()=>vis('#multiToggle'),d:'<b>「多」</b>：タップした図形を次々に足して、まとめて動かす・消す。<br><b>「×N」</b>：近くの同じ木・中木を「○○ × 5本」のようにまとめて表示します。'},
-      {t:'同じ範囲を別の工種でも',el:()=>vis('#copyWorksBox'),pre:()=>{ view('input'); pick('中低木刈込工','低木刈込'); },d:'低木の刈込範囲を、そのまま<b>「つる性植物除去」「低木内除草清掃」</b>でも数えたいとき。刈込の範囲を選んで<b>「この範囲をコピー」</b>。'},
-      {t:'撮る木を工事写真へ',el:()=>vis('#toolShoot'),pre:()=>view('input'),d:'<b>「📷撮る」</b>で撮る木をタップで選び、<b>「工事写真へ送る」</b>。工事写真アプリの「撮り残し」→「まとめて撮る」で順に撮れます。'},
-      {t:'みんなの記録を開く',el:()=>vis('#cloudOpen'),pre:()=>view('prep'),d:'<b>「クラウドから開く」</b>で、みんなが保存した公園の一覧から開けます。<br>ほかの人が記入した記録は<b>👀 見るだけ</b>で開き、描こうとすると「編集しますか？」と確認します。'},
-      {t:'説明書',el:()=>vis('.manual-btn'),pre:()=>view('input'),d:'くわしいことは<b>「📖 説明書」</b>に全部書いてあります。困ったときは「困ったとき」の章へ。<br><br>次は <b>🌳 上級</b> で、他の委託の工種・3Dスキャン・履歴などを。'},
+      {t:'辺の長さをあとから直す',el:()=>$('cv'),pos:'top',pre:()=>{ view('input'); setTool('select'); },d:'<b>「選ぶ」</b>にしました。いま描いた範囲を<b>タップして選んで</b>ください。<br>各辺に<b>黄色の長さ</b>が出ます。その<b>数字をタップ</b>→長さを入れて「この長さにする」。<br>辺の始まりの角はそのままで、終わりの角が辺の向きに動きます。ちょうどいい長さの候補ボタンも出ます。',
+        wait:()=>!!(selected&&selected.type==='area'),ok:'選べました！ 黄色の数字をタップしてみましょう。'},
+      {t:'角を動かす・足す・消す',el:()=>$('cv'),pos:'top',d:'選んだ範囲の<br>・<b>赤い角</b>をドラッグ：動かしている間は指についていき、<b>離した所から両どなりの辺がきざみにそろう</b>位置へ寄ります<br>・<b>辺のまん中の ＋</b>：タップで角を足す（そのままドラッグ）<br>・<b>角をダブルタップ</b>：その角を消す'+P('まちがえたら上の「↶ 戻る」。')},
+      {t:'四角で置く',el:()=>vis('#placeRect'),pre:()=>{ view('input'); pick('除草工','機械除草Ⅰ（肩掛式）'); },d:'<b>「四角」</b>：寸法の欄に<b>長さ×奥行</b>を入れて、置きたい場所をタップするだけで四角の範囲になります。<br>置いたあとは、ふつうの面積と同じように角を動かしたり、<b>↺↻ で回し</b>たりできます。'+P('植込み・花壇・区画など、四角い所はこれが一番速くて正確です。')},
+      {t:'幅刈り（道・法面）',el:()=>vis('#toolStrip'),d:'<b>「幅刈り」</b>：道や法面に<b>沿ってタップ</b>して線を引き「✓ 確定」。線に<b>幅</b>をつけて面積にします。<br>あとで区間ごとに幅を変えられます。'+P('園路わきの草刈りなど、細長い所に向いています。')},
+      {t:'中木（円柱・生垣）',el:()=>vis('#dimRow','#rankLegend','#cv'),pre:()=>{ view('input'); pick('中低木刈込工','中木刈込（生垣）'); },d:'工種を<b>「中木刈込（生垣）」</b>にしました。<br>寸法の欄に<b>長さ・奥行・高さ</b>を入れてから、置く場所をタップします。上の面と<b>側面4面</b>が足されて計上されます。<br>円柱は<b>径（直径・半径）と高さ</b>。'+P('選んで「実寸/記号」を押すと、図の上の形を実際の大きさ⇔記号で切り替えられます。')},
+      {t:'管理柵のつる',el:()=>$('cv'),pos:'top',pre:()=>{ view('input'); pick('つる性植物除去','管理柵'); },d:'工種を<b>「つる性植物除去 ／ 管理柵」</b>にしました。<br>柵に沿って<b>端から端へタップ</b>→「✓ 確定」。線の長さ×<b>高さ</b>で面積になります（高さは寸法の欄で）。'},
+      {t:'除草から刈込を引くしくみ',d:'除草の範囲の中に<b>刈込</b>の範囲があると、除草からは<b>刈込の分が自動で引かれ</b>ます（二重に数えない）。<br>つる性植物除去・低木内除草清掃は、刈込の上に重ねて行う作業なので<b>引かれません</b>。<br>求積図にも「内側控除」の行が出るので、監督員さんに聞かれても説明できます。'},
+      {t:'同じ範囲を別の工種でも',el:()=>vis('#copyWorksBox'),pre:()=>{ view('input'); pick('中低木刈込工','低木刈込'); },d:'低木の刈込範囲を、そのまま<b>「つる性植物除去」「低木内除草清掃」</b>でも数えたいとき。<br>刈込の範囲を選んで、チェックした工種に<b>「この範囲をコピー」</b>。同じ形で足されます（求積図は出しません）。'},
+      {t:'幹周を測って置く',el:()=>vis('#rankLegend'),pre:()=>{ view('input'); pick('基本剪定（落葉木）','落葉木'); },d:'規格の丸のいちばん左 <b>「📏 測る」</b> にすると、木を置いたあと<b>幹周（C）</b>を入れる画面が出て、規格が<b>自動</b>で決まります。株立ちは幹ごとに入れられます。<br>置いた木を選び直せば、あとから幹周を直せます。'+P('幹周は地上1.2mで、まわりの地面の低い側から測ります。')},
+      {t:'まとめて選ぶ・まとめ表示',el:()=>vis('#multiToggle'),d:'<b>「多」</b>：オンにすると、タップした図形が次々に足され、<b>まとめて動かす・複製・消す</b>ができます。<br><b>「×N」</b>：近くの同じ木・中木を「○○ × 5本」のように<b>まとめて表示</b>します（数え方は同じ）。'},
+      {t:'画面に出すもの',el:()=>vis('#dispMode',()=>secOf('legendToggle')),pre:()=>view('finish'),d:'仕上げの<b>「画面に出すもの」</b>で、<br>・図形の札：番号だけ（①②…）／工種と数量／出さない<br>・<b>編集中のものだけ出す</b>：選んでいない図形の数字を隠す<br>・<b>凡例</b>を出す・位置を右下に戻す<br>・<b>工種の数字の位置を戻す</b>：動かした札を元に'},
+      {t:'撮る木をえらぶ',el:()=>vis('#toolShoot'),pre:()=>view('input'),d:'<b>「📷撮る」</b>で、工事写真で撮る木を<b>タップで選び</b>（オレンジの点線）、下の<b>「📤 工事写真へ送る」</b>。<br>・<b>全部／外す</b>：まとめて選ぶ・外す<br>・<b>決まり／決まりでえらぶ</b>：工種ごとに「何本に1本・最低何本」を決めて自動で選ぶ<br>・<b>その場で撮る</b>：木をタップしてすぐカメラ'+P('工事写真アプリの「撮り残し」→「まとめて撮る」で順に撮れます。')},
+      {t:'ここの写真を撮る',el:()=>vis('#shootFab','#cv'),d:'図形や木を1つ選ぶと、地図に<b>「📷 ここの写真を撮る」</b>が出ます。その場でこの端末のカメラ、または<b>iPhoneで撮る（遠隔）</b>も選べます。撮った写真は工事写真アプリにまとまります。'},
+      {t:'撮影の状況',el:()=>vis('#shotListBtn'),pre:()=>view('finish'),d:'<b>「📋 撮影の状況リスト」</b>：工種・規格ごとに<b>撮る数・そろった数・残り</b>が一覧で出ます。<br>図面の上の撮影の印（撮った・まだ）は「撮影の印」で出す・かくすを切り替えます。'},
+      {t:'みんなの記録・見るだけ',el:()=>vis('#cloudOpen'),pre:()=>view('prep'),d:'<b>「クラウドから開く」</b>で、みんなが保存した公園を開けます。<br>ほかの人が記入した記録は<b>👀 見るだけ</b>で開き、描く・動かす・消すをしようとすると「編集しますか？」と確認します。<br>同じ記録を2人で同時に直すと、上書きしないよう後の人の自動保存が止まります（⚠ 自動保存を停止）。'},
+      {t:'実施日と別の記録',el:()=>vis('#cfgBtn'),pre:()=>view('finish'),d:'<b>⚙ 施工条件・報告書の設定</b>の<b>実施年月日</b>を変えると、<b>別の日の記録</b>として保存されます（同じ公園に何回も行くため）。<br>指示番号・着手／完成年月日・現場代理人・監督員もここです。'},
+      {t:'説明書',el:()=>vis('.manual-btn','#tutBtn','#nuPhoneTop'),pre:()=>{ view('input'); phonePanel(true); },post:()=>phonePanel(false),d:'くわしいことは<b>「📖 説明書」</b>にまとめてあります（画面がせまいときは「🎓 使い方」の中、スマホは右上の ☰ の中から開けます）。<br>困ったときは説明書の「困ったとき」の章へ。<br><br>次は <b>🌳 上級</b> で、他の委託の工種・除外エリア・斜面・3Dスキャン・履歴などを。'},
     ]},
-    3:{name:'上級',icon:'🌳',sub:'他の委託の工種を借りる・工種の追加と削除・除外エリア・3Dスキャン・履歴・まとめ集計',practice:false,steps:[
-      {t:'このコースで覚えること',d:'いざというときに役立つ機能です。説明だけなので、いまの記録はさわりません。'},
-      {t:'他の委託から利用',el:()=>vis('#nuOwBtn','#otherWorksBtn'),pre:()=>{ view('input'); openAll(true); },post:()=>openAll(false),d:'ほかの委託の<b>仕様書・設計書（PDF・Excel）</b>を読んで、この委託にない工種を<b>単価ごと借りて</b>きます。使うものに ✓ を入れて「借りる」。<br>借りた工種は「他の委託：○○」でまとまって出ます。'},
-      {t:'工種を追加・消す',el:()=>vis('#nuAddWork','#addWorkBtn'),pre:()=>{ view('input'); openAll(true); },post:()=>openAll(false),d:'<b>「＋ 工種を追加」</b>：色・規格・単価を決めて1つ足す。<br><b>「🗑 追加した工種を消す」</b>：自分で足した・借りた工種を消す（地図に描いてある工種は消せません）。'},
-      {t:'刈らない所を除く',el:()=>vis(()=>secOf('sansha')),pre:()=>view('input'),d:'面積を<b>「選ぶ」</b>でタップすると、ここ（求積）に<b>「除外エリア」</b>が出ます。木・ベンチなど刈らない部分の外周を描くと、全体から差し引きます。<br>斜面の係数もここで。'},
-      {t:'3Dスキャンの木を取り込む',el:()=>vis('#scanSec'),pre:()=>view('prep'),d:'iPhone・iPadの3Dスキャン（LAS・PLY）を選ぶと、<b>木の位置・幹周</b>を探して<b>仮置き</b>します。仮置きの木をタップして工種を決めます。'},
-      {t:'履歴（前の版）',el:()=>vis('#histBtn'),pre:()=>view('prep'),d:'<b>30分に1回</b>と、<b>ほかの人が直す前</b>の版を10個まで残しています。選ぶと見るだけで表示 →<b>「↩ この版に戻す」</b>。戻し間違えてもまた戻せます。'},
-      {t:'発生材を残材処分の記録から',el:()=>vis('#genzaiFetch'),pre:()=>view('finish'),d:'計量伝票を残材処分で記録しておくと、<b>同じ公園名</b>の記録から発生材の数量（t）を取ってこられます。'},
-      {t:'何か所ぶんをまとめて集計',el:()=>vis(()=>secOf('aggMulti')),pre:()=>view('finish'),d:'公園ごとに保存した記録（.json）を<b>まとめて選ぶ</b>と、工種ごとの合計表（Excel・CSV）が作れます。'},
-      {t:'撮影の状況',el:()=>vis('#shotListBtn'),pre:()=>view('finish'),d:'工種・規格ごとに<b>撮る数・そろった数・残り</b>が一覧でわかります（写真は工事写真アプリで）。'},
-      {t:'おわり',pre:()=>view('input'),d:'これで全部の機能を回りました！ 分からなくなったら、いつでも <b>🎓 使い方</b> からもう一度見られます。'},
+    3:{name:'上級',icon:'🌳',sub:'他の委託の工種を借りる・工種の追加と削除・除外エリア・斜面・求積の根拠・3Dスキャン・地図から図面・履歴・発生材・そのほかの出力・まとめ集計',practice:false,steps:[
+      {t:'このコースで覚えること',d:'いざというときに役立つ機能と、数字の根拠の見方です。<br>説明だけなので、<b>いまの記録はさわりません</b>。'},
+      {t:'他の委託から利用',el:()=>vis('#nuOwBtn','#otherWorksBtn'),pre:()=>{ view('input'); openAll(true); },post:()=>openAll(false),d:'この委託にない工種を、<b>ほかの委託の仕様書・設計書</b>から借りてきます。<br>① PDF・Excel・CSV を選ぶ（いくつでも）<br>② 工種・規格・単位・単価の一覧が出る（名前・使い方・単価はその場で直せる）<br>③ 使うものに ✓ →<b>「借りる」</b><br>借りた工種は、工種の一覧のいちばん下に<b>「他の委託：○○」</b>でまとまって出ます。'+P('幹周ランクごとの単価は1つの工種にまとまります。今の委託と同じ名前の工種は、はじめから ✓ が外れています。')},
+      {t:'読み取れないとき',el:()=>vis('#nuOwBtn','#otherWorksBtn'),pre:()=>{ view('input'); openAll(true); },post:()=>openAll(false),d:'紙をスキャンしたPDFや写真は、文字が入っていないので読めません。<br>iPadで写真の<b>文字を長押し→コピー</b>して、読み取り画面の<b>「文字を貼り付け」</b>欄へ。<br>それでも足りないときは<b>「＋ 1行足す」</b>で手で入れます。'+P('借りた直後なら「元に戻す」、あとからでも「外す」で取り消せます（地図に描いてある工種は残ります）。')},
+      {t:'工種を追加する',el:()=>vis('#nuAddWork','#addWorkBtn'),pre:()=>{ view('input'); openAll(true); },post:()=>openAll(false),d:'<b>「＋ 工種を追加」</b>で、登録されていない工種を1つ足せます。<br>・<b>工種名・細別</b><br>・<b>種別</b>：樹木（本）／数えもの（個）／面積（㎡）<br>・<b>色</b>：点や記号の色<br>・<b>規格</b>：既存に倣う（30cm未満〜300cm）／規格なし／独自に入力<br>・<b>単価</b>：わかる所だけ（空は0円）'},
+      {t:'追加した工種を消す',el:()=>vis('#nuManage','#manageWorksBtn'),pre:()=>{ view('input'); openAll(true); },post:()=>openAll(false),d:'<b>「🗑 追加した工種を消す」</b>：自分で追加した工種と、借りた工種の一覧から、細別ごと・大分類ごとに消せます。<br>・もとからある工種は出ません（消せません）<br>・<b>地図に描いてある工種は消せません</b>（先に消すか別の工種に）<br>・消した直後なら「元に戻す」'},
+      {t:'刈らない所を除く（除外エリア）',el:()=>vis(()=>secOf('sansha')),pre:()=>view('input'),d:'木の株元・ベンチ・遊具など、範囲の中で作業しない所は<b>穴</b>として抜けます。<br>① 範囲を<b>「選ぶ」</b>でタップ<br>② ここ（求積）の<b>「⊘ 除外エリア（穴）を追加」</b><br>③ 抜く所の外周をタップ →「✓ 確定」（何か所でも）'+P('穴の面積は求積図に「除外（穴）」の行で出ます。')},
+      {t:'斜面',el:()=>vis(()=>secOf('sansha')),pre:()=>view('input'),d:'範囲を選ぶと、ここに<b>斜面区分</b>が出ます。<br>平坦（×1.00）／緩斜面（×1.15）／急斜面（×1.30）から選ぶか、係数を直接入力。図面の投影面積に係数を掛けた数字で計上されます。'},
+      {t:'面積の根拠（三斜・ヘロン）',el:()=>vis('#showAll',()=>secOf('sansha')),pre:()=>view('input'),d:'面積は、範囲を<b>三角形に分けて</b>、3辺の長さから<b>ヘロンの公式</b>で出しています。<br>・範囲を選ぶと、ここに三角形の図と表（辺a・b・c・面積）<br>・<b>「全面積の算出根拠を画面表示」</b>：全部の範囲の表<br>・<b>「Excelで求積表を書き出す」</b>：表をExcelで'+P('求積図の数字を足すと、報告書の数量にぴったり合います（穴・内側控除・斜面の行も出ます）。')},
+      {t:'3Dスキャンの木を取り込む',el:()=>vis('#scanSec'),pre:()=>view('prep'),d:'iPhone・iPadの3Dスキャン（<b>LAS・PLY</b>）を選ぶと、<b>木の位置と幹周</b>を探して<b>仮置き</b>します（点線の丸）。<br>仮置きの木をタップ→工種を決めると、規格は幹周から自動。<br>目印2点で、いまの図面に重ねることもできます。'+P('断面図で確かめてから入れたいときは「3D樹木計測」アプリで測って、書き出したファイルをここで選びます。')},
+      {t:'地図から図面を作る',el:()=>vis('#mapPickBtn',()=>secOf('loadImg')),pre:()=>view('prep'),d:'図面がない公園は<b>「🗺 地図から選ぶ」</b>で、<br>・<b>国土地理院の地図・航空写真</b>：公園名や現在地で探して「この範囲を図面にする」（縮尺も自動）<br>・<b>Googleマップのスクショ</b>：枠を合わせて撮ったスクショを選ぶ'},
+      {t:'履歴（前の版に戻す）',el:()=>vis('#histBtn'),pre:()=>view('prep'),d:'<b>30分に1回</b>と、<b>ほかの人が直す前・戻す前</b>の版を、新しい<b>10個</b>まで残しています。<br>① 「🕘 履歴」または上の自動保存の表示を押す<br>② 版を選ぶと<b>見るだけ</b>で表示（オレンジの帯）<br>③ <b>「↩ この版に戻す」</b>／やめるなら「最新にもどる」<br>戻す前の内容も履歴に入るので、戻し間違えてもまた戻せます。'},
+      {t:'自動保存が止まったとき',el:()=>vis('#autoSt'),d:'<b>⚠ 自動保存を停止</b>：開いたあとで、ほかの人が同じ記録を保存し直しています。上書きしないように止めています。<br>表示を押すと、上書きせず<b>「別の記録」</b>として保存できます（あとで一覧で見くらべる）。<br><b>自動保存：名前を入れてください</b>：表示を押して名前を入れると始まります。'},
+      {t:'報告書の設定',el:()=>vis('#cfgBtn'),pre:()=>view('finish'),d:'<b>⚙ 施工条件・報告書の設定</b>：委託名・指示番号・実施年月日・着手／完成・現場代理人・監督員、報告書の年度・第何回・提出日・契約番号・住所・あて先・請負者。<br>年度・契約番号・あて先・請負者などは<b>次から覚えて</b>います。毎回入れ直すのは第何回と提出日くらいです。'},
+      {t:'発生材を残材処分の記録から',el:()=>vis('#genzaiFetch','#cfgBtn'),pre:()=>view('finish'),d:'計量伝票を残材処分アプリで記録しておくと、<b>同じ公園名</b>の記録から発生材の数量（t）を取ってこられます。<br>「この発生材の処分伝票をA4」で、伝票をまとめて印刷もできます。'},
+      {t:'そのほかの出力',el:()=>vis('#moreOutBtn'),pre:()=>view('finish'),d:'<b>「そのほかの出力 ▾」</b>の中：<br>・<b>この公園を保存（.json）／開く</b>：圏外のときの控え・受け渡し<br>・<b>🖨 印刷／PDFで保存</b>：地図と集計を1枚に（社内確認用）<br>・<b>注記図を画像で書き出す</b>：資料に貼る<br>・<b>📍 位置図用にGoogleマップを開く</b>：履行場所の図のスクショ用'},
+      {t:'何か所ぶんをまとめて集計',el:()=>vis(()=>secOf('aggMulti')),pre:()=>view('finish'),d:'公園ごとの記録（.json）を<b>まとめて選ぶ</b>と、工種ごとの合計表（Excel・CSV・コピー）が作れます。月ごと・委託ごとの数量の確認に。'},
+      {t:'旧画面と新しい画面',el:()=>vis('#uiBack','#uiBack2'),pre:()=>phonePanel(true),post:()=>phonePanel(false),d:'<b>「旧画面に戻す」</b>／<b>「✨ 新しい画面を試す」</b>で、いつでも切り替えられます。データはそのままです。<br>新しい画面は「準備・入力・仕上げ」に分かれて、図面を広く使えます。'},
+      {t:'おわり',pre:()=>view('input'),d:'これで全部の機能を回りました！<br>分からなくなったら、いつでも <b>🎓 使い方</b> からもう一度見られます。くわしくは <b>📖 説明書</b> へ。<br>欲しい機能・直してほしい所があれば、親方まで。'},
     ]},
   };
 
@@ -6901,7 +6934,7 @@ var PRACTICE=false;
   #tutSpot{position:fixed;z-index:9000;pointer-events:none;border-radius:12px;box-shadow:0 0 0 9999px rgba(4,8,14,.58);outline:3px solid #ffd400;outline-offset:2px;transition:all .25s;animation:tutPulse 1.6s infinite}
   #tutSpot.none{left:50%!important;top:50%!important;width:0!important;height:0!important;outline:none;animation:none}
   @keyframes tutPulse{0%,100%{outline-color:#ffd400}50%{outline-color:#fff3a0}}
-  #tutBox{position:fixed;z-index:9001;width:min(380px,calc(100vw - 24px));background:#fffdf5;color:#1d232b;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.45);padding:14px 16px 12px;font-size:15px;line-height:1.65;transition:top .25s,left .25s}
+  #tutBox{position:fixed;z-index:9001;width:min(430px,calc(100vw - 24px));background:#fffdf5;color:#1d232b;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.45);padding:14px 16px 12px;font-size:15px;line-height:1.65;transition:top .25s,left .25s}
   #tutBox{pointer-events:none}#tutBox button{pointer-events:auto}   /* ふきだしの文字の上をタップしても、下の図面に届く（ボタンだけ押せる） */
   #tutBox.thru{opacity:.35}
   #tutBox.mini{width:auto;max-width:calc(100vw - 80px);padding:6px 8px;border-radius:22px;background:#fffdf5ee}
@@ -6913,6 +6946,8 @@ var PRACTICE=false;
   #tutBox .tb .nx.tr{background:#d08a1c;border-color:#d08a1c}
   #tutBox .tc{font-size:11px;color:#7a6a3a;font-weight:700;letter-spacing:.5px}
   #tutBox h4{margin:2px 0 6px;font-size:18px}
+  #tutBox .bd{max-height:min(46vh,420px);overflow:auto;pointer-events:auto;-webkit-overflow-scrolling:touch}
+  #tutBox .tp{margin-top:8px;padding:7px 10px;border-radius:9px;background:#eef6ff;color:#1d3a5f;font-size:14px}
   #tutBox small{color:#6b7480}
   #tutBox .tw{margin-top:8px;padding:7px 10px;border-radius:9px;background:#fff1c7;color:#7a4a00;font-weight:700;font-size:14px}
   #tutBox .tw.ok{background:#dff5e6;color:#14632f}
@@ -6931,6 +6966,7 @@ var PRACTICE=false;
   #tutOffer button{border:none;border-radius:8px;padding:8px 12px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}#tutOffer .go{background:#3ecf8e;color:#0b2015}#tutOffer .x{background:transparent;color:#cfe;}
   body.practice #autoSt{color:#ffd27a;border-color:#7a5a20}
   .tut-btn{display:inline-flex;text-decoration:none;margin-right:6px}
+  body:not(.ui-new) .tut-btn{display:none!important}   /* 使い方は新しい画面だけ */
   @media(max-width:1300px){ .tut-btn .tb-t{display:none} }`;
   document.head.appendChild(css);
   const spot=document.createElement('div'); spot.id='tutSpot'; spot.style.display='none';
@@ -6945,6 +6981,7 @@ var PRACTICE=false;
 
   function done(){ try{ return JSON.parse(ls.get(DONE_KEY)||'{}')||{}; }catch(e){ return {}; } }
   function tutMenu(){
+    if(!isNew()){ if(!confirm('使い方は「新しい画面」で説明します。\n新しい画面に切り替えますか？（データはそのまま。いつでも旧画面に戻せます）')) return; const u=$('uiTry'); if(u) u.click(); }
     ls.set(SEEN_KEY,'1'); const o=$('tutOffer'); if(o) o.remove();
     const D=done();
     modal.innerHTML='<div class="sdCard" style="width:min(460px,100%)"><h3>🎓 使い方<small>コースを選ぶと、画面の部品を光らせながら説明します。途中で「← 戻る」「やめる」もできます。</small></h3>'+
@@ -6988,7 +7025,7 @@ var PRACTICE=false;
       box.querySelector('.x').onclick=()=>tutClose(false);
       return;
     }
-    box.innerHTML=`<div class="tc">${c.icon} ${c.name}　${T.i+1} / ${T.steps.length}${PRACTICE?'　・練習中（保存されません）':''}</div><h4>${s.t}</h4><div>${s.d}</div>`+
+    box.innerHTML=`<div class="tc">${c.icon} ${c.name}　${T.i+1} / ${T.steps.length}${PRACTICE?'　・練習中（保存されません）':''}</div><h4>${s.t}</h4><div class="bd">${s.d}</div>`+
       (s.wait?`<div class="tw${T.ok?' ok':''}">${T.ok?'✓ '+(s.ok||'できました！'):'👉 やってみてください'}</div>`:'')+
       `<div class="tb"><button class="bk"${T.i?'':' disabled'}>← 戻る</button><button class="x">やめる</button>${waiting?'<button class="sk">とばす</button>':''}${waiting&&onMap?'<button class="nx tr">▶ やってみる</button>':`<button class="nx"${waiting?' disabled':''}>${last?'おわる ✓':'次へ →'}</button>`}</div>`+
       `<div class="dots">${T.steps.map((_,k)=>`<i class="${k<=T.i?'on':''}"></i>`).join('')}</div>`;
@@ -7054,7 +7091,7 @@ var PRACTICE=false;
 
   // はじめて開いた人に、そっと案内（何も開いていないとき）
   setTimeout(()=>{
-    if(ls.get(SEEN_KEY)||state.img||state.features.length||document.querySelector('.resumeBar')) return;
+    if(!isNew()||ls.get(SEEN_KEY)||state.img||state.features.length||document.querySelector('.resumeBar')) return;
     const o=document.createElement('div'); o.id='tutOffer';
     o.innerHTML='<span>はじめての方へ：<b>🎓 使い方</b>（練習用の図面でさわれます）</span><button class="go">見る</button><button class="x">あとで</button>';
     document.body.appendChild(o);
