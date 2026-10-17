@@ -5718,7 +5718,8 @@ async function exportPdf(){
   const touch=window.matchMedia&&window.matchMedia('(pointer:coarse)').matches; if(!touch) return;
   const b=document.createElement('button'); b.type='button'; b.id='kbClose'; b.textContent='⌨ キーボードを閉じる';
   b.style.cssText='position:fixed;right:12px;z-index:2147483000;display:none;border:none;border-radius:20px;padding:10px 16px;font-size:15px;font-weight:700;background:#263238;color:#fff;box-shadow:0 3px 12px rgba(0,0,0,.35);font-family:inherit';
-  const isText=el=>!!el&&(el.tagName==='TEXTAREA'||(el.tagName==='INPUT'&&!/^(checkbox|radio|button|submit|reset|file|range|color|date|time|datetime-local|month|week|image|hidden)$/i.test(el.type||'text'))||el.isContentEditable);
+  // iPadのキーボードが出る欄だけ（読むだけの欄・アプリの数字キーで入れる欄〈幹周など〉は、アプリの「閉じる」があるので出さない）
+  const isText=el=>!!el&&!el.readOnly&&!el.disabled&&String(el.getAttribute&&el.getAttribute('inputmode')||'').toLowerCase()!=='none'&&(el.tagName==='TEXTAREA'||(el.tagName==='INPUT'&&!/^(checkbox|radio|button|submit|reset|file|range|color|date|time|datetime-local|month|week|image|hidden)$/i.test(el.type||'text'))||el.isContentEditable);
   function place(){ const vv=window.visualViewport; const bottom=vv?(vv.offsetTop+vv.height):innerHeight; b.style.top=Math.max(8,Math.round(bottom-b.offsetHeight-10))+'px'; }
   function show(el){ const host=(el.closest&&el.closest('dialog[open]'))||document.body; if(b.parentNode!==host) host.appendChild(b); b.style.display='block'; place(); setTimeout(place,350); setTimeout(place,800); }
   function hide(){ b.style.display='none'; }
