@@ -3083,7 +3083,10 @@ var qrcode = function() {
 
 </script>
 <script>
-const SPECIES=["シラカシ","ケヤキ","コナラ","サクラ","エゴノキ","マテバシイ","クスノキ","ヒノキ","スギ","イチョウ","クヌギ","モミジ","ツバキ","キンモクセイ"];
+/* 樹種の辞書：「カタカナ名:漢字や別の呼び方|…」。音声の聞き取りは漢字・ひらがなで返ることが多いので、どれでも拾えるようにする */
+const SPECIES_DICT="シラカシ:白樫,アラカシ:粗樫,ウバメガシ:姥目樫|ウバメ樫,アカガシ:赤樫,カシ:樫,ケヤキ:欅,コナラ:小楢,クヌギ:椚|櫟,ミズナラ:水楢,ソメイヨシノ:染井吉野|ソメイ吉野,ヤマザクラ:山桜,オオシマザクラ:大島桜,カワヅザクラ:河津桜,シダレザクラ:枝垂桜|枝垂れ桜,ヤエザクラ:八重桜,サクラ:桜,エゴノキ:エゴ,マテバシイ:馬刀葉椎|マテバ椎,スダジイ:すだ椎|スダ椎,シイ:椎,クスノキ:楠|樟|クス,ヒノキ:檜|桧,サワラ:椹,スギ:杉,イチョウ:銀杏|公孫樹,イロハモミジ:いろは紅葉|イロハ紅葉,ヤマモミジ:山紅葉,モミジ:紅葉,トウカエデ:唐楓,カエデ:楓,ハナミズキ:花水木,ヤマボウシ:山法師,ヤブツバキ:藪椿,ツバキ:椿,サザンカ:山茶花,キンモクセイ:金木犀,ギンモクセイ:銀木犀,ヒイラギモクセイ:柊木犀,モクセイ:木犀,ヒイラギ:柊,クロガネモチ:黒鉄黐,モチノキ:黐の木,ソヨゴ:冬青,タブノキ:椨|タブ,ヤマモモ:山桃,クロマツ:黒松,アカマツ:赤松,ゴヨウマツ:五葉松,マツ:松,ヒマラヤスギ:ヒマラヤ杉,メタセコイア:メタセコイヤ,ラクウショウ:落羽松,ユリノキ:百合の木|ユリの木,プラタナス:スズカケノキ|鈴懸の木|鈴掛の木,トチノキ:栃の木|橡|トチ,マロニエ:,ハルニレ:春楡,アキニレ:秋楡,ニレ:楡,エノキ:榎,ムクノキ:椋の木|ムク,センダン:栴檀,アオギリ:青桐,キリ:桐,ネムノキ:合歓の木|ネム,ニセアカシア:ハリエンジュ|アカシア,エンジュ:槐,ハナノキ:花の木,ナンキンハゼ:南京櫨|南京黄櫨,ハゼノキ:櫨の木|ハゼ,ハナモモ:花桃,ウメ:梅,モモ:桃,カキ:柿,ビワ:枇杷,ミカン:蜜柑,ユズ:柚子,クリ:栗,クルミ:胡桃,ザクロ:柘榴,イチジク:無花果,サルスベリ:百日紅,ムクゲ:木槿,コブシ:辛夷,ハクモクレン:白木蓮,モクレン:木蓮,タイサンボク:泰山木,ホオノキ:朴の木|ホオ,カツラ:桂,シマトネリコ:島トネリコ,トネリコ:,アオダモ:青ダモ,ナナカマド:七竈,ヒメシャラ:姫沙羅,ナツツバキ:夏椿|シャラ|沙羅,ハンノキ:榛の木,シダレヤナギ:枝垂柳|枝垂れ柳,ヤナギ:柳,ポプラ:,シラカバ:白樺,ブナ:橅,カシワ:柏,イヌシデ:犬四手,アカシデ:赤四手,シデ:四手,ムクロジ:無患子,ナギ:梛,コウヤマキ:高野槇,イヌマキ:犬槇|槇|マキ,カイヅカイブキ:貝塚伊吹|カイヅカ,イブキ:伊吹,ニオイヒバ:匂檜葉,レイランディ:レイランドヒノキ,コニファー:,ゲッケイジュ:月桂樹,オリーブ:,ユーカリ:,シュロ:棕櫚,ヤシ:椰子,ソテツ:蘇鉄,モウソウチク:孟宗竹,マダケ:真竹,タケ:竹,ササ:笹,ドウダンツツジ:満天星|ドウダン,ツツジ:躑躅,サツキ:皐月,アジサイ:紫陽花,アオキ:青木,ヤツデ:八手,ナンテン:南天,ジンチョウゲ:沈丁花,クチナシ:梔子,アベリア:,ベニカナメモチ:レッドロビン|紅要黐,カナメモチ:要黐,トウネズミモチ:唐鼠黐,ネズミモチ:鼠黐,イボタノキ:イボタ,マサキ:柾,イヌツゲ:犬黄楊|犬柘植,ツゲ:柘植|黄楊,キャラボク:伽羅木,イチイ:一位,ハクチョウゲ:白丁花,トベラ:海桐,シャリンバイ:車輪梅,ピラカンサ:,ユキヤナギ:雪柳,レンギョウ:連翹,コデマリ:小手毬,ハギ:萩,ヤマブキ:山吹,ニシキギ:錦木,アセビ:馬酔木,ヒサカキ:姫榊,サカキ:榊,クマノミズキ:熊野水木,ミズキ:水木,ハリギリ:針桐,アカメガシワ:赤芽柏,ヌルデ:白膠木,ニワウルシ:神樹|シンジュ,ハクウンボク:白雲木,ヤマグワ:山桑|桑|クワ,アオハダ:青膚,ウワミズザクラ:上溝桜,イヌザクラ:犬桜,フジ:藤,キョウチクトウ:夾竹桃,ジューンベリー:,ヒメリンゴ:姫林檎,カリン:花梨,マユミ:檀,ガマズミ:莢蒾,ウツギ:空木,エゴノキ:";
+const SPECIES_AL=(()=>{ const m=new Map(); SPECIES_DICT.split(",").forEach(e=>{ const [k,a]=e.split(":"); if(!k) return; if(!m.has(k)) m.set(k,[]); (a?a.split("|"):[]).forEach(x=>x&&m.get(k).push(x)); }); return m; })();
+const SPECIES=[...SPECIES_AL.keys()];
 const WORKS=["強剪定","枯れ枝剪定","萌芽更新","高さ低減剪定","透かし剪定","伐採","その他"];
 const ITEMS=["土間コンクリート","化粧ブロック積み","ブロック積み","フェンス設置","目隠しフェンス","カーポート","テラス屋根","ウッドデッキ","人工芝","芝張り","植栽","高木植栽","低木植栽","生垣","石張り","乱形石張り","インターロッキング","洗い出し","門柱","表札","ポスト","花壇","立水栓","防草シート","砂利敷き","整地","残土処分","解体撤去"];
 const UNITS=["㎡","m","箇所","本","式","㎥","t","台","枚","組"];
@@ -4409,19 +4412,52 @@ function upd(i,k,v){ pushUndo("upd:"+i+":"+k); state.trees[i][k]=v; markDirty();
 /* 音声（対応端末のみ） */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 function voice(i,btn){ if(!SR){ alert("この端末は音声ボタン非対応です。各欄をタップし、キーボードのマイクで話してください。"); return; }
-  const rec=new SR(); rec.lang="ja-JP"; rec.interimResults=false; btn.classList.add("rec"); btn.textContent="●聞取中";
-  rec.onresult=e=>{ parseVoice(i,e.results[0][0].transcript); renderTrees(); };
+  const rec=new SR(); rec.lang="ja-JP"; rec.interimResults=false; rec.maxAlternatives=5; btn.classList.add("rec"); btn.textContent="●聞取中";
+  rec.onresult=e=>{ const alts=[]; for(let k=0;k<e.results[0].length;k++) alts.push(e.results[0][k].transcript); parseVoice(i,alts); renderTrees(); }; // 聞き取りの候補をいくつかもらい、いちばん読み取れたものを使う
   rec.onerror=()=>{ btn.classList.remove("rec"); btn.textContent="🎤音声"; };
   rec.onend=()=>{ btn.classList.remove("rec"); btn.textContent="🎤音声"; };
   rec.start(); }
-function parseVoice(i,txt){ const t=state.trees[i]; const z=txt.replace(/[０-９]/g,d=>"0123456789"["０１２３４５６７８９".indexOf(d)]);
-  for(const s of SPECIES) if(txt.includes(s)) t.species=s;
-  for(const w of WORKS) if(txt.includes(w)) t.work=w;
-  let m=z.match(/(高さ|たかさ)\s*([0-9]+(?:\.[0-9])?)/); if(m) t.h=m[2];
-  m=z.match(/(幹周|みきまわり|周囲|しゅうい)\s*([0-9]+)/); if(m) t.c=m[2];
-  if(!t.h){ m=z.match(/([0-9]+)\s*メートル/); if(m) t.h=m[1]; }
-  if(!t.c){ m=z.match(/([0-9]+)\s*センチ/); if(m) t.c=m[1]; }
-  markDirty(); }
+/* ---- 音声の聞き取り → 樹種・作業方針・高さ・幹周
+   聞き取った文は、全角→半角、ひらがな→カタカナ、漢数字→数字、「選定」→「剪定」にそろえてから探す。
+   例：「コナラ伐採C50」「こなら ばっさい シー50」「小楢を伐採 幹周り五十センチ 高さ8メートル」「H8 C50」 */
+const toKata=s=>s.replace(/[\u3041-\u3096]/g,c=>String.fromCharCode(c.charCodeAt(0)+0x60));
+function kanjiNum(s){ const D={〇:0,零:0,一:1,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9}, U={十:10,百:100,千:1000};
+  return s.replace(/[〇零一二三四五六七八九十百千]+(?:点[〇零一二三四五六七八九]+)?/g,w=>{ const [a,b]=w.split("点"); let tot=0, cur=0, digits="";
+    if(/^[〇零一二三四五六七八九]+$/.test(a)&&a.length>1) digits=[...a].map(c=>D[c]).join(""); // 「五〇」のような読み
+    else { for(const c of a){ if(c in D) cur=D[c]; else { tot+=(cur||1)*U[c]; cur=0; } } tot+=cur; }
+    return (digits||String(tot))+(b?"."+[...b].map(c=>D[c]).join(""):""); }); }
+function voiceNorm(txt){ let z=String(txt||"").normalize("NFKC"); z=kanjiNum(toKata(z)).replace(/\s+/g,"").toUpperCase();
+  return z.replace(/選定|センテイ/g,"剪定").replace(/強イ剪定|キョウ剪定/g,"強剪定"); }
+const WORK_AL={ "伐採":["伐採","バッサイ","抜採","伐裁","切リ倒","伐ル"], "強剪定":["強剪定"], "枯れ枝剪定":["枯レ枝","枯枝","カレエダ","カレ枝","枯レエダ","枯エダ","枯レタ枝"],
+  "萌芽更新":["萌芽","ホウガ"], "高さ低減剪定":["低減","テイゲン","高サヲ下ゲ","芯止メ","シンドメ"], "透かし剪定":["透カシ","透シ","スカシ"] };
+function speciesForms(){ const L=[]; const add=(name,f)=>{ const v=voiceNorm(f); if(v&&v.length>=1) L.push([v,name]); };
+  SPECIES_AL.forEach((al,k)=>{ add(k,k); al.forEach(a=>add(k,a)); });
+  state.trees.forEach(t=>{ const sp=String(t.species||"").trim(); if(sp) add(sp,sp); }); // この案件で使った樹種も
+  return L.sort((a,b)=>b[0].length-a[0].length); }
+function parseVoiceText(txt){ const z=voiceNorm(txt), r={}; let rest=z;
+  // 1. 作業方針（「透カシ」の中の「カシ」を樹種と取り違えないよう、先に取り除く）
+  let best=null; for(const w in WORK_AL) for(const a of WORK_AL[w]){ if(z.includes(a)&&(!best||a.length>best[1].length)) best=[w,a]; }
+  if(best){ r.work=best[0]; rest=rest.replace(best[1]," "); }
+  // 2. 高さ・幹周（H8・C50・高さ8・幹周り50・50センチ・8メートル）
+  const NUM="([0-9]+(?:\\.[0-9]+)?)", SEP="(?:ハ|ガ|=|:|イコール|ノ)?";
+  let m=rest.match(new RegExp("(?:H|エイチ|エッチ|高サ|タカサ|樹高|ジュコウ)"+SEP+NUM)); if(m){ r.h=m[1]; rest=rest.replace(m[0]," "); }
+  m=rest.match(new RegExp("(?:C|シー|幹周リ?|ミキマワリ|目通リ?|メドオリ|周囲|シュウイ)"+SEP+NUM)); if(m){ r.c=m[1]; rest=rest.replace(m[0]," "); }
+  if(r.h==null){ m=rest.match(/([0-9]+(?:\.[0-9]+)?)(?:メートル|M)(?![A-Z])/); if(m){ r.h=m[1]; rest=rest.replace(m[0]," "); } }
+  if(r.c==null){ m=rest.match(/([0-9]+(?:\.[0-9]+)?)(?:センチ|CM)/); if(m){ r.c=m[1]; rest=rest.replace(m[0]," "); } }
+  // 3. 樹種（長い名前から。カタカナ1文字は使わない。漢字1文字（桜・松・杉…）は使う）
+  for(const [f,name] of speciesForms()){ if(f.length<2&&!/^[\u4e00-\u9fff]$/.test(f)) continue; if(rest.includes(f)){ r.species=name; rest=rest.replace(f," "); break; } }
+  if(!r.species){ // 辞書にない樹種：残った言葉がカタカナ1語なら、それを樹種にする
+    const left=rest.replace(/センチ|メートル|CM|ヲ|ハ|ガ|ノ|デ|ト|、|。|[0-9.]+/g," ").split(/\s+/).filter(w=>/^[ァ-ヴー]{2,12}$/.test(w));
+    if(left.length===1) r.species=left[0]; }
+  r.score=(r.species?2:0)+(r.work?1:0)+(r.h!=null?1:0)+(r.c!=null?1:0); r.heard=String(txt||"");
+  return r; }
+function parseVoice(i,txt){ const t=state.trees[i]; const list=Array.isArray(txt)?txt:[txt];
+  let r=null; for(const x of list){ const q=parseVoiceText(x); if(!r||q.score>r.score) r=q; } if(!r) return;
+  pushUndo("voice"+i);
+  if(r.species) t.species=r.species; if(r.work) t.work=r.work; if(r.h!=null) t.h=r.h; if(r.c!=null) t.c=r.c;
+  markDirty();
+  const got=[r.species?"樹種 "+r.species:"",r.work||"",r.h!=null?"H="+r.h+"m":"",r.c!=null?"C="+r.c+"cm":""].filter(Boolean).join("／");
+  toast("🎤「"+r.heard+"」→ "+(got||"読み取れませんでした")+(r.species?"":"（樹種は手で入れてください）"),5000); }
 
 /* 描画：入力 */
 function normalize(){ normMaps(); try{ thPrune(); }catch(e){} if(state.bookTitle===undefined||state.bookTitle===null) state.bookTitle="写真帳"; if(state.place===undefined||state.place===null) state.place=""; if(!state.extras) state.extras={carry:"",dispose:"",misc:""}; if(state.taxRate===undefined) state.taxRate=0.1; (state.trees||[]).forEach(t=>{ if(!Array.isArray(t.photos)){ t.photos = t.photo?[t.photo]:[]; } if("photo" in t) delete t.photo; }); }
