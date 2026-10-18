@@ -117,6 +117,47 @@
   .gsirot input[type=range]{ flex:1 1 160px; min-width:120px; padding:0; border:none; accent-color:var(--accent); height:28px; }
   .gsirot #gsiRotTxt{ min-width:7.5em; font-size:14px; }
   .gsirot .muted{ font-size:12px; }
+  #prDlg .gsihead button{ white-space:nowrap; flex:none; }
+  @media (max-width:520px){ #prDlg .gsihead b{ font-size:14px; } .prmap th:first-child,.prmap td:first-child{ width:4.5em; } }
+  .prbody{ flex:1; overflow:auto; padding:10px 12px calc(20px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling:touch; }
+  .prsec{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin:0 auto 12px; max-width:980px; }
+  .prsec h3{ margin:0 0 6px; font-size:17px; color:var(--accent); }
+  .prsec .muted{ font-size:13px; }
+  .prwarn{ background:#fff3e0; border:1px solid #f0c48a; color:#7a4b00; border-radius:10px; padding:8px 12px; margin:0 auto 10px; max-width:980px; font-size:14px; }
+  .prmap{ width:100%; border-collapse:collapse; margin-top:8px; }
+  .prmap th,.prmap td{ border-bottom:1px solid var(--line); padding:7px 6px; text-align:left; vertical-align:top; font-size:14px; }
+  .prmap th{ font-size:13px; color:var(--sub); }
+  .prmap select{ width:100%; font-size:14px; padding:7px 6px; }
+  .prmap td .muted{ font-size:12px; margin-top:2px; }
+  .prbtns{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 4px; }
+  .prbtns button,.prdoc button,.prdocs button{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px 14px; font-size:14px; color:var(--ink); }
+  .prbtns button.solid{ background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700; }
+  .prbtns button:disabled{ opacity:.5; }
+  .prbtns button.danger,.prdoc button.danger{ color:var(--danger); border-color:#e3b9ae; }
+  .prbook{ border:1px solid var(--line); border-radius:10px; margin:8px 0; overflow:hidden; }
+  .prbh{ display:flex; gap:8px; align-items:center; padding:11px 12px; background:#f7f8f5; font-size:15px; cursor:pointer; flex-wrap:wrap; }
+  .prbb{ padding:10px 12px; }
+  .prtab{ width:100%; border-collapse:collapse; margin-top:8px; font-size:13px; }
+  .prtab th,.prtab td{ border-bottom:1px solid var(--line); padding:6px 4px; text-align:left; vertical-align:top; }
+  .prtab td:first-child{ min-width:120px; font-weight:700; }
+  .prbands{ display:flex; flex-wrap:wrap; gap:4px 6px; }
+  .prbands span{ display:inline-flex; flex-direction:column; border:1px solid #e6e3da; border-radius:6px; padding:2px 6px; min-width:72px; }
+  .prbands small{ color:var(--sub); font-size:11px; }
+  .prbands input,.prtab td>input{ width:80px; font-size:14px; padding:3px 4px; }
+  .prdoc{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid #eee; }
+  .prdoc .muted{ flex:1 1 200px; }
+  .prdocs{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .prlab{ display:block; font-size:13px; color:var(--sub); margin:8px 0; }
+  .prlab input{ display:block; width:100%; font-size:15px; margin-top:3px; }
+  .prgroups{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .prg{ display:flex; gap:10px; align-items:flex-start; border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:14px; }
+  .prg.on{ border-color:var(--accent); background:#f1f6f2; }
+  .prg input{ width:22px; height:22px; margin-top:2px; flex:none; }
+  .prg small{ color:var(--sub); }
+  input.upauto{ color:#8a5a00; font-style:italic; }
+  .upnote{ font-size:12px; color:var(--sub); margin-top:3px; line-height:1.5; }
+  .upnote .upk{ display:inline-block; background:#E8890C; color:#fff; border-radius:4px; padding:0 5px; margin-right:4px; font-weight:700; font-style:normal; }
+  .upnote .uplf,.upnote .upre{ border:1px solid var(--line); background:#fff; border-radius:999px; padding:1px 9px; font-size:12px; margin-left:6px; color:var(--accent); }
   .gsifoot{ display:flex; align-items:center; gap:10px; padding:0 12px calc(12px + env(safe-area-inset-bottom)); flex-wrap:wrap; }
   .gsifoot span{ flex:1 1 200px; }
   .gsifoot .primary{ background:var(--accent); color:#fff; border:none; border-radius:10px; padding:13px 18px; font-weight:700; font-size:15px; }
@@ -382,6 +423,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       <span class="muted" id="capText"></span>
       <span style="flex:1"></span>
       <button class="iconbtn origbtn" id="origBtn" onclick="origSave()" style="display:none"></button>
+      <button class="iconbtn" onclick="prOpen()">💴 単価・設計書</button>
       <button class="iconbtn" id="lightBtn" onclick="capBox(true)">容量</button>
       <button class="iconbtn" onclick="backupAll()">バックアップ</button>
       <button class="iconbtn" onclick="document.getElementById('impAll').click()">復元</button>
@@ -445,6 +487,11 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     <button type="button" class="gsinorth" onclick="gsiSetRot(0)" title="北を上に戻す"><span id="gsiNorthArrow">▲<br>N</span></button></div>
   <div class="gsibar gsirot"><b style="font-size:14px">向き</b><input type="range" id="gsiRot" min="-180" max="180" step="1" value="0" oninput="gsiSetRot(this.value*Math.PI/180)"><span id="gsiRotTxt">北が上</span><button type="button" onclick="gsiSetRot(0)">北を上に</button><span class="muted">2本指でひねっても回せます</span></div>
   <div class="gsifoot"><span id="gsiInfo" class="muted"></span><button type="button" id="gsiMakeBtn" class="primary" onclick="gsiMake()">この範囲で位置図にする</button></div>
+</div>
+<div id="prDlg" class="gsidlg" style="display:none">
+  <div class="gsihead"><b>💴 単価・設計書の置き場</b><span class="sp"></span><button type="button" id="prUndoBtn" onclick="prUndoDo()" disabled>↶ 取り消し</button><button type="button" id="prBackBtn" onclick="prClose()">閉じる</button></div>
+  <div class="prbody" id="prBody"></div>
+  <input id="prFile" type="file" accept=".pdf,.xlsx,.xlsm,.csv,application/pdf" style="display:none" onchange="prFilePicked(this)">
 </div>
 <div id="refDlg" class="gsidlg" style="display:none">
   <div class="gsihead"><b>📍 目印で地図と合わせる</b><span class="sp"></span><button type="button" onclick="refClose()">やめる</button></div>
@@ -4440,7 +4487,10 @@ async function edApply(){ if(!edState) return; const sel=edState.sel, url=await 
 function edCommit(url){ if(edState.onDone){ const f=edState.onDone; edClose(); f(url); return; } state.trees[edState.i].photos[edState.k]=url; markDirty(); renderTrees(); edClose(); }
 function edCancel(){ if(edState&&edState.strokes.length&&!confirm("書いた線を捨てて閉じますか？")) return; edClose(); }
 function edClose(){ document.getElementById("photoEditor").style.display="none"; document.body.style.overflow=""; if(edState&&edState.prevTool) ED.tool=edState.prevTool; edState=null; edDrag=null; }
-function upd(i,k,v){ pushUndo("upd:"+i+":"+k); state.trees[i][k]=v; markDirty(); if(k!=="memo") document.getElementById("saveState").textContent="保存中…"; }
+function upd(i,k,v){ pushUndo("upd:"+i+":"+k); const t=state.trees[i]; t[k]=v; markDirty(); if(k!=="memo") document.getElementById("saveState").textContent="保存中…";
+  if(typeof autoUp!=="function") return;
+  if(k==="up"){ t.upAuto=false; delete t.upSrc; prPaint(i); }                 // 手で入れた単価は、あとで作業方針などを変えても書きかえない
+  else if(k==="work"||k==="species") autoUp(i,true); }                      // 作業方針・樹種を変えたら仮の単価を入れ直す
 
 /* 音声（対応端末のみ） */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -4488,6 +4538,7 @@ function parseVoice(i,txt){ const t=state.trees[i]; const list=Array.isArray(txt
   let r=null; for(const x of list){ const q=parseVoiceText(x); if(!r||q.score>r.score) r=q; } if(!r) return;
   pushUndo("voice"+i);
   if(r.species) t.species=r.species; if(r.work) t.work=r.work; if(r.h!=null) t.h=r.h; if(r.c!=null) t.c=r.c;
+  if(typeof autoUp==="function") autoUp(i,false);
   markDirty();
   const got=[r.species?"樹種 "+r.species:"",r.work||"",r.h!=null?"H="+r.h+"m":"",r.c!=null?"C="+r.c+"cm":""].filter(Boolean).join("／");
   toast("🎤「"+r.heard+"」→ "+(got||"読み取れませんでした")+(r.species?"":"（樹種は手で入れてください）"),5000); }
@@ -4515,13 +4566,13 @@ function fieldsHTML(t,i){
        <div class="fld"><label>作業方針</label><select class="yellow${mc(t,'work')}" onchange="upd(${i},'work',this.value)">${opts(WORKS,t.work)}</select></div>
        <div class="fld"><label>高さ (m)　<span class="muted" style="font-weight:400">任意</span></label><input class="yellow numin${mc(t,'h')}" id="np-${i}-h" readonly inputmode="none" value="${esc(t.h)}" onclick="npOpen(${i},'h')" placeholder="測らなければ空のままで"></div>
        ${girthHTML(t,i)}
-       <div class="fld"><label>単価(円)</label><input class="yellow" inputmode="numeric" value="${esc(t.up)}" oninput="upd(${i},'up',this.value)" placeholder="任意"></div>
+       <div class="fld"><label>単価(円)</label><input class="yellow${t.upAuto?" upauto":""}" id="up-${i}" inputmode="numeric" value="${esc(t.up)}" oninput="upd(${i},'up',this.value)" placeholder="任意"><div class="upnote" id="upn-${i}">${typeof upNoteHTML==="function"?upNoteHTML(t,i):""}</div></div>
      </div>
      <div class="fld" style="margin-top:8px"><label>メモ（任意）</label><input value="${esc(t.memo)}" oninput="upd(${i},'memo',this.value)" placeholder="キノコ・空洞 など"></div>`;
 }
 function setType(i,type){ var t=state.trees[i]; if(t.type===type) return; pushUndo("type"+i); t.type=type;
   if(type==="exterior"){ if(t.item===undefined)t.item=""; if(t.qty===undefined)t.qty=""; if(t.unit===undefined)t.unit=""; }
-  else { if(t.species===undefined)t.species=""; if(t.h===undefined)t.h=""; if(t.c===undefined)t.c=""; if(t.work===undefined)t.work="強剪定"; }
+  else { if(t.species===undefined)t.species=""; if(t.h===undefined)t.h=""; if(t.c===undefined)t.c=""; if(t.work===undefined)t.work="強剪定"; if(typeof autoUp==="function") autoUp(i,false); }
   markDirty(); renderTrees(); }
 function setMode(m){ state.mode=m; markDirty();
   var bt=document.getElementById("mTree"), be=document.getElementById("mExt");
@@ -5045,6 +5096,7 @@ function toggleKabu(i){ const t=state.trees[i]; if(!t) return; pushUndo("kabu"+i
   t.kabu=!t.kabu; t.stems=t.stems||[];
   if(t.kabu&&numsOf(t.stems).length) t.c=kabuC(t);
   if(!t.kabu&&/（/.test(t.c||"")) t.c=String(parseFloat(t.c)||"");   // 株立ちをやめたら、合計の数字だけ残す
+  if(typeof autoUp==="function") autoUp(i,false);
   markDirty(); refreshCard(i);
   if(t.kabu) npOpen(i,"s"+(numsOf(t.stems).length?t.stems.length:0)); else npClose(); }
 function npVal(t,f){ if(f[0]==="s") return (t.stems||[])[+f.slice(1)]||""; return t[f]||""; }
@@ -5074,6 +5126,7 @@ function npSet(v){   // 押したらすぐ反映（カードは描き直さず�
   if(NP.f[0]==="s"){ t.stems[+NP.f.slice(1)]=v; t.c=kabuC(t); const s=document.getElementById("kabusum-"+NP.i); if(s) s.innerHTML=kabuText(t); const kn=document.getElementById("kabun-"+NP.i); if(kn) kn.textContent=numsOf(t.stems).length;
     const el=document.getElementById("np-"+NP.i+"-"+NP.f); if(el) el.innerHTML="<small>幹"+(+NP.f.slice(1)+1)+"</small>"+(esc(v)||"—"); }
   else { t[NP.f]=v; const el=document.getElementById("np-"+NP.i+"-"+NP.f); if(el){ el.value=v; if(v) el.classList.remove("miss"); } }
+  if((NP.f==="c"||NP.f[0]==="s")&&typeof autoUp==="function") autoUp(NP.i,true);   // 幹周が変わったら仮の単価も
   markDirty(); npPaint();
 }
 function npKey(k){
@@ -5529,6 +5582,486 @@ async function exportPdf(){
 }
 
 </script>
+<script>/* ===== 仮の単価（作業方針と幹周ランクから、川崎市の委託の設計書の登録単価を仮で入れる）と「単価・設計書の置き場」 =====
+ * ・単価表＝設計書から読んだ「工種 → 幹周ランクごとの単価」。最初から2つ入っている（高津区の公園維持・樹林地整備）
+ * ・作業方針ごとに、落葉木／着葉木（常緑）でどの工種の単価を使うかを決めておく（置き場の画面で変えられる）
+ * ・作業方針・幹周・樹種を変えたとき、単価が空か仮の単価のままなら入れ直す。手で入れた単価は変えない
+ * ・置き場は会社で1つ（共通GAS → Googleドライブ「現場調査データ ＞ 設計書」）。この端末にも控えを置き、電波がなくても使える */
+const PR_BANDS=[[0,30],[30,60],[60,90],[90,120],[120,150],[150,180],[180,210],[210,240],[240,270],[270,300]];
+const PR_BANDS_AH=[[0,30],[30,60],[60,90],[90,120],[120,150],[150,180],[180,210],[210,250]];
+const prB=(bands,prices)=>bands.map((b,k)=>[b[0],b[1],prices[k]]);
+const PR_BUILTIN=[
+  { id:"kt-koen-2025-12", builtin:true, name:"高津区 公園維持管理 登録単価", short:"高津区 公園 2025.12", src:"高津区内 公園維持管理業務委託の設計書（登録単価・単価地区 高津区・2025年12月）", items:[
+    { name:"基本剪定（落葉木）", unit:"本", bands:prB(PR_BANDS,[5120,7100,12950,17250,32640,35440,38590,43850,75090,77320]) },
+    { name:"基本剪定（着葉木）", unit:"本", bands:prB(PR_BANDS,[7700,10650,18660,25820,37880,48260,51860,58490,94400,100200]) },
+    { name:"軽剪定（落葉木）", unit:"本", bands:prB(PR_BANDS,[2860,3980,7160,9710,18200,18460,21330,24340,42520,42730]) },
+    { name:"軽剪定（着葉木）", unit:"本", bands:prB(PR_BANDS,[4310,5950,10450,14270,21090,26650,28950,32510,52760,57270]) },
+    { name:"樹木撤去（支障木）", unit:"本", bands:prB(PR_BANDS,[2590,7910,17140,49380,73310,129600,164500,187700,210500,250400]) },
+    { name:"樹木撤去（枯損木）", unit:"本", bands:prB(PR_BANDS,[1990,5930,12930,36570,51430,92520,118000,138600,155500,198600]) },
+    { name:"樹木撤去（実生木 C=10cm程度）", unit:"本", price:523 },
+    { name:"胴ぶき剪除（高さ2.0mまで）", unit:"本", price:422 },
+    { name:"胴ぶき剪除（高さ4.5mまで）", unit:"本", price:1020 } ]},
+  { id:"kt-jurin-r8", builtin:true, name:"高津区 特別緑地保全地区等 樹林地整備 基礎単価", short:"高津区 樹林地 R8", src:"高津区内特別緑地保全地区等樹林地整備業務委託の設計書（基礎単価集計一覧・令和8年）", items:[
+    { name:"萌芽更新（平坦地）", unit:"本", bands:prB(PR_BANDS_AH,[1620,4610,15670,40040,68600,124400,150700,187500]) },
+    { name:"萌芽更新（斜面地）", unit:"本", bands:prB(PR_BANDS_AH,[3440,10070,29360,76010,131000,160700,281800,349800]) },
+    { name:"枝下ろし（平坦地）", unit:"本", bands:prB(PR_BANDS_AH,[1230,3570,9530,23950,39730,67240,92380,117400]) },
+    { name:"枝下ろし（斜面地）", unit:"本", bands:prB(PR_BANDS_AH,[2740,7790,21990,40150,58440,105500,169700,254400]) },
+    { name:"支障枝剪定（平坦地）", unit:"本", bands:prB(PR_BANDS_AH,[770,2180,6010,14760,24680,34340,51380,68340]) },
+    { name:"支障枝剪定（斜面地）", unit:"本", bands:prB(PR_BANDS_AH,[1500,3900,10470,25640,41300,61020,84610,108400]) },
+    { name:"実生木伐採（平坦地）", unit:"本", price:745 },
+    { name:"実生木伐採（斜面地）", unit:"本", price:1120 },
+    { name:"竹伐採（平坦地）", unit:"本", price:1090 },
+    { name:"竹伐採（斜面地）", unit:"本", price:1750 } ]}
+];
+/* 作業方針 → 使う工種（「単価表のid::工種名」）。最初の決め方 */
+const PR_MAP0={
+  "強剪定":{ deci:"kt-koen-2025-12::基本剪定（落葉木）", ever:"kt-koen-2025-12::基本剪定（着葉木）" },
+  "高さ低減剪定":{ deci:"kt-koen-2025-12::基本剪定（落葉木）", ever:"kt-koen-2025-12::基本剪定（着葉木）" },
+  "透かし剪定":{ deci:"kt-koen-2025-12::軽剪定（落葉木）", ever:"kt-koen-2025-12::軽剪定（着葉木）" },
+  "枯れ枝剪定":{ deci:"kt-jurin-r8::支障枝剪定（平坦地）", ever:"kt-jurin-r8::支障枝剪定（平坦地）" },
+  "萌芽更新":{ deci:"kt-jurin-r8::萌芽更新（平坦地）", ever:"kt-jurin-r8::萌芽更新（平坦地）" },
+  "伐採":{ deci:"kt-koen-2025-12::樹木撤去（支障木）", ever:"kt-koen-2025-12::樹木撤去（支障木）" },
+  "その他":{ deci:"", ever:"" }
+};
+/* 着葉木（常緑樹・針葉樹など）。ここにない樹種は落葉木として扱う（カードで切りかえられる） */
+const PR_EVER=new Set("シラカシ,アラカシ,ウバメガシ,アカガシ,カシ,マテバシイ,スダジイ,シイ,クスノキ,ヒノキ,サワラ,スギ,ヤブツバキ,ツバキ,サザンカ,キンモクセイ,ギンモクセイ,ヒイラギモクセイ,モクセイ,ヒイラギ,クロガネモチ,モチノキ,ソヨゴ,タブノキ,ヤマモモ,クロマツ,アカマツ,ゴヨウマツ,マツ,ヒマラヤスギ,タイサンボク,シマトネリコ,ナギ,コウヤマキ,イヌマキ,カイヅカイブキ,イブキ,ニオイヒバ,レイランディ,コニファー,ゲッケイジュ,オリーブ,ユーカリ,シュロ,ヤシ,ソテツ,モウソウチク,マダケ,タケ,ササ,アオキ,ヤツデ,ナンテン,ジンチョウゲ,クチナシ,アベリア,ベニカナメモチ,カナメモチ,トウネズミモチ,ネズミモチ,マサキ,イヌツゲ,ツゲ,キャラボク,イチイ,トベラ,シャリンバイ,ピラカンサ,アセビ,ヒサカキ,サカキ,キョウチクトウ,ビワ,ミカン,ユズ,ツツジ,サツキ".split(","));
+const PR_KEY="gc_prices";
+let PR={ store:{ v:1, books:[], del:{}, map:{} }, ver:0, dirty:false, docs:[], loaded:false, busy:"", err:"" };
+let prUndo=[];
+const prYen=v=>v==null||v===""?"":Number(v).toLocaleString("ja-JP");
+
+function prLoadLocal(){ try{ const o=JSON.parse(localStorage.getItem(PR_KEY)||"null"); if(o&&o.store){ PR.store=o.store; PR.ver=o.ver||0; PR.dirty=!!o.dirty; } }catch(e){} prFix(); }
+function prSaveLocal(){ try{ localStorage.setItem(PR_KEY,JSON.stringify({store:PR.store,ver:PR.ver,dirty:PR.dirty})); }catch(e){} }
+function prFix(){ const s=PR.store; s.books=Array.isArray(s.books)?s.books:[]; s.del=s.del||{}; s.map=s.map||{}; }
+function prBooks(){ const del=PR.store.del||{}; return PR_BUILTIN.concat((PR.store.books||[]).filter(b=>!(del[b.id]>=(b.at||0)))); }
+function prBook(id){ return prBooks().find(b=>b.id===id)||null; }
+function prItem(ref){ if(!ref) return null; const k=ref.indexOf("::"); if(k<0) return null; const b=prBook(ref.slice(0,k)); if(!b) return null; const it=b.items.find(x=>x.name===ref.slice(k+2)); return it?{book:b,item:it}:null; }
+function prMapOf(work){ const m=PR.store.map[work]; return (m&&(m.deci!==undefined||m.ever!==undefined))?m:(PR_MAP0[work]||{deci:"",ever:""}); }
+function prLeaf(t){ if(t.leaf==="ever"||t.leaf==="deci") return t.leaf; const sp=String(t.species||"").trim(); return PR_EVER.has(sp)?"ever":"deci"; }
+function prGirth(t){ const v=parseFloat(String(t.c==null?"":t.c).replace(/[^\d.]/g," ").trim().split(/\s+/)[0]); return isNaN(v)?null:v; }
+const prBandText=(lo,hi)=>!lo?hi+"cm未満":hi==null?lo+"cm以上":lo+"〜"+hi+"cm";
+/* この木の仮の単価 → { price, label, why }（price が null なら why に理由） */
+function prFor(t){
+  if(!t||t.type==="exterior") return null;
+  const work=t.work||"", m=prMapOf(work), leaf=prLeaf(t), ref=m[leaf]||m[leaf==="ever"?"deci":"ever"]||"";
+  if(!ref) return { price:null, why:work?"「"+work+"」は単価のもとを決めていません":"" };
+  const hit=prItem(ref); if(!hit) return { price:null, why:"単価のもとの工種が見つかりません（置き場で選び直してください）" };
+  const it=hit.item, src=hit.book.short||hit.book.name;
+  if(it.price!=null&&!it.bands) return { price:it.price, label:it.name, src, leaf };
+  const c=prGirth(t); if(c==null) return { price:null, why:"幹周を入れると、"+it.name+"の単価が入ります", leaf };
+  const b=(it.bands||[]).find(b=>c>=b[0]&&(b[1]==null||c<b[1]));
+  if(!b) return { price:null, why:"幹周"+c+"cmは「"+it.name+"」の単価表にありません（"+prBandText(it.bands[it.bands.length-1][0],it.bands[it.bands.length-1][1])+"まで）", leaf };
+  if(b[2]==null) return { price:null, why:it.name+" "+prBandText(b[0],b[1])+"の単価がありません", leaf };
+  return { price:b[2], label:it.name+" "+prBandText(b[0],b[1]), src, leaf };
+}
+/* 作業方針・幹周・樹種を変えたあと：空か仮の単価のままなら入れ直す（手で入れた単価はそのまま） */
+function autoUp(i,paint){ const t=state.trees[i]; if(!t||t.type==="exterior") return false;
+  const free=t.upAuto||String(t.up==null?"":t.up).trim()===""; if(!free){ if(paint) prPaint(i); return false; }
+  const r=prFor(t); let ch=false;
+  if(r&&r.price!=null){ const v=String(r.price); if(t.up!==v||!t.upAuto||t.upSrc!==r.label+"／"+r.src){ t.up=v; t.upAuto=true; t.upSrc=r.label+"／"+r.src; ch=true; } }
+  else if(t.upAuto){ t.up=""; t.upAuto=false; delete t.upSrc; ch=true; }
+  if(ch) markDirty(); if(paint) prPaint(i); return ch; }
+function prPaint(i){ const t=state.trees[i]; if(!t) return; const u=document.getElementById("up-"+i), n=document.getElementById("upn-"+i);
+  if(u&&u!==document.activeElement) u.value=t.up==null?"":t.up; if(u) u.classList.toggle("upauto",!!t.upAuto); if(n) n.innerHTML=upNoteHTML(t,i); }
+function upNoteHTML(t,i){
+  const r=prFor(t); if(!r) return "";
+  const lf=r.leaf?`<button type="button" class="uplf" onclick="prToggleLeaf(${i})" title="落葉木と着葉木を切りかえる">${r.leaf==="ever"?"着葉木":"落葉木"}</button>`:"";
+  if(t.upAuto&&t.upSrc) return `<span class="upk">仮</span>${esc(t.upSrc)}${lf}`;
+  if(r.price!=null&&String(t.up||"").trim()!==""&&String(t.up)!==String(r.price)) return `手入力。仮なら ${prYen(r.price)}円 <button type="button" class="upre" onclick="prRedo(${i})">仮に戻す</button>${lf}`;
+  if(r.price==null&&r.why) return `<span class="muted">${esc(r.why)}</span>${lf}`;
+  return lf; }
+function prToggleLeaf(i){ const t=state.trees[i]; if(!t) return; pushUndo("leaf"+i); t.leaf=prLeaf(t)==="ever"?"deci":"ever"; markDirty(); autoUp(i,true); }
+function prRedo(i){ const t=state.trees[i]; if(!t) return; pushUndo("upre"+i); t.up=""; t.upAuto=false; autoUp(i,true); markDirty(); }
+/* 案件の単価をまとめて：mode="empty"（空いているところだけ）／"auto"（仮の単価も入れ直す） */
+function prFillCase(mode){
+  const T=state.trees||[]; let n=0, miss=0;
+  const can=T.map(t=>t.type!=="exterior"&&(String(t.up==null?"":t.up).trim()===""||(mode==="auto"&&t.upAuto)));
+  if(!can.some(Boolean)){ toast(mode==="auto"?"入れ直せる単価がありません（手で入れた単価はそのままにします）":"単価が空いている木はありません"); return; }
+  pushUndo("prfill");
+  T.forEach((t,i)=>{ if(!can[i]) return; if(mode==="auto"&&t.upAuto){ t.up=""; t.upAuto=false; } const b=t.up; autoUp(i,false); if(t.upAuto&&t.up!==b) n++; else if(!t.upAuto) miss++; });
+  markDirty(); renderTrees(); prRender();
+  toast("仮の単価を "+n+"本 に入れました"+(miss?"（"+miss+"本は幹周が未入力などで入れられませんでした）":"")+"。戻すときは上の ↶",5000); }
+
+/* ===== 置き場の保存（この端末 → みんなの共有） ===== */
+function prChanged(snap){ prUndo.push(snap); if(prUndo.length>40) prUndo.shift(); PR.dirty=true; prSaveLocal(); prRender(); prPush(); repaintPrices(); }
+const prSnap=()=>JSON.stringify(PR.store);
+function prUndoDo(){ if(!prUndo.length) return; PR.store=JSON.parse(prUndo.pop()); prFix(); PR.dirty=true; prSaveLocal(); prRender(); prPush(); repaintPrices(); toast("1つ前に戻しました"); }
+function repaintPrices(){ (state.trees||[]).forEach((t,i)=>{ if(t.type!=="exterior") prPaint(i); }); }
+function prMerge(a,b){   // 2つの置き場をまぜる（新しく直した方を使う）
+  const o={ v:1, books:[], del:Object.assign({},a.del||{}), map:Object.assign({},a.map||{}) };
+  Object.keys(b.del||{}).forEach(k=>{ o.del[k]=Math.max(o.del[k]||0,b.del[k]); });
+  const by={}; (a.books||[]).concat(b.books||[]).forEach(x=>{ if(!by[x.id]||(x.at||0)>(by[x.id].at||0)) by[x.id]=x; }); o.books=Object.values(by);
+  Object.keys(b.map||{}).forEach(k=>{ if(!o.map[k]||(b.map[k].at||0)>(o.map[k].at||0)) o.map[k]=b.map[k]; });
+  return o; }
+const prApi=()=>window.gcSync&&window.gcSync.api;
+async function prPull(){ const A=prApi(); if(!A) return;
+  try{ const r=await A.get("action=prices",20000); if(!r||!r.ok) throw new Error(r&&r.error||"");
+    PR.docs=r.docs||[]; if(r.admins) PR.admins=r.admins;
+    let srv=null; try{ srv=r.data?JSON.parse(r.data):null; }catch(e){}
+    if(srv&&(r.ver||0)!==PR.ver){ PR.store=PR.dirty?prMerge(srv,PR.store):srv; prFix(); PR.ver=r.ver||0; prSaveLocal(); repaintPrices(); }
+    PR.err=""; PR.loaded=true; if(PR.dirty) prPush(); }
+  catch(e){ PR.err=/unknown/.test(String(e&&e.message))?"共通GASの更新がまだです（数分で反映されます）":"みんなの共有につながりません（この端末の控えで動きます）"; }
+  prRender(); }
+let prPushing=false;
+async function prPush(){ const A=prApi(); if(!A||prPushing||!PR.dirty) return; prPushing=true;
+  try{ for(let k=0;k<3&&PR.dirty;k++){
+      const json=prSnap(), r=await A.post({action:"chosa:prices",json,base:PR.ver});
+      if(r&&r.ok){ PR.ver=r.ver; if(prSnap()===json) PR.dirty=false; prSaveLocal(); PR.err=""; continue; }
+      if(r&&r.conflict){ let srv=null; try{ srv=r.data?JSON.parse(r.data):null; }catch(e){} PR.store=srv?prMerge(srv,PR.store):PR.store; prFix(); PR.ver=r.ver||0; PR.docs=r.docs||PR.docs; prSaveLocal(); continue; }
+      throw new Error(r&&r.error||""); } }
+  catch(e){ PR.err="置き場をみんなの共有へ送れませんでした（あとで送ります）"; }
+  finally{ prPushing=false; prRender(); } }
+
+/* ===== 置き場の画面 ===== */
+let PRV={ open:{}, read:null, view:"home" };
+function prOpen(){ document.getElementById("prDlg").style.display="flex"; PRV.view="home"; prRender(); prPull(); }
+function prClose(){ if(PRV.view!=="home"){ PRV.view="home"; PRV.read=null; prRender(); return; } document.getElementById("prDlg").style.display="none"; }
+function prRefOptions(sel){ let h=`<option value="">（使わない）</option>`;
+  prBooks().forEach(b=>{ const its=b.items.filter(x=>x.unit==="本"||x.unit==="株"); if(!its.length) return;
+    h+=`<optgroup label="${esc(b.short||b.name)}">`+its.map(x=>{ const v=b.id+"::"+x.name; return `<option value="${esc(v)}" ${v===sel?"selected":""}>${esc(x.name)}</option>`; }).join("")+`</optgroup>`; });
+  return h; }
+function prRange(ref){ const h=prItem(ref); if(!h) return ""; const it=h.item;
+  if(!it.bands) return prYen(it.price)+"円"; const ps=it.bands.map(b=>b[2]).filter(v=>v!=null);
+  return ps.length?prYen(Math.min(...ps))+"〜"+prYen(Math.max(...ps))+"円（"+it.bands.length+"ランク）":""; }
+function prSetMap(work,leaf,val){ const s=prSnap(), m=Object.assign({},prMapOf(work)); m[leaf]=val; m.at=Date.now(); PR.store.map[work]=m; prChanged(s); }
+function prItemTable(b,editable){
+  return `<table class="prtab"><tr><th>工種</th><th>単位</th><th>幹周ランク・単価（円）</th></tr>`+b.items.map((it,k)=>`<tr><td>${esc(it.name)}</td><td>${esc(it.unit)}</td><td>`+
+    (it.bands?`<div class="prbands">`+it.bands.map((bd,j)=>`<span><small>${prBandText(bd[0],bd[1])}</small>${editable?`<input inputmode="numeric" value="${bd[2]==null?"":bd[2]}" onchange="prEditPrice('${b.id}',${k},${j},this.value)">`:`<b>${prYen(bd[2])||"—"}</b>`}</span>`).join("")+`</div>`
+      :(editable?`<input inputmode="numeric" value="${it.price==null?"":it.price}" onchange="prEditPrice('${b.id}',${k},-1,this.value)">`:`<b>${prYen(it.price)||"—"}</b>`))+`</td></tr>`).join("")+`</table>`; }
+function prEditPrice(id,k,j,v){ const b=(PR.store.books||[]).find(x=>x.id===id); if(!b) return; const s=prSnap(); const n=v.trim()===""?null:Number(String(v).replace(/[^\d.]/g,""));
+  if(j<0) b.items[k].price=n; else b.items[k].bands[j][2]=n; b.at=Date.now(); prChanged(s); }
+function prRenameBook(id){ const b=(PR.store.books||[]).find(x=>x.id===id); if(!b) return; const v=prompt("単価表の名前（一覧で見分ける短い名前）",b.short||b.name); if(v==null||!v.trim()) return; const s=prSnap(); b.short=v.trim(); b.at=Date.now(); prChanged(s); }
+function prDelBook(id){ const b=(PR.store.books||[]).find(x=>x.id===id); if(!b) return;
+  const used=WORKS.filter(w=>["deci","ever"].some(l=>(prMapOf(w)[l]||"").indexOf(id+"::")===0));
+  if(!confirm("単価表「"+(b.short||b.name)+"」を置き場から外します。"+(used.length?"\n（"+used.join("・")+" の単価のもとに使っています。外すと、その作業方針は仮の単価が入らなくなります）":"")+"\n\n外したあとも、上の「↶ 取り消し」で戻せます。")) return;
+  const s=prSnap(); PR.store.del[id]=Date.now(); prChanged(s); }
+function prRender(){
+  const box=document.getElementById("prBody"); if(!box||document.getElementById("prDlg").style.display==="none") return;
+  document.getElementById("prUndoBtn").disabled=!prUndo.length;
+  document.getElementById("prBackBtn").textContent=PRV.view==="home"?"閉じる":"◀ 戻る";
+  const st=PR.err?`<div class="prwarn">${esc(PR.err)}</div>`:"";
+  if(PRV.view==="read"){ box.innerHTML=st+prReadHTML(); return; }
+  const n=(state.trees||[]).filter(t=>t.type!=="exterior").length, empty=(state.trees||[]).filter(t=>t.type!=="exterior"&&String(t.up==null?"":t.up).trim()==="").length;
+  let h=st+`<div class="prsec"><h3>作業方針ごとの仮の単価</h3><div class="muted">木の作業方針と幹周から、ここで選んだ工種の幹周ランクの単価を<b>仮</b>で入れます。樹種で落葉木か着葉木（常緑）かを分けます（カードで切りかえられます）。</div>
+    <table class="prmap"><tr><th>作業方針</th><th>落葉木</th><th>着葉木（常緑）</th></tr>`+
+    WORKS.map(w=>{ const m=prMapOf(w); return `<tr><td><b>${esc(w)}</b></td>`+["deci","ever"].map(l=>`<td><select onchange="prSetMap('${w}','${l}',this.value)">${prRefOptions(m[l]||"")}</select><div class="muted">${esc(prRange(m[l]||""))}</div></td>`).join("")+`</tr>`; }).join("")+`</table>
+    <div class="prbtns"><button type="button" onclick="prFillCase('empty')">この案件の空いている単価に入れる（${empty}本）</button><button type="button" onclick="prFillCase('auto')">仮の単価を入れ直す（手で入れた単価はそのまま）</button></div></div>`;
+  h+=`<div class="prsec"><h3>単価表（${prBooks().length}）</h3>`+prBooks().map(b=>{ const op=PRV.open[b.id], doc=(PR.docs||[]).filter(d=>d.book===b.id);
+    return `<div class="prbook"><div class="prbh" onclick="PRV.open['${b.id}']=!PRV.open['${b.id}'];prRender()"><span>${op?"▼":"▶"}</span><b>${esc(b.short||b.name)}</b><span class="muted">${b.items.length}工種${b.builtin?"・最初から入っている":""}</span></div>`+
+      (op?`<div class="prbb"><div class="muted">${esc(b.src||b.name)}${b.by?"（"+esc(b.by)+" "+esc(b.date||"")+"）":""}</div>`+
+        (doc.length?`<div class="prdocs">`+doc.map(d=>`<button type="button" onclick="prDocOpen('${d.id}')">📄 ${esc(d.name)}</button>`).join("")+`</div>`:"")+
+        prItemTable(b,!b.builtin)+(b.builtin?"":`<div class="prbtns"><button type="button" onclick="prRenameBook('${b.id}')">名前を変える</button><button type="button" class="danger" onclick="prDelBook('${b.id}')">置き場から外す</button></div>`)+`</div>`:"")+`</div>`; }).join("")+
+    `<div class="prbtns"><button type="button" class="solid" onclick="document.getElementById('prFile').click()">＋ 設計書を読み込む（PDF・Excel）</button></div><div class="muted">設計書の「登録単価」「基礎単価集計一覧」「設計内訳書」などから、工種と幹周ランクごとの単価を読み取ります。元のファイルも置き場（Googleドライブ）にしまいます。</div></div>`;
+  const docs=PR.docs||[];
+  h+=`<div class="prsec"><h3>置き場の設計書（${docs.length}）</h3>`+(docs.length?docs.map(d=>{ const b=prBook(d.book); return `<div class="prdoc"><button type="button" onclick="prDocOpen('${d.id}')">📄 ${esc(d.name)}</button><span class="muted">${esc(d.size||"")}　${esc(d.by||"")} ${esc(String(d.at||"").slice(0,10))}${b?"　→ "+esc(b.short||b.name):""}</span><button type="button" class="danger" onclick="prDocDel('${d.id}')">消す</button></div>`; }).join(""):`<div class="muted">${PR.loaded?"まだありません。設計書を読み込むと、ここにしまわれます。":"みんなの共有から読み込み中…"}</div>`)+`</div>`;
+  box.innerHTML=h; }
+
+/* ===== 設計書を読む ===== */
+async function prFilePicked(inp){ const f=inp.files&&inp.files[0]; inp.value=""; if(!f) return;
+  PRV.view="read"; PRV.read={ file:f, name:"", short:"", groups:[], note:"", busy:"読み取り中…" }; prRender();
+  try{ const {lines,note}=await prReadFile(f,m=>{ PRV.read.busy=m; prRender(); });
+    const groups=specGroup(specBuildCandidates(specParseLines(lines)));
+    const title=specGuessTitle(lines)||f.name.replace(/\.[^.]+$/,"");
+    groups.forEach(g=>{ g.on=(g.unit==="本"||g.unit==="株")&&(g.price!=null||g.ranks.some(r=>r.price!=null)); });
+    Object.assign(PRV.read,{ name:title, short:specShortName(title), groups, note, busy:"" }); }
+  catch(e){ PRV.read.busy=""; PRV.read.note="読み取れませんでした："+(e&&e.message||e); }
+  prRender(); }
+function prGroupName(g){ return g.par?g.cat+" "+g.kind:(g.cat===g.kind?g.cat:g.cat+"（"+g.kind+"）"); }
+function prRankToBand(r){ const t=String(r); let m=t.match(/^(\d+)〜(\d+)cm$/); if(m) return [+m[1],+m[2]]; m=t.match(/^(\d+)cm未満$/); if(m) return [0,+m[1]]; m=t.match(/^(\d+)cm以上$/); if(m) return [+m[1],null]; return null; }
+function prReadHTML(){ const R=PRV.read; if(!R) return "";
+  if(R.busy) return `<div class="prsec"><h3>設計書を読む</h3><div>${esc(R.file.name)}</div><div class="muted">${esc(R.busy)}</div></div>`;
+  const on=R.groups.filter(g=>g.on).length;
+  return `<div class="prsec"><h3>設計書を読む：${esc(R.file.name)}</h3>${R.note?`<div class="prwarn">${esc(R.note)}</div>`:""}
+    <label class="prlab">委託名<input value="${esc(R.name)}" oninput="PRV.read.name=this.value"></label>
+    <label class="prlab">一覧での名前（短く）<input value="${esc(R.short)}" oninput="PRV.read.short=this.value"></label>
+    <div class="muted">読み取れた工種 ${R.groups.length}件。置き場に入れるものに✓（木の単価に使える「本」の工種に、はじめから✓を付けています）。</div>
+    <div class="prbtns"><button type="button" onclick="PRV.read.groups.forEach(g=>g.on=true);prRender()">全部 ✓</button><button type="button" onclick="PRV.read.groups.forEach(g=>g.on=false);prRender()">全部はずす</button></div>
+    <div class="prgroups">`+R.groups.map((g,k)=>`<label class="prg ${g.on?"on":""}"><input type="checkbox" ${g.on?"checked":""} onchange="PRV.read.groups[${k}].on=this.checked;prRender()"><span><b>${esc(prGroupName(g))}</b>　<span class="muted">${esc(g.unit)}${g.spec?"　"+esc(g.spec):""}</span><br><small>`+
+      (g.ranks.length?g.ranks.map(r=>esc(r.rank)+" "+(r.price==null?"—":prYen(r.price))).join("／"):(g.price==null?"単価なし":prYen(g.price)+"円"))+`</small></span></label>`).join("")+`</div>
+    <div class="prbtns"><button type="button" class="solid" ${on?"":"disabled"} onclick="prReadSave()">✓の ${on}件 を置き場に入れる</button><button type="button" onclick="prClose()">やめる</button></div></div>`; }
+async function prReadSave(){ const R=PRV.read; if(!R) return; const A=prApi(), me=A?A.me():"";
+  const items=R.groups.filter(g=>g.on).map(g=>{ const name=prGroupName(g);
+    if(g.ranks.length){ const bands=g.ranks.map(r=>{ const b=prRankToBand(r.rank); return b?[b[0],b[1],r.price==null?null:r.price]:null; }).filter(Boolean).sort((a,b)=>a[0]-b[0]); return { name, unit:g.unit, bands }; }
+    return { name, unit:g.unit, price:g.price==null?null:g.price }; });
+  const seen={}; items.forEach(it=>{ let n=it.name, k=2; while(seen[n]) n=it.name+"（"+(k++)+"）"; seen[n]=1; it.name=n; });
+  const id="bk"+Date.now().toString(36), s=prSnap();
+  PR.store.books.push({ id, name:R.name||R.file.name, short:R.short||specShortName(R.name)||R.file.name, src:R.name+"（"+R.file.name+"）", by:me, date:today(), at:Date.now(), items });
+  const f=R.file; PRV.view="home"; PRV.read=null; PRV.open[id]=true; prChanged(s);
+  toast("単価表を置き場に入れました（"+items.length+"工種）。作業方針ごとの単価のもとで選べます",5000);
+  prDocUpload(f,id); }
+async function prDocUpload(f,bookId){ const A=prApi(); if(!A){ return; }
+  if(f.size>30*1024*1024){ toast("ファイルが大きいので、元のファイルは置き場にしまいませんでした（30MBまで）",5000); return; }
+  try{ const data=await new Promise((ok,ng)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=()=>ng(r.error); r.readAsDataURL(f); });
+    toast("設計書のファイルを置き場へ送っています…",4000);
+    const r=await A.post({action:"chosa:doc",name:f.name,data,book:bookId},180000);
+    if(!r||!r.ok) throw new Error(r&&r.error||""); PR.docs=r.docs||PR.docs; prRender(); toast("設計書のファイルを置き場にしまいました"); }
+  catch(e){ toast("設計書のファイルを置き場に送れませんでした（単価表は入っています）"+(e&&e.message?"："+e.message:""),6000); } }
+async function prDocOpen(id){ const A=prApi(); if(!A) return; const d=(PR.docs||[]).find(x=>x.id===id); toast("「"+(d?d.name:"設計書")+"」を開いています…",8000);
+  try{ const r=await A.get("action=docGet&id="+encodeURIComponent(id),60000); if(!r||!r.ok) throw new Error(r&&r.error||"");
+    const bin=atob(r.data), u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+    const url=URL.createObjectURL(new Blob([u8],{type:r.mime||"application/pdf"})), a=document.createElement("a");
+    a.href=url; if(!/pdf|image/.test(r.mime||"")) a.download=r.name||"設計書"; else a.target="_blank"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),120000); }
+  catch(e){ toast("開けませんでした"+(e&&e.message?"："+e.message:""),5000); } }
+async function prDocDel(id){ const A=prApi(); if(!A) return; const d=(PR.docs||[]).find(x=>x.id===id); if(!d) return;
+  if(!confirm("設計書「"+d.name+"」を置き場から消します（Googleドライブのゴミ箱に30日残ります）。\n読み取った単価表はそのまま残ります。")) return;
+  try{ const r=await A.post({action:"chosa:docDelete",id}); if(!r||!r.ok) throw new Error(r&&r.error||""); PR.docs=r.docs||[]; prRender(); toast("設計書を消しました"); }
+  catch(e){ alert("消せませんでした："+(e&&e.message||e)); } }
+let prPdfP=null;
+function prLoadPdfjs(){ if(prPdfP) return prPdfP;
+  prPdfP=new Promise((ok,ng)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload=()=>{ window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; ok(window.pdfjsLib); };
+    s.onerror=()=>{ prPdfP=null; ng(new Error("PDFを読む部品を読み込めませんでした。電波のある所でもう一度")); }; document.head.appendChild(s); });
+  return prPdfP; }
+async function prReadFile(f,prog){ const nm=(f.name||"").toLowerCase();
+  if(/\.pdf$/.test(nm)||f.type==="application/pdf"){ const lib=await prLoadPdfjs();
+    const pdf=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise, lines=[];
+    for(let n=1;n<=pdf.numPages;n++){ if(prog) prog(n+"／"+pdf.numPages+"ページ目を読んでいます"); const tc=await (await pdf.getPage(n)).getTextContent(); lines.push(...specItemsToLines(tc.items)); }
+    return { lines, note:lines.length?"":"文字の入っていないPDF（紙をスキャンしたもの）でした。文字の入ったPDFかExcelを使ってください。" }; }
+  if(/\.(xlsx|xlsm)$/.test(nm)){ const EJ=await window.loadExcelJS(), wb=new EJ.Workbook(); await wb.xlsx.load(await f.arrayBuffer()); const lines=[];
+    wb.eachSheet(ws=>{ lines.push({cells:[{s:"設計内訳書",x:0,w:0,h:10}]}); const rows=[]; ws.eachRow({includeEmpty:false},r=>{ const a=[]; r.eachCell({includeEmpty:true},(c,col)=>{ let v=c.value; if(v&&typeof v==="object") v=v.result!=null?v.result:(v.richText?v.richText.map(x=>x.text).join(""):(v.text||"")); a[col-1]=v==null?"":String(v); }); rows.push(a); }); lines.push(...specRowsToLines(rows)); });
+    return { lines, note:"" }; }
+  if(/\.csv$/.test(nm)){ const t=await f.text(); return { lines:specRowsToLines(t.split(/\r?\n/).map(r=>r.split(","))), note:"" }; }
+  return { lines:[], note:"読めない種類のファイルでした（文字の入ったPDF・Excel（.xlsx）・CSVが読めます）" }; }
+
+/* ---- 設計書の読み取り（公園報告アプリと同じ読み方） ---- */
+const SPEC_UNIT_RE=/^(m2|ｍ2|㎡|m²|ｍ²|m3|ｍ3|㎥|本|株|個|箇所|ヶ所|か所|カ所|ケ所|基|巣|m|ｍ|km|t|ｔ|kg|台|式|回|人|日|枚|袋|kl|L|l|ℓ|ha|a|組|対|点|件|月|時間|h)$/;
+const SPEC_NUM_RE=/^[-−]?[0-9０-９][0-9０-９,，]*(\.[0-9０-９]+)?$/;
+// 半角カナ・㎝などをそろえる（ﾂﾙ→ツル、㎝→cm）。㎡・Ⅰはそのまま
+function specNorm(s){ return String(s).replace(/[\uFF61-\uFF9F]+/g,m=>m.normalize('NFKC')).replace(/㎝|ｃｍ/g,'cm').replace(/㎜|ｍｍ/g,'mm'); }
+function specZen2han(s){ return String(s).replace(/[０-９．，]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)); }
+function specNum(s){ const v=parseFloat(specZen2han(s).replace(/[,，]/g,'').replace('−','-')); return isNaN(v)?null:v; }
+function specIsNum(s){ return SPEC_NUM_RE.test(String(s).trim()); }
+function specNormUnit(u){ u=specZen2han(u).trim();
+  if(/^(m2|ｍ2|m²|ｍ²)$/.test(u))return '㎡'; if(/^(m3|ｍ3)$/.test(u))return '㎥'; if(u==='ｍ')return 'm'; if(u==='ｔ')return 't';
+  if(/^(ヶ所|か所|カ所|ケ所)$/.test(u))return '箇所'; return u; }
+// 集計・経費の行（工種ではない）
+const SPEC_SKIP_RE=/^(直接工事費|間接工事費|共通仮設|共通仮設費|共通仮設費（率計上）|純工事費|現場管理費|工事原価|一般管理費|一般管理費等|工事価格|消費税|消費税額及び地方消費税額|工事費計|業務価格|業務原価|委託料|合計|小計|計|総計|諸経費|設計額|請負額)$/;
+
+/* PDFの文字を「行」にまとめる。行＝[{s:文字, x:左端}]。pdf.js の getTextContent の結果を使う */
+function specItemsToLines(items){
+  const pts=items.filter(it=>it.str&&it.str.trim()).map(it=>({s:it.str, x:it.transform[4], y:it.transform[5], w:it.width||0, h:Math.abs(it.transform[3])||Math.abs(it.height)||10}));
+  pts.sort((a,b)=>b.y-a.y||a.x-b.x);
+  const rows=[];
+  pts.forEach(p=>{ const r=rows.find(r=>Math.abs(r.y-p.y)<=Math.max(2,p.h*0.35)); if(r){r.items.push(p);} else rows.push({y:p.y,items:[p]}); });
+  rows.sort((a,b)=>b.y-a.y);
+  return rows.map(r=>{
+    r.items.sort((a,b)=>a.x-b.x);
+    const cells=[]; let cur=null;
+    r.items.forEach(p=>{
+      const gap=cur?p.x-(cur.x+cur.w):999;
+      if(cur&&gap<p.h*0.9){ cur.s+=(gap>p.h*0.3?' ':'')+p.s; cur.w=p.x+p.w-cur.x; }
+      else{ cur={s:p.s,x:p.x,w:p.w,h:p.h}; cells.push(cur); }
+    });
+    return {y:r.y,cells:cells.map(c=>({s:specNorm(c.s).replace(/\s+/g,' ').trim(),x:c.x,w:c.w,h:c.h})).filter(c=>c.s)};
+  }).filter(l=>l.cells.length);
+}
+/* 貼り付けた文字・CSV → 行（タブか2つ以上の空白で区切る。字下げは x に） */
+function specTextToLines(text){
+  return specNorm(text).split(/\r?\n/).map(raw=>{
+    const ind=(raw.match(/^[ 　]*/)||[''])[0].length;
+    let parts=raw.split(/\t|[ 　]{2,}|　/).map(s=>s.trim()).filter(Boolean);
+    if(parts.length<3) parts=raw.trim().split(/\s+/).filter(Boolean);   // 半角スペース1つで区切った時
+    let x=ind*6; return {cells:parts.map((s,i)=>({s,x:x+i*80,w:60,h:10}))};
+  }).filter(l=>l.cells.length);
+}
+function specRowsToLines(rows){ // Excelの行（配列の配列）
+  return rows.map(r=>({cells:(r||[]).map((v,i)=>({s:(v==null?'':specNorm(v)).replace(/\s+/g,' ').trim(),x:i*80,w:60,h:10})).filter(c=>c.s)})).filter(l=>l.cells.length);
+}
+
+/* 規格の文字から幹周ランクを読む → "60〜90cm" など（読めなければ ''） */
+function specRank(s){
+  const t=specZen2han(String(s)).replace(/[～~〜ー－-]/g,'〜').replace(/\s/g,'');
+  if(!/(幹周|C=|Ｃ=|C＝|周)/i.test(t)&&!/cm(以上|未満)|cm〜/.test(t)) return '';
+  let m=t.match(/(\d+(?:\.\d+)?)(cm|m)?以上(\d+(?:\.\d+)?)(cm|m)未満/);
+  const toCm=(v,u)=>Math.round(parseFloat(v)*((u==='m'||(!u&&parseFloat(v)<10))?100:1));
+  if(m) return toCm(m[1],m[2]||m[4])+'〜'+toCm(m[3],m[4])+'cm';
+  m=t.match(/(\d+(?:\.\d+)?)(cm|m)?〜(\d+(?:\.\d+)?)(cm|m)/);
+  if(m) return toCm(m[1],m[2]||m[4])+'〜'+toCm(m[3],m[4])+'cm';
+  m=t.match(/(\d+(?:\.\d+)?)(cm|m)未満/);
+  if(m) return toCm(m[1],m[2])+'cm未満';
+  m=t.match(/(\d+(?:\.\d+)?)(cm|m)以上/);
+  if(m) return toCm(m[1],m[2])+'cm以上';
+  return '';
+}
+function specStripRank(s){
+  return String(s).replace(/(幹周|C\s*[=＝])\s*[0-9０-９.．]+\s*(cm|ｃｍ|m|ｍ)?\s*(以上|[～~〜ー－-])\s*[0-9０-９.．]+\s*(cm|ｃｍ|m|ｍ)\s*(未満)?/gi,'')
+    .replace(/(幹周|C\s*[=＝])\s*[0-9０-９.．]+\s*(cm|ｃｍ|m|ｍ)\s*(未満|以上)/gi,'')
+    .replace(/^[\s　:：、,]+|[\s　:：、,]+$/g,'');
+}
+const SPEC_CODE_RE=/^[A-Z]{1,3}[0-9＊*]{3,}[0-9]$/;
+function specCleanName(s){
+  return String(s).replace(/\(/g,'（').replace(/\)/g,'）').replace(/^[A-Z]{1,3}[0-9＊*]{3,}[0-9][\s　]+/,'').replace(/^[＊*\s　]+/,'').replace(/^[（(]\d{3,}[）)]([（(]P[）)])?\s*/,'').replace(/\s*第\d+号(単価表|内訳表)?$/,'').replace(/\s*[A-Z]{2}\d{6}$/,'').trim();
+}
+
+/* 行 → 工種の候補。
+   ・1行に「名前 … 単位 数量 単価 金額」がそろう表（単価表・Excel）
+   ・名前の行の下に「単位 数量」が来る川崎市の設計内訳書（金抜きも可）
+   の両方を読む */
+function specIsUnitLine(c){ for(let i=0;i<c.length;i++){ if(SPEC_UNIT_RE.test(specZen2han(c[i].s))&&c.slice(i+1).length&&c.slice(i+1).every(z=>specIsNum(z.s))) return i; } return -1; }
+/* 1つの欄が2段（上に名前・下に規格）で、数字の行をはさんで少しずつずれて並ぶ表（基礎単価集計一覧など）。
+   すき間がとても狭い行どうしを1行にまとめる：上の行＝名前、下の行＝規格 */
+function specMergeTight(lines){
+  const out=[]; let i=0;
+  while(i<lines.length){
+    const grp=[lines[i]]; let j=i+1;
+    while(j<lines.length&&lines[j].y!=null&&grp[grp.length-1].y!=null){
+      const a=grp[grp.length-1], b=lines[j]; const h=Math.min(...a.cells.map(z=>z.h||10),...b.cells.map(z=>z.h||10));
+      const gap=a.y-b.y; if(gap>0&&gap<h*0.7){ grp.push(b); j++; } else break; }
+    const ui=grp.findIndex(l=>specIsUnitLine(l.cells)>=0);
+    if(grp.length>1&&ui>=0&&grp.filter(l=>specIsUnitLine(l.cells)>=0).length===1){
+      const U=grp[ui].cells, k=specIsUnitLine(U);
+      const above=grp.slice(0,ui).flatMap(l=>l.cells), below=grp.slice(ui+1).flatMap(l=>l.cells);
+      const pre=U.slice(0,k).filter(z=>!SPEC_CODE_RE.test(z.s)&&!SPEC_CODE_RE.test(z.s.split(/\s+/)[0]||'')||z.s.split(/\s+/).length>1);
+      const qtyPre=pre.filter(z=>specIsNum(z.s)), namePre=pre.filter(z=>!specIsNum(z.s)).map(z=>({...z,s:specCleanName(z.s)}));
+      const nameCells=above.concat(namePre,below);
+      out.push({y:grp[ui].y,cells:nameCells.concat([U[k]],qtyPre,U.slice(k+1))});
+      i=j; continue;
+    }
+    grp.forEach(l=>out.push(l)); i=j;
+  }
+  return out;
+}
+function specParseLines(lines){
+  lines=specMergeTight(lines);
+  const out=[]; let pend=[]; const heads=[]; // heads: {name,x}（式の行＝見出し）
+  let skipSec=false, priceList=false;
+  const textOf=c=>c.map(x=>x.s).join(' ');
+  function headAt(x){ for(let i=heads.length-1;i>=0;i--){ if(heads[i].x<x-1) return heads[i].name; } return ''; }
+  function emit(nameCells,unit,nums,extra){
+    if(!nameCells.length) return;
+    const nx=nameCells[0].x;
+    let name=specCleanName(nameCells[0].s), spec=nameCells.slice(1).map(c=>c.s).join(' ');
+    // 「名前 規格」が1つのかたまりになっている時は、全角スペース・2つ空白で分ける
+    if(!spec){ const mm=name.match(/^(\S+?)[ 　]+(.+)$/); if(mm&&/[:：=＝]|幹周|cm|ｍ|m|以上|未満|作業形態|厚|径|高/.test(mm[2])){ name=mm[1]; spec=mm[2]; } }
+    spec=spec.replace(/\s*[:：]\s*/g,'：').trim();
+    if(!name||SPEC_SKIP_RE.test(name)||/^(工事区分|工種|種別|細別|名称|コード|規格|単位|数量|単価|金額|摘要|備考)/.test(name)) return;
+    if(/^[A-Z]\d{2}$/.test(name)||/^\d+$/.test(name)) return;  // 入力条件のコード
+    if(name.replace(/[\s　]/g,'').length<2||/^(\S[ 　]){2,}\S$/.test(name)) return; // 1文字・1文字ずつ空いた文字（表題や図面の字）
+    unit=specNormUnit(unit);
+    let qty=null, price=null;
+    const n=nums.map(specNum).filter(v=>v!==null);
+    if(!n.length) return;   // 数字のない行（「令和　年　月」の欄など）
+    if(priceList){ price=n.length?n[0]:null; }
+    else if(n.length>=3 && Math.abs(n[0]*n[1]-n[2])<=Math.max(2,n[2]*0.002)){ qty=n[0]; price=n[1]; }
+    else if(n.length>=2 && extra&&extra.priceCol){ qty=n[0]; price=n[1]; }
+    else if(n.length>=1){ qty=n[0]; }
+    if(unit==='式'){ heads.push({name,x:nx}); while(heads.length>1&&heads[heads.length-2].x>=nx) heads.splice(heads.length-2,1); }
+    const rec={name,spec,unit,qty,price,parent:headAt(nx),x:nx}; out.push(rec); return rec;
+  }
+  lines.forEach(l=>{
+    const c=l.cells, t=textOf(c);
+    // 区切り（読まない部分）
+    if(/分類[:：]\s*(損料|労務|機械|機械損料)/.test(t)){ skipSec=true; pend=[]; return; }
+    if(/分類[:：]/.test(t)){ skipSec=false; pend=[]; return; }
+    if(/管理費区分|管理費区分等一覧|入力条件は、積算の考え方|呼吸用保護具/.test(t)){ skipSec=/管理費区分/.test(t); pend=[]; return; }
+    if(/積算入力データ/.test(t)){ skipSec=true; pend=[]; return; }   // 内訳書と同じ中身のくり返し
+    const isTitle=c.length<=3&&!/[＊*]|第\d+号/.test(t);
+    if(isTitle&&/設計内訳書|設計総括表|内訳表|明細書|単価表|代価表|数量総括|内訳書/.test(t)){ skipSec=false; priceList=false; pend=[]; if(/総括/.test(t))heads.length=0; return; }
+    if(/登\s*録\s*単\s*価|単価一覧|単価表（一覧）|単価リスト/.test(t)&&!/数量|情報/.test(t)&&!/[＊*]/.test(t)&&c.length<=6){ skipSec=false; priceList=true; pend=[]; return; }
+    if(skipSec) return;
+    if(/^-\s*\d+\s*-$/.test(t)||/^工事名|^業務名|^委託名|^事業区分|^工事区分\s|入力条件$/.test(t)) { if(/^工事名|^業務名|^委託名/.test(t))pend=[]; return; }
+    if(/単位/.test(t)&&/(数量|単価)/.test(t)){ pend=[]; return; } // 表の見出し
+    // 単位の位置をさがす（最後の単位らしいかたまり）
+    let ui=-1;
+    for(let i=0;i<c.length;i++){ if(SPEC_UNIT_RE.test(specZen2han(c[i].s))&&c.slice(i+1).every(z=>specIsNum(z.s)||/^\d{4}$|^\d{1,2}$|^[^\d]{0,12}$/.test(z.s))){ ui=i; break; } }
+    // 「m2 2,100」が1つのかたまりになった時
+    if(ui<0&&c.length){ const last=c[c.length-1]; const mm=specZen2han(last.s).match(/^(\S+)\s+([-0-9.,]+(?:\s+[-0-9.,]+)*)$/); if(mm&&SPEC_UNIT_RE.test(mm[1])){ const xs=mm[2].split(/\s+/); c.splice(c.length-1,1,{s:mm[1],x:last.x,w:0,h:last.h},...xs.map(s=>({s,x:last.x+1,w:0,h:last.h}))); ui=c.length-1-xs.length; } }
+    if(ui>=0){
+      let before=c.slice(0,ui).filter(z=>!SPEC_CODE_RE.test(z.s));
+      const qtyPre=[]; while(before.length&&specIsNum(before[before.length-1].s)) qtyPre.unshift(before.pop().s);
+      const nums=qtyPre.concat(c.slice(ui+1).filter(z=>specIsNum(z.s)).map(z=>z.s));
+      if(before.length){ emit(before.filter(z=>!SPEC_CODE_RE.test(z.s)),c[ui].s,nums,{priceCol:nums.length>=2&&!priceList}); pend=[]; }
+      else if(pend.length){ // 上の行が名前（字下げの一番浅い行が名前、続きは規格）
+        const first=pend[0]; const rest=pend.slice(1).flat();
+        emit(first.concat(rest),c[ui].s,nums,{}); pend=[];
+      }
+      return;
+    }
+    // 単位がない行 → 次の「単位 数量」の行を待つ名前・規格
+    if(c.every(z=>specIsNum(z.s))) return;
+    if(SPEC_SKIP_RE.test(c[0].s.replace(/\s/g,''))){ pend=[]; return; }
+
+    if(c[0].s.length>40) { pend=[]; return; } // 文章（仕様書の本文）
+    if(pend.length>=3) pend=[];
+    // 規格の続き（前の行より右から始まる）か、新しい名前か
+    if(pend.length&&c[0].x>pend[0][0].x+20){ pend.push(c); } else { pend=[c]; }
+  });
+  return out;
+}
+
+/* 候補を整理：重複をまとめ、登録単価の値段を内訳に当てはめ、ランクを読む */
+function specBuildCandidates(raw){
+  const map=new Map(), list=[];
+  raw.forEach(r=>{
+    const rank=specRank(r.spec)||specRank(r.name);
+    const spec=rank?specStripRank(r.spec):r.spec;
+    const key=r.name+'\u0000'+spec+'\u0000'+rank+'\u0000'+r.unit;
+    const ex=map.get(key);
+    if(ex){ if(ex.price==null&&r.price!=null)ex.price=r.price; if(ex.qty==null&&r.qty!=null)ex.qty=r.qty; if(!ex.parent&&r.parent)ex.parent=r.parent; return; }
+    const o={name:r.name,spec,rank,unit:r.unit,qty:r.qty,price:r.price,parent:r.parent||'',head:r.unit==='式'};
+    map.set(key,o); list.push(o);
+  });
+  // 登録単価（名前＝分類、規格＝品名）を、同じ単位で名前が一致する内訳の行へ
+  list.forEach(o=>{ if(o.price!=null)return;
+    const hit=list.find(p=>p!==o&&p.price!=null&&p.unit===o.unit&&p.rank===o.rank&&(p.spec===o.name||p.name===o.name));
+    if(hit) o.price=hit.price; });
+  // 値段だけの重複（登録単価の行）は、内訳に取り込めたら消す
+  const used=new Set();
+  list.forEach(o=>{ if(o.qty==null&&o.price!=null){ const t=list.find(p=>p!==o&&p.qty!=null&&p.unit===o.unit&&(o.spec===p.name||o.name===p.name)); if(t) used.add(o); } });
+  // 式の行は、下に工種がぶらさがっている見出しなら消す
+  return list.filter(o=>!used.has(o)).filter(o=>!(o.head&&list.some(p=>p.parent===o.name)));
+}
+
+/* 書類の表題から委託名を推測（「工事名 ○○委託」や、上の方の「○○業務委託」の行） */
+function specGuessTitle(lines){
+  for(const l of lines.slice(0,80)){ const c=l.cells;
+    const k=c.findIndex(z=>/^(工事名|業務名|委託名|件名)$/.test(z.s.replace(/\s/g,'')));
+    if(k>=0&&c[k+1]&&c[k+1].s.length>=4) return c[k+1].s.replace(/\s+/g,''); }
+  for(const l of lines.slice(0,12)){ const t=l.cells.map(z=>z.s).join('').replace(/\s+/g,'');
+    if(/(委託|業務|工事)$/.test(t)&&t.length>=6&&t.length<=60&&!/^(工事名|設計書)/.test(t)) return t; }
+  return '';
+}
+/* 委託名を短く（一覧で見分けられる長さに） */
+function specShortName(full){
+  let s=String(full||'').replace(/\s+/g,'').replace(/(業務)?委託$|業務$|工事$/,'').replace(/^(川崎市|横浜市)/,'').replace(/^[^区]{1,4}区(内|管内)?/,'');
+  return s.length>14?s.slice(0,14)+'…':(s||String(full||'').slice(0,14));
+}
+/* 候補 → 工種のまとまり（大分類・細別。幹周ランクの値段は1つにまとめる） */
+const SPEC_TREE_UNITS=['本','株','個','基','箇所','巣'];
+function specDefaultUse(unit){ if(unit==='㎡')return 'area'; if(SPEC_TREE_UNITS.indexOf(unit)>=0)return 'tree'; if(unit==='式'||/^(L|l|ℓ|kg|h|時間|日)$/.test(unit))return 'none'; return 'manual'; }
+function specSplitName(name,parent){
+  let m=String(name).match(/^(.+?)[（(]([^（）()]+)[）)](.*)$/);
+  if(m&&m[1].length>=2) return {cat:m[1].trim(), kind:(m[2]+m[3]).trim()};
+  if(parent) return {cat:parent, kind:name, par:true};
+  return {cat:name, kind:name};
+}
+function specGroup(cands){
+  const groups=[], byKey=new Map();
+  cands.forEach(o=>{
+    let name=o.name;
+    if(o.rank) name=name.replace(/[\s　]*[A-HＡ-Ｈ]$/,'');     // 萌芽更新（平坦地）A → 規格は幹周で持つので記号は外す
+    const sp=specSplitName(name,o.parent);
+    const use=specDefaultUse(o.unit);
+    const key=sp.cat+'\u0000'+sp.kind+'\u0000'+o.unit+'\u0000'+(o.rank?'#rank':o.spec);
+    let g=byKey.get(key);
+    if(!g){ g={on:use!=='none', cat:sp.cat, kind:sp.kind, par:!!sp.par, unit:o.unit, use, spec:o.rank?'':o.spec, price:null, ranks:[], qty:o.qty}; byKey.set(key,g); groups.push(g); }
+    if(o.rank){ if(!g.ranks.some(r=>r.rank===o.rank)) g.ranks.push({rank:o.rank, price:o.price}); }
+    else if(g.price==null) g.price=o.price;
+  });
+  // 「芝刈／機械刈」のように（）がなく規格が短い時は、規格を細別にする
+  groups.forEach(g=>{ if(!g.par&&g.cat===g.kind&&g.spec&&g.spec.length<=20&&!g.ranks.length){ g.kind=g.spec; g.spec=''; } });
+  // 同じ大分類・細別で規格だけ違う → 細別に規格をつけて見分ける
+  const cnt={}; groups.forEach(g=>{const k=g.cat+'\u0000'+g.kind+'\u0000'+g.unit; cnt[k]=(cnt[k]||0)+1;});
+  groups.forEach(g=>{ if(g.spec&&cnt[g.cat+'\u0000'+g.kind+'\u0000'+g.unit]>1) g.kind=g.kind+' '+g.spec; });
+  // ランクは細い順に
+  const lo=r=>{ const m=String(r).match(/(\d+)/); return /未満/.test(r)&&!/〜/.test(r)?-1:(m?+m[1]:999); };
+  groups.forEach(g=>g.ranks.sort((a,b)=>lo(a.rank)-lo(b.rank)));
+  return groups;
+}
+
+prLoadLocal();
+window.addEventListener("load",()=>setTimeout(prPull,3000));
+</script>
 <!-- Excel出力用ライブラリ（画面を先に出すため、いちばん最後に読む） -->
 <script>/* ===== みんなの共有（自動）：案件と写真を共通GAS経由でGoogleドライブ「社内アプリ ＞ 現場調査データ」へ =====
  * ・この端末の保存（IndexedDB）はこれまでどおり。直したら少し待って、電波があれば自動で送る
@@ -5782,7 +6315,7 @@ async function exportPdf(){
     });
   }
   function touch(id){ const m=M(id); m.dirty=true; m.seq++; saveMeta(); setStatus("☁️ 共有待ち","wait"); schedule(); }
-  window.gcSync={ syncNow, refreshList, touch, meta:()=>meta, cloud:()=>cloud };
+  window.gcSync={ syncNow, refreshList, touch, meta:()=>meta, cloud:()=>cloud, api:{ get, post, me:()=>me(), isAdmin:()=>isAdmin() } };
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",start); else start();
 })();
 </script>

@@ -54,6 +54,7 @@ var SHEETS = {
   replies:   { name: '要点メモの返事', head: ['replyId', 'memoId', 'at', 'by', 'text', 'scope', 'showAt', 'actions', 'readBy'] },
   chosa:     { name: '現場調査の案件', head: ['id', 'name', 'date', 'mode', 'n', 'photos', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 中身は Drive の「現場調査データ」、写真は1枚1ファイルで「現場調査データ ＞ 写真」
   chosaPhotos:{ name: '現場調査の写真', head: ['hash', 'fileId', 'mime', 'size', 'at'] },
+  chosaDocs: { name: '現場調査の設計書', head: ['id', 'name', 'fileId', 'mime', 'size', 'book', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 単価のもとにした設計書（ファイルは「現場調査データ ＞ 設計書」）
   parkHist:  { name: '公園報告の履歴', head: ['hid', 'id', 'atMs', 'at', 'by', 'figures', 'fileId', 'img', 'map', 'size', 'ver', 'note'] },   // 前の版（30分に1回・人が変わったとき・戻す前）。画像は別ファイル（img/map＝その目印）で、同じ画像は1つだけ
   parks:     { name: '公園報告',     head: ['id', 'park', 'contract', 'order', 'date', 'figures', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'genzai'] },   // 中身（図面・図形）は Drive の「公園報告データ」に1件1ファイルで置く。genzai＝発生材に使った残材処分の記録（JSON）
   shashinItems:  { name: '工事写真の撮影項目', head: ['itemId', 'siteId', 'cat', 'name', 'jushu', 'kikaku', 'memo', 'lat', 'lng', 'src', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'kind', 'no', 'parkRec', 'parkFid', 'px', 'py', 'kai'] },   // 地図に置いた点（公園報告の図面の木なら、その記録と木の目印・図面上の位置も）。（樹木・除草・補修など）。現場マスタの現場IDでつなぐ
@@ -639,6 +640,9 @@ function doPost(e) {
       case 'chosa:photo':      return withLock_(function () { return chosaPhoto_(b.hash, b.data); });
       case 'chosa:save':       return withLock_(function () { return chosaSave_(b); });
       case 'chosa:delete':     return withLock_(function () { return chosaDelete_(b.id, b.by); });
+      case 'chosa:prices':     return withLock_(function () { return chosaPricesSave_(b); });
+      case 'chosa:doc':        return withLock_(function () { return chosaDocSave_(b); });
+      case 'chosa:docDelete':  return withLock_(function () { return chosaDocDelete_(b.id, b.by); });
       /* 工事写真 */
       case 'shashin:saveItems':   return withLock_(function () { return shashinSaveItems_(b.items, b.by); });
       case 'shashin:deleteItems': return withLock_(function () { return shashinDeleteItems_(b.ids, b.by); });
@@ -2420,7 +2424,57 @@ function chosaGet_(a, p) {
     });
     return { ok: true, photos: out, missing: miss };
   }
+  if (a === 'prices') return chosaPricesGet_();
+  if (a === 'docGet') {   // 設計書のファイルの中身（アプリの中で開く）
+    var d = chosaDocRow_(p.id);
+    if (!d || d.state === '削除') return { ok: false, error: 'この設計書は見つかりませんでした' };
+    try { var bl = DriveApp.getFileById(d.fileId).getBlob(); return { ok: true, name: d.name, mime: d.mime, data: Utilities.base64Encode(bl.getBytes()) }; }
+    catch (e) { return { ok: false, error: 'ファイルを開けませんでした：' + e }; }
+  }
   return { ok: false, error: 'unknown action' };
+}
+/* ---- 単価の置き場（会社で1つ）：単価表（設計書から読んだ工種と幹周ランクごとの単価）と、作業方針ごとにどれを使うか ----
+ *  ・中身は「現場調査データ ＞ 設計書」の「単価の置き場.json」。保存するたびに版（ver）を1つ上げる
+ *  ・ほかの端末が先に保存していたら上書きしない（conflict と中身を返し、端末でまぜて送り直す） */
+function chosaPricesGet_() {
+  var fid = prop_('CHOSA_PRICE_FILE', ''), ver = Number(prop_('CHOSA_PRICE_VER', '0')) || 0, data = '';
+  if (fid) { try { data = DriveApp.getFileById(fid).getBlob().getDataAsString('UTF-8'); } catch (e) { data = ''; } }
+  return { ok: true, data: data, ver: ver, docs: chosaDocs_(), admins: admins_() };
+}
+function chosaPricesSave_(b) {
+  var json = String(b.json || ''), ver = Number(prop_('CHOSA_PRICE_VER', '0')) || 0;
+  if (!json) return { ok: false, error: '中身がありません' };
+  if (json.length > 5 * 1024 * 1024) return { ok: false, error: '大きすぎて保存できません' };
+  if (Number(b.base || 0) !== ver) { var cur = chosaPricesGet_(); cur.ok = false; cur.conflict = true; return cur; }
+  var props = PropertiesService.getScriptProperties(), fid = prop_('CHOSA_PRICE_FILE', ''), file = null;
+  if (fid) { try { file = DriveApp.getFileById(fid); if (file.isTrashed()) file = null; } catch (e) { file = null; } }
+  if (file) file.setContent(json);
+  else { file = chosaFolder_('設計書').createFile(Utilities.newBlob(json, 'application/json', '単価の置き場.json')); props.setProperty('CHOSA_PRICE_FILE', file.getId()); }
+  props.setProperty('CHOSA_PRICE_VER', String(ver + 1));
+  return { ok: true, ver: ver + 1 };
+}
+function chosaDocRow_(id) { var list = rows_('chosaDocs'); for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i]; return null; }
+function chosaDocs_() {
+  return rows_('chosaDocs').filter(function (r) { return r.state !== '削除'; })
+    .map(function (r) { return { id: r.id, name: r.name, mime: r.mime, size: r.size, book: r.book, by: r.by, at: r.at }; });
+}
+function chosaDocSave_(b) {
+  var m = String(b.data || '').match(/^data:([^;,]+)?(?:;[^,]*)?;base64,(.+)$/), name = String(b.name || '').replace(/[\\\/:*?"<>|]/g, '_').trim() || '設計書';
+  if (!m) return { ok: false, error: 'ファイルの形がちがいます' };
+  if (m[2].length > 40 * 1024 * 1024) return { ok: false, error: 'ファイルが大きすぎます（30MBまで）' };
+  var mime = m[1] || 'application/octet-stream', by = String(b.by || '').trim();
+  var f = chosaFolder_('設計書').createFile(Utilities.newBlob(Utilities.base64Decode(m[2]), mime, name));
+  var r = upsert_('chosaDocs', 'id', 'D', { name: name, fileId: f.getId(), mime: mime, size: Math.round(m[2].length * 3 / 4 / 1024) + 'KB', book: String(b.book || ''), state: '有効', by: by, at: now_() }, by);
+  return { ok: true, id: r.id, docs: chosaDocs_() };
+}
+function chosaDocDelete_(id, by) {   // 消せるのは入れた人か親方だけ（ファイルはゴミ箱に30日）
+  var r = chosaDocRow_(id);
+  if (!r || r.state === '削除') return { ok: true, docs: chosaDocs_() };
+  by = String(by || '').trim();
+  if (!isAdmin_(by) && (!by || by !== String(r.by || '').trim())) return { ok: false, error: '設計書を消せるのは、入れた人（' + (r.by || '不明') + '）か' + admins_().join('・') + 'だけです' };
+  try { DriveApp.getFileById(r.fileId).setTrashed(true); } catch (e) {}
+  upsert_('chosaDocs', 'id', 'D', { id: r.id, state: '削除' }, by);
+  return { ok: true, docs: chosaDocs_() };
 }
 function chosaHave_(hashes) {
   var map = chosaPhotoMap_();
