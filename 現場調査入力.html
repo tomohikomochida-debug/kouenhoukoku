@@ -129,6 +129,7 @@
   .prmap th{ font-size:13px; color:var(--sub); }
   .prmap select{ width:100%; font-size:14px; padding:7px 6px; }
   .prmap td .muted{ font-size:12px; margin-top:2px; }
+  .prrule{ border:1px solid var(--line); background:#fff; border-radius:999px; padding:2px 9px; font-size:12px; color:var(--accent); margin-top:3px; }
   .prbtns{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 4px; }
   .prbtns button,.prdoc button,.prdocs button{ border:1px solid var(--line); background:#fff; border-radius:10px; padding:10px 14px; font-size:14px; color:var(--ink); }
   .prbtns button.solid{ background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700; }
@@ -5613,16 +5614,27 @@ const PR_BUILTIN=[
     { name:"竹伐採（平坦地）", unit:"本", price:1090 },
     { name:"竹伐採（斜面地）", unit:"本", price:1750 } ]}
 ];
-/* 作業方針 → 使う工種（「単価表のid::工種名」）。最初の決め方 */
-const PR_MAP0={
-  "強剪定":{ deci:"kt-koen-2025-12::基本剪定（落葉木）", ever:"kt-koen-2025-12::基本剪定（着葉木）" },
-  "高さ低減剪定":{ deci:"kt-koen-2025-12::基本剪定（落葉木）", ever:"kt-koen-2025-12::基本剪定（着葉木）" },
-  "透かし剪定":{ deci:"kt-koen-2025-12::軽剪定（落葉木）", ever:"kt-koen-2025-12::軽剪定（着葉木）" },
-  "枯れ枝剪定":{ deci:"kt-jurin-r8::支障枝剪定（平坦地）", ever:"kt-jurin-r8::支障枝剪定（平坦地）" },
-  "萌芽更新":{ deci:"kt-jurin-r8::萌芽更新（平坦地）", ever:"kt-jurin-r8::萌芽更新（平坦地）" },
-  "伐採":{ deci:"kt-koen-2025-12::樹木撤去（支障木）", ever:"kt-koen-2025-12::樹木撤去（支障木）" },
-  "その他":{ deci:"", ever:"" }
+/* 作業方針 → 使う工種の決まり（上から順に、置き場にある工種を探す。新しく読み込んだ単価表を先に見る）
+   ・強剪定・高さ低減剪定：「強剪定」の工種（街路樹の設計書など）があればそれ、なければ枝下ろし
+   ・透かし剪定：基本剪定
+   落葉木／着葉木の分かれた工種は、木に合う方を使う */
+const PR_RULES={
+  "強剪定":{ rx:[/強剪定/,/^枝下ろし（平坦地）$/], txt:"「強剪定」の工種があればそれ、なければ枝下ろし（平坦地）" },
+  "高さ低減剪定":{ rx:[/強剪定/,/^枝下ろし（平坦地）$/], txt:"「強剪定」の工種があればそれ、なければ枝下ろし（平坦地）" },
+  "透かし剪定":{ rx:[/^基本剪定/], txt:"基本剪定" },
+  "枯れ枝剪定":{ rx:[/^支障枝剪定（平坦地）$/], txt:"支障枝剪定（平坦地）" },
+  "萌芽更新":{ rx:[/^萌芽更新（平坦地）$/], txt:"萌芽更新（平坦地）" },
+  "伐採":{ rx:[/^樹木撤去（支障木）$/,/支障木/], txt:"樹木撤去（支障木）" },
+  "その他":{ rx:[], txt:"使わない" }
 };
+function prRuleRef(work,leaf){ const R=PR_RULES[work]; if(!R) return "";
+  const books=prBooks().slice().reverse(), lw=leaf==="ever"?/着葉|常緑/:/落葉/, other=leaf==="ever"?/落葉/:/着葉|常緑/;
+  for(const rx of R.rx){ let alt="";
+    for(const b of books) for(const it of b.items){ if(it.unit!=="本"&&it.unit!=="株") continue; if(!rx.test(it.name)) continue;
+      if(other.test(it.name)&&!lw.test(it.name)){ if(!alt) alt=b.id+"::"+it.name; continue; }   // 葉の別がちがう工種は、合う方がない時だけ
+      return b.id+"::"+it.name; }
+    if(alt) return alt; }
+  return ""; }
 /* 着葉木（常緑樹・針葉樹など）。ここにない樹種は落葉木として扱う（カードで切りかえられる） */
 const PR_EVER=new Set("シラカシ,アラカシ,ウバメガシ,アカガシ,カシ,マテバシイ,スダジイ,シイ,クスノキ,ヒノキ,サワラ,スギ,ヤブツバキ,ツバキ,サザンカ,キンモクセイ,ギンモクセイ,ヒイラギモクセイ,モクセイ,ヒイラギ,クロガネモチ,モチノキ,ソヨゴ,タブノキ,ヤマモモ,クロマツ,アカマツ,ゴヨウマツ,マツ,ヒマラヤスギ,タイサンボク,シマトネリコ,ナギ,コウヤマキ,イヌマキ,カイヅカイブキ,イブキ,ニオイヒバ,レイランディ,コニファー,ゲッケイジュ,オリーブ,ユーカリ,シュロ,ヤシ,ソテツ,モウソウチク,マダケ,タケ,ササ,アオキ,ヤツデ,ナンテン,ジンチョウゲ,クチナシ,アベリア,ベニカナメモチ,カナメモチ,トウネズミモチ,ネズミモチ,マサキ,イヌツゲ,ツゲ,キャラボク,イチイ,トベラ,シャリンバイ,ピラカンサ,アセビ,ヒサカキ,サカキ,キョウチクトウ,ビワ,ミカン,ユズ,ツツジ,サツキ".split(","));
 const PR_KEY="gc_prices";
@@ -5636,7 +5648,9 @@ function prFix(){ const s=PR.store; s.books=Array.isArray(s.books)?s.books:[]; s
 function prBooks(){ const del=PR.store.del||{}; return PR_BUILTIN.concat((PR.store.books||[]).filter(b=>!(del[b.id]>=(b.at||0)))); }
 function prBook(id){ return prBooks().find(b=>b.id===id)||null; }
 function prItem(ref){ if(!ref) return null; const k=ref.indexOf("::"); if(k<0) return null; const b=prBook(ref.slice(0,k)); if(!b) return null; const it=b.items.find(x=>x.name===ref.slice(k+2)); return it?{book:b,item:it}:null; }
-function prMapOf(work){ const m=PR.store.map[work]; return (m&&(m.deci!==undefined||m.ever!==undefined))?m:(PR_MAP0[work]||{deci:"",ever:""}); }
+function prCustom(work){ const m=PR.store.map[work]; return !!(m&&(m.deci!==undefined||m.ever!==undefined)); }
+function prMapOf(work){ return prCustom(work)?PR.store.map[work]:{ deci:prRuleRef(work,"deci"), ever:prRuleRef(work,"ever") }; }
+function prResetMap(work){ if(!prCustom(work)) return; const s=prSnap(); PR.store.map[work]={at:Date.now()}; prChanged(s); }
 function prLeaf(t){ if(t.leaf==="ever"||t.leaf==="deci") return t.leaf; const sp=String(t.species||"").trim(); return PR_EVER.has(sp)?"ever":"deci"; }
 function prGirth(t){ const v=parseFloat(String(t.c==null?"":t.c).replace(/[^\d.]/g," ").trim().split(/\s+/)[0]); return isNaN(v)?null:v; }
 const prBandText=(lo,hi)=>!lo?hi+"cm未満":hi==null?lo+"cm以上":lo+"〜"+hi+"cm";
@@ -5744,7 +5758,9 @@ function prRender(){
   const n=(state.trees||[]).filter(t=>t.type!=="exterior").length, empty=(state.trees||[]).filter(t=>t.type!=="exterior"&&String(t.up==null?"":t.up).trim()==="").length;
   let h=st+`<div class="prsec"><h3>作業方針ごとの仮の単価</h3><div class="muted">木の作業方針と幹周から、ここで選んだ工種の幹周ランクの単価を<b>仮</b>で入れます。樹種で落葉木か着葉木（常緑）かを分けます（カードで切りかえられます）。</div>
     <table class="prmap"><tr><th>作業方針</th><th>落葉木</th><th>着葉木（常緑）</th></tr>`+
-    WORKS.map(w=>{ const m=prMapOf(w); return `<tr><td><b>${esc(w)}</b></td>`+["deci","ever"].map(l=>`<td><select onchange="prSetMap('${w}','${l}',this.value)">${prRefOptions(m[l]||"")}</select><div class="muted">${esc(prRange(m[l]||""))}</div></td>`).join("")+`</tr>`; }).join("")+`</table>
+    WORKS.map(w=>{ const m=prMapOf(w), cu=prCustom(w), R=PR_RULES[w];
+      return `<tr><td><b>${esc(w)}</b><div class="muted">${cu?`選んだ工種<br><button type="button" class="prrule" onclick="prResetMap('${w}')">決まりに戻す</button>`:R?"決まり："+esc(R.txt):""}</div></td>`+
+        ["deci","ever"].map(l=>`<td><select onchange="prSetMap('${w}','${l}',this.value)">${prRefOptions(m[l]||"")}</select><div class="muted">${esc(prRange(m[l]||""))}</div></td>`).join("")+`</tr>`; }).join("")+`</table>
     <div class="prbtns"><button type="button" onclick="prFillCase('empty')">この案件の空いている単価に入れる（${empty}本）</button><button type="button" onclick="prFillCase('auto')">仮の単価を入れ直す（手で入れた単価はそのまま）</button></div></div>`;
   h+=`<div class="prsec"><h3>単価表（${prBooks().length}）</h3>`+prBooks().map(b=>{ const op=PRV.open[b.id], doc=(PR.docs||[]).filter(d=>d.book===b.id);
     return `<div class="prbook"><div class="prbh" onclick="PRV.open['${b.id}']=!PRV.open['${b.id}'];prRender()"><span>${op?"▼":"▶"}</span><b>${esc(b.short||b.name)}</b><span class="muted">${b.items.length}工種${b.builtin?"・最初から入っている":""}</span></div>`+
