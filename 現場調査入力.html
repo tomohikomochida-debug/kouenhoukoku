@@ -6191,7 +6191,7 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
   }
 
   /* ---- 送る ---- */
-  async function upload(id){
+  async function upload(id,again){
     const st=await caseGet(id); if(!st) return;
     const m=M(id), seq=m.seq, info=casesIndex.find(c=>c.id===id)||{};
     if(!m.ver && !String(st.caseName||"").trim() && !(st.trees||[]).length && !st.mapImage && !(st.maps||[]).some(m=>m&&m.image)){ m.dirty=false; await saveMeta(); return; }   // 空の案件は送らない
@@ -6206,7 +6206,13 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
     }
     progress="案件"; paint();
     const r=await post({mode:"save",id,base:m.ver||0,name:st.caseName||info.name||"",date:st.caseDate||"",caseMode:st.mode||"",n:(st.trees||[]).length,photos:hs.length,json:JSON.stringify(p.data)});
-    if(r.conflict){ await fork(id,r); return; }
+    if(r.conflict){
+      if(!again&&me()&&String(r.updatedBy||"").trim()===me()){   // 自分が別の場所（ほかの端末・入れ直す前のアプリ）で先に直していた：どれを残すか選ぶ
+        const ch=await askSame(st.caseName||info.name||"(無題)",r);
+        if(ch==="mine"){ m.ver=r.ver; await saveMeta(); return upload(id,true); }           // この端末の内容で共有を上書き
+        if(ch==="cloud"){ m.dirty=false; await saveMeta(); const got=await download(id); if(got&&caseId===id) showCase(got); toast("共有の内容にそろえました"); return; }
+      }
+      await fork(id,r); return; }
     if(!r.ok) throw new Error(notUpdated(r.error));
     m.ver=r.ver; if(m.seq===seq) m.dirty=false;   // 送っている間にまた直したら、もう一度送る
     await saveMeta();
@@ -6310,6 +6316,39 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
     el.style.color=col; el.title="押すと、今すぐ共有します";
   }
 
+  /* ---- 自分の案件（作った人か最後に直した人が自分）---- */
+  const mineIt=c=>{ const n=me(); return !!n&&(String(c.by||"").trim()===n||String(c.updatedBy||"").trim()===n); };
+  const whenOf=c=>{ const t=Date.parse(String(c.updated||"").replace(/\//g,"-").replace(" ","T")); return isNaN(t)?0:t; };
+  /* 選んでもらう小さな画面（ボタンを並べる）。押したボタンの値を返す */
+  function choose(title,msg,btns){ return new Promise(res=>{ const d=document.createElement("dialog"); d.className="vdlg";
+    d.innerHTML=`<h3></h3><p style="white-space:pre-wrap;font-size:14px;line-height:1.6;margin:4px 0 12px"></p><div style="display:flex;flex-direction:column;gap:8px"></div>`;
+    d.querySelector("h3").textContent=title; d.querySelector("p").textContent=msg; const box=d.querySelector("div");
+    btns.forEach(([v,label,pri])=>{ const b=document.createElement("button"); b.type="button"; b.textContent=label;
+      b.style.cssText="border:1px solid "+(pri?"var(--accent)":"var(--line)")+";background:"+(pri?"var(--accent)":"#fff")+";color:"+(pri?"#fff":"var(--ink)")+";border-radius:10px;padding:12px;font-size:15px;font-weight:"+(pri?"700":"400")+";text-align:left;font-family:inherit";
+      b.onclick=()=>{ d.close(); d.remove(); res(v); }; box.appendChild(b); });
+    d.addEventListener("cancel",e=>e.preventDefault()); document.body.appendChild(d); if(d.showModal) d.showModal(); else d.setAttribute("open",""); }); }
+  function askSame(name,r){ return choose("同じ案件を、別の場所でも直しています",
+    "「"+name+"」は、あなたが別の端末（または入れ直す前のアプリ）で先に直して共有しています（"+(r.updated||"")+"）。\nこの端末の変更と、どちらを残しますか？",
+    [["mine","この端末の内容を残す（共有を上書き）",true],["cloud","共有の内容にそろえる（この端末の変更は捨てる）"],["both","両方残す（この端末の内容を別の案件にする）"]]); }
+  /* 名前がない（入れ直した直後など）：共有に出てくる名前から選ぶ */
+  async function askWho(){ if(me()) return;
+    const names=[...new Set(cloud.flatMap(c=>[c.by,c.updatedBy]).map(x=>String(x||"").trim()).filter(Boolean))].slice(0,12);
+    if(!names.length) return;
+    const v=await choose("あなたはどなたですか？","自分の案件を共有から戻すのに使います（ほかのアプリと同じ名前です）。",names.map(n=>[n,n]).concat([["",
+      "ここにない（あとで名前を入れる）"]]));
+    if(v){ try{ localStorage.setItem("dandori_me",JSON.stringify(v)); localStorage.setItem("gc_asked_name","1"); }catch(e){} renderCaseBar(); } }
+  /* 入れ直した直後（この端末に空の案件が1つだけ）：前回の自分の案件を共有から開く */
+  async function restoreMine(){
+    if(casesIndex.length!==1) return; const blank=casesIndex[0], bm=meta[blank.id];
+    if(bm&&bm.ver) return; if(blank.id!==caseId) return;
+    if(String(state.caseName||"").trim()||(state.trees||[]).length||(state.maps||[]).some(m=>m&&m.image)) return;
+    const mine=cloud.filter(c=>mineIt(c)).sort((a,b)=>whenOf(b)-whenOf(a)); if(!mine.length) return;
+    const it=mine[0]; setStatus("☁️ 前回の案件を取り込み中…","run");
+    try{ await download(it.id); }catch(e){ setStatus("☁️ 取り込めませんでした","ng"); return; }
+    casesIndex=casesIndex.filter(c=>c.id!==blank.id); try{ await idbDel("case_"+blank.id); }catch(e){} delete meta[blank.id]; await idbSet("cases",casesIndex); await saveMeta();
+    caseId=it.id; await idbSet("current",it.id); const st=await caseGet(it.id,true); if(st) showCase(st); setStatus("☁️ 共有済","ok");
+    toast("前回の案件「"+(it.name||"(無題)")+"」を開きました。ほかの自分の案件も、案件の選択に出ています"); }
+
   /* ---- もとの関数にひと手間足す ---- */
   const _markDirty=markDirty;
   markDirty=function(){ const r=_markDirty.apply(this,arguments);
@@ -6318,10 +6357,15 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
   const _render=renderCaseBar;
   renderCaseBar=function(){ _render.apply(this,arguments);
     const sel=$("caseSel"); if(!sel) return;
-    const only=cloud.filter(c=>!casesIndex.some(x=>x.id===c.id));
-    if(only.length){
+    const only=cloud.filter(c=>!casesIndex.some(x=>x.id===c.id)), mine=only.filter(mineIt).sort((a,b)=>whenOf(b)-whenOf(a)), others=only.filter(c=>!mineIt(c));
+    if(mine.length){   // 自分の案件（ほかの端末・入れ直す前に作ったもの）。選ぶと開く
+      const g=document.createElement("optgroup"); g.label="自分の案件（共有にあります・選ぶと開きます）";
+      g.innerHTML=mine.map(c=>`<option value="cloud:${esc(c.id)}">${esc(c.name||"(無題)")}｜${esc(c.date||"")}（${c.n||0}件）</option>`).join("");
+      sel.appendChild(g);
+    }
+    if(others.length){
       const g=document.createElement("optgroup"); g.label="☁️ みんなの案件（選ぶとこの端末に取り込みます）";
-      g.innerHTML=only.map(c=>`<option value="cloud:${esc(c.id)}">☁️ ${esc(c.name||"(無題)")}｜${esc(c.date||"")}（${c.n||0}件・${esc(c.updatedBy||c.by||"")}）</option>`).join("");
+      g.innerHTML=others.map(c=>`<option value="cloud:${esc(c.id)}">☁️ ${esc(c.name||"(無題)")}｜${esc(c.date||"")}（${c.n||0}件・${esc(c.updatedBy||c.by||"")}）</option>`).join("");
       sel.appendChild(g);
     }
     sel.value=caseId||sel.value;
@@ -6364,7 +6408,7 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
     let add=false; casesIndex.forEach(c=>{ if(!meta[c.id]){ meta[c.id]={ver:0,dirty:true,seq:1}; add=true; } });
     if(add) await saveMeta();
     paint();
-    try{ await refreshList(true); }catch(e){}
+    try{ await refreshList(true); await askWho(); await restoreMine(); }catch(e){}
     syncNow();
     setInterval(()=>{ if(!busy && Object.values(meta).some(m=>m.dirty)) syncNow(); },120000);
     window.addEventListener("online",()=>syncNow());
