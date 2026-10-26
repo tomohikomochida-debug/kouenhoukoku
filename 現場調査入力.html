@@ -673,7 +673,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     put(R, 1, "運搬費", { size: 12, bold: true }); R++;
     line("1台に積む量(t)", d.perTruck, "0.0#"); line("回数（合計t÷積む量、切り上げ）", d.trucks, "0"); line("往復の時間", d.tripH, "0.0#");
     line("運転手の日当(円)", d.daily); line("1日の実働時間", d.workH, "0.0#"); line("運転手の1時間あたり(円)", d.hourly, null, "日当÷実働時間");
-    line("車両の損料(円/時)", d.sonryo, null, "ダンプトラック2t積級 運転1時間あたり換算損料"); line("燃料(L/時)", d.fuelL, "0.0#"); line("軽油単価(円/L)", d.diesel);
+    line("車両の損料(円/時)", d.sonryo, null, "ダンプトラック2t積級 運転1時間あたり換算損料（令和8年度の見込み）"); line("燃料(L/時)", d.fuelL, "0.0#"); line("軽油単価(円/L)", d.diesel);
     line("車両の1時間あたり(円)", d.vehH, null, "損料＋燃料×軽油単価");
     line("1回の運搬費(円)", d.trip, null, "往復の時間×（運転手＋車両の1時間あたり）"); line("運搬費の参考(円)", d.carry, null, d.usedCarry ? "見積の運搬費に使った" : (d.enteredCarry != null ? "見積の運搬費は入力の " + d.enteredCarry.toLocaleString() + " 円" : "")); R++;
     put(R, 1, "発生材の表（1本あたりのt）", { size: 12, bold: true }); R++;
@@ -4751,7 +4751,8 @@ function setTax(v){ pushUndo("upd:tax"); state.taxRate=(v===""?"":Number(v)/100)
        1回の運搬費 ＝ 往復の時間 ×（運転手の1時間あたり ＋ 車両の1時間あたり）
          運転手の1時間あたり ＝ 日当 ÷ 1日の実働時間（はじめは 27,200円 ÷ 6時間：神奈川県の公共工事設計労務単価 運転手（一般）、令和8年3月から）
          車両の1時間あたり ＝ 損料 ＋ 燃料（L/時）× 軽油単価
-           はじめは ダンプトラック2t積級の 運転1時間あたり換算損料 1,280円・燃料 3.5L/時（建設機械等損料表、新潟県 令和7年10月）、軽油 160円/L
+           はじめは ダンプトラック2t積級の 運転1時間あたり換算損料 1,470円（令和8年度の見込み：令和6年度の表の1,280円 × 国の令和8年度改定で運搬機械が1.15倍）
+           燃料 3.5L/時（88kW × 0.040L）、軽油 160円/L
        はじめは 2t積み・往復1時間
    ・株立ちの木は、幹周のマスに入っている「各幹の総和×0.7」の数字でランクを決める
    ・単価・積む量は案件ごとに持ち、この端末で最後に使った値を次の案件のはじめの値にする
@@ -4759,8 +4760,10 @@ function setTax(v){ pushUndo("upd:tax"); state.taxRate=(v===""?"":Number(v)/100)
 const DISP_RANKS=[["A",0,30],["B",30,60],["C",60,90],["D",90,120],["E",120,150],["F",150,180],["G",180,210],["H",210,250],["I",250,300],["J",300,null]];
 const DISP_T={ "枯損木伐採":[0.5,1,1.5,2,2.5,3,5,7,8,10], "枯枝剪定":[0.2,0.4,0.6,0.8,1,1.1,1.2,1.3,1.4,1.5], "強剪定":[0.5,0.7,1.2,1.5,2,2.5,3,4,5,6] };
 const DISP_MAP={ "伐採":"枯損木伐採", "萌芽更新":"枯損木伐採", "強剪定":"強剪定", "高さ低減剪定":"強剪定", "剪定（基本剪定）":"枯枝剪定", "透かし剪定":"枯枝剪定", "枯れ枝剪定":"枯枝剪定" };
-const DISP_DEF={ unit:13630, perTruck:2, tripH:1, daily:27200, workH:6, sonryo:1280, fuelL:3.5, diesel:160 };
-function dispCfg(){ if(!state.dispCfg||!("sonryo" in state.dispCfg)){ let last=null; try{ last=JSON.parse(localStorage.getItem("gc_disp_cfg4")||"null"); }catch(e){} state.dispCfg=Object.assign({},DISP_DEF,last||{}); } return state.dispCfg; }
+const DISP_DEF={ unit:13630, perTruck:2, tripH:1, daily:27200, workH:6, sonryo:1470, fuelL:3.5, diesel:160 };
+function dispCfg(){ if(!state.dispCfg||!("sonryo" in state.dispCfg)){ let last=null; try{ last=JSON.parse(localStorage.getItem("gc_disp_cfg4")||"null"); }catch(e){} if(last&&!last.r8&&Number(last.sonryo)===1280) last.sonryo=1470;   // 前のはじめの値（1,280円）は令和8年度の見込みに直す（一度だけ）
+    state.dispCfg=Object.assign({},DISP_DEF,last||{},{r8:1}); }
+  else if(!state.dispCfg.r8){ if(Number(state.dispCfg.sonryo)===1280) state.dispCfg.sonryo=1470; state.dispCfg.r8=1; } return state.dispCfg; }
 function dispHourly(cf){ const d=Number(cf.daily)||0, wh=Number(cf.workH)||0; return wh>0?d/wh:0; }
 function dispVehH(cf){ return (Number(cf.sonryo)||0)+(Number(cf.fuelL)||0)*(Number(cf.diesel)||0); }
 function dispTrip(cf){ const h=Number(cf.tripH)||0, v=h*(dispHourly(cf)+dispVehH(cf)); return v>0?Math.round(v):null; }
@@ -4800,7 +4803,7 @@ function renderDispRef(keepFocus){ const el=document.getElementById("dispRef"); 
       ${disp?`<button type="button" class="dpbtn" onclick="dispApply('dispose',${disp})">処分費に入れる</button>`:""}</div>
     <div class="dprow"><span>1台に積む量</span>${inp("perTruck","2",70)}<span>t</span><span>往復</span>${inp("tripH","1",70)}<span>時間</span></div>
     <div class="dprow"><span>運転手の日当</span>${inp("daily","27200",100)}<span>円 ÷ 実働</span>${inp("workH","6",60)}<span>時間 ＝ ${dispHourly(cf)?yen(dispHourly(cf))+"/時":"—"}</span></div>
-    <div class="dprow"><span>車両の損料</span>${inp("sonryo","1280",90)}<span>円/時 ＋ 燃料</span>${inp("fuelL","3.5",60)}<span>L/時 × 軽油</span>${inp("diesel","160",70)}<span>円/L ＝ ${dispVehH(cf)?yen(dispVehH(cf))+"/時":"—"}</span></div>
+    <div class="dprow"><span>車両の損料</span>${inp("sonryo","1470",90)}<span>円/時 ＋ 燃料</span>${inp("fuelL","3.5",60)}<span>L/時 × 軽油</span>${inp("diesel","160",70)}<span>円/L ＝ ${dispVehH(cf)?yen(dispVehH(cf))+"/時":"—"}</span></div>
     <div class="dprow"><span class="dpeq" style="margin-left:0">1回 ＝ 往復${cf.tripH||0}時間 ×（${yen(dispHourly(cf))} ＋ ${yen(dispVehH(cf))}）＝ <b>${trip?yen(trip):"—"}</b></span></div>
     <div class="dprow"><span class="dpeq" style="margin-left:0">→ ${trucks!=null?trucks+"回（"+fx(r.tot)+"t ÷ "+cf.perTruck+"t）":"—"} × ${trip?yen(trip):"—"}　運搬費の参考 <b>${carry!=null?yen(carry):"—"}</b></span>
       ${carry?`<button type="button" class="dpbtn" onclick="dispApply('carry',${carry})">運搬費に入れる</button>`:""}</div>
