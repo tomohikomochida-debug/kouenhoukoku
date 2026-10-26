@@ -4714,14 +4714,17 @@ function setTax(v){ pushUndo("upd:tax"); state.taxRate=(v===""?"":Number(v)/100)
        伐採・萌芽更新 → 枯損木伐採 ／ 強剪定・高さ低減剪定 → 強剪定 ／ 剪定（基本剪定）・透かし剪定・枯れ枝剪定 → 枯枝剪定
        幹周ランク：A＜30 B30〜 C60〜 D90〜 E120〜 F150〜 G180〜 H210〜 I250〜 J300〜（350cm以上もJ）
    ・処分費 ＝ 発生材の合計（t）× 処分単価（円/t、はじめは13,630円）
-   ・運搬費 ＝ 台数（合計t ÷ 1台に積む量、切り上げ）× 1台の運搬費
+   ・運搬費 ＝ 台数（合計t ÷ 1台に積む量、切り上げ）× 1回の運搬費
+       1回の運搬費 ＝ 往復の時間 × 1時間の人件費 ＋ 1回の車両費（はじめは 2t積み・往復1時間・3,000円/時・車両費10,000円）
+   ・株立ちの木は、幹周のマスに入っている「各幹の総和×0.7」の数字でランクを決める
    ・単価・積む量は案件ごとに持ち、この端末で最後に使った値を次の案件のはじめの値にする
    ========================================================= */
 const DISP_RANKS=[["A",0,30],["B",30,60],["C",60,90],["D",90,120],["E",120,150],["F",150,180],["G",180,210],["H",210,250],["I",250,300],["J",300,null]];
 const DISP_T={ "枯損木伐採":[0.5,1,1.5,2,2.5,3,5,7,8,10], "枯枝剪定":[0.2,0.4,0.6,0.8,1,1.1,1.2,1.3,1.4,1.5], "強剪定":[0.5,0.7,1.2,1.5,2,2.5,3,4,5,6] };
 const DISP_MAP={ "伐採":"枯損木伐採", "萌芽更新":"枯損木伐採", "強剪定":"強剪定", "高さ低減剪定":"強剪定", "剪定（基本剪定）":"枯枝剪定", "透かし剪定":"枯枝剪定", "枯れ枝剪定":"枯枝剪定" };
-const DISP_DEF={ unit:13630, perTruck:"", truckCost:"" };
-function dispCfg(){ if(!state.dispCfg){ let last=null; try{ last=JSON.parse(localStorage.getItem("gc_disp_cfg")||"null"); }catch(e){} state.dispCfg=Object.assign({},DISP_DEF,last||{}); } return state.dispCfg; }
+const DISP_DEF={ unit:13630, perTruck:2, tripH:1, hourly:3000, vehicle:10000 };
+function dispCfg(){ if(!state.dispCfg||!("tripH" in state.dispCfg)){ let last=null; try{ last=JSON.parse(localStorage.getItem("gc_disp_cfg2")||"null"); }catch(e){} state.dispCfg=Object.assign({},DISP_DEF,last||{}); } return state.dispCfg; }
+function dispTrip(cf){ const h=Number(cf.tripH)||0, w=Number(cf.hourly)||0, v=Number(cf.vehicle)||0; return (h*w+v)>0?Math.round(h*w+v):null; }
 function dispRank(c){ for(let k=DISP_RANKS.length-1;k>=0;k--) if(c>=DISP_RANKS[k][1]) return k; return 0; }
 function dispCalc(){ const rows={}, miss={nog:0,other:[]}; let tot=0, n=0;
   (state.trees||[]).forEach(t=>{ if(t.type==="exterior") return; const kind=DISP_MAP[t.work||""];
@@ -4729,13 +4732,13 @@ function dispCalc(){ const rows={}, miss={nog:0,other:[]}; let tot=0, n=0;
     const c=typeof prGirth==="function"?prGirth(t):parseFloat(t.c); if(c==null||isNaN(c)){ miss.nog++; return; }
     const k=dispRank(c), w=DISP_T[kind][k]; const r=rows[kind]||(rows[kind]={n:0,t:0,ranks:{}}); r.n++; r.t+=w; r.ranks[DISP_RANKS[k][0]]=(r.ranks[DISP_RANKS[k][0]]||0)+1; tot+=w; n++; });
   tot=Math.round(tot*100)/100; return {rows,tot,n,miss}; }
-function setDispCfg(k,v){ pushUndo("upd:disp:"+k); const c=dispCfg(); c[k]=v===""?"":Number(v); try{ localStorage.setItem("gc_disp_cfg",JSON.stringify(c)); }catch(e){} markDirty(); renderDispRef(true); }
+function setDispCfg(k,v){ pushUndo("upd:disp:"+k); const c=dispCfg(); c[k]=v===""?"":Number(v); try{ localStorage.setItem("gc_disp_cfg2",JSON.stringify(c)); }catch(e){} markDirty(); renderDispRef(true); }
 function dispApply(k,v){ pushUndo("dispapply"); state.extras=state.extras||{}; state.extras[k]=String(v); markDirty(); renderQuote(); toast((k==="dispose"?"処分費":"運搬費")+"に "+yen(v)+" を入れました（↶で戻せます）"); }
 function renderDispRef(keepFocus){ const el=document.getElementById("dispRef"); if(!el) return;
   if(state.mode==="exterior"&&!(state.trees||[]).some(t=>t.type!=="exterior")){ el.style.display="none"; return; } el.style.display="";
   const cf=dispCfg(), r=dispCalc(), fx=n=>Math.round(n*100)/100;
   const disp=cf.unit?Math.round(r.tot*Number(cf.unit)):null;
-  const trucks=cf.perTruck>0?Math.ceil(r.tot/Number(cf.perTruck)-1e-9):null, carry=trucks!=null&&cf.truckCost?trucks*Number(cf.truckCost):null;
+  const trip=dispTrip(cf), trucks=cf.perTruck>0?Math.ceil(r.tot/Number(cf.perTruck)-1e-9):null, carry=trucks!=null&&trip?trucks*trip:null;
   const kinds=Object.keys(DISP_T).filter(k=>r.rows[k]);
   const warn=[r.miss.nog?"幹周が入っていない木 "+r.miss.nog+"本は入っていません":"", r.miss.other.length?"「"+[...new Set(r.miss.other)].join("・")+"」の "+r.miss.other.length+"本は入っていません":""].filter(Boolean);
   const inp=(k,ph,w)=>`<input type="number" inputmode="decimal" class="dpin" style="width:${w||110}px" value="${cf[k]===""||cf[k]==null?"":cf[k]}" placeholder="${ph}" onchange="setDispCfg('${k}',this.value)">`;
@@ -4746,13 +4749,14 @@ function renderDispRef(keepFocus){ const el=document.getElementById("dispRef"); 
     ${warn.length?`<div class="dpwarn">⚠ ${warn.join("／")}</div>`:""}
     <div class="dprow"><span>処分単価</span>${inp("unit","13630")}<span>円/t</span><span class="dpeq">→ 処分費の参考 <b>${disp!=null?yen(disp):"—"}</b></span>
       ${disp?`<button type="button" class="dpbtn" onclick="dispApply('dispose',${disp})">処分費に入れる</button>`:""}</div>
-    <div class="dprow"><span>1台に積む量</span>${inp("perTruck","例 2",80)}<span>t</span><span>1台の運搬費</span>${inp("truckCost","例 25000")}<span>円</span>
-      <span class="dpeq">→ ${trucks!=null?trucks+"台":"—"}　運搬費の参考 <b>${carry!=null?yen(carry):"—"}</b></span>
+    <div class="dprow"><span>1台に積む量</span>${inp("perTruck","2",70)}<span>t</span><span>往復</span>${inp("tripH","1",70)}<span>時間 ×</span>${inp("hourly","3000",90)}<span>円/時 ＋ 車両費</span>${inp("vehicle","10000",100)}<span>円</span>
+      <span class="dpeq">＝ 1回 <b>${trip?yen(trip):"—"}</b></span></div>
+    <div class="dprow"><span class="dpeq" style="margin-left:0">→ ${trucks!=null?trucks+"回（"+fx(r.tot)+"t ÷ "+cf.perTruck+"t）":"—"} × ${trip?yen(trip):"—"}　運搬費の参考 <b>${carry!=null?yen(carry):"—"}</b></span>
       ${carry?`<button type="button" class="dpbtn" onclick="dispApply('carry',${carry})">運搬費に入れる</button>`:""}</div>
     <details class="dpdet"><summary>発生材の表（1本あたりのt）と、作業方針の割り当て</summary>
       <table class="dptab small"><tr><th></th>${DISP_RANKS.map(x=>`<th>${x[0]}<br><span class="muted">${x[1]}〜${x[2]==null?"":x[2]}</span></th>`).join("")}</tr>
       ${Object.keys(DISP_T).map(k=>`<tr><td>${k}</td>${DISP_T[k].map(v=>`<td>${v}</td>`).join("")}</tr>`).join("")}</table>
-      <div class="muted" style="font-size:12.5px;margin-top:6px">${Object.keys(DISP_T).map(k=>k+"："+Object.keys(DISP_MAP).filter(w=>DISP_MAP[w]===k).join("・")).join("　／　")}。「その他」は入りません。幹周350cm以上はランクJ。</div></details>`; }
+      <div class="muted" style="font-size:12.5px;margin-top:6px">${Object.keys(DISP_T).map(k=>k+"："+Object.keys(DISP_MAP).filter(w=>DISP_MAP[w]===k).join("・")).join("　／　")}。「その他」は入りません。幹周350cm以上はランクJ。株立ちは各幹の幹周の総和×0.7でランクを決めます。</div></details>`; }
 function renderQuote(){ const ex=state.extras||{}; renderDispRef();
   const c=document.getElementById("exCarry"),dsp=document.getElementById("exDispose"),m=document.getElementById("exMisc"),tx=document.getElementById("taxRate");
   if(c) c.value=ex.carry||""; if(dsp) dsp.value=ex.dispose||""; if(m) m.value=ex.misc||"";
