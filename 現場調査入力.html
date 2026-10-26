@@ -5409,7 +5409,7 @@ function sortByPrio(){
 }
 /* ---------- 位置図の凡例（写真帳・PDF・Excel 共通） ----------
    丸の色＝優先度（その図に出ている色だけ）、丸の数字＝写真帳・内訳の番号、色の枠＝区画（拡大した位置図の範囲）、
-   出力を優先度で絞っているときは、そのことも書く。 */
+ */
 function legendItems(om,showMarks){ const n=prioNames(), it=[], cols=new Set(showMarks?om.mks.map(k=>k[3]||""):[]);
   if(showMarks&&om.mks.length){
     [1,2,3].forEach(k=>{ if(cols.has(PRIO_COLORS[k-1])) it.push({k:"dot",col:PRIO_COLORS[k-1],t:"優先度 "+n[k-1]}); });
@@ -5417,7 +5417,6 @@ function legendItems(om,showMarks){ const n=prioNames(), it=[], cols=new Set(sho
     if(cols.has("")) it.push({k:"dot",col:"#D62828",t:"調査した木・項目"});
     it.push({k:"num",t:"丸の数字＝写真帳・内訳の番号"}); }
   (om.frames||[]).forEach(f=>it.push({k:"frame",col:f.col,t:"区画"+f.code+(f.name?" "+f.name:"")+"（拡大図の範囲）"}));
-  if(!outAll()&&it.length) it.push({k:"note",t:"出力：優先度 "+outFilter().p.slice().sort((a,b)=>(a||4)-(b||4)).map(p=>p?n[p-1]:"未設定").join("・")+" のみ"});
   return it; }
 function legendHTML(om,showMarks){ const it=legendItems(om,showMarks); if(!it.length) return "";
   return `<div class="pleg"><b>凡例</b>${it.map(x=>x.k==="dot"?`<span><i style="background:${x.col}"></i>${esc(x.t)}</span>`:x.k==="frame"?`<span><i class="fr" style="border-color:${x.col};background:${x.col}22"></i>${esc(x.t)}</span>`:x.k==="num"?`<span><i class="num">1</i>${esc(x.t)}</span>`:`<span class="nt">${esc(x.t)}</span>`).join("")}</div>`; }
