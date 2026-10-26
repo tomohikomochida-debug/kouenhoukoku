@@ -655,6 +655,35 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     return rows;
   }
 
+  /* 処分費・運搬費の計算（会社のExcelの考え方：工種×幹周ランクの発生材）。値で書く */
+  function dispSheet(wb, d) {
+    var sh = wb.addWorksheet("処分費・運搬費の計算", { pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.5, right: 0.4, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } } });
+    [8, 16, 18, 16, 12, 8, 10].forEach(function (w, i) { sh.getColumn(i + 1).width = w; });
+    var R = 1;
+    function put(r, c, v, o) { var cl = sh.getCell(r, c); cl.value = v; cl.font = font((o && o.size) || 11, o && o.bold); if (o && o.fmt) cl.numFmt = o.fmt; if (o && o.al) cl.alignment = { horizontal: o.al, vertical: "middle", wrapText: !!o.wrap }; if (o && o.box) cl.border = border(); if (o && o.head) { cl.font = font(10, true, "FFFFFFFF"); cl.fill = fill(HEAD); cl.alignment = { horizontal: "center", vertical: "middle" }; cl.border = border(); } return cl; }
+    put(R, 1, "処分費・運搬費の計算（参考）", { size: 14, bold: true }); R += 2;
+    ["番号", "樹種", "作業方針", "幹周(cm)", "発生材の表", "ランク", "発生材(t)"].forEach(function (h, i) { put(R, i + 1, h, { head: true }); }); R++;
+    d.list.forEach(function (x) {
+      [x.no, x.species, x.work, x.c, x.kind || "—", x.rank, x.w == null ? x.why : x.w].forEach(function (v, i) { put(R, i + 1, v, { box: true, al: i === 0 || i === 5 ? "center" : (i === 6 && x.w != null ? "right" : "left"), fmt: i === 6 && x.w != null ? "0.0#" : null, size: i === 6 && x.w == null ? 9 : 11 }); });
+      R++; });
+    put(R, 5, "合計", { bold: true, box: true, al: "center" }); put(R, 6, "", { box: true }); put(R, 7, d.tot, { bold: true, box: true, al: "right", fmt: "0.0#" }); R += 2;
+    function line(label, v, fmt, note) { put(R, 1, label, { bold: true }); put(R, 4, v, { al: "right", fmt: fmt || "#,##0", box: true }); if (note) put(R, 5, note, { size: 9 }); R++; }
+    put(R, 1, "処分費", { size: 12, bold: true }); R++;
+    line("発生材の合計(t)", d.tot, "0.0#"); line("処分単価(円/t)", d.unit); line("処分費の参考(円)", d.dispose, null, d.usedDispose ? "見積の処分費に使った" : (d.enteredDispose != null ? "見積の処分費は入力の " + d.enteredDispose.toLocaleString() + " 円" : "")); R++;
+    put(R, 1, "運搬費", { size: 12, bold: true }); R++;
+    line("1台に積む量(t)", d.perTruck, "0.0#"); line("回数（合計t÷積む量、切り上げ）", d.trucks, "0"); line("往復の時間", d.tripH, "0.0#");
+    line("運転手の日当(円)", d.daily); line("1日の実働時間", d.workH, "0.0#"); line("運転手の1時間あたり(円)", d.hourly, null, "日当÷実働時間");
+    line("車両の損料(円/時)", d.sonryo, null, "ダンプトラック2t積級 運転1時間あたり換算損料"); line("燃料(L/時)", d.fuelL, "0.0#"); line("軽油単価(円/L)", d.diesel);
+    line("車両の1時間あたり(円)", d.vehH, null, "損料＋燃料×軽油単価");
+    line("1回の運搬費(円)", d.trip, null, "往復の時間×（運転手＋車両の1時間あたり）"); line("運搬費の参考(円)", d.carry, null, d.usedCarry ? "見積の運搬費に使った" : (d.enteredCarry != null ? "見積の運搬費は入力の " + d.enteredCarry.toLocaleString() + " 円" : "")); R++;
+    put(R, 1, "発生材の表（1本あたりのt）", { size: 12, bold: true }); R++;
+    var c0 = R; put(R, 1, "", { head: true }); d.ranks.forEach(function (k, i) { var cl = put(R, i + 2, k, { head: true }); cl.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; }); sh.getRow(R).height = 30; R++;
+    d.table.forEach(function (row) { row.forEach(function (v, i) { put(R, i + 1, v, { box: true, al: i ? "center" : "left", size: 10 }); }); R++; });
+    for (var cc = 8; cc <= 11; cc++) sh.getColumn(cc).width = 9;
+    put(R, 1, d.map + "。「その他」は入らない。幹周350cm以上はランクJ。株立ちは各幹の幹周の総和×0.7。", { size: 9 }); R++;
+    sh.pageSetup.printArea = "A1:K" + R;
+  }
+
   function buildTreeWorkbook(ExcelJS, state, imgs) {
     imgs = imgs || { photos: {} };
     var trees = state.trees || [];
@@ -713,6 +742,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     exList.forEach(function (row) {
       r += 1;
       ws.getCell(r, 2).value = row[0]; ws.getCell(r, 2).font = font(11);
+      var dr = state.dispRef;
+      if (dr && row[0] === "処分費" && dr.usedDispose) { ws.getCell(r, 3).value = "発生材 " + dr.tot + "t × " + dr.unit.toLocaleString() + "円/t（参考）"; ws.getCell(r, 3).font = font(9); }
+      if (dr && row[0] === "運搬費" && dr.usedCarry) { ws.getCell(r, 3).value = dr.trucks + "回 × " + dr.trip.toLocaleString() + "円（参考）"; ws.getCell(r, 3).font = font(9); }
       ws.getCell(r, 4).value = 1; ws.getCell(r, 5).value = "式";
       ws.getCell(r, 6).value = num(row[1]); ws.getCell(r, 6).numFmt = "#,##0"; ws.getCell(r, 6).fill = fill(INPUT);
       ws.getCell(r, 7).value = { formula: "F" + r + "*D" + r }; ws.getCell(r, 7).numFmt = "#,##0";
@@ -727,6 +759,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     ws.getCell(r, 7).value = { formula: "G" + kei + "+G" + tax }; ws.getCell(r, 7).font = font(12, true); ws.getCell(r, 7).numFmt = "#,##0"; ws.getCell(r, 7).fill = fill(GREY);
     var total = r;
     for (var rr = kei; rr <= total; rr++) for (var cc = 2; cc <= 7; cc++) ws.getCell(rr, cc).border = border();
+    if (state.dispRef) dispSheet(wb, state.dispRef);
     /* ===== BOARD取込用（内訳を参照。内訳で単価を入れると、ここも変わる） ===== */
     var bd = wb.addWorksheet("BOARD取込用", { views: [{ state: "frozen", ySplit: 1 }] });
     [14, 48, 7, 7, 12].forEach(function (w, i) { bd.getColumn(i + 1).width = w; });
@@ -4700,7 +4733,7 @@ function showTab(w){
 }
 function qtyNum(t){ return t.type==="exterior"?(Number(t.qty)||0):1; }
 function computeTotals(){ let items=0; (state.trees||[]).forEach(t=>{ items+=(Number(t.up)||0)*qtyNum(t); });
-  const ex=state.extras||{}; const extra=(Number(ex.carry)||0)+(Number(ex.dispose)||0)+(Number(ex.misc)||0);
+  const ex=effExtras().ex; const extra=(Number(ex.carry)||0)+(Number(ex.dispose)||0)+(Number(ex.misc)||0);
   const kei=items+extra; const tr=(state.taxRate!==""&&state.taxRate!=null)?Number(state.taxRate):0.1;
   const tax=Math.round(kei*tr); return {items,extra,kei,tax,total:kei+tax,tr}; }
 function yen(n){ return "¥"+Math.round(n||0).toLocaleString(); }
@@ -4715,32 +4748,46 @@ function setTax(v){ pushUndo("upd:tax"); state.taxRate=(v===""?"":Number(v)/100)
        幹周ランク：A＜30 B30〜 C60〜 D90〜 E120〜 F150〜 G180〜 H210〜 I250〜 J300〜（350cm以上もJ）
    ・処分費 ＝ 発生材の合計（t）× 処分単価（円/t、はじめは13,630円）
    ・運搬費 ＝ 台数（合計t ÷ 1台に積む量、切り上げ）× 1回の運搬費
-       1回の運搬費 ＝ 往復の時間 × 運転手の日当 ÷ 1日の実働時間 ＋ 1回の車両費
-       はじめは 2t積み・往復1時間・日当27,200円（神奈川県の公共工事設計労務単価 運転手（一般）、令和8年3月から）・実働6時間・車両費10,000円
+       1回の運搬費 ＝ 往復の時間 ×（運転手の1時間あたり ＋ 車両の1時間あたり）
+         運転手の1時間あたり ＝ 日当 ÷ 1日の実働時間（はじめは 27,200円 ÷ 6時間：神奈川県の公共工事設計労務単価 運転手（一般）、令和8年3月から）
+         車両の1時間あたり ＝ 損料 ＋ 燃料（L/時）× 軽油単価
+           はじめは ダンプトラック2t積級の 運転1時間あたり換算損料 1,280円・燃料 3.5L/時（建設機械等損料表、新潟県 令和7年10月）、軽油 160円/L
+       はじめは 2t積み・往復1時間
    ・株立ちの木は、幹周のマスに入っている「各幹の総和×0.7」の数字でランクを決める
    ・単価・積む量は案件ごとに持ち、この端末で最後に使った値を次の案件のはじめの値にする
    ========================================================= */
 const DISP_RANKS=[["A",0,30],["B",30,60],["C",60,90],["D",90,120],["E",120,150],["F",150,180],["G",180,210],["H",210,250],["I",250,300],["J",300,null]];
 const DISP_T={ "枯損木伐採":[0.5,1,1.5,2,2.5,3,5,7,8,10], "枯枝剪定":[0.2,0.4,0.6,0.8,1,1.1,1.2,1.3,1.4,1.5], "強剪定":[0.5,0.7,1.2,1.5,2,2.5,3,4,5,6] };
 const DISP_MAP={ "伐採":"枯損木伐採", "萌芽更新":"枯損木伐採", "強剪定":"強剪定", "高さ低減剪定":"強剪定", "剪定（基本剪定）":"枯枝剪定", "透かし剪定":"枯枝剪定", "枯れ枝剪定":"枯枝剪定" };
-const DISP_DEF={ unit:13630, perTruck:2, tripH:1, daily:27200, workH:6, vehicle:10000 };
-function dispCfg(){ if(!state.dispCfg||!("workH" in state.dispCfg)){ let last=null; try{ last=JSON.parse(localStorage.getItem("gc_disp_cfg3")||"null"); }catch(e){} state.dispCfg=Object.assign({},DISP_DEF,last||{}); } return state.dispCfg; }
+const DISP_DEF={ unit:13630, perTruck:2, tripH:1, daily:27200, workH:6, sonryo:1280, fuelL:3.5, diesel:160 };
+function dispCfg(){ if(!state.dispCfg||!("sonryo" in state.dispCfg)){ let last=null; try{ last=JSON.parse(localStorage.getItem("gc_disp_cfg4")||"null"); }catch(e){} state.dispCfg=Object.assign({},DISP_DEF,last||{}); } return state.dispCfg; }
 function dispHourly(cf){ const d=Number(cf.daily)||0, wh=Number(cf.workH)||0; return wh>0?d/wh:0; }
-function dispTrip(cf){ const h=Number(cf.tripH)||0, w=dispHourly(cf), v=Number(cf.vehicle)||0; return (h*w+v)>0?Math.round(h*w+v):null; }
+function dispVehH(cf){ return (Number(cf.sonryo)||0)+(Number(cf.fuelL)||0)*(Number(cf.diesel)||0); }
+function dispTrip(cf){ const h=Number(cf.tripH)||0, v=h*(dispHourly(cf)+dispVehH(cf)); return v>0?Math.round(v):null; }
 function dispRank(c){ for(let k=DISP_RANKS.length-1;k>=0;k--) if(c>=DISP_RANKS[k][1]) return k; return 0; }
-function dispCalc(){ const rows={}, miss={nog:0,other:[]}; let tot=0, n=0;
-  (state.trees||[]).forEach(t=>{ if(t.type==="exterior") return; const kind=DISP_MAP[t.work||""];
-    if(!kind){ miss.other.push(t.work||"作業方針なし"); return; }
-    const c=typeof prGirth==="function"?prGirth(t):parseFloat(t.c); if(c==null||isNaN(c)){ miss.nog++; return; }
-    const k=dispRank(c), w=DISP_T[kind][k]; const r=rows[kind]||(rows[kind]={n:0,t:0,ranks:{}}); r.n++; r.t+=w; r.ranks[DISP_RANKS[k][0]]=(r.ranks[DISP_RANKS[k][0]]||0)+1; tot+=w; n++; });
-  tot=Math.round(tot*100)/100; return {rows,tot,n,miss}; }
-function setDispCfg(k,v){ pushUndo("upd:disp:"+k); const c=dispCfg(); c[k]=v===""?"":Number(v); try{ localStorage.setItem("gc_disp_cfg3",JSON.stringify(c)); }catch(e){} markDirty(); renderDispRef(true); }
+function dispCalc(trees,noFn){ const rows={}, miss={nog:0,other:[]}, list=[]; let tot=0, n=0;
+  trees=trees||state.trees||[]; noFn=noFn||((t,i)=>noOfIdx(i));
+  trees.forEach((t,i)=>{ if(t.type==="exterior") return; const kind=DISP_MAP[t.work||""], no=noFn(t,i);
+    if(!kind){ miss.other.push(t.work||"作業方針なし"); list.push({no,t,kind:"",why:"計算に入らない作業方針"}); return; }
+    const c=typeof prGirth==="function"?prGirth(t):parseFloat(t.c); if(c==null||isNaN(c)){ miss.nog++; list.push({no,t,kind,why:"幹周が入っていない"}); return; }
+    const k=dispRank(c), w=DISP_T[kind][k], rk=DISP_RANKS[k][0]; const r=rows[kind]||(rows[kind]={n:0,t:0,ranks:{}}); r.n++; r.t+=w; r.ranks[rk]=(r.ranks[rk]||0)+1; tot+=w; n++;
+    list.push({no,t,kind,c,rank:rk,w}); });
+  tot=Math.round(tot*100)/100; return {rows,tot,n,miss,list}; }
+/* 参考の金額（処分費・運搬費）。木の並びを渡すと、その木だけで計算する */
+function dispRefMoney(trees,noFn){ const cf=dispCfg(), r=dispCalc(trees,noFn), trip=dispTrip(cf);
+  const dispose=cf.unit&&r.tot?Math.round(r.tot*Number(cf.unit)):null;
+  const trucks=cf.perTruck>0&&r.tot?Math.ceil(r.tot/Number(cf.perTruck)-1e-9):null, carry=trucks&&trip?trucks*trip:null;
+  return {r,cf,trip,trucks,dispose,carry}; }
+/* 運搬費・処分費の欄が空のときは参考の金額を使う（見積の合計・Excel・BOARDとも） */
+function effExtras(trees,noFn){ const ex=Object.assign({carry:"",dispose:"",misc:""},state.extras||{}), m=dispRefMoney(trees,noFn), used={};
+  if(String(ex.dispose).trim()===""&&m.dispose){ ex.dispose=String(m.dispose); used.dispose=true; }
+  if(String(ex.carry).trim()===""&&m.carry){ ex.carry=String(m.carry); used.carry=true; }
+  return {ex,used,m}; }
+function setDispCfg(k,v){ pushUndo("upd:disp:"+k); const c=dispCfg(); c[k]=v===""?"":Number(v); try{ localStorage.setItem("gc_disp_cfg4",JSON.stringify(c)); }catch(e){} markDirty(); renderDispRef(true); }
 function dispApply(k,v){ pushUndo("dispapply"); state.extras=state.extras||{}; state.extras[k]=String(v); markDirty(); renderQuote(); toast((k==="dispose"?"処分費":"運搬費")+"に "+yen(v)+" を入れました（↶で戻せます）"); }
 function renderDispRef(keepFocus){ const el=document.getElementById("dispRef"); if(!el) return;
   if(state.mode==="exterior"&&!(state.trees||[]).some(t=>t.type!=="exterior")){ el.style.display="none"; return; } el.style.display="";
-  const cf=dispCfg(), r=dispCalc(), fx=n=>Math.round(n*100)/100;
-  const disp=cf.unit?Math.round(r.tot*Number(cf.unit)):null;
-  const trip=dispTrip(cf), trucks=cf.perTruck>0?Math.ceil(r.tot/Number(cf.perTruck)-1e-9):null, carry=trucks!=null&&trip?trucks*trip:null;
+  const M=dispRefMoney(), cf=M.cf, r=M.r, fx=n=>Math.round(n*100)/100, disp=M.dispose, trip=M.trip, trucks=M.trucks, carry=M.carry;
   const kinds=Object.keys(DISP_T).filter(k=>r.rows[k]);
   const warn=[r.miss.nog?"幹周が入っていない木 "+r.miss.nog+"本は入っていません":"", r.miss.other.length?"「"+[...new Set(r.miss.other)].join("・")+"」の "+r.miss.other.length+"本は入っていません":""].filter(Boolean);
   const inp=(k,ph,w)=>`<input type="number" inputmode="decimal" class="dpin" style="width:${w||110}px" value="${cf[k]===""||cf[k]==null?"":cf[k]}" placeholder="${ph}" onchange="setDispCfg('${k}',this.value)">`;
@@ -4752,17 +4799,27 @@ function renderDispRef(keepFocus){ const el=document.getElementById("dispRef"); 
     <div class="dprow"><span>処分単価</span>${inp("unit","13630")}<span>円/t</span><span class="dpeq">→ 処分費の参考 <b>${disp!=null?yen(disp):"—"}</b></span>
       ${disp?`<button type="button" class="dpbtn" onclick="dispApply('dispose',${disp})">処分費に入れる</button>`:""}</div>
     <div class="dprow"><span>1台に積む量</span>${inp("perTruck","2",70)}<span>t</span><span>往復</span>${inp("tripH","1",70)}<span>時間</span></div>
-    <div class="dprow"><span>運転手の日当</span>${inp("daily","27200",100)}<span>円 ÷ 実働</span>${inp("workH","6",60)}<span>時間 ＝ ${dispHourly(cf)?yen(dispHourly(cf))+"/時":"—"}</span><span>＋ 車両費</span>${inp("vehicle","10000",100)}<span>円/回</span>
-      <span class="dpeq">＝ 1回 <b>${trip?yen(trip):"—"}</b></span></div>
+    <div class="dprow"><span>運転手の日当</span>${inp("daily","27200",100)}<span>円 ÷ 実働</span>${inp("workH","6",60)}<span>時間 ＝ ${dispHourly(cf)?yen(dispHourly(cf))+"/時":"—"}</span></div>
+    <div class="dprow"><span>車両の損料</span>${inp("sonryo","1280",90)}<span>円/時 ＋ 燃料</span>${inp("fuelL","3.5",60)}<span>L/時 × 軽油</span>${inp("diesel","160",70)}<span>円/L ＝ ${dispVehH(cf)?yen(dispVehH(cf))+"/時":"—"}</span></div>
+    <div class="dprow"><span class="dpeq" style="margin-left:0">1回 ＝ 往復${cf.tripH||0}時間 ×（${yen(dispHourly(cf))} ＋ ${yen(dispVehH(cf))}）＝ <b>${trip?yen(trip):"—"}</b></span></div>
     <div class="dprow"><span class="dpeq" style="margin-left:0">→ ${trucks!=null?trucks+"回（"+fx(r.tot)+"t ÷ "+cf.perTruck+"t）":"—"} × ${trip?yen(trip):"—"}　運搬費の参考 <b>${carry!=null?yen(carry):"—"}</b></span>
       ${carry?`<button type="button" class="dpbtn" onclick="dispApply('carry',${carry})">運搬費に入れる</button>`:""}</div>
     <details class="dpdet"><summary>発生材の表（1本あたりのt）と、作業方針の割り当て</summary>
       <table class="dptab small"><tr><th></th>${DISP_RANKS.map(x=>`<th>${x[0]}<br><span class="muted">${x[1]}〜${x[2]==null?"":x[2]}</span></th>`).join("")}</tr>
       ${Object.keys(DISP_T).map(k=>`<tr><td>${k}</td>${DISP_T[k].map(v=>`<td>${v}</td>`).join("")}</tr>`).join("")}</table>
       <div class="muted" style="font-size:12.5px;margin-top:6px">${Object.keys(DISP_T).map(k=>k+"："+Object.keys(DISP_MAP).filter(w=>DISP_MAP[w]===k).join("・")).join("　／　")}。「その他」は入りません。幹周350cm以上はランクJ。株立ちは各幹の幹周の総和×0.7でランクを決めます。</div></details>`; }
+function dispSheetData(E,trees,noFn){ const m=E.m, cf=m.cf, r=m.r; if(!r.list.length) return null;
+  const hourly=dispHourly(cf);
+  return { list:r.list.map(x=>({ no:x.no, species:x.t.species||"", work:x.t.work||"", c:x.t.c==null?"":String(x.t.c), kind:x.kind, rank:x.rank||"", w:x.w==null?null:x.w, why:x.why||"" })),
+    tot:r.tot, unit:Number(cf.unit)||0, dispose:m.dispose, perTruck:Number(cf.perTruck)||0, trucks:m.trucks, tripH:Number(cf.tripH)||0, daily:Number(cf.daily)||0, workH:Number(cf.workH)||0,
+    hourly:Math.round(hourly), sonryo:Number(cf.sonryo)||0, fuelL:Number(cf.fuelL)||0, diesel:Number(cf.diesel)||0, vehH:Math.round(dispVehH(cf)), trip:m.trip, carry:m.carry,
+    usedDispose:!!E.used.dispose, usedCarry:!!E.used.carry, enteredDispose:E.used.dispose?null:Number(E.ex.dispose)||null, enteredCarry:E.used.carry?null:Number(E.ex.carry)||null,
+    table:Object.keys(DISP_T).map(k=>[k].concat(DISP_T[k])), ranks:DISP_RANKS.map(x=>x[0]+"（"+x[1]+"〜"+(x[2]==null?"":x[2])+"）"),
+    map:Object.keys(DISP_T).map(k=>k+"："+Object.keys(DISP_MAP).filter(w=>DISP_MAP[w]===k).join("・")).join("　／　") }; }
 function renderQuote(){ const ex=state.extras||{}; renderDispRef();
   const c=document.getElementById("exCarry"),dsp=document.getElementById("exDispose"),m=document.getElementById("exMisc"),tx=document.getElementById("taxRate");
   if(c) c.value=ex.carry||""; if(dsp) dsp.value=ex.dispose||""; if(m) m.value=ex.misc||"";
+  { const M=dispRefMoney(); if(c) c.placeholder=M.carry?"空なら参考 "+M.carry.toLocaleString()+" 円":""; if(dsp) dsp.placeholder=M.dispose?"空なら参考 "+M.dispose.toLocaleString()+" 円":""; }
   if(tx) tx.value=(state.taxRate!==""&&state.taxRate!=null)?Math.round(Number(state.taxRate)*100):"";
   const t=computeTotals(); const el=document.getElementById("totals");
   if(el) el.innerHTML=`<div class="trow"><span>明細小計</span><b>${yen(t.items)}</b></div>`+
@@ -5398,7 +5455,7 @@ async function cropCover(durl, tw, th){
   });
 }
 /* ---------- BOARD用：BOARDの見積の明細へ貼り付ける形（行の種類・摘要・数量・単位・単価） ---------- */
-function boardData(){ const st=Object.assign({},state,{ trees:outTrees() }); return window.surveyText.boardRows(st).map(r=>r.v); }
+function boardData(){ const OT=outTrees(); const st=Object.assign({},state,{ trees:OT, extras:effExtras(OT,t=>t.__no||"").ex }); return window.surveyText.boardRows(st).map(r=>r.v); }
 function openBoard(){
   state.caseName=document.getElementById('caseName').value;
   if(!outTrees().length){ alert('出力に選んだ優先度の項目がありません。「出力」で選び直してください。'); return; }
@@ -5439,6 +5496,7 @@ async function exportExcel(){
     if(btn){ btn.textContent='作成中…'; btn.disabled=true; }
     var OT=outTrees(); if(!OT.length){ alert('出力に選んだ優先度の項目がありません。「出力」で選び直してください。'); if(btn){ btn.textContent='Excel書き出し'; btn.disabled=false; } return; }
     var stCopy = Object.assign({}, state); stCopy.trees = [];
+    { const otNo=t=>t.__no||""; const E=effExtras(OT,otNo); stCopy.extras=E.ex; stCopy.dispRef=dispSheetData(E,OT,otNo); }
     for(var i=0;i<OT.length;i++){
       var t=OT[i]; var src=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
       var cropped=[]; for(var pi=0; pi<src.length; pi++){ cropped.push(await cropCover(src[pi],650,858)); } // 枠（250×330）の約2.6倍の細かさで入れる（印刷してもぼやけない）
