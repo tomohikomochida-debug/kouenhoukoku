@@ -503,6 +503,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     </div>
     <div class="totals" id="totals"></div>
     <div class="case dispref" id="dispRef"></div>
+    <div class="case dispref" id="pubCfg"></div>
   </section>
   <section id="book"><div id="outPanelBook" class="noprint"></div><div id="bookBody"></div></section>
 </main>
@@ -591,6 +592,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
 <button id="toMapBtn" class="tomap noprint" onclick="toMap()" style="display:none">🗺 地図へ</button>
 <div class="bar noprint">
   <button id="xlsxBtn" class="solid" onclick="exportExcel()">Excel書き出し</button>
+  <button id="xlsxPubBtn" class="solid" onclick="exportExcel(true)" title="市の見積の形（表紙・内訳・位置図・写真帳）">公共用Excel</button>
   <button id="pdfBtn" onclick="exportPdf()">PDF書き出し</button>
   <button id="boardBtn" onclick="openBoard()">BOARD用</button>
   <button onclick="exportJSON()">事務所へ書き出し</button>
@@ -687,6 +689,85 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     sh.pageSetup.printArea = "A1:K" + R;
   }
 
+  /* ===== 公共用（市の見積の形）：表紙・内訳・処分費の計算 ===== */
+  function publicSheets(wb, state, trees, exs) {
+    var PF = "ＭＳ Ｐゴシック", P = state.__public, name = state.caseName || "", place = state.place || "";
+    function pf(sz, b) { return { name: PF, size: sz || 12, bold: !!b }; }
+    var thin = { style: "thin" }, box = { top: thin, left: thin, right: thin, bottom: thin };
+    function num(v) { return (v !== "" && v != null && !isNaN(v)) ? Number(v) : null; }
+    /* 表紙を先に（いちばん前のシート）。中身は内訳の行が決まってから書く */
+    var cv = wb.addWorksheet("表紙", { pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1, margins: { left: 0.8, right: 0.6, top: 0.7, bottom: 0.6, header: 0.3, footer: 0.3 } } });
+    /* --- 内訳 --- */
+    var ws = wb.addWorksheet("内訳", { pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: "1:1",
+      margins: { left: 0.6, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 } }, headerFooter: { oddFooter: "&C&P / &N" }, views: [{ state: "frozen", ySplit: 1 }] });
+    [6, 12, 18, 11, 8, 9, 8, 7, 11, 13, 34].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
+    var H = ["No.", "樹　種", "工　種", "寸　法(㎝)", "ランク", "発生材(t)", "数　量", "単　位", "単　価", "金　額", "摘　要"];
+    H.forEach(function (h, i) { var c = ws.getCell(1, i + 1); c.value = h; c.font = pf(12); c.alignment = { horizontal: "center", vertical: "middle" }; c.border = box; c.fill = fill("FFF2F2F2"); });
+    ws.getRow(1).height = 19.5;
+    var R = 2, itemRows = [], groupTot = [];
+    function line(vals, o) { o = o || {}; vals.forEach(function (v, k) { var c = ws.getCell(R, k + 1); c.value = v; c.font = pf(k === 10 ? 11 : 12, o.bold); c.border = box;
+        c.alignment = { horizontal: k === 0 || k === 4 || k === 6 || k === 7 ? "center" : (k === 3 || k === 5 || k === 8 || k === 9 ? "right" : "left"), vertical: "middle", wrapText: k === 10, shrinkToFit: k === 1 || k === 2 };
+        if (k === 8 || k === 9) c.numFmt = "#,##0_);[Red](#,##0)"; if (k === 5) c.numFmt = "0.0#"; if (k === 3) c.numFmt = "0_ ";
+        if (o.fill) c.fill = fill(o.fill); });
+      var mL = Math.max(1, Math.ceil(String(vals[10] == null ? "" : vals[10]).length / 17));   // 摘要が長ければ行を高く（1行に全角17字ほど）
+      ws.getRow(R).height = 19.5 * Math.min(mL, 4) - (mL > 1 ? 3 * (mL - 1) : 0); R++; return R - 1; }
+    function amt(r, qv, uv) { var q = num(qv), u = num(uv); return { formula: "IF(I" + r + "=\"\",\"\",I" + r + "*G" + r + ")", result: (q != null && u != null) ? q * u : "" }; }
+    function sumF(rows, col, vals) { var res = 0; vals.forEach(function (v) { res += v || 0; }); return { formula: rows.length ? "SUM(" + rows.map(function (r) { return col + r; }).join(",") + ")" : "0", result: res }; }
+    function itemLine(t) {
+      var ext = t.type === "exterior", r = R, memo = [t.__kabu || "", t.memo || ""].filter(Boolean).join("　");
+      var q = ext ? num(t.qty) : 1, u = num(t.up), money = (q != null && u != null) ? q * u : 0;
+      line([t.__no, ext ? "" : (t.species || ""), ext ? (t.item || "") : (t.work || ""), ext ? "" : (t.__girth === "" ? "" : Math.round(t.__girth)), ext ? "" : (t.__rank || ""), ext ? "" : (t.__w == null ? "" : t.__w),
+        ext ? (q != null ? q : (t.qty || "")) : 1, ext ? (t.unit || "") : "本", u, amt(r, q, u), memo]);
+      if (u == null) ws.getCell(r, 9).fill = fill("FFFFF7CC");
+      itemRows.push(r); return money; }
+    var names = PRIO_SETS[P.prioSet] || PRIO_SETS.hml, sumAll = 0;
+    if (P.prio) {
+      [1, 2, 3, 0].forEach(function (p) {
+        var g = trees.filter(function (t) { var x = Number(t.prio); return (x >= 1 && x <= 3 ? x : 0) === p; }); if (!g.length) return;
+        var lbl = p ? "優先度：" + names[p - 1] : "優先度：未設定";
+        var hr = line(["", "【" + lbl + "】", "", "", "", "", "", "", "", "", ""], { bold: true, fill: "FFEAF1DD" }); ws.mergeCells(hr, 2, hr, 5);
+        var rows0 = itemRows.length, sub = 0; g.forEach(function (t) { sub += itemLine(t); }); sumAll += sub;
+        var rr = itemRows.slice(rows0);
+        var gr = line(["", lbl + "　計", "", "", "", "", "", "", "", sumF(rr, "J", [sub]), g.length + "件"], { bold: true }); ws.mergeCells(gr, 2, gr, 5);
+        groupTot.push({ lbl: lbl, sum: sub, row: gr });
+      });
+    } else trees.forEach(function (t) { sumAll += itemLine(t); });
+    var rSub = line(["", "小　計", "", "", "", "", 1, "式", "", sumF(itemRows, "J", [sumAll]), ""], { bold: true });
+    var carry = num(exs.carry) || 0, disp = num(exs.dispose) || 0, misc = num(exs.misc) || 0;
+    var rDisp = line(["", "発生材の撤去・運搬及び処分清掃", "", "", "", "", 1, "式", carry + disp || null, { formula: "IF(I" + R + "=\"\",\"\",I" + R + "*G" + R + ")", result: carry + disp }, P.dispNote || ""]);
+    ws.mergeCells(rDisp, 2, rDisp, 4); ws.mergeCells(rSub, 2, rSub, 3);
+    var kei1 = sumAll + carry + disp;
+    var rK1 = line(["", "計", "", "", "", "", "", "", "", { formula: "SUM(J" + rSub + ",J" + rDisp + ")", result: kei1 }, ""], { bold: true });
+    var rMisc = line(["", "諸経費", "", "", "", "", "", "", "", misc || null, ""]); ws.getCell(rMisc, 10).fill = misc ? fill("FFFFFFFF") : fill("FFFFF7CC");
+    var rK2 = line(["", "計", "", "", "", "", "", "", "", { formula: "SUM(J" + rK1 + ",J" + rMisc + ")", result: kei1 + misc }, "消費税は含まない"], { bold: true });
+    [rK1, rK2].forEach(function (r) { ws.getCell(r, 2).alignment = { horizontal: "center", vertical: "middle" }; });
+    ws.pageSetup.printArea = "A1:K" + (R - 1);
+    /* --- 表紙 --- */
+    [4, 14, 6, 22, 22, 14, 6, 26].forEach(function (w, i) { cv.getColumn(i + 1).width = w; });
+    for (var rr0 = 1; rr0 <= 30; rr0++) cv.getRow(rr0).height = 21;
+    var und = { bottom: thin };
+    function put(addr, v, o) { var c = cv.getCell(addr); c.value = v; c.font = pf((o && o.sz) || 14, o && o.b); c.alignment = { horizontal: (o && o.al) || "left", vertical: "middle" }; if (o && o.u) c.border = und; if (o && o.fmt) c.numFmt = o.fmt; return c; }
+    cv.mergeCells("A2:H2"); put("A2", "《《《御　見　積　書》》》", { sz: 20, al: "center" }); cv.getRow(2).height = 36;
+    put("H4", "令和　　年　　月　　日", { sz: 12, al: "right" });
+    cv.mergeCells("B6:D6"); put("B6", (P.to || "").split("").join("　") + "　様", { sz: 16, u: true }); ["C6", "D6"].forEach(function (a) { cv.getCell(a).border = und; });
+    function fld(r, lbl, v, o) { put("B" + r, lbl, { u: true }); cv.mergeCells("D" + r + ":F" + r); var c = put("D" + r, v, Object.assign({ u: true }, o || {})); ["E" + r, "F" + r].forEach(function (a) { cv.getCell(a).border = und; }); cv.getCell("C" + r).border = und; return c; }
+    fld(8, "工 事 名", name); fld(10, "工事場所", place);
+    var totF = { formula: "'内訳'!J" + rK2, result: kei1 + misc };
+    fld(12, "金　　額", totF, { sz: 18, b: true, fmt: '"¥"#,##0"-"' }); cv.getRow(12).height = 30;
+    put("D14", "但　消費税は含まれておりません。", { sz: 12, u: true });
+    var rB = 16;
+    if (P.prio && groupTot.length > 1) {
+      put("B" + rB, "優先度ごとの金額（直接工事分）", { sz: 11 }); rB++;
+      groupTot.forEach(function (g) { put("D" + rB, g.lbl, { sz: 11 }); var c = put("E" + rB, { formula: "'内訳'!J" + g.row, result: g.sum }, { sz: 11, al: "right", fmt: '"¥"#,##0' }); rB++; });
+      rB++;
+    }
+    put("B" + rB, "見積有効期限　" + (P.valid || ""), { sz: 11 }); rB += 3;
+    put("D" + rB, "上記の通り御見積り申し上げます。", { sz: 12 }); rB += 3;
+    ["庭乃持田園有限会社", "　代表取締役　持田智彦", "〒213-0035　川崎市高津区向ヶ丘94-2", "TEL044-888-8687　FAX044-866-2841"].forEach(function (t, k) { put("F" + (rB + k), t, { sz: k ? 11 : 14, b: !k }); });
+    cv.pageSetup.printArea = "A1:H" + (rB + 4);
+    if (state.dispRef) dispSheet(wb, state.dispRef);
+  }
+
   function buildTreeWorkbook(ExcelJS, state, imgs) {
     imgs = imgs || { photos: {} };
     var trees = state.trees || [];
@@ -698,6 +779,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     var taxRate = (state.taxRate !== "" && state.taxRate != null) ? Number(state.taxRate) : 0.1;
     var wb = new ExcelJS.Workbook();
 
+    var pub = state.__public;
+    if (pub) publicSheets(wb, state, trees, exs);
+    if (!pub) {
     /* ===== 御見積書（鏡） ===== */
     var mi = wb.addWorksheet("御見積書");
     [12, 26, 10, 10, 12, 18].forEach(function (w, i) { mi.getColumn(i + 1).width = w; });
@@ -817,6 +901,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       });
     });
 
+    } // 公共用でないとき
     /* ===== 位置図（マーカーは独立オブジェクト＝Excelで移動/削除可）。図面が何枚もあれば、区画ごとにシートを分ける ===== */
     var mapList = imgs.maps || (imgs.map ? [{ sheet: "位置図", title: "", map: imgs.map, mapW: imgs.mapW, mapH: imgs.mapH, markers: imgs.markers }] : []);
     mapList.forEach(function (mm) { mapSheet(mm); });
@@ -4828,7 +4913,25 @@ function dispSheetData(E,trees,noFn){ const m=E.m, cf=m.cf, r=m.r; if(!r.list.le
     usedDispose:!!E.used.dispose, usedCarry:!!E.used.carry, enteredDispose:E.used.dispose?null:Number(E.ex.dispose)||null, enteredCarry:E.used.carry?null:Number(E.ex.carry)||null,
     table:Object.keys(DISP_T).map(k=>[k].concat(DISP_T[k])), ranks:DISP_RANKS.map(x=>x[0]+"（"+x[1]+"〜"+(x[2]==null?"":x[2])+"）"),
     map:Object.keys(DISP_T).map(k=>k+"："+Object.keys(DISP_MAP).filter(w=>DISP_MAP[w]===k).join("・")).join("　／　") }; }
-function renderQuote(){ const ex=state.extras||{}; renderDispRef();
+/* ---------- 公共用Excel（市の見積の形：表紙・内訳・位置図・写真帳） ----------
+   内訳：No.｜樹種｜工種｜寸法(㎝)｜ランク｜発生材(t)｜数量｜単位｜単価｜金額｜摘要。優先度を使っていれば、優先度ごとにまとめて小計を出す。
+   表紙の宛名・見積有効期限は案件ごと（state.pub）。有効期限のはじめは、見積日の年度末。 */
+const wareki=d=>{ const y=d.getFullYear(); return "令和"+(y-2018)+"年"+(d.getMonth()+1)+"月"+d.getDate()+"日"; };
+function pubDefValid(){ const d=new Date(), fy=d.getMonth()>=3?d.getFullYear()+1:d.getFullYear(); return wareki(new Date(fy,2,31))+"まで"; }
+function pubCfg(){ const p=state.pub||{}; return { to:p.to!=null?p.to:"川崎市長", valid:p.valid!=null?p.valid:pubDefValid() }; }
+function setPub(k,v){ pushUndo("upd:pub:"+k); state.pub=Object.assign({},state.pub||{}); state.pub[k]=v; markDirty(); }
+function pubTree(t){ if(t.type==="exterior") return {};
+  const c=typeof prGirth==="function"?prGirth(t):parseFloat(t.c), kind=DISP_MAP[t.work||""], o={ __girth:c==null||isNaN(c)?"":c };
+  if(c!=null&&!isNaN(c)){ const k=dispRank(c); o.__rank=DISP_RANKS[k][0]; if(kind) o.__w=DISP_T[kind][k]; }
+  const st=(t.stems||[]).map(v=>parseFloat(v)).filter(v=>isFinite(v)&&v>0); if(t.kabu&&st.length) o.__kabu="株立ち（"+st.join("＋")+"）×0.7＝"+(Math.round(st.reduce((a,b)=>a+b,0)*7)/10);
+  return o; }
+function pubData(E){ const cf=pubCfg(), m=E.m; return { to:cf.to, valid:cf.valid, prio:anyPrio(), prioSet:state.prioSet||"hml",
+  dispNote:(m.r.tot?"発生材 "+m.r.tot+"t（運搬 "+(Number(E.ex.carry)||0).toLocaleString()+"円・処分 "+(Number(E.ex.dispose)||0).toLocaleString()+"円）":"") }; }
+function pubHTML(){ const cf=pubCfg();
+  return `<h3 class="dph">公共用Excelの表紙</h3><div class="row2"><div><label>宛名（○○ 様）</label><input value="${esc(cf.to)}" oninput="setPub('to',this.value)"></div>
+    <div><label>見積有効期限</label><input value="${esc(cf.valid)}" oninput="setPub('valid',this.value)"></div></div>
+    <div class="muted" style="font-size:12.5px;margin-top:4px">下の「公共用Excel」で、表紙・内訳（工種・幹周ランク・発生材）・処分費の計算・位置図・写真帳を書き出します。優先度を付けていれば、内訳は優先度ごとに小計を出します。</div>`; }
+function renderQuote(){ const ex=state.extras||{}; renderDispRef(); { const pe=document.getElementById("pubCfg"); if(pe&&!pe.contains(document.activeElement)) pe.innerHTML=pubHTML(); }
   const c=document.getElementById("exCarry"),dsp=document.getElementById("exDispose"),m=document.getElementById("exMisc"),tx=document.getElementById("taxRate");
   if(c) c.value=ex.carry||""; if(dsp) dsp.value=ex.dispose||""; if(m) m.value=ex.misc||"";
   { const M=dispRefMoney(); if(c) c.placeholder=M.carry?"空なら参考 "+M.carry.toLocaleString()+" 円":""; if(dsp) dsp.placeholder=M.dispose?"空なら参考 "+M.dispose.toLocaleString()+" 円":""; }
@@ -5524,8 +5627,8 @@ function boardCsv(){   // Excelで開いても文字化けしないように、�
   a.click(); toast("CSVを保存しました");
 }
 
-async function exportExcel(){
-  var btn=document.getElementById('xlsxBtn');
+async function exportExcel(pub){
+  var btn=document.getElementById(pub?'xlsxPubBtn':'xlsxBtn'), btnLabel=pub?'公共用Excel':'Excel書き出し';
   try{
     state.caseName=document.getElementById('caseName').value;
     state.caseDate=document.getElementById('caseDate').value;
@@ -5534,13 +5637,14 @@ async function exportExcel(){
     if(!window.ExcelJS || !window.buildTreeWorkbook){ alert('Excel生成ライブラリを読み込めませんでした。'); return; }
     if(!checkBeforeExport('Excel')) return;
     if(btn){ btn.textContent='作成中…'; btn.disabled=true; }
-    var OT=outTrees(); if(!OT.length){ alert('出力に選んだ優先度の項目がありません。「出力」で選び直してください。'); if(btn){ btn.textContent='Excel書き出し'; btn.disabled=false; } return; }
+    var OT=outTrees(); if(!OT.length){ alert('出力に選んだ優先度の項目がありません。「出力」で選び直してください。'); if(btn){ btn.textContent=btnLabel; btn.disabled=false; } return; }
     var stCopy = Object.assign({}, state); stCopy.trees = [];
-    { const otNo=t=>t.__no||""; const E=effExtras(OT,otNo); stCopy.extras=E.ex; stCopy.dispRef=dispSheetData(E,OT,otNo); }
+    { const otNo=t=>t.__no||""; const E=effExtras(OT,otNo); stCopy.extras=E.ex; stCopy.dispRef=dispSheetData(E,OT,otNo);
+      if(pub) stCopy.__public=pubData(E); }
     for(var i=0;i<OT.length;i++){
       var t=OT[i]; var src=(t.photos&&t.photos.length)?t.photos:(t.photo?[t.photo]:[]);
       var cropped=[]; for(var pi=0; pi<src.length; pi++){ cropped.push(await cropCover(src[pi],650,858)); } // 枠（250×330）の約2.6倍の細かさで入れる（印刷してもぼやけない）
-      stCopy.trees.push(Object.assign({}, t, {photos:cropped}));
+      stCopy.trees.push(Object.assign({}, t, {photos:cropped}, pub?pubTree(t):{}));
     }
     var xmaps = [], oms = outMaps(OT);
     for(var omi=0; omi<oms.length; omi++){ var om=oms[omi], mapImg=om.m.image;
@@ -5564,10 +5668,10 @@ async function exportExcel(){
     var buf=await wb.xlsx.writeBuffer();
     var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=(state.caseName||'現場調査').replace(/[\/:*?"<>|\\]/g,'_')+'_'+(state.caseDate||'')+outSuffix()+'.xlsx';
+    a.download=(state.caseName||'現場調査').replace(/[\/:*?"<>|\\]/g,'_')+'_'+(state.caseDate||'')+outSuffix()+(pub?'_公共用':'')+'.xlsx';
     a.click();
   }catch(e){ alert('Excel作成でエラー: '+(e&&e.message?e.message:e)); }
-  finally{ if(btn){ btn.textContent='Excel書き出し'; btn.disabled=false; } }
+  finally{ if(btn){ btn.textContent=btnLabel; btn.disabled=false; } }
 }
 
 /* =========================================================
