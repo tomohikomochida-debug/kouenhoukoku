@@ -29,6 +29,17 @@
   .newcase:active{ transform:translateY(1px); box-shadow:0 1px 3px rgba(0,0,0,.18); }
   .casebar .copycase{ font-size:13px; padding:7px 9px; }
   .casebar .delcase{ color:#b3261e; font-size:13px; padding:7px 9px; }
+  .dispref{ margin-top:12px; }
+  .dispref .dph{ font-size:15px; margin:0 0 8px; color:var(--accent); } .dispref .dph .muted{ font-size:12px; font-weight:400; }
+  .dptab{ width:100%; border-collapse:collapse; font-size:14px; margin-bottom:8px; }
+  .dptab th,.dptab td{ border-bottom:1px solid var(--line); padding:6px 6px; text-align:left; }
+  .dptab th{ font-size:12px; color:var(--sub); font-weight:600; } .dptab .dptot td{ border-top:2px solid var(--line); }
+  .dptab.small{ font-size:12px; } .dptab.small th,.dptab.small td{ padding:4px; text-align:center; } .dptab.small td:first-child{ text-align:left; white-space:nowrap; }
+  .dpwarn{ color:#b3261e; font-size:13px; margin:4px 0 8px; }
+  .dprow{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:8px 0; font-size:14px; }
+  .dprow .dpin{ font-size:15px; padding:7px 8px; border:1px solid var(--line); border-radius:8px; }
+  .dprow .dpeq{ margin-left:6px; } .dpbtn{ border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:8px; padding:7px 12px; font-size:13.5px; font-weight:700; font-family:inherit; }
+  .dpdet summary{ cursor:pointer; color:var(--sub); font-size:13px; margin-top:6px; }
   .casebar2{ display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
   .origbtn{ border-color:#1E88E5 !important; color:#1565C0 !important; font-weight:700; background:#EEF5FD !important; }
   .modebar{ display:flex; gap:8px; margin-bottom:12px; }
@@ -488,6 +499,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       </div>
     </div>
     <div class="totals" id="totals"></div>
+    <div class="case dispref" id="dispRef"></div>
   </section>
   <section id="book"><div id="outPanelBook" class="noprint"></div><div id="bookBody"></div></section>
 </main>
@@ -3178,7 +3190,7 @@ function pushUndo(key){ const now=Date.now();
   undoStack.push(snapClone()); if(undoStack.length>60) undoStack.shift(); redoStack=[]; lastKey=key; lastTime=now; updUndoBtn(); }
 function updUndoBtn(){ const u=document.getElementById("undoBtn"), r=document.getElementById("redoBtn"); if(u) u.disabled=!undoStack.length; if(r) r.disabled=!redoStack.length; }
 function syncMode(){ const bt=document.getElementById("mTree"), be=document.getElementById("mExt"); if(bt) bt.classList.toggle("on",state.mode!=="exterior"); if(be) be.classList.toggle("on",state.mode==="exterior"); const ab=document.getElementById("addBtn"); if(ab) ab.textContent=(state.mode==="exterior"?"＋ 項目を追加":"＋ 木を追加"); }
-function afterRestore(){ lastKey=null; normalize(); markDirty(); syncMode(); renderTrees(); renderMap(); const bk=document.getElementById("book"); if(bk&&bk.style.display!=="none") renderBook(); updUndoBtn(); }
+function afterRestore(){ lastKey=null; normalize(); markDirty(); syncMode(); renderTrees(); renderMap(); const bk=document.getElementById("book"); if(bk&&bk.style.display!=="none") renderBook(); const qt=document.getElementById("quote"); if(qt&&qt.style.display!=="none") renderQuote(); updUndoBtn(); }
 function doUndo(){ if(!undoStack.length) return; redoStack.push(snapClone()); state=undoStack.pop(); afterRestore(); }
 function doRedo(){ if(!redoStack.length) return; undoStack.push(snapClone()); state=redoStack.pop(); afterRestore(); }
 let reIdx=-1;
@@ -4696,7 +4708,52 @@ function setBookTitle(v){ pushUndo("upd:booktitle"); state.bookTitle=v; markDirt
 function setPlace(v){ pushUndo("upd:place"); state.place=v; markDirty(); }
 function setExtra(k,v){ pushUndo("upd:extra:"+k); state.extras=state.extras||{}; state.extras[k]=v; markDirty(); renderQuote(); }
 function setTax(v){ pushUndo("upd:tax"); state.taxRate=(v===""?"":Number(v)/100); markDirty(); renderQuote(); }
-function renderQuote(){ const ex=state.extras||{};
+/* =========================================================
+   処分費・運搬費の参考（会社のExcelの考え方）
+   ・木1本ごとの発生材（t）＝ 工種 × 幹周ランク（A〜J）の表から引く
+       伐採・萌芽更新 → 枯損木伐採 ／ 強剪定・高さ低減剪定 → 強剪定 ／ 剪定（基本剪定）・透かし剪定・枯れ枝剪定 → 枯枝剪定
+       幹周ランク：A＜30 B30〜 C60〜 D90〜 E120〜 F150〜 G180〜 H210〜 I250〜 J300〜（350cm以上もJ）
+   ・処分費 ＝ 発生材の合計（t）× 処分単価（円/t、はじめは13,630円）
+   ・運搬費 ＝ 台数（合計t ÷ 1台に積む量、切り上げ）× 1台の運搬費
+   ・単価・積む量は案件ごとに持ち、この端末で最後に使った値を次の案件のはじめの値にする
+   ========================================================= */
+const DISP_RANKS=[["A",0,30],["B",30,60],["C",60,90],["D",90,120],["E",120,150],["F",150,180],["G",180,210],["H",210,250],["I",250,300],["J",300,null]];
+const DISP_T={ "枯損木伐採":[0.5,1,1.5,2,2.5,3,5,7,8,10], "枯枝剪定":[0.2,0.4,0.6,0.8,1,1.1,1.2,1.3,1.4,1.5], "強剪定":[0.5,0.7,1.2,1.5,2,2.5,3,4,5,6] };
+const DISP_MAP={ "伐採":"枯損木伐採", "萌芽更新":"枯損木伐採", "強剪定":"強剪定", "高さ低減剪定":"強剪定", "剪定（基本剪定）":"枯枝剪定", "透かし剪定":"枯枝剪定", "枯れ枝剪定":"枯枝剪定" };
+const DISP_DEF={ unit:13630, perTruck:"", truckCost:"" };
+function dispCfg(){ if(!state.dispCfg){ let last=null; try{ last=JSON.parse(localStorage.getItem("gc_disp_cfg")||"null"); }catch(e){} state.dispCfg=Object.assign({},DISP_DEF,last||{}); } return state.dispCfg; }
+function dispRank(c){ for(let k=DISP_RANKS.length-1;k>=0;k--) if(c>=DISP_RANKS[k][1]) return k; return 0; }
+function dispCalc(){ const rows={}, miss={nog:0,other:[]}; let tot=0, n=0;
+  (state.trees||[]).forEach(t=>{ if(t.type==="exterior") return; const kind=DISP_MAP[t.work||""];
+    if(!kind){ miss.other.push(t.work||"作業方針なし"); return; }
+    const c=typeof prGirth==="function"?prGirth(t):parseFloat(t.c); if(c==null||isNaN(c)){ miss.nog++; return; }
+    const k=dispRank(c), w=DISP_T[kind][k]; const r=rows[kind]||(rows[kind]={n:0,t:0,ranks:{}}); r.n++; r.t+=w; r.ranks[DISP_RANKS[k][0]]=(r.ranks[DISP_RANKS[k][0]]||0)+1; tot+=w; n++; });
+  tot=Math.round(tot*100)/100; return {rows,tot,n,miss}; }
+function setDispCfg(k,v){ pushUndo("upd:disp:"+k); const c=dispCfg(); c[k]=v===""?"":Number(v); try{ localStorage.setItem("gc_disp_cfg",JSON.stringify(c)); }catch(e){} markDirty(); renderDispRef(true); }
+function dispApply(k,v){ pushUndo("dispapply"); state.extras=state.extras||{}; state.extras[k]=String(v); markDirty(); renderQuote(); toast((k==="dispose"?"処分費":"運搬費")+"に "+yen(v)+" を入れました（↶で戻せます）"); }
+function renderDispRef(keepFocus){ const el=document.getElementById("dispRef"); if(!el) return;
+  if(state.mode==="exterior"&&!(state.trees||[]).some(t=>t.type!=="exterior")){ el.style.display="none"; return; } el.style.display="";
+  const cf=dispCfg(), r=dispCalc(), fx=n=>Math.round(n*100)/100;
+  const disp=cf.unit?Math.round(r.tot*Number(cf.unit)):null;
+  const trucks=cf.perTruck>0?Math.ceil(r.tot/Number(cf.perTruck)-1e-9):null, carry=trucks!=null&&cf.truckCost?trucks*Number(cf.truckCost):null;
+  const kinds=Object.keys(DISP_T).filter(k=>r.rows[k]);
+  const warn=[r.miss.nog?"幹周が入っていない木 "+r.miss.nog+"本は入っていません":"", r.miss.other.length?"「"+[...new Set(r.miss.other)].join("・")+"」の "+r.miss.other.length+"本は入っていません":""].filter(Boolean);
+  const inp=(k,ph,w)=>`<input type="number" inputmode="decimal" class="dpin" style="width:${w||110}px" value="${cf[k]===""||cf[k]==null?"":cf[k]}" placeholder="${ph}" onchange="setDispCfg('${k}',this.value)">`;
+  el.innerHTML=`<h3 class="dph">処分費・運搬費の参考 <span class="muted">（会社のExcelの考え方：工種×幹周ランクの発生材）</span></h3>
+    <table class="dptab"><tr><th>発生材の表</th><th>本数</th><th>ランクの内訳</th><th>発生材</th></tr>
+    ${kinds.map(k=>`<tr><td>${k}</td><td>${r.rows[k].n}本</td><td class="muted">${Object.keys(r.rows[k].ranks).sort().map(a=>a+"×"+r.rows[k].ranks[a]).join("　")}</td><td><b>${fx(r.rows[k].t)} t</b></td></tr>`).join("")||`<tr><td colspan="4" class="muted">幹周と作業方針の入った木がまだありません</td></tr>`}
+    <tr class="dptot"><td>合計</td><td>${r.n}本</td><td></td><td><b>${fx(r.tot)} t</b></td></tr></table>
+    ${warn.length?`<div class="dpwarn">⚠ ${warn.join("／")}</div>`:""}
+    <div class="dprow"><span>処分単価</span>${inp("unit","13630")}<span>円/t</span><span class="dpeq">→ 処分費の参考 <b>${disp!=null?yen(disp):"—"}</b></span>
+      ${disp?`<button type="button" class="dpbtn" onclick="dispApply('dispose',${disp})">処分費に入れる</button>`:""}</div>
+    <div class="dprow"><span>1台に積む量</span>${inp("perTruck","例 2",80)}<span>t</span><span>1台の運搬費</span>${inp("truckCost","例 25000")}<span>円</span>
+      <span class="dpeq">→ ${trucks!=null?trucks+"台":"—"}　運搬費の参考 <b>${carry!=null?yen(carry):"—"}</b></span>
+      ${carry?`<button type="button" class="dpbtn" onclick="dispApply('carry',${carry})">運搬費に入れる</button>`:""}</div>
+    <details class="dpdet"><summary>発生材の表（1本あたりのt）と、作業方針の割り当て</summary>
+      <table class="dptab small"><tr><th></th>${DISP_RANKS.map(x=>`<th>${x[0]}<br><span class="muted">${x[1]}〜${x[2]==null?"":x[2]}</span></th>`).join("")}</tr>
+      ${Object.keys(DISP_T).map(k=>`<tr><td>${k}</td>${DISP_T[k].map(v=>`<td>${v}</td>`).join("")}</tr>`).join("")}</table>
+      <div class="muted" style="font-size:12.5px;margin-top:6px">${Object.keys(DISP_T).map(k=>k+"："+Object.keys(DISP_MAP).filter(w=>DISP_MAP[w]===k).join("・")).join("　／　")}。「その他」は入りません。幹周350cm以上はランクJ。</div></details>`; }
+function renderQuote(){ const ex=state.extras||{}; renderDispRef();
   const c=document.getElementById("exCarry"),dsp=document.getElementById("exDispose"),m=document.getElementById("exMisc"),tx=document.getElementById("taxRate");
   if(c) c.value=ex.carry||""; if(dsp) dsp.value=ex.dispose||""; if(m) m.value=ex.misc||"";
   if(tx) tx.value=(state.taxRate!==""&&state.taxRate!=null)?Math.round(Number(state.taxRate)*100):"";
