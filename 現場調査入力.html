@@ -741,7 +741,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       var rM = money("諸経費", null, "ROUND(SUM(H" + rS + ")*" + rate + ",0)", miscV, true);
       var rK = money("計", null, "SUM(H" + rS + ":H" + rM + ")", sub + miscV, false);
       ws.getCell(rS, 2).font = f(M); ws.getCell(rM, 2).font = f(M); ws.getCell(rK, 2).font = f(M);
-      ws.pageSetup.printArea = "A1:I" + (rK + 2);
+      ws.pageSetup.printArea = "A1:I" + rK;
       /* --- 表紙 --- */
       for (var c0 = 1; c0 <= 15; c0++) cv.getColumn(c0).width = 9;
       var RH = { 1: 17.25, 2: 45.75, 3: 15.75, 4: 18.75, 6: 30, 7: 29.25, 8: 21, 10: 21, 11: 21, 12: 23.25, 14: 27.75, 20: 18.75, 23: 25.5, 24: 18.75, 25: 14.25, 26: 14.25 };
@@ -781,7 +781,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     if (pub) publicSheets(wb, state, trees);
     if (!pub) {
     /* ===== 御見積書（鏡） ===== */
-    var mi = wb.addWorksheet("御見積書");
+    // 印刷：A4縦・横幅を1ページに（はみ出した列だけの白っぽいページを作らない）
+    var PS = function () { return { pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.5, right: 0.4, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } } }; };
+    var mi = wb.addWorksheet("御見積書", PS());
     [12, 26, 10, 10, 12, 18].forEach(function (w, i) { mi.getColumn(i + 1).width = w; });
     mi.mergeCells("D1:F1");
     mi.getCell("D1").value = "御 見 積 書"; mi.getCell("D1").font = font(20, true); mi.getCell("D1").alignment = { horizontal: "center" };
@@ -801,7 +803,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     mi.getCell("F4").value = date; mi.getCell("F4").font = font(11);
 
     /* ===== 内訳（統一様式：番号 品名 仕様 数量 単位 単価 金額） ===== */
-    var ws = wb.addWorksheet("内訳");
+    var ws = wb.addWorksheet("内訳", PS());
     [6, 24, 22, 7, 7, 12, 14].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
     ws.getCell("A1").value = name; ws.getCell("A1").font = font(12, true);
     ["番号", "品名", "仕様", "数量", "単位", "単価", "金額"].forEach(function (h, i) {
@@ -842,11 +844,11 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     ws.getCell(r, 7).value = { formula: "ROUND(G" + kei + "*" + taxRate + ",0)" }; ws.getCell(r, 7).numFmt = "#,##0"; var tax = r;
     r += 1; ws.getCell(r, 2).value = "合計"; ws.getCell(r, 2).font = font(12, true);
     ws.getCell(r, 7).value = { formula: "G" + kei + "+G" + tax }; ws.getCell(r, 7).font = font(12, true); ws.getCell(r, 7).numFmt = "#,##0"; ws.getCell(r, 7).fill = fill(GREY);
-    var total = r;
+    var total = r; ws.pageSetup.printArea = "A1:G" + total;
     for (var rr = kei; rr <= total; rr++) for (var cc = 2; cc <= 7; cc++) ws.getCell(rr, cc).border = border();
     if (state.dispRef) dispSheet(wb, state.dispRef);
     /* ===== BOARD取込用（内訳を参照。内訳で単価を入れると、ここも変わる） ===== */
-    var bd = wb.addWorksheet("BOARD取込用", { views: [{ state: "frozen", ySplit: 1 }] });
+    var bd = wb.addWorksheet("BOARD取込用", Object.assign(PS(), { views: [{ state: "frozen", ySplit: 1 }] }));
     [14, 48, 7, 7, 12].forEach(function (w, i) { bd.getColumn(i + 1).width = w; });
     BOARD_HEAD.forEach(function (h, i) {
       var c = bd.getCell(1, i + 1); c.value = h; c.font = font(11, true, "FFFFFFFF"); c.fill = fill(HEAD);
@@ -876,13 +878,14 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     });
     var bEnd = br.length + 1;
     bd.getCell("G1").value = "BOARDへの貼り付け：A2:E" + bEnd + " をコピーして、BOARDの見積の明細に貼り付け"; bd.getCell("G1").font = font(10, true);
+    bd.pageSetup.printArea = "A1:E" + bEnd;   // 説明（G1）は印刷しない
     bd.getCell("G2").value = "消費税・合計はBOARDが自動で計算します。数字は「内訳」シートと連動（内訳で単価を入れると、ここも変わります）"; bd.getCell("G2").font = font(10);
     bd.getCell("G3").value = "単価が空の行は、BOARDで入れてください"; bd.getCell("G3").font = font(10);
 
     mi.getCell("B11").value = { formula: "'内訳'!G" + total }; mi.getCell("B11").font = font(16, true); mi.getCell("B11").numFmt = '"¥"#,##0" （税込）"';
 
     /* ===== 調査マスター（番号 区分 品名 仕様 数量 単位 摘要） ===== */
-    var ms = wb.addWorksheet("調査マスター");
+    var ms = wb.addWorksheet("調査マスター", PS());
     [6, 8, 22, 22, 7, 7, 16].forEach(function (w, i) { ms.getColumn(i + 1).width = w; });
     ms.getCell("A1").value = "現地調査マスター"; ms.getCell("A1").font = font(14, true);
     ms.getCell("A2").value = "案件：" + name + "／調査日：" + date; ms.getCell("A2").font = font(10);
@@ -941,7 +944,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     }
 
     /* ===== 写真帳（複数写真対応・3列×2段＝6枚/ページ・写真下コメント） ===== */
-    var pb = wb.addWorksheet("写真帳", { pageSetup: { orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } } });
+    /* 写真帳：6枚ごとに改ページ。Excel は「1ページに合わせる（fitToPage）」にすると手で入れた改ページを無視して
+       次のページの写真の上が少し入ってしまうので、倍率（80%）で決めて改ページを効かせる */
+    var pb = wb.addWorksheet("写真帳", { pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: false, scale: 80, horizontalCentered: true, margins: { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } } });
     [2, 35, 2, 35, 2, 35].forEach(function (w, i) { pb.getColumn(i + 1).width = w; });
     pb.getCell("A1").value = ((state.bookTitle||"写真帳")+"　"+name); pb.getCell("A1").font = font(14, true);
     pb.getCell("A2").value = date + "　全" + trees.length + "件"; pb.getCell("A2").font = font(10);
@@ -955,6 +960,8 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     var COLS = [1, 3, 5], FW = 250, FH = 330, photoPt = FH * 0.75 + 3, capPt = 80, top = 3;
     for (var pg = 0; pg < frames.length; pg += 6) {
       var chunk = frames.slice(pg, pg + 6);
+      // ページの頭に細い空き行を入れる（改ページのすぐ上に次の写真の上の端が写り込まないように）
+      pb.getRow(top).height = 9; top += 1;
       pb.getRow(top).height = photoPt; pb.getRow(top + 2).height = photoPt;
       pb.getRow(top + 1).height = capPt; pb.getRow(top + 3).height = capPt;
       chunk.forEach(function (fr, k) {
