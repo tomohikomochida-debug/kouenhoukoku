@@ -412,8 +412,11 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   .osep{ width:1px; height:20px; background:var(--line); margin:0 2px; }
   .obreak{ flex-basis:100%; height:0; }
   .ocnt{ margin-left:auto; color:var(--sub); }
-  .pleg{ display:flex; gap:12px; justify-content:center; font-size:13px; margin-top:6px; }
+  .pleg{ display:flex; flex-wrap:wrap; gap:6px 14px; justify-content:center; align-items:center; font-size:13px; margin-top:6px; padding:5px 10px; border:1px solid #bbb; border-radius:4px; }
   .pleg i{ display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:4px; vertical-align:-1px; }
+  .pleg i.fr{ border-radius:1px; border:2px solid; width:10px; height:10px; }
+  .pleg i.num{ font-style:normal; width:14px; height:14px; line-height:13px; text-align:center; font-size:10px; font-weight:700; border:1.2px solid #555; background:#fff; color:#333; }
+  .pleg .nt{ color:#555; }
   /* 書き出す前の入力漏れ */
   .miss{ outline:3px solid #D62828 !important; outline-offset:1px; background:#FDECEC !important; }
   .tree.missflash{ animation:missflash 1.6s ease-out; }
@@ -837,6 +840,12 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
         var row = y < R1 ? 0 : 1 + Math.floor((y - R1) / RH), off = y < R1 ? y : (y - R1) - (row - 1) * RH;
         return { nativeCol: 0, nativeColOff: Math.round(x * EMU), nativeRow: row, nativeRowOff: Math.round(off * EMU) };
       };
+      if (mm.legend && mm.legend.img) {   // 凡例（丸の色＝優先度、色の枠＝区画など）
+        var lw = Math.min(mm.legend.w, MW), lh = Math.round(mm.legend.h * lw / mm.legend.w);
+        var lid = wb.addImage({ base64: raw(mm.legend.img), extension: "png" });
+        mp.addImage(lid, { tl: at(ox, oy), ext: { width: lw, height: lh }, editAs: "oneCell" });
+        oy += lh + 10; nRows = Math.ceil((oy + MH + sz - R1) / RH) + 2; for (var gr2 = 2; gr2 <= nRows; gr2++) mp.getRow(gr2).height = 15;
+      }
       var mid = wb.addImage({ base64: raw(mm.map), extension: "jpeg" });
       mp.addImage(mid, { tl: at(ox, oy), ext: { width: MW, height: MH }, editAs: "oneCell" });
       (mm.markers || []).forEach(function (mk) {
@@ -4710,7 +4719,7 @@ function renderBook(){
   const body=document.getElementById("bookBody"); let html="";
   const OT=outTrees(); renderPrioBar();
   for(const om of outMaps(OT)){ const mks=om.mks.map(([u,v,n,col])=>`<div class="mk" style="left:${u*100}%;top:${v*100}%;${col?"background:"+col:""}">${esc(n)}</div>`).join("");
-    html+=`<div class="page">${pageHead("位置図"+(om.title?"　"+om.title:""))}<div class="mapwrap"><div class="mapimgwrap" style="max-width:100%"><img src="${om.m.image}">${isAll(om.m)?framesHTML(om.m):mks}</div></div>${isAll(om.m)?"":prioLegendHTML(OT)}</div>`; }
+    html+=`<div class="page">${pageHead("位置図"+(om.title?"　"+om.title:""))}<div class="mapwrap"><div class="mapimgwrap" style="max-width:100%"><img src="${om.m.image}">${isAll(om.m)?framesHTML(om.m):mks}</div></div>${legendHTML(om,!isAll(om.m))}</div>`; }
   if(!state.trees.length && !maps().some(m=>m.image)){ body.innerHTML='<div class="empty">まだデータがありません。</div>'; return; }
   if(state.trees.length&&!OT.length){ body.innerHTML='<div class="empty">出力に選んだ優先度の項目がありません。上の「出力」で選び直してください。</div>'; return; }
   let frames=[];
@@ -5398,10 +5407,39 @@ function sortByPrio(){
   const r=t=>prioOf(t)||4; state.trees=state.trees.map((t,i)=>({t,i})).sort((a,b)=>r(a.t)-r(b.t)||a.i-b.i).map(x=>x.t);   // 同じ優先度の中は今の順のまま
   markDirty(); renderTrees(); toast("優先度の高い順に並べました（番号も振り直しました）");
 }
-function prioLegendHTML(OT){   // 位置図の下の色の説明
-  const used=[1,2,3].filter(k=>OT.some(t=>prioOf(t)===k)), n=prioNames(); if(!used.length) return "";
-  return `<div class="pleg">${used.map(k=>`<span><i style="background:${PRIO_COLORS[k-1]}"></i>優先度 ${esc(n[k-1])}</span>`).join("")}${OT.some(t=>!prioOf(t))?`<span><i style="background:${PRIO_NONE}"></i>未設定</span>`:""}</div>`;
-}
+/* ---------- 位置図の凡例（写真帳・PDF・Excel 共通） ----------
+   丸の色＝優先度（その図に出ている色だけ）、丸の数字＝写真帳・内訳の番号、色の枠＝区画（拡大した位置図の範囲）、
+   出力を優先度で絞っているときは、そのことも書く。 */
+function legendItems(om,showMarks){ const n=prioNames(), it=[], cols=new Set(showMarks?om.mks.map(k=>k[3]||""):[]);
+  if(showMarks&&om.mks.length){
+    [1,2,3].forEach(k=>{ if(cols.has(PRIO_COLORS[k-1])) it.push({k:"dot",col:PRIO_COLORS[k-1],t:"優先度 "+n[k-1]}); });
+    if(cols.has(PRIO_NONE)) it.push({k:"dot",col:PRIO_NONE,t:"優先度 未設定"});
+    if(cols.has("")) it.push({k:"dot",col:"#D62828",t:"調査した木・項目"});
+    it.push({k:"num",t:"丸の数字＝写真帳・内訳の番号"}); }
+  (om.frames||[]).forEach(f=>it.push({k:"frame",col:f.col,t:"区画"+f.code+(f.name?" "+f.name:"")+"（拡大図の範囲）"}));
+  if(!outAll()&&it.length) it.push({k:"note",t:"出力：優先度 "+outFilter().p.slice().sort((a,b)=>(a||4)-(b||4)).map(p=>p?n[p-1]:"未設定").join("・")+" のみ"});
+  return it; }
+function legendHTML(om,showMarks){ const it=legendItems(om,showMarks); if(!it.length) return "";
+  return `<div class="pleg"><b>凡例</b>${it.map(x=>x.k==="dot"?`<span><i style="background:${x.col}"></i>${esc(x.t)}</span>`:x.k==="frame"?`<span><i class="fr" style="border-color:${x.col};background:${x.col}22"></i>${esc(x.t)}</span>`:x.k==="num"?`<span><i class="num">1</i>${esc(x.t)}</span>`:`<span class="nt">${esc(x.t)}</span>`).join("")}</div>`; }
+function legW(paper,portrait,mw,mh){   // Excel の位置図に置く地図の幅（シートを作る側と同じ計算）に合わせる。文字が縮まないように
+  const BW=paper===8?(portrait?1000:1450):(portrait?620:900), BH=paper===8?(portrait?1420:960):(portrait?900:620);
+  return mw&&mh?Math.max(240,Math.round(mw*Math.min(BW/mw,BH/mh))):BW; }
+/* Excel 用：凡例を1枚の絵にする（幅 W px に収まるよう折り返す。2倍の細かさで描く） */
+function legendPng(om,W){ const it=legendItems(om,true); if(!it.length) return null;
+  const K=2, F=14, G=18, PAD=8, c=document.createElement("canvas"), x=c.getContext("2d"); x.font=F*K+"px sans-serif";
+  const fb="bold "+F*K+"px sans-serif", lw=(()=>{ x.font=fb; const w=x.measureText("凡例").width/K; x.font=F*K+"px sans-serif"; return w; })();
+  const items=it.map(o=>({o,w:(o.k==="note"?0:22)+x.measureText(o.t).width/K}));
+  const lines=[[]]; let cur=PAD+lw+G;
+  items.forEach(o=>{ if(cur+o.w>W-PAD&&lines[lines.length-1].length){ lines.push([]); cur=PAD+lw+G; } o.x=cur; lines[lines.length-1].push(o); cur+=o.w+G; });
+  const LH=26, H=PAD*2+LH*lines.length; c.width=Math.ceil(W*K); c.height=Math.ceil(H*K); x.scale(K,K);
+  x.fillStyle="#fff"; x.fillRect(0,0,W,H); x.strokeStyle="#999"; x.lineWidth=1; x.strokeRect(0.5,0.5,W-1,H-1);
+  x.textBaseline="middle"; x.fillStyle="#222"; x.font="bold "+F+"px sans-serif"; x.fillText("凡例",PAD,PAD+LH/2);
+  lines.forEach((ln,li)=>{ const cy=PAD+LH*li+LH/2; ln.forEach(o=>{ const v=o.o; x.font=F+"px sans-serif";
+    if(v.k==="dot"){ x.beginPath(); x.arc(o.x+8,cy,8,0,Math.PI*2); x.fillStyle=v.col; x.fill(); x.lineWidth=2; x.strokeStyle="#fff"; x.stroke(); x.beginPath(); x.arc(o.x+8,cy,9,0,Math.PI*2); x.lineWidth=0.8; x.strokeStyle="#888"; x.stroke(); }
+    else if(v.k==="frame"){ x.globalAlpha=0.15; x.fillStyle=v.col; x.fillRect(o.x,cy-8,16,16); x.globalAlpha=1; x.lineWidth=2.5; x.strokeStyle=v.col; x.strokeRect(o.x+1,cy-7,14,14); }
+    else if(v.k==="num"){ x.beginPath(); x.arc(o.x+8,cy,9,0,Math.PI*2); x.fillStyle="#fff"; x.fill(); x.lineWidth=1.5; x.strokeStyle="#555"; x.stroke(); x.fillStyle="#333"; x.font="bold 11px sans-serif"; x.textAlign="center"; x.fillText("1",o.x+8,cy+0.5); x.textAlign="left"; x.font=F+"px sans-serif"; }
+    x.fillStyle=v.k==="note"?"#555":"#222"; x.fillText(v.t,o.x+(v.k==="note"?0:22),cy); }); });
+  return { img:c.toDataURL("image/png"), w:W, h:H }; }
 
 /* ---------- 書き出す前の入力漏れチェック ----------
    樹木：樹種・作業方針・高さ・幹周、外構：品名・数量・単位。単価は後から付けることが多いので見ない。
@@ -5512,7 +5550,7 @@ async function exportExcel(){
       if(plan && plan.split){ // 全体図を A3 2枚に：半分ずつのシートにする（番号はその半分の中の割合に直す）
         for(var pk=0; pk<plan.parts.length; pk++){ var pt=plan.parts[pk], pw=pt.u1-pt.u0, ph=pt.v1-pt.v0;
           var pimg = await cropPart(om.m.image, om.frames, pt);
-          xmaps.push({ sheet: "位置図_全体_"+pt.label.slice(0,1), title: om.title+"　"+pt.label+"（"+(pk+1)+"/2）", map: pimg, mapW: msz[0]*pw, mapH: msz[1]*ph,
+          xmaps.push({ sheet: "位置図_全体_"+pt.label.slice(0,1), title: om.title+"　"+pt.label+"（"+(pk+1)+"/2）", map: pimg, mapW: msz[0]*pw, mapH: msz[1]*ph, legend: legendPng(om, legW(8, !plan.land, msz[0]*pw, msz[1]*ph)),
             paper: 8, orient: plan.land ? "landscape" : "portrait",
             markers: om.mks.filter(function(k){ return k[0]>=pt.u0-0.005&&k[0]<=pt.u1+0.005&&k[1]>=pt.v0-0.005&&k[1]<=pt.v1+0.005; })
               .map(function(k){ return {x:(k[0]-pt.u0)/pw, y:(k[1]-pt.v0)/ph, img:markerPng(k[2],k[3])}; }) }); }
@@ -5521,7 +5559,7 @@ async function exportExcel(){
       if(om.frames.length) mapImg = await bakeFrames(mapImg, om.frames); // 全体図は区画の枠を描き込む
       else if(!/^data:image\/jpeg/.test(mapImg)) mapImg = await toJpeg(mapImg); // Excel には jpeg として入れる
       xmaps.push({ sheet: isAll(om.m) ? "位置図_全体" : oms.length>1 ? "位置図"+zoneCode(om.m) : "位置図", title: om.title, map: mapImg, mapW: msz&&msz[0], mapH: msz&&msz[1],
-        paper: plan ? (plan.paper==="a3" ? 8 : 9) : undefined,
+        paper: plan ? (plan.paper==="a3" ? 8 : 9) : undefined, legend: legendPng(om, legW(plan ? (plan.paper==="a3" ? 8 : 9) : 9, false, msz&&msz[0], msz&&msz[1])),
         markers: om.mks.map(function(k){ return {x:k[0], y:k[1], img:markerPng(k[2],k[3])}; }) }); }
     var wb=window.buildTreeWorkbook(window.ExcelJS, stCopy, {maps: xmaps});
     var buf=await wb.xlsx.writeBuffer();
@@ -5546,6 +5584,12 @@ const PAPER={ a4:[1240,1754], a3:[1754,2480] }; // 150dpi の [幅, 高さ]（�
    state.allPaper："auto"（番号の丸の重なりで決める）／"a4"／"a3"／"split"
    2枚に分けるときは長い方向で半分に（横長＝左右、縦長＝上下）。継ぎ目は両方のページに少し重ねて入れる */
 const OV_OVL=0.03, MAP_TH=58;
+/* PDF の位置図の下に凡例を入れる。入りきらなければ地図を少し小さくする（w,h は地図の大きさ、avail は残りの高さ） */
+function pdfLegend(om,w,h,avail,ar){ const K=1.6, G=12; let lg=legendPng(om,w/K);
+  if(!lg) return { w,h,lh:0,draw:async()=>{} };
+  for(let k=0;k<2;k++){ const lh=lg.h*K+G; if(h+lh<=avail) break; h=Math.max(100,avail-lh); w=h*ar; lg=legendPng(om,w/K); }
+  const L=lg, lh=L.h*K+G;
+  return { w,h,lh, draw:async(x,ox,y)=>{ const im=await loadImgEl(L.img); x.drawImage(im,ox,y+G,L.w*K,L.h*K); } }; }
 const mkDia=w=>Math.max(28,Math.min(46,w*0.032));       // PDF の番号の丸の大きさ（地図の幅に合わせる）
 function mapBox(paper,land){ const P=PAPER[paper]||PAPER.a4, W=land?P[1]:P[0], H=land?P[0]:P[1]; return [W-PDF_M*2, H-PDF_M-28-(PDF_M+64)-MAP_TH]; }
 function fitIn(ar,box){ let w=box[0], h=w/ar; if(h>box[1]){ h=box[1]; w=h*ar; } return [w,h]; }
@@ -5648,7 +5692,7 @@ function pdfLayout(name,date){
       for(const pt of plan.parts){
         newPage(plan.land,"a3");
         title("位置図",om.title+"　"+pt.label+"（"+(pt.k+1)+"/2）・A3");
-        const [w,h]=plan.size, yy=y, ox=X0+(CW-w)/2, FW=w/(pt.u1-pt.u0), FH=h/(pt.v1-pt.v0), fx=ox-pt.u0*FW, fy=yy-pt.v0*FH, d=mkDia(FW), U=Math.min(2.6,FW/900);
+        let [w,h]=plan.size; const LG=pdfLegend(om,w,h,room(),ar*(pt.u1-pt.u0)/(pt.v1-pt.v0)); w=LG.w; h=LG.h; const yy=y, ox=X0+(CW-w)/2, FW=w/(pt.u1-pt.u0), FH=h/(pt.v1-pt.v0), fx=ox-pt.u0*FW, fy=yy-pt.v0*FH, d=mkDia(FW), U=Math.min(2.6,FW/900);
         { const [kw,kh]=fitIn(ar,[90,40]), ky=yy-TH+6+(40-kh)/2, kx=X0+CW-kw; add(x=>drawKey(x,pt,kx,ky,kw,kh)); } // 右上に「どちらの半分か」（CW は後のページで変わるので先に決める）
         add(async x=>{ const im=await loadImgEl(src), nw=im.naturalWidth, nh=im.naturalHeight; x.imageSmoothingQuality="high";
           x.drawImage(im,pt.u0*nw,pt.v0*nh,(pt.u1-pt.u0)*nw,(pt.v1-pt.v0)*nh,ox,yy,w,h);
@@ -5656,8 +5700,8 @@ function pdfLayout(name,date){
           if(frs.length) drawFrames(x,frs,fx,fy,FW,FH,U);
           for(const [u,v,n,col] of mks){ const cx=fx+u*FW, cy=fy+v*FH; if(cx<ox-d||cx>ox+w+d||cy<yy-d||cy>yy+h+d) continue; drawMk(x,cx,cy,d,n,col); }
           drawSeam(x,pt,fx,fy,FW,FH,ox,yy,w,h,U);
-          x.restore(); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,yy,w,h); });
-        y+=h;
+          x.restore(); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,yy,w,h); await LG.draw(x,ox,yy+h); });
+        y+=h+LG.lh;
       }
       continue;
     }
@@ -5665,12 +5709,14 @@ function pdfLayout(name,date){
     newPage(ar>=1,paper); // 横長の地図は横向きのページに
     let w=CW, h=w/ar; if(h>FULL-TH){ h=FULL-TH; w=h*ar; }
     title("位置図",om.title+(paper==="a3"?"・A3":""));
+    const LG=pdfLegend(om,w,h,room(),ar); w=LG.w; h=LG.h;
     const yy=y, ox=X0+(CW-w)/2;
     add(async x=>{ const im=await loadImgEl(src); x.imageSmoothingQuality="high"; x.drawImage(im,ox,yy,w,h); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,yy,w,h);
       if(frs.length) drawFrames(x,frs,ox,yy,w,h,Math.min(2.6,w/900));
       const d=mkDia(w);
-      for(const [u,v,n,col] of mks) drawMk(x,ox+u*w,yy+v*h,d,n,col); });
-    y+=h;
+      for(const [u,v,n,col] of mks) drawMk(x,ox+u*w,yy+v*h,d,n,col);
+      await LG.draw(x,ox,yy+h); });
+    y+=h+LG.lh;
   }
 
   /* 3. 写真帳：3列。写真のない項目は入れない（白い枠を作らない）。説明の高さはその段の文字の量に合わせる */
