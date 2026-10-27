@@ -108,6 +108,7 @@ dl.info dd{margin:0;min-width:0;overflow-wrap:anywhere}
 
 <main>
   <section id="listView">
+    <a id="shijiBar" class="site" href="shiji.html" hidden style="text-decoration:none;border-color:var(--tape)"></a>
     <div class="search"><input type="search" id="q" placeholder="現場名・住所・別名で探す"></div>
     <div class="chips" id="kindChips"></div>
     <label class="toggle"><input type="checkbox" id="showEnd">終わった現場も出す</label>
@@ -624,7 +625,17 @@ $('meBtn').addEventListener('click', () => chooseName());
   render();
   load().then(() => { if (want && !CUR) { const s = findSite(want); if (s) openSite(s.id); else toast('「' + want + '」は現場ノートに見つかりませんでした'); } });
   fetchStaff();
+  shijiCount();
 })();
+/* 案件（指示書）：今年度のまだ出していない指示の数だけ出す（中身は案件アプリが持つ） */
+async function shijiCount() {
+  try {
+    const r = await getJSON(GAS_URL + '?app=shiji&action=count', 15000); if (!r.ok || !r.todo) return;
+    const b = $('shijiBar');
+    b.innerHTML = '<div class="nm">📁 まだ出していない指示 ' + r.todo + '件</div><div class="sub">' + [r.wait ? '親方の確認待ち ' + r.wait + '件' : '', r.bad ? '直してほしい ' + r.bad + '件' : ''].filter(Boolean).join('　') + (r.wait || r.bad ? '　' : '') + '押すと案件（指示書）を開きます ›</div>';
+    b.hidden = false;
+  } catch (e) { }
+}
 </script>
 </body>
 </html>
