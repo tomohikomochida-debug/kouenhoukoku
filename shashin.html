@@ -2879,7 +2879,7 @@ function allPhotosAll(){ if(!cur) return []; const fy=cur.fy||fyOf(); let L=allP
 /* ---- 回（指示・作業期間）：公共は指示番号、マンション・民間は作業開始日。写真・撮るもの・チェック・報告書・ZIPは回ごと ---- */
 function kaiScope(){ return cur.contract?'C|'+cur.contract:'S|'+cur.id; }
 function siteKais(){ if(!cur) return []; const sc=kaiScope(), fy=cur.fy||fyOf(); return kais.filter(k=>k.scope===sc&&Number(k.fy)===fy&&k.state!=='削除').sort((a,b)=>String(a.start).localeCompare(String(b.start))||COLL.compare(a.name,b.name)); }
-function curKaiId(){ if(!cur) return ''; const L=siteKais(); if(!L.length) return ''; const v=LS.get('shashin_kai_cur_'+cur.id,null); if(v==='') return ''; if(v&&L.some(k=>k.id===v)) return v; return L[L.length-1].id; }
+function curKaiId(){ if(!cur) return ''; const L=siteKais(); if(!L.length) return ''; const v=LS.get('shashin_kai_cur_'+cur.id,null); if(v==='') return ''; if(v&&L.some(k=>k.id===v)) return v; const t=isoDay(), past=L.filter(k=>!k.start||String(k.start).slice(0,10)<=t); return (past.length?past[past.length-1]:L[0]).id; }   // 選んでいないときは、もう始まっている回のうちいちばん新しいもの（案件アプリで先の季節の回まで作るため）
 function curKai(){ const id=curKaiId(); return kais.find(k=>k.id===id)||null; }
 function setCurKai(id){ LS.set('shashin_kai_cur_'+cur.id,id); }
 function isoDay(t){ const d=new Date(t||Date.now()); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
