@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="案件">
+<meta name="theme-color" content="#214A37">
+<title>案件（指示書）｜庭乃持田園</title>
+<style>
+:root{
+  --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7; --ok:#2E7D55;
+  --tape:#C77C30; --bark:#5B5750; --ink:#22231F; --line:#DCD9D0; --field:#FBFAF6; --danger:#B0533F;
+  --wait:#7A5B12; --wait-bg:#FFF3D6; --bad-bg:#F6DCDC; --bad:#9A3A3A;
+  --radius:10px; --shadow:0 1px 0 rgba(34,35,31,.04), 0 8px 24px -16px rgba(34,35,31,.25);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',Meiryo,sans-serif;-webkit-text-size-adjust:100%;line-height:1.6}
+header{background:var(--leaf);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:20;padding-top:calc(12px + env(safe-area-inset-top))}
+header .row{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:8px}
+header h1{font-size:17px;margin:0;flex:1;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hbtn{font-size:13px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:999px;padding:5px 11px;font-family:inherit;font-weight:700;cursor:pointer;text-decoration:none;white-space:nowrap}
+.hbtn:disabled{opacity:.4;cursor:default}
+@media (max-width:420px){ .hbtn .t{display:none} }
+.error-banner{display:none;background:var(--danger);color:#fff;padding:10px 16px;font-size:13px}
+main{max-width:760px;margin:0 auto;padding:12px 16px calc(48px + env(safe-area-inset-bottom))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+h2{font-size:18px;margin:0 0 4px;color:var(--leaf)}
+.hint{font-size:12.5px;color:var(--bark);margin:4px 0 0}
+.sec{font-size:13px;font-weight:700;color:var(--bark);margin:16px 0 6px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+label.lbl{display:block;font-size:13px;font-weight:700;color:var(--bark);margin:12px 0 5px}
+input[type=text],input[type=date],textarea,select{width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink)}
+textarea{min-height:70px;resize:vertical;line-height:1.6}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--leaf);outline-offset:1px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-size:15px;font-weight:700;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:10px 14px;min-height:44px;cursor:pointer;text-decoration:none}
+.btn.primary{background:var(--leaf);color:#fff;border-color:var(--leaf)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.block{width:100%}
+.btn.sm{min-height:34px;padding:5px 11px;font-size:13px;white-space:nowrap}
+.btn:disabled{opacity:.45;cursor:default}
+.row2{display:flex;gap:8px;flex-wrap:wrap}.row2>*{flex:1 1 140px}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{border:1px solid var(--line);background:var(--field);border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer;color:var(--ink);font-family:inherit;white-space:nowrap}
+.chip.on{background:var(--leaf-soft);border-color:var(--leaf);color:var(--leaf);font-weight:700}
+.chip b{font-variant-numeric:tabular-nums;margin-left:3px}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:1px 9px;white-space:nowrap;background:#EEE;color:var(--bark)}
+.pill.s-none{background:#EEE;color:var(--bark)}
+.pill.s-work{background:#E8EEF8;color:#2D4E86}
+.pill.s-ready{background:var(--leaf-soft);color:var(--leaf)}
+.pill.s-wait{background:var(--wait-bg);color:var(--wait)}
+.pill.s-bad{background:var(--bad-bg);color:var(--bad)}
+.pill.s-done{background:var(--leaf);color:#fff}
+/* 指示の一覧 */
+.sj{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:8px;cursor:pointer;box-shadow:var(--shadow)}
+.sj .top{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
+.sj .nm{font-size:16px;font-weight:700;min-width:0}
+.sj .nm .no{color:var(--leaf);margin-right:6px;font-variant-numeric:tabular-nums}
+.sj .sub{font-size:12.5px;color:var(--bark);margin-top:2px;overflow-wrap:anywhere}
+.sj.done{opacity:.6}
+.links{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.lk{font-size:12px;border-radius:6px;padding:2px 8px;background:#F0EFEA;color:#9A968C;white-space:nowrap;font-variant-numeric:tabular-nums}
+.lk.on{background:var(--leaf-soft);color:var(--leaf);font-weight:700}
+.lk.miss{background:var(--bad-bg);color:var(--bad);font-weight:700}
+.orphan{border-style:dashed;background:var(--field)}
+.sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}
+.sum div{background:var(--field);border:1px solid var(--line);border-radius:8px;padding:6px 4px;text-align:center}
+.sum b{display:block;font-size:20px;font-variant-numeric:tabular-nums;line-height:1.2}
+.sum span{font-size:12px;color:var(--bark);white-space:nowrap}
+/* 詳細 */
+.back{background:none;border:0;color:var(--leaf);font:inherit;font-weight:700;font-size:14px;padding:4px 0;margin-bottom:6px;cursor:pointer}
+dl.info{display:grid;grid-template-columns:86px 1fr;gap:6px 10px;margin:10px 0 0;font-size:14.5px}
+dl.info dt{color:var(--bark);font-size:13px;padding-top:1px}
+dl.info dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.memo-box{background:var(--bad-bg);border:1px solid #E7BDBD;border-radius:8px;padding:8px 10px;white-space:pre-wrap;font-size:14.5px;margin-top:10px}
+.lrow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:9px 0;border-top:1px solid var(--line)}
+.lrow:first-child{border-top:0}
+.lrow .l{min-width:0}
+.lrow .t{font-weight:700}
+.lrow .s{font-size:12.5px;color:var(--bark)}
+.lrow .n{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+/* 読み込み */
+.modal-bg{position:fixed;inset:0;background:rgba(34,35,31,.45);z-index:50;display:none;align-items:flex-end;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--paper);width:100%;max-width:760px;max-height:94vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.modal h3{margin:0 0 6px;font-size:18px;color:var(--leaf)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media (max-width:520px){.grid2{grid-template-columns:1fr}}
+.thumb{width:100%;max-height:260px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px;display:block;margin-top:8px}
+.note{font-size:13px;border-radius:8px;padding:8px 10px;margin-top:8px}
+.note.ai{background:var(--wait-bg);color:var(--wait)}
+.note.ok{background:var(--leaf-soft);color:var(--leaf)}
+.note.ng{background:var(--bad-bg);color:var(--bad)}
+.toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 10px 9px 18px;border-radius:999px;font-size:14px;z-index:60;display:none;align-items:center;gap:12px;max-width:calc(100vw - 24px);box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.toast.show{display:flex}
+.toast button{background:#fff;color:var(--ink);border:0;border-radius:999px;padding:5px 12px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(0,0,0,.2);border-top-color:var(--leaf);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{color:var(--bark);text-align:center;padding:18px 10px;font-size:14px}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<link rel="manifest" href="manifest.webmanifest">
+</head>
+<body>
+<div class="error-banner" id="errBanner"></div>
+<header><div class="row">
+  <a class="hbtn" href="index.html" aria-label="アプリ一覧（ホーム）にもどる">🏠<span class="t"> ホーム</span></a>
+  <h1>案件（指示書）</h1>
+  <button class="hbtn" type="button" id="undoBtn" disabled title="直前の操作を取り消す">↶<span class="t"> 取り消し</span></button>
+  <button class="hbtn" type="button" id="meBtn">👤</button>
+</div></header>
+
+<main>
+  <section id="listView">
+    <div class="card">
+      <div class="row2">
+        <div><label class="lbl" for="cSel" style="margin-top:0">委託</label><select id="cSel"></select></div>
+        <div style="flex:0 1 130px"><label class="lbl" for="fySel" style="margin-top:0">年度</label><select id="fySel"></select></div>
+      </div>
+      <div class="sum" id="sum"></div>
+      <button class="btn primary block" type="button" id="addBtn" style="margin-top:12px">＋ 指示書を読み込む（PDF・写真）</button>
+      <input type="file" id="fileIn" accept="application/pdf,image/*" multiple hidden>
+      <p class="hint">報告書（公園報告）・写真（工事写真）・処分伝票（残材処分）・交通誘導員は、<b>委託と指示番号</b>が同じものを自動で集めます。</p>
+    </div>
+    <div class="chips" id="fChips"></div>
+    <div id="sjList" style="margin-top:10px"><div class="empty"><span class="spin"></span> 読み込み中…</div></div>
+  </section>
+
+  <section id="detailView" hidden>
+    <button class="back" type="button" id="backBtn">‹ 指示の一覧にもどる</button>
+    <div id="detailBody"></div>
+  </section>
+</main>
+
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast"><span id="toastMsg"></span><button type="button" id="toastUndo" hidden>取り消し</button></div>
+
+<script>
+/* ============ 設定 ============ */
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvOcsehvX5pLUzZ8xFBIxQ40qvRmwmnixJ3q_vEr7X0v-vm7A/exec';   // 現場アプリGAS（共通）
+const MASTERS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';   // 名簿
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+const LS = { me: 'dandori_me', cache: 'shiji_cache', contract: 'shiji_contract', fy: 'shiji_fy', filter: 'shiji_filter' };
+const NET_ERR = '電波を確認して、もう一度お試しください';
+
+/* ============ 小道具 ============ */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function lsGet(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
+function rawGet(k) { try { const v = localStorage.getItem(k); if (v == null) return ''; try { const j = JSON.parse(v); return typeof j === 'string' ? j : ''; } catch (e) { return v; } } catch (e) { return ''; } }
+function showError(m) { const b = $('errBanner'); b.textContent = '⚠️ ' + m; b.style.display = 'block'; }
+const p2 = n => String(n).padStart(2, '0');
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+function md(s) { if (!/^\d{4}-\d{2}-\d{2}/.test(s || '')) return s || ''; const a = s.slice(0, 10).split('-').map(Number), d = new Date(a[0], a[1] - 1, a[2]); return (d.getMonth() + 1) + '/' + d.getDate() + '(' + WD[d.getDay()] + ')'; }
+const NOW = new Date();
+const FY_NOW = NOW.getMonth() >= 3 ? NOW.getFullYear() : NOW.getFullYear() - 1;
+const reiwa = fy => '令和' + (fy - 2018) + '年度';
+const ckey = s => String(s || '').normalize('NFKC').toLowerCase().replace(/[\s・･,，、。\-－_/／（）()「」]/g, '');
+const noOf = s => { const m = String(s == null ? '' : s).normalize('NFKC').match(/(\d+)/); return m ? String(Number(m[1])) : ''; };
+function ymdOf(s) {
+  const t = String(s || '').normalize('NFKC').replace(/\s/g, ''); let m;
+  if ((m = t.match(/令和(\d+|元)年(\d+)月(\d+)日?/))) return (2018 + (m[1] === '元' ? 1 : +m[1])) + '-' + p2(m[2]) + '-' + p2(m[3]);
+  if ((m = t.match(/(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/))) return m[1] + '-' + p2(m[2]) + '-' + p2(m[3]);
+  return '';
+}
+async function getJSON(url, ms) { const ac = new AbortController(), tm = setTimeout(() => ac.abort(), ms || 25000); try { return await (await fetch(url, { cache: 'no-store', signal: ac.signal })).json(); } finally { clearTimeout(tm); } }
+async function postJSON(body) {
+  const r = await (await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })).json();
+  if (r && !r.ok && /unknown mode/.test(r.error || '')) throw new Error('共通GASの更新がまだです（数分で反映されます）');
+  return r;
+}
+const fileB64 = f => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = () => ng(new Error('ファイルを読めませんでした')); r.readAsDataURL(f); });
+
+/* ============ トースト・取り消し ============ */
+const UNDO = [];   // { label, run }
+function toast(m, undoable) {
+  $('toastMsg').textContent = m; $('toastUndo').hidden = !undoable; $('toast').classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => $('toast').classList.remove('show'), undoable ? 6000 : 3000);
+}
+function pushUndo(label, run) { UNDO.push({ label, run }); if (UNDO.length > 20) UNDO.shift(); refreshUndo(); }
+function refreshUndo() { $('undoBtn').disabled = !UNDO.length; $('undoBtn').title = UNDO.length ? '取り消し：' + UNDO[UNDO.length - 1].label : '取り消せる操作はありません'; }
+async function doUndo() {
+  const u = UNDO.pop(); refreshUndo(); if (!u) return;
+  $('toast').classList.remove('show');
+  try { await u.run(); toast('取り消しました：' + u.label); await load(true); }
+  catch (e) { UNDO.push(u); refreshUndo(); toast('取り消せませんでした：' + (e.message || NET_ERR)); }
+}
+$('undoBtn').onclick = doUndo; $('toastUndo').onclick = doUndo;
+
+/* ============ 名前 ============ */
+const me = () => lsGet(LS.me, '') || rawGet('nippou_author');
+let STAFF = lsGet(LS.me + '_staff', null) || [];
+async function fetchStaff() { try { const r = await getJSON(MASTERS_URL + '?action=masters', 10000); const s = (r.staff || []).map(x => typeof x === 'string' ? x : (x.name || '')).filter(Boolean); if (s.length) { STAFF = s; lsSet(LS.me + '_staff', s); } } catch (e) { } }
+function showMe() { $('meBtn').textContent = '👤 ' + (me() || '名前を選ぶ'); }
+function chooseName(then) {
+  openModal('<h3>あなたの名前</h3><p class="hint" style="margin:4px 0 12px">最初の1回だけ選びます（日報・段取りアプリと同じ名前です）。</p>' +
+    '<div class="chips" style="margin-bottom:12px">' + STAFF.map(s => '<button type="button" class="chip" data-nm="' + esc(s) + '">' + esc(s) + '</button>').join('') + '</div>' +
+    '<input type="text" id="nmIn" placeholder="一覧にないときは名前を入力" value="' + esc(me()) + '">' +
+    '<div class="row2" style="margin-top:12px"><button class="btn" data-act="close">もどる</button><button class="btn primary" data-act="ok">決定</button></div>',
+    e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.act === 'close') return closeModal();
+      const v = b.dataset.nm || (b.dataset.act === 'ok' ? $('nmIn').value.trim() : ''); if (!v) return;
+      lsSet(LS.me, v); showMe(); closeModal(); render(); if (then) then();
+    });
+}
+$('meBtn').onclick = () => chooseName();
+
+/* ============ モーダル ============ */
+let modalHandler = null;
+function openModal(html, handler) { $('modal').innerHTML = html; modalHandler = handler; $('modalBg').classList.add('show'); $('modal').scrollTop = 0; }
+function closeModal() { $('modalBg').classList.remove('show'); $('modal').innerHTML = ''; modalHandler = null; }
+$('modal').addEventListener('click', e => { if (modalHandler) modalHandler(e); });
+
+/* ============ データ ============ */
+let ITEMS = [], LINKS = {}, CONTRACTS = [], ADMINS = ['親方'];
+let CONTRACT = lsGet(LS.contract, ''), FY = lsGet(LS.fy, FY_NOW), FILTER = lsGet(LS.filter, 'all'), CUR = null;
+const isAdmin = () => ADMINS.includes(me());
+async function load(quiet) {
+  try {
+    const r = await getJSON(GAS_URL + '?app=shiji&action=data');
+    if (!r.ok) throw new Error(/unknown action/.test(r.error || '') ? '共通GASの更新がまだです（数分で反映されます）' : r.error);
+    ITEMS = r.items || []; LINKS = r.links || {}; CONTRACTS = r.contracts || []; if (r.admins) ADMINS = r.admins;
+    lsSet(LS.cache, { ITEMS, LINKS, CONTRACTS, ADMINS });
+    $('errBanner').style.display = 'none';
+  } catch (e) {
+    const c = lsGet(LS.cache, null);
+    if (c) { ({ ITEMS, LINKS, CONTRACTS } = c); ADMINS = c.ADMINS || ADMINS; if (!quiet) toast('前回のデータを表示しています（' + NET_ERR + '）'); }
+    else showError('指示の一覧を読み込めませんでした。' + (e.message && !/fetch|abort/i.test(e.message) ? e.message : NET_ERR));
+  }
+  if (!CONTRACT || !allContracts().includes(CONTRACT)) CONTRACT = bestContract();
+  if (CUR) CUR = ITEMS.find(x => x.id === CUR.id) || null;
+  render();
+}
+function allContracts() {
+  const s = new Set(CONTRACTS);
+  ITEMS.forEach(x => x.contract && s.add(x.contract));
+  Object.values(LINKS).forEach(l => l.contract && s.add(l.contract));
+  return [...s].sort((a, b) => a.localeCompare(b, 'ja'));
+}
+function bestContract() {   // 今年度の指示がいちばん多い委託
+  const n = {}; ITEMS.forEach(x => { if (+x.fy === +FY) n[x.contract] = (n[x.contract] || 0) + 1; });
+  const top = Object.keys(n).sort((a, b) => n[b] - n[a])[0];
+  return top || allContracts().find(c => /公園/.test(c)) || allContracts()[0] || '';
+}
+const linkOf = x => LINKS[ckey(x.contract) + '|' + x.fy + '|' + noOf(x.no)] || null;
+/* 状態：手で付けたもの（確認待ち・直してほしい・提出済）が先。無ければ記録のそろい具合 */
+function statusOf(x) {
+  if (x.state === '提出済') return { k: 'done', t: '提出済' };
+  if (x.state === '直してほしい') return { k: 'bad', t: '直してほしい' };
+  if (x.state === '確認待ち') return { k: 'wait', t: '親方の確認待ち' };
+  const l = linkOf(x);
+  if (!l || (!l.reports.length && !l.photos && !l.slips && !l.yudo)) return { k: 'none', t: '未着手' };
+  if (l.reports.length && l.photos) return { k: 'ready', t: '報告書・写真あり' };
+  return { k: 'work', t: '作業中' };
+}
+const FILTERS = [['all', '全部'], ['todo', 'まだ出していない'], ['wait', '確認待ち'], ['bad', '直してほしい'], ['done', '提出済']];
+function passFilter(x) {
+  const s = statusOf(x).k;
+  if (FILTER === 'todo') return s !== 'done';
+  if (FILTER === 'wait') return s === 'wait';
+  if (FILTER === 'bad') return s === 'bad';
+  if (FILTER === 'done') return s === 'done';
+  return true;
+}
+
+/* ============ 一覧 ============ */
+function render() {
+  showMe();
+  if (CUR) return renderDetail();
+  $('listView').hidden = false; $('detailView').hidden = true;
+  const cs = allContracts();
+  $('cSel').innerHTML = (cs.length ? '' : '<option value="">（委託がまだありません）</option>') + cs.map(c => `<option${c === CONTRACT ? ' selected' : ''}>${esc(c)}</option>`).join('');
+  const fys = new Set([FY_NOW, FY_NOW - 1, +FY]); ITEMS.forEach(x => x.fy && fys.add(+x.fy));
+  $('fySel').innerHTML = [...fys].sort((a, b) => b - a).map(f => `<option value="${f}"${+f === +FY ? ' selected' : ''}>${reiwa(f)}</option>`).join('');
+  const list = ITEMS.filter(x => x.contract === CONTRACT && +x.fy === +FY).sort((a, b) => (+a.no || 0) - (+b.no || 0));
+  const cnt = k => list.filter(x => statusOf(x).k === k).length;
+  const notYet = list.length - cnt('done');
+  $('sum').innerHTML = `<div><b>${list.length}</b><span>指示</span></div><div><b>${notYet}</b><span>未提出</span></div><div><b>${cnt('wait')}</b><span>確認待ち</span></div><div><b>${cnt('done')}</b><span>提出済</span></div>`;
+  $('fChips').innerHTML = FILTERS.map(([k, t]) => `<button type="button" class="chip${FILTER === k ? ' on' : ''}" data-f="${k}">${t}<b>${list.filter(x => passFilterK(x, k)).length}</b></button>`).join('');
+  const shown = list.filter(passFilter);
+  let h = shown.map(cardHtml).join('');
+  if (!list.length) h = '<div class="empty">この委託・年度の指示書はまだ登録されていません。<br>上の「＋ 指示書を読み込む」から入れてください。</div>';
+  else if (!shown.length) h = '<div class="empty">この絞り込みに当てはまる指示はありません。</div>';
+  // 指示書が未登録なのに、報告書・伝票などに指示番号が入っている記録
+  const has = new Set(list.map(x => noOf(x.no)));
+  const orphans = Object.values(LINKS).filter(l => ckey(l.contract) === ckey(CONTRACT) && +l.fy === +FY && !has.has(String(l.no))).sort((a, b) => a.no - b.no);
+  if (orphans.length && FILTER !== 'done') {
+    h += `<div class="sec"><span>指示書が未登録の記録（${orphans.length}件）</span></div><p class="hint" style="margin:-2px 0 8px">報告書・伝票などに指示番号は入っていますが、指示書がまだ登録されていません。登録すると、提出の確認ができるようになります。</p>`;
+    h += orphans.map(l => `<button type="button" class="sj orphan" data-orphan="${esc(l.no)}"><div class="top"><div class="nm"><span class="no">第${esc(l.no)}回</span>${esc(l.parks.join('・') || '（公園名なし）')}</div><span class="pill s-none">指示書なし</span></div>${linksHtml(l)}<div class="sub" style="margin-top:6px">押すと、この番号で指示書を登録します</div></button>`).join('');
+  }
+  $('sjList').innerHTML = h;
+}
+function passFilterK(x, k) { const keep = FILTER; FILTER = k; const r = passFilter(x); FILTER = keep; return r; }
+function linksHtml(l, st) {
+  const L = l || { reports: [], photos: 0, slips: 0, yudo: 0 };
+  const warn = st && st.k !== 'none' && st.k !== 'done';
+  return `<div class="links"><span class="lk ${L.reports.length ? 'on' : warn ? 'miss' : ''}">📄 報告書 ${L.reports.length}</span><span class="lk ${L.photos ? 'on' : warn ? 'miss' : ''}">📷 写真 ${L.photos}</span><span class="lk ${L.slips ? 'on' : ''}">🧾 処分伝票 ${L.slips}</span><span class="lk ${L.yudo ? 'on' : ''}">🦺 誘導員 ${L.yudo}</span></div>`;
+}
+function cardHtml(x) {
+  const st = statusOf(x), l = linkOf(x);
+  return `<button type="button" class="sj${st.k === 'done' ? ' done' : ''}" data-id="${esc(x.id)}"><div class="top"><div class="nm"><span class="no">第${esc(x.no)}回</span>${esc(x.park)}</div><span class="pill s-${st.k}">${st.t}</span></div>
+    <div class="sub">${x.date ? '指示 ' + esc(md(x.date)) + '　' : ''}${esc(x.item || '')}${x.target ? '｜' + esc(x.target) : ''}</div>${linksHtml(l, st)}
+    ${st.k === 'bad' && x.memo ? `<div class="sub" style="color:var(--bad);font-weight:700;margin-top:5px">直すところ：${esc(x.memo)}</div>` : ''}</button>`;
+}
+$('cSel').onchange = () => { CONTRACT = $('cSel').value; lsSet(LS.contract, CONTRACT); render(); };
+$('fySel').onchange = () => { FY = +$('fySel').value; lsSet(LS.fy, FY); render(); };
+$('fChips').onclick = e => { const c = e.target.closest('[data-f]'); if (!c) return; FILTER = c.dataset.f; lsSet(LS.filter, FILTER); render(); };
+$('sjList').onclick = e => {
+  const o = e.target.closest('[data-orphan]'); if (o) { const l = Object.values(LINKS).find(x => ckey(x.contract) === ckey(CONTRACT) && +x.fy === +FY && String(x.no) === o.dataset.orphan); return openForm({ contract: CONTRACT, no: o.dataset.orphan, park: l ? l.parks[0] || '' : '', fy: FY }, null); }
+  const b = e.target.closest('[data-id]'); if (!b) return; CUR = ITEMS.find(x => x.id === b.dataset.id); history.pushState({ d: CUR.id }, ''); render(); window.scrollTo(0, 0);
+};
+$('backBtn').onclick = () => history.back();
+window.addEventListener('popstate', () => { if (CUR) { CUR = null; render(); } else if ($('modalBg').classList.contains('show')) closeModal(); });
+
+/* ============ 詳細 ============ */
+function renderDetail() {
+  $('listView').hidden = true; $('detailView').hidden = false;
+  const x = CUR, st = statusOf(x), l = linkOf(x) || { reports: [], photos: 0, slips: 0, yudo: 0 };
+  const mine = x.by === me(), boss = isAdmin();
+  const row = (t, s, n, href) => `<div class="lrow"><div class="l"><div class="t">${t}</div>${s ? `<div class="s">${s}</div>` : ''}</div><div style="display:flex;gap:8px;align-items:center"><span class="n">${n}</span>${href ? `<a class="btn sm" href="${href}">開く</a>` : ''}</div></div>`;
+  let acts = '';
+  if (!boss && (x.state === '' || x.state === '直してほしい')) acts += `<button class="btn primary" data-st="確認待ち">親方に確認を頼む</button>`;
+  if (boss && x.state !== '提出済') acts += `<button class="btn primary" data-st="提出済">提出済にする</button>`;
+  if (boss && x.state !== '提出済' && x.state !== '直してほしい') acts += `<button class="btn" data-st="直してほしい">直してほしい</button>`;
+  if (x.state === '確認待ち' && (boss || x.stateBy === me())) acts += `<button class="btn" data-st="">確認の依頼をやめる</button>`;
+  if (boss && (x.state === '提出済' || x.state === '直してほしい')) acts += `<button class="btn" data-st="">作業中に戻す</button>`;
+  $('detailBody').innerHTML = `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><h2>第${esc(x.no)}回　${esc(x.park)}</h2><span class="pill s-${st.k}">${st.t}</span></div>
+    <dl class="info">
+      <dt>委託</dt><dd>${esc(x.contract)}（${reiwa(x.fy)}）</dd>
+      <dt>指示年月日</dt><dd>${esc(x.date ? md(x.date) + '　' + x.date : '—')}</dd>
+      <dt>指示事項</dt><dd>${esc(x.item || '—')}</dd>
+      <dt>作業対象</dt><dd>${esc(x.target || '—')}</dd>
+      <dt>住所</dt><dd>${esc(x.addr || '—')}${x.code ? '（公園番号 ' + esc(x.code) + '）' : ''}</dd>
+      <dt>監督員</dt><dd>${esc(x.boss || '—')}</dd>
+      <dt>登録</dt><dd>${esc(x.by || '')}　${esc(String(x.at || '').slice(0, 16))}</dd>
+      ${x.state ? `<dt>状態</dt><dd>${esc(x.state)}（${esc(x.stateBy || '')}　${esc(String(x.stateAt || '').slice(5, 16))}）</dd>` : ''}
+    </dl>
+    ${x.state === '直してほしい' && x.memo ? `<div class="memo-box"><b>直すところ</b>\n${esc(x.memo)}</div>` : ''}
+    <div class="acts" id="stActs">${acts}</div>
+    <div class="acts">${x.pdfId ? '<button class="btn sm" id="pdfBtn">📄 指示書を見る</button>' : ''}<button class="btn sm" id="editBtn">✎ 内容を直す</button>${(boss || (mine && x.state !== '提出済')) ? '<button class="btn sm danger" id="delBtn">消す</button>' : ''}</div>
+  </div>
+  <div class="sec"><span>この指示の記録（委託と指示番号が同じもの）</span></div>
+  <div class="card">
+    ${row('📄 報告書（公園報告）', l.reports.length ? l.reports.map(r => esc((r.park || '') + (r.date ? '　' + md(r.date) : '') + (r.by ? '　' + r.by : ''))).join('<br>') : '<span style="color:var(--bad)">まだありません</span>', l.reports.length + '件', 'park_app.html')}
+    ${row('📷 写真（工事写真）', l.photos ? '' : '<span style="color:var(--bad)">まだありません</span>', l.photos + '枚', 'shashin.html')}
+    ${row('🧾 処分伝票（残材処分）', l.slips ? '' : '処分がなければ空のままでかまいません', l.slips + '件', 'zaizai.html')}
+    ${row('🦺 交通誘導員', l.yudo ? '' : '使っていなければ空のままでかまいません', l.yudo + '枚', 'zaizai.html')}
+  </div>
+  <p class="hint">記録が出てこないときは、それぞれのアプリで<b>委託名</b>と<b>指示番号（${esc(x.no)}）</b>が入っているか確かめてください。</p>`;
+  $('stActs').onclick = e => { const b = e.target.closest('[data-st]'); if (b) setState(x, b.dataset.st); };
+  if ($('pdfBtn')) $('pdfBtn').onclick = () => openPdf(x);
+  $('editBtn').onclick = () => openForm(Object.assign({}, x), null);
+  if ($('delBtn')) $('delBtn').onclick = () => delItem(x);
+}
+async function setState(x, st) {
+  if (!me()) return chooseName(() => setState(x, st));
+  let memo = null;
+  if (st === '直してほしい') { memo = prompt('直してほしいところを書いてください（スタッフに見えます）', x.memo || ''); if (memo == null) return; }
+  const btns = [...document.querySelectorAll('#stActs button')]; btns.forEach(b => b.disabled = true);
+  try {
+    const r = await postJSON({ app: 'shiji', mode: 'state', id: x.id, state: st, memo: memo, by: me() });
+    if (!r.ok) throw new Error(r.error || '');
+    const prev = r.prev, label = `第${x.no}回 ${x.park} を「${st || '作業中'}」に`;
+    pushUndo(label, async () => { const u = await postJSON({ app: 'shiji', mode: 'state', id: x.id, state: prev.state, restore: prev, by: me() }); if (!u.ok) throw new Error(u.error || ''); });
+    toast(st === '確認待ち' ? '親方に確認を頼みました' : st === '提出済' ? '提出済にしました' : st === '直してほしい' ? '直してほしいと返しました' : '作業中に戻しました', true);
+    await load(true);
+  } catch (e) { btns.forEach(b => b.disabled = false); toast('できませんでした：' + (e.message || NET_ERR)); }
+}
+async function delItem(x) {
+  if (!confirm(`第${x.no}回 ${x.park} の指示を消しますか？\n（右上の「取り消し」で戻せます）`)) return;
+  try {
+    const r = await postJSON({ app: 'shiji', mode: 'state', id: x.id, state: '削除', by: me() });
+    if (!r.ok) throw new Error(r.error || '');
+    const prev = r.prev;
+    pushUndo(`第${x.no}回 ${x.park} を消した`, async () => { const u = await postJSON({ app: 'shiji', mode: 'state', id: x.id, state: prev.state, restore: prev, by: me() }); if (!u.ok) throw new Error(u.error || ''); });
+    CUR = null; history.back(); toast('消しました', true); await load(true);
+  } catch (e) { toast('消せませんでした：' + (e.message || NET_ERR)); }
+}
+async function openPdf(x) {
+  const w = window.open('', '_blank'); if (w) w.document.write('<p style="font-family:sans-serif;padding:20px">指示書を開いています…</p>');
+  try {
+    const r = await getJSON(GAS_URL + '?app=shiji&action=pdf&id=' + encodeURIComponent(x.id), 40000);
+    if (!r.ok) throw new Error(r.error || '');
+    const bin = atob(r.data), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([u8], { type: r.mime || 'application/pdf' }));
+    if (w) w.location.href = url; else location.href = url;
+  } catch (e) { if (w) w.close(); toast('指示書を開けませんでした：' + (e.message || NET_ERR)); }
+}
+
+/* ============ 指示書の読み込み ============ */
+let pdfLib = null;
+function loadPdfJs() {
+  if (pdfLib) return Promise.resolve(pdfLib);
+  return new Promise((ok, ng) => { const s = document.createElement('script'); s.src = PDFJS + 'pdf.min.js';
+    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; pdfLib = window.pdfjsLib; ok(pdfLib); };
+    s.onerror = () => ng(new Error('PDFを読む部品を読み込めませんでした（' + NET_ERR + '）')); document.head.appendChild(s); });
+}
+async function readPdf(file) {   // 文字と、1ページ目の見本の画像
+  const lib = await loadPdfJs();
+  const pdf = await lib.getDocument({ data: await file.arrayBuffer(), cMapUrl: PDFJS + 'cmaps/', cMapPacked: true }).promise;
+  let text = '';
+  for (let i = 1; i <= Math.min(pdf.numPages, 4); i++) { const pg = await pdf.getPage(i); const c = await pg.getTextContent(); text += c.items.map(x => x.str).join(' ') + ' \n '; }
+  const pg = await pdf.getPage(1), vp = pg.getViewport({ scale: 1 }), sc = Math.min(2, 1100 / vp.width), v2 = pg.getViewport({ scale: sc });
+  const cv = document.createElement('canvas'); cv.width = v2.width; cv.height = v2.height;
+  await pg.render({ canvasContext: cv.getContext('2d'), viewport: v2 }).promise;
+  return { text, thumb: cv.toDataURL('image/jpeg', .8), pages: pdf.numPages };
+}
+/* 施工指示書（様式3）の文字から項目を読む */
+function parseShiji(t) {
+  t = t.replace(/\s+/g, ' ');
+  const g = re => { const m = t.match(re); return m ? m[1].trim() : ''; };
+  const dm = t.match(/指\s*示\s*年\s*月\s*日\s*令\s*和\s*(\d+)\s*年\s*(\d+)\s*月\s*(\d+)\s*日/);
+  let target = g(/作業対象箇所\s*(.{0,140})/);
+  if (/^(所 長|設 計)/.test(target) || /\d\.\d\d \d\.\d\d/.test(target)) target = '';
+  target = target.replace(/^\S+(公園|緑地|緑道)\s*(平面図\s*\S+(公園|緑地|緑道)\s*)?/, '').trim();
+  let code = ''; const cm = target.match(/^(\d{3})\s*(.*)$/); if (cm) { code = cm[1]; target = cm[2]; }
+  let item = g(/回）\s*(.+?)\s*(?:本指示完了後|詳細について|（施工範囲|添付図書)/);
+  if (/^[0０]$/.test(item)) item = '';
+  return {
+    no: noOf(g(/（\s*第\s*(\d+)\s*回\s*）/)), item, park: g(/施\s*工\s*場\s*所\s*(\S+?)（/), addr: g(/施\s*工\s*場\s*所\s*\S+?（(.+?)）/),
+    date: dm ? `${2018 + +dm[1]}-${p2(dm[2])}-${p2(dm[3])}` : '', boss: g(/監督員氏名\s*(\S+\s?\S+)/), contract: g(/工\s*事\s*名\s*(\S+?委託)/),
+    target: target.slice(0, 120), code
+  };
+}
+function shrinkImage(file, max) {
+  return new Promise((ok, ng) => { const img = new Image(), u = URL.createObjectURL(file);
+    img.onload = () => { const s = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(u); ok(c.toDataURL('image/jpeg', .85)); };
+    img.onerror = () => { URL.revokeObjectURL(u); ng(new Error('写真を開けませんでした（HEICのときはスクリーンショットかPDFにしてください）')); }; img.src = u; });
+}
+function matchContract(name) {   // 指示書に書かれた委託名を、登録されている委託名に合わせる
+  if (!name) return '';
+  const k = ckey(name); return allContracts().find(c => ckey(c) === k) || allContracts().find(c => ckey(c).includes(k) || k.includes(ckey(c))) || '';
+}
+let QUEUE = [];
+$('addBtn').onclick = () => { if (!me()) return chooseName(() => $('fileIn').click()); $('fileIn').click(); };
+$('fileIn').onchange = () => { const fs = [...$('fileIn').files]; $('fileIn').value = ''; if (!fs.length) return; QUEUE = fs; nextFile(); };
+async function nextFile() {
+  const file = QUEUE.shift(); if (!file) return;
+  const left = QUEUE.length;
+  openModal(`<h3>指示書を読んでいます…</h3><p class="hint"><span class="spin"></span> ${esc(file.name)}${left ? `（あと ${left} 枚）` : ''}</p><div class="row2" style="margin-top:14px"><button class="btn" data-act="stop">やめる</button></div>`, e => { if (e.target.closest('[data-act=stop]')) { QUEUE = []; closeModal(); } });
+  const v = { contract: CONTRACT, fy: FY }, ctx = { file, thumb: '', how: '', mime: file.type || 'application/pdf' };
+  try {
+    const isPdf = /pdf/i.test(file.type) || /\.pdf$/i.test(file.name);
+    ctx.b64 = await fileB64(file); ctx.mime = isPdf ? 'application/pdf' : (file.type || 'image/jpeg');
+    let got = {};
+    if (isPdf) { const p = await readPdf(file); ctx.thumb = p.thumb; if (p.text.replace(/\s/g, '').length > 30) { got = parseShiji(p.text); ctx.how = 'text'; } }
+    else { ctx.thumb = await shrinkImage(file, 1400); }
+    if (!got.no || !got.park) {   // スキャン・写真、または読み切れなかったとき → AI窓口
+      const send = isPdf ? { data: ctx.b64, mime: 'application/pdf' } : { data: (await shrinkImage(file, 2200)).split(',')[1], mime: 'image/jpeg' };
+      const r = await postJSON({ app: 'shiji', mode: 'read', data: send.data, mime: send.mime, by: me() });
+      if (r.ok && r.data) { const a = r.data; Object.keys(a).forEach(k => { if (!got[k] && a[k]) got[k] = a[k]; }); ctx.how = 'ai'; }
+      else ctx.how = 'ng';
+    }
+    if (!isPdf) { ctx.b64 = (await shrinkImage(file, 2200)).split(',')[1]; ctx.mime = 'image/jpeg'; }
+    Object.assign(v, got);
+    v.contract = matchContract(got.contract) || CONTRACT || got.contract || '';
+    v.readContract = got.contract || '';
+  } catch (e) { ctx.how = 'ng'; ctx.err = e.message; }
+  if (!document.querySelector('#modalBg.show')) return;   // やめた
+  openForm(v, ctx);
+}
+/* 確認・直すフォーム（新しい指示書の登録にも、内容を直すのにも使う） */
+function openForm(v, ctx) {
+  const isNew = !v.id, left = QUEUE.length;
+  const F = (k, label, type, extra) => `<div><label class="lbl" for="f_${k}">${label}</label><input type="${type || 'text'}" id="f_${k}" value="${esc(type === 'date' ? (ymdOf(v[k]) || v[k] || '') : (v[k] || ''))}" ${extra || ''}></div>`;
+  const note = !ctx ? '' : ctx.how === 'text' ? `<div class="note ok">指示書の文字から読み取りました。違うところは直してください。</div>`
+    : ctx.how === 'ai' ? `<div class="note ai">文字の入っていない指示書だったので、AIで読み取りました。<b>特に回・公園名・日付</b>を見比べてください。</div>`
+    : `<div class="note ng">指示書を読み取れませんでした${ctx.err ? '（' + esc(ctx.err) + '）' : ''}。手で入れてください。</div>`;
+  const diff = v.readContract && ckey(v.readContract) !== ckey(v.contract) ? `<p class="hint">指示書の委託名：${esc(v.readContract)}</p>` : '';
+  openModal(`<h3>${isNew ? '指示書の内容を確かめて登録' : '指示の内容を直す'}${left ? `<span class="hint" style="font-weight:400">（あと ${left} 枚）</span>` : ''}</h3>
+    ${note}${ctx && ctx.thumb ? `<img class="thumb" src="${ctx.thumb}" alt="指示書の1ページ目">` : ''}
+    <label class="lbl" for="f_contract">委託</label><input type="text" id="f_contract" list="cList" value="${esc(v.contract || '')}"><datalist id="cList">${allContracts().map(c => `<option value="${esc(c)}">`).join('')}</datalist>${diff}
+    <div class="grid2">${F('no', '回（第○回の数字）', 'text', 'inputmode="numeric"')}${F('date', '指示年月日', 'date')}</div>
+    <div class="grid2">${F('park', '公園名')}${F('code', '公園番号', 'text', 'inputmode="numeric"')}</div>
+    ${F('addr', '住所')}
+    ${F('item', '指示事項（作業の内容）')}
+    <div><label class="lbl" for="f_target">作業対象箇所・メモ</label><textarea id="f_target">${esc(v.target || '')}</textarea></div>
+    ${F('boss', '監督員')}
+    <div id="fMsg"></div>
+    <div class="row2" style="margin-top:14px">
+      <button class="btn" data-act="cancel">${left ? 'この1枚を飛ばす' : 'やめる'}</button>
+      <button class="btn primary" data-act="save">${isNew ? 'この内容で登録する' : '直す'}</button>
+    </div>`, async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.act === 'cancel') { closeModal(); if (QUEUE.length) nextFile(); return; }
+      if (b.dataset.act !== 'save') return;
+      const val = k => ($('f_' + k).value || '').trim();
+      const item = { id: v.id || '', contract: val('contract'), no: noOf(val('no')), park: val('park'), code: val('code'), addr: val('addr'), date: val('date'), item: val('item'), target: val('target'), boss: val('boss'), fy: v.fy };
+      const miss = [!item.contract && '委託', !item.no && '回', !item.park && '公園名'].filter(Boolean);
+      if (miss.length) { $('fMsg').innerHTML = `<div class="note ng">${miss.join('・')}を入れてください。</div>`; return; }
+      b.disabled = true; b.textContent = '送っています…';
+      try {
+        const body = { app: 'shiji', mode: 'save', item, by: me() };
+        if (ctx && ctx.b64) { body.pdf = ctx.b64; body.mime = ctx.mime; body.pdfName = ctx.file.name; }
+        const r = await postJSON(body);
+        if (!r.ok) throw new Error(r.error || '');
+        if (isNew) {
+          pushUndo(`第${item.no}回 ${item.park} を登録`, async () => { const u = await postJSON({ app: 'shiji', mode: 'state', id: r.id, state: '削除', by: me() }); if (!u.ok) throw new Error(u.error || ''); });
+          if (item.contract !== CONTRACT) { CONTRACT = item.contract; lsSet(LS.contract, CONTRACT); }
+          if (r.item && +r.item.fy !== +FY) { FY = +r.item.fy; lsSet(LS.fy, FY); }
+        } else {
+          const old = Object.assign({}, v);
+          pushUndo(`第${old.no}回 ${old.park} の直し`, async () => { const u = await postJSON({ app: 'shiji', mode: 'save', item: { id: old.id, contract: old.contract, no: old.no, park: old.park, code: old.code, addr: old.addr, date: old.date, item: old.item, target: old.target, boss: old.boss }, by: me() }); if (!u.ok) throw new Error(u.error || ''); });
+        }
+        closeModal(); toast(isNew ? `第${item.no}回 ${item.park} を登録しました` : '直しました', true);
+        await load(true);
+        if (QUEUE.length) nextFile();
+      } catch (err) { b.disabled = false; b.textContent = isNew ? 'この内容で登録する' : '直す'; $('fMsg').innerHTML = `<div class="note ng">${esc(err.message || NET_ERR)}</div>`; }
+    });
+}
+
+/* ============ はじめ ============ */
+showMe(); refreshUndo();
+const c0 = lsGet(LS.cache, null); if (c0) { ({ ITEMS, LINKS, CONTRACTS } = c0); ADMINS = c0.ADMINS || ADMINS; if (!CONTRACT) CONTRACT = bestContract(); render(); }
+load(!!c0); fetchStaff();
+</script>
+</body>
+</html>
