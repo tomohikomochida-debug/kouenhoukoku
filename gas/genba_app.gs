@@ -67,7 +67,7 @@ var SHEETS = {
   renameLog: { name: '委託名のまとめ履歴', head: ['batch', 'at', 'by', 'from', 'to', 'kind', 'ss', 'sheet', 'row', 'col', 'old', 'new'] },   // 委託名をまとめたときに書きかえた所（元に戻す用）。kind：cell／folder／file／zaizai
   zaizaiOrders: { name: '残材処分の指示番号', head: ['key', 'site', 'order', 'contract', 'by', 'at'] },   // 残材処分の記録（一台＝key）の公共の現場ごとの指示番号。記録そのものは残材処分のGAS
   yudo:      { name: '交通誘導員', head: ['id', 'date', 'company', 'kind', 'count', 'start', 'end', 'contract', 'routes', 'place', 'ticketSite', 'names', 'memo', 'fileId', 'mime', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 警備会社の伝票1枚＝1行。kind：A（有資格者）／B。routes：[{site,order}]（路線名・指示番号、JSON）。伝票の画像は「社内アプリ ＞ 交通誘導員の伝票」
-  shiji:     { name: '指示書', head: ['id', 'contract', 'fy', 'no', 'park', 'code', 'addr', 'date', 'item', 'target', 'boss', 'pdfId', 'pdfName', 'state', 'stateBy', 'stateAt', 'memo', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 施工指示書1枚＝1行（案件アプリ）。no＝指示の回（数字）。state：''（作業中）／確認待ち／直してほしい／提出済／削除。PDFは「社内アプリ ＞ 指示書」
+  shiji:     { name: '指示書', head: ['id', 'contract', 'fy', 'no', 'park', 'code', 'addr', 'date', 'item', 'target', 'boss', 'pdfId', 'pdfName', 'state', 'stateBy', 'stateAt', 'memo', 'by', 'at', 'updatedBy', 'updatedAt', 'kind', 'siteId', 'estNo', 'items', 'kaiId', 'plan'] },   // kind：公共（指示書）／年間・単発（民間の見積。contract＝物件名、park＝回の名前、items＝工種・規格・数量のJSON（金額は持たない）、kaiId＝工事写真の回、plan＝予定の時期）。施工指示書1枚＝1行（案件アプリ）。no＝指示の回（数字）。state：''（作業中）／確認待ち／直してほしい／提出済／削除。PDFは「社内アプリ ＞ 指示書」
   shashinPhotos: { name: '工事写真',     head: ['photoId', 'siteId', 'site', 'contract', 'itemId', 'stage', 'koshu', 'sokuten', 'jushu', 'kikaku', 'biko', 'takenAt', 'by', 'lat', 'lng', 'acc', 'heading', 'fileName', 'fileId', 'url', 'at', 'excluded', 'state', 'replaces', 'rawFileId', 'kanshu', 'msId', 'msRawId', 'msGone', 'kai'] }   // 写真1枚1行。写真は「社内アプリ ＞ 工事写真 ＞ 委託名 ＞ 現場名」
 };
 var JSON_COLS = ['stops', 'items', 'steps', 'notes'];
@@ -206,6 +206,7 @@ var AI_ROUTES = [
   ['伝票読み取り',        '残材処分：計量票・伝票から日付・重さ・金額を読む',             'sonnet',       100],
   ['誘導員伝票読み取り',  '残材処分：交通誘導員の伝票（警備報告書）から日付・人数・A／Bなどを読む', 'sonnet',   100],
   ['指示書読み取り',      '案件：文字の入っていない（スキャンの）施工指示書から、回・公園名・指示事項などを読む', 'sonnet',   50],
+  ['見積書読み取り',      '案件：民間の見積書から工種・規格・数量・時期だけを読む（金額は読まない）', 'sonnet',   50],
   ['請求書読み取り',      '取引先：請求書・名刺などから会社の情報を読む',                 'sonnet',       50],
   ['用語の意味下書き',    '用語集：新しい言葉の意味を下書きする（人が確認する前提）',     'sonnet',       100],
   ['用語さがし',          '用語集：うろ覚え・聞き間違いから候補を探す',                   'haiku',        300],
@@ -617,6 +618,9 @@ function doPost(e) {
       case 'shiji:read':       return out_(shijiRead_(b.data, b.mime));
       case 'shiji:save':       return withLock_(function () { return shijiSave_(b); });
       case 'shiji:state':      return withLock_(function () { return shijiState_(b); });
+      case 'shiji:readEst':    return out_(shijiReadEst_(b));
+      case 'shiji:saveEst':    return withLock_(function () { return shijiSaveEst_(b); });
+      case 'shiji:estUndo':    return withLock_(function () { return shijiEstUndo_(b); });
       case 'yudo:read':        return out_(readYudo_(b.data, b.mime));
       case 'yudo:save':        return withLock_(function () { return saveYudo_(b); });
       case 'yudo:state':       return withLock_(function () { return upsert_('yudo', 'id', 'Y', { id: b.id, state: b.state === '削除' ? '削除' : '' }, b.by); });   // 消す・元に戻す
@@ -4930,7 +4934,13 @@ function shijiFolder_(fy, contract) {
 function shijiOut_(r) {
   return { id: r.id, contract: r.contract, fy: r.fy === '' ? '' : Number(r.fy), no: shijiNo_(r.no), park: r.park, code: String(r.code || '').replace(/^'/, ''), addr: r.addr,
     date: String(r.date || '').replace(/^'/, ''), item: r.item, target: r.target, boss: r.boss, pdfId: r.pdfId, pdfName: r.pdfName,
-    state: r.state || '', stateBy: r.stateBy || '', stateAt: r.stateAt || '', memo: r.memo || '', by: r.by || '', at: r.at || '', updatedBy: r.updatedBy || '', updatedAt: r.updatedAt || '' };
+    state: r.state || '', stateBy: r.stateBy || '', stateAt: r.stateAt || '', memo: r.memo || '', by: r.by || '', at: r.at || '', updatedBy: r.updatedBy || '', updatedAt: r.updatedAt || '',
+    kind: r.kind || '公共', siteId: r.siteId || '', estNo: String(r.estNo || '').replace(/^'/, ''), items: shashinJson_(r.items, []), kaiId: r.kaiId || '', plan: r.plan || '' };
+}
+function shijiKaiPhotos_() {   // 工事写真の回ごとの枚数（民間の見積の回に使う）
+  var c = {};
+  try { rows_('shashinPhotos').forEach(function (p) { if (!p.state && p.kai && String(p.excluded) !== 'true') c[p.kai] = (c[p.kai] || 0) + 1; }); } catch (e) {}
+  return c;
 }
 /* 委託名＋年度＋指示番号ごとに、ほかのアプリの記録を集める */
 function shijiLinks_() {
@@ -4965,8 +4975,10 @@ function shijiGet_(a, p) {
     var items = rows_('shiji').filter(function (r) { return r.state !== '削除'; }).map(shijiOut_);
     var cs = {};
     try { siteList_().forEach(function (s) { if (s.contract && s.state !== '終了') cs[String(s.contract)] = 1; }); } catch (e) {}   // 現場マスタが読めなくても、登録済みの委託名で動く
-    items.forEach(function (x) { if (x.contract) cs[x.contract] = 1; });
-    return { ok: true, items: items, links: shijiLinks_(), contracts: Object.keys(cs).sort(), admins: admins_(), now: now_() };
+    items.forEach(function (x) { if (x.contract && x.kind === '公共') cs[x.contract] = 1; });
+    var sites = [];
+    try { siteList_().forEach(function (s) { if (s.state !== '終了' && s.kind !== '公共') sites.push({ id: s.id, name: s.name, kind: s.kind, aliases: s.aliases || '' }); }); } catch (e) {}
+    return { ok: true, items: items, links: shijiLinks_(), kaiPhotos: shijiKaiPhotos_(), contracts: Object.keys(cs).sort(), sites: sites, admins: admins_(), now: now_() };
   }
   if (a === 'count') {   // 現場ノート・ホーム用：今年度のまだ出していない指示の数（軽い）
     var fy = shashinFy_(null), c = { todo: 0, wait: 0, bad: 0 };
@@ -5000,12 +5012,14 @@ function shijiSave_(b) {
     addr: String(it.addr || '').trim(), date: shijiYmd_(it.date) || String(it.date || '').trim(), item: String(it.item || '').trim(), target: String(it.target || '').trim(),
     boss: String(it.boss || '').trim(), memo: it.memo == null ? undefined : String(it.memo) };
   if (o.memo === undefined) delete o.memo;
+  if (it.plan != null) o.plan = String(it.plan).trim();
   if (!o.contract) return { ok: false, error: '委託名を入れてください' };
   if (!o.no) return { ok: false, error: '指示の回（番号）を入れてください' };
   if (!o.park) return { ok: false, error: '公園名を入れてください' };
   o.fy = shijiFy_(o.date) || (it.fy ? Number(it.fy) : shashinFy_(null));
   var list = rows_('shiji').filter(function (r) { return r.state !== '削除'; });
-  var dup = list.filter(function (r) { return String(r.id) !== o.id && shijiKey_(r.contract) === shijiKey_(o.contract) && String(r.fy) === String(o.fy) && shijiNo_(r.no) === o.no; })[0];
+  var oldRow = list.filter(function (r) { return String(r.id) === o.id; })[0], kindNow = it.kind || (oldRow && oldRow.kind) || '公共';
+  var dup = list.filter(function (r) { return String(r.id) !== o.id && (r.kind || '公共') === kindNow && shijiKey_(r.contract) === shijiKey_(o.contract) && String(r.fy) === String(o.fy) && shijiNo_(r.no) === o.no; })[0];
   if (dup) return { ok: false, error: '第' + o.no + '回（' + (dup.park || '') + '）はもう登録されています', dupId: dup.id };
   if (!o.id) { o.by = by; o.at = now_(); o.state = ''; }
   else if (!list.some(function (r) { return String(r.id) === o.id; })) return { ok: false, error: 'この指示は見つかりませんでした（消されたかもしれません）' };
@@ -5018,6 +5032,9 @@ function shijiSave_(b) {
     upsert_('shiji', 'id', 'J', { id: r.id, pdfId: f.getId(), pdfName: b.pdfName || name }, by);
   }
   var row = rows_('shiji').filter(function (x) { return String(x.id) === r.id; })[0];
+  if (row && row.kaiId && oldRow && (oldRow.park !== row.park || String(oldRow.date) !== String(row.date))) {   // 民間の回：名前・開始日を工事写真の回にも
+    upsert_('shashinKai', 'kaiId', 'K', { kaiId: String(row.kaiId), name: String(row.park), start: String(row.date || '').replace(/^'/, '') }, by);
+  }
   return { ok: true, id: r.id, item: row ? shijiOut_(row) : null };
 }
 /* 状態：スタッフは「確認待ち」にできる。「直してほしい」「提出済」と、それを戻すのは親方だけ */
@@ -5036,6 +5053,96 @@ function shijiState_(b) {
   if (b.memo != null) o.memo = String(b.memo);
   if (b.restore) { o.stateBy = String(b.restore.stateBy || ''); o.stateAt = String(b.restore.stateAt || ''); o.memo = String(b.restore.memo || ''); }
   upsert_('shiji', 'id', 'J', o, by);
+  if (r.kaiId && (st === '削除' || prev.state === '削除')) shijiKaiState_(r.kaiId, st === '削除', by);
   var row = rows_('shiji').filter(function (x) { return String(x.id) === id; })[0];
   return { ok: true, prev: prev, item: row && row.state !== '削除' ? shijiOut_(row) : null };
+}
+
+/* ---------------- 民間：見積書から「予定（回）」を作る ----------------
+ * 見積書（PDF・写真・Excel の文字）から工種・規格・数量だけを読む。金額・単価・合計は読まない・持たない。
+ * 年間の見積は工程表の回（だいたい季節ごと）を1回＝1行にし、工事写真の「回」と「案件の工種」にも入れる。 */
+function shijiReadEst_(b) {
+  var prompt = 'これは造園会社（庭乃持田園）がマンション・法人・個人のお客さんに出した「見積書」です（BOARDで作った明細版・一式版、年間管理の見積と年間工程表が付くこともあります）。' +
+    '作業の予定を作るために、作業の中身だけを読み取ってください。【金額・単価・小計・合計・消費税・値引きは絶対に読まず、答えにも入れないでください】' +
+    '次のJSONだけ返してください。' +
+    '{"title":"件名","client":"宛先・物件名（マンション名など。「御中」「様」は付けない）","estNo":"見積番号","date":"見積日 YYYY-MM-DD（令和n年＝2018+n年）",' +
+    '"annual":"年間管理（年間契約・年間工程表がある・「年◯回」の作業が並ぶ）なら true、単発の工事・作業なら false",' +
+    '"items":[{"cat":"工種・作業名（例：高木剪定、低木刈込、除草、消毒、施肥）","kikaku":"規格・仕様・場所（例：H=3m未満、中庭、ツツジ）。無ければ空","qty":"数量（数字だけ。無ければ空）","unit":"単位（本・㎡・式・回など）",' +
+    '"times":"年間の回数（例：年4回→4。分からなければ空）","when":"実施時期（工程表や備考から。例：4月・春・6月と10月・冬。分からなければ空）"}]}。' +
+    '諸経費・運搬費・処分費・交通誘導員などの経費の行は items に入れない。同じ作業を分けて書いてあればそのまま。読めない項目は空文字。推測で埋めない。';
+  var parts = [];
+  if (b.text) parts.push({ text: '【見積書の中身（表の文字）】\n' + String(b.text).slice(0, 60000) });
+  else if (b.data) parts.push({ inline_data: { mime_type: b.mime || 'application/pdf', data: b.data } });
+  else return { ok: false, error: '見積書がありません' };
+  parts.push({ text: prompt });
+  var j = ai_('見積書読み取り', parts) || {};
+  var str = function (v) { return String(v == null ? '' : v).trim(); };
+  var items = (Array.isArray(j.items) ? j.items : []).map(function (x) {
+    x = x || {};
+    var q = str(x.qty).normalize('NFKC').replace(/[^\d.]/g, '');
+    return { cat: str(x.cat), kikaku: str(x.kikaku), qty: q, unit: str(x.unit), times: str(x.times).normalize('NFKC').replace(/\D/g, ''), when: str(x.when) };
+  }).filter(function (x) { return x.cat && !/(諸経費|経費|消費税|値引|合計|小計|運搬費|処分費)/.test(x.cat); });
+  return { ok: true, data: { title: str(j.title), client: str(j.client), estNo: str(j.estNo), date: shijiYmd_(j.date) || '', annual: String(j.annual) === 'true' || j.annual === true, items: items } };
+}
+function shijiItemOut_(x) { x = x || {}; return { cat: String(x.cat || '').trim(), kikaku: String(x.kikaku || '').trim(), qty: String(x.qty == null ? '' : x.qty).trim(), unit: String(x.unit || '').trim() }; }   // 金額の欄は持たない
+function shijiKaiState_(kaiId, del, by) {   // 指示（回）を消したら、写真がまだ無い工事写真の回も消す。戻したら戻す
+  var k = rows_('shashinKai').filter(function (x) { return String(x.kaiId) === String(kaiId); })[0]; if (!k) return;
+  if (del) { var n = shijiKaiPhotos_()[kaiId] || 0; if (n) return; upsert_('shashinKai', 'kaiId', 'K', { kaiId: String(kaiId), state: '削除' }, by); }
+  else if (k.state === '削除') upsert_('shashinKai', 'kaiId', 'K', { kaiId: String(kaiId), state: '' }, by);
+}
+function shijiKoshu_(siteId, siteName, add, remove, by) {   // 工事写真の「案件の工種」（現場ごと）に足す・外す。返り値：新しく足したもの
+  var key = 'S|' + siteId, row = rows_('shashinInfo').filter(function (r) { return r.key === key; })[0];
+  var list = row ? shashinJson_(row.koshuList, []) : [], k = function (x) { return nameKey_(x.cat) + '|' + nameKey_(x.kikaku || ''); };
+  var have = {}; list.forEach(function (x) { have[k(x)] = 1; });
+  var added = [];
+  (add || []).forEach(function (x) { if (!x.cat || have[k(x)]) return; have[k(x)] = 1; var o = { cat: x.cat, kind: '', kikaku: x.kikaku || '' }; list.push(o); added.push(o); });
+  if (remove && remove.length) { var rm = {}; remove.forEach(function (x) { rm[k(x)] = 1; }); list = list.filter(function (x) { return !rm[k(x)]; }); }
+  if (!added.length && !(remove && remove.length)) return [];
+  if (row) upsert_('shashinInfo', 'key', 'N', { key: key, koshuList: JSON.stringify(list) }, by);
+  else upsert_('shashinInfo', 'key', 'N', { key: key, type: 'site', contract: '', fy: '', siteId: siteId, koji: siteName || '', tpl: prop_('SHASHIN_DEFAULT_BOARD', 'std'), stages: '[]', koshuList: JSON.stringify(list), opts: '{}', by: by || '', at: now_() }, by);
+  return added;
+}
+function shijiSaveEst_(b) {
+  var by = b.by || '', siteId = String(b.siteId || '').trim(), kind = b.kind === '年間' ? '年間' : '単発';
+  var site = null; try { site = siteList_().filter(function (s) { return String(s.id) === siteId; })[0] || null; } catch (e) {}
+  if (!site) return { ok: false, error: '物件を現場マスタから選んでください' };
+  var rounds = (b.rounds || []).filter(function (r) { return r && String(r.name || '').trim() && (r.items || []).length; });
+  if (!rounds.length) return { ok: false, error: '予定（回）に作業が1つも入っていません' };
+  var fy = Number(b.fy) || shashinFy_(rounds[0].start || null);
+  var mine = rows_('shiji').filter(function (r) { return r.state !== '削除' && String(r.siteId) === siteId && String(r.fy) === String(fy); });
+  var no = 0; mine.forEach(function (r) { no = Math.max(no, Number(shijiNo_(r.no)) || 0); });
+  var pdf = null;
+  if (b.pdf) {
+    var mime = b.mime || 'application/pdf', ext = /pdf/.test(mime) ? '.pdf' : /sheet|excel/.test(mime) ? '.xlsx' : '.jpg';
+    var nm = '見積' + (b.estNo ? String(b.estNo).replace(/[\\\/:*?"<>|]/g, '') + '_' : '') + site.name.replace(/[\\\/:*?"<>|]/g, '') + ext;
+    var f = shijiFolder_(fy, site.name).createFile(Utilities.newBlob(Utilities.base64Decode(b.pdf), mime, nm));
+    pdf = { id: f.getId(), name: b.pdfName || nm };
+  }
+  var ids = [], kaiIds = [], all = [];
+  rounds.forEach(function (r) {
+    no++;
+    var items = (r.items || []).map(shijiItemOut_).filter(function (x) { return x.cat; });
+    all = all.concat(items);
+    var start = shijiYmd_(r.start) || '';
+    var kai = { id: 'K' + Utilities.getUuid().replace(/-/g, '').slice(0, 10), scope: 'S|' + siteId, fy: fy, name: String(r.name).trim(), order: '', start: start, rec: '' };
+    shashinSaveKai_(kai, by);
+    var o = { contract: site.name, fy: fy, no: String(no), park: String(r.name).trim(), date: start, item: items.map(function (x) { return x.cat; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('、'),
+      target: String(r.memo || ''), boss: '', addr: site.address || '', code: '', kind: kind, siteId: siteId, estNo: String(b.estNo || ''), items: JSON.stringify(items), kaiId: kai.id,
+      plan: String(r.plan || ''), state: '', by: by, at: now_() };
+    if (pdf) { o.pdfId = pdf.id; o.pdfName = pdf.name; }
+    var res = upsert_('shiji', 'id', 'J', o, by);
+    ids.push(res.id); kaiIds.push(kai.id);
+  });
+  var added = shijiKoshu_(siteId, site.name, all, null, by);
+  return { ok: true, ids: ids, kaiIds: kaiIds, addedKoshu: added, fy: fy, site: site.name };
+}
+function shijiEstUndo_(b) {   // 見積からの登録を取り消す（回・工事写真の回・足した工種）
+  var by = b.by || '';
+  (b.ids || []).forEach(function (id) {
+    var r = rows_('shiji').filter(function (x) { return String(x.id) === String(id); })[0]; if (!r) return;
+    upsert_('shiji', 'id', 'J', { id: String(id), state: '削除', stateBy: by, stateAt: now_() }, by);
+    if (r.kaiId) shijiKaiState_(r.kaiId, true, by);
+  });
+  if (b.siteId && (b.addedKoshu || []).length) shijiKoshu_(String(b.siteId), '', null, b.addedKoshu, by);
+  return { ok: true };
 }

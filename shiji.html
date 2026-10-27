@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="案件">
 <meta name="theme-color" content="#214A37">
-<title>案件（指示書）｜庭乃持田園</title>
+<title>案件（指示書・見積）｜庭乃持田園</title>
 <style>
 :root{
   --paper:#F6F5F0; --card:#FFFFFF; --leaf:#214A37; --leaf-soft:#E5EDE7; --ok:#2E7D55;
@@ -62,6 +62,24 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--leaf);outline-of
 .lk.on{background:var(--leaf-soft);color:var(--leaf);font-weight:700}
 .lk.miss{background:var(--bad-bg);color:var(--bad);font-weight:700}
 .orphan{border-style:dashed;background:var(--field)}
+table.it{border-collapse:collapse;width:100%;font-size:14px;margin-top:6px}
+table.it th,table.it td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left;vertical-align:top}
+table.it th{font-size:12px;color:var(--bark);font-weight:700}
+table.it td.q{white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
+table.it input{font-size:15px;padding:6px 7px;min-width:0}
+table.it .ck{text-align:center}
+table.it .ck input{width:22px;height:22px}
+.tw{overflow-x:auto;margin:0 -4px}
+.xbtn{background:none;border:0;color:var(--danger);font-size:18px;cursor:pointer;padding:2px 6px}
+.erow{border-bottom:1px solid var(--line);padding:8px 0}
+.erow .r1,.erow .r2{display:flex;gap:6px;align-items:center}
+.erow .r2{margin-top:6px;flex-wrap:wrap}
+.erow .r1 input{flex:1 1 0;min-width:0}
+.erow input.q{width:92px;flex:none}
+.sck{display:inline-flex;align-items:center;gap:3px;font-size:14px;font-weight:700;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.sck input{width:20px;height:20px;margin:0}
+.erow .xbtn{margin-left:auto}
+.seg2{display:flex;gap:6px}.seg2 .chip{flex:1;text-align:center}
 .sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}
 .sum div{background:var(--field);border:1px solid var(--line);border-radius:8px;padding:6px 4px;text-align:center}
 .sum b{display:block;font-size:20px;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -106,7 +124,7 @@ dl.info dd{margin:0;min-width:0;overflow-wrap:anywhere}
 <div class="error-banner" id="errBanner"></div>
 <header><div class="row">
   <a class="hbtn" href="index.html" aria-label="アプリ一覧（ホーム）にもどる">🏠<span class="t"> ホーム</span></a>
-  <h1>案件（指示書）</h1>
+  <h1>案件（指示書・見積）</h1>
   <button class="hbtn" type="button" id="undoBtn" disabled title="直前の操作を取り消す">↶<span class="t"> 取り消し</span></button>
   <button class="hbtn" type="button" id="meBtn">👤</button>
 </div></header>
@@ -115,13 +133,17 @@ dl.info dd{margin:0;min-width:0;overflow-wrap:anywhere}
   <section id="listView">
     <div class="card">
       <div class="row2">
-        <div><label class="lbl" for="cSel" style="margin-top:0">委託</label><select id="cSel"></select></div>
+        <div><label class="lbl" for="cSel" style="margin-top:0">委託・物件</label><select id="cSel"></select></div>
         <div style="flex:0 1 130px"><label class="lbl" for="fySel" style="margin-top:0">年度</label><select id="fySel"></select></div>
       </div>
       <div class="sum" id="sum"></div>
-      <button class="btn primary block" type="button" id="addBtn" style="margin-top:12px">＋ 指示書を読み込む（PDF・写真）</button>
+      <div class="row2" style="margin-top:12px">
+        <button class="btn primary" type="button" id="addBtn">＋ 指示書を読み込む<br><small style="font-weight:400">公共の委託（PDF・写真）</small></button>
+        <button class="btn primary" type="button" id="estBtn" style="background:var(--tape);border-color:var(--tape)">＋ 見積書を読み込む<br><small style="font-weight:400">民間の物件（PDF・写真・Excel）</small></button>
+      </div>
       <input type="file" id="fileIn" accept="application/pdf,image/*" multiple hidden>
-      <p class="hint">報告書（公園報告）・写真（工事写真）・処分伝票（残材処分）・交通誘導員は、<b>委託と指示番号</b>が同じものを自動で集めます。</p>
+      <input type="file" id="estIn" accept="application/pdf,image/*,.xlsx,.xls,.csv" hidden>
+      <p class="hint" id="topHint"></p>
     </div>
     <div class="chips" id="fChips"></div>
     <div id="sjList" style="margin-top:10px"><div class="empty"><span class="spin"></span> 読み込み中…</div></div>
@@ -211,32 +233,35 @@ $('meBtn').onclick = () => chooseName();
 /* ============ モーダル ============ */
 let modalHandler = null;
 function openModal(html, handler) { $('modal').innerHTML = html; modalHandler = handler; $('modalBg').classList.add('show'); $('modal').scrollTop = 0; }
-function closeModal() { $('modalBg').classList.remove('show'); $('modal').innerHTML = ''; modalHandler = null; }
+function closeModal() { $('modalBg').classList.remove('show'); $('modal').innerHTML = ''; modalHandler = null; $('modal').oninput = null; $('modal').onchange = null; }
 $('modal').addEventListener('click', e => { if (modalHandler) modalHandler(e); });
 
 /* ============ データ ============ */
-let ITEMS = [], LINKS = {}, CONTRACTS = [], ADMINS = ['親方'];
+let ITEMS = [], LINKS = {}, CONTRACTS = [], ADMINS = ['親方'], SITES = [], KAIPH = {};
 let CONTRACT = lsGet(LS.contract, ''), FY = lsGet(LS.fy, FY_NOW), FILTER = lsGet(LS.filter, 'all'), CUR = null;
 const isAdmin = () => ADMINS.includes(me());
 async function load(quiet) {
   try {
     const r = await getJSON(GAS_URL + '?app=shiji&action=data');
     if (!r.ok) throw new Error(/unknown action/.test(r.error || '') ? '共通GASの更新がまだです（数分で反映されます）' : r.error);
-    ITEMS = r.items || []; LINKS = r.links || {}; CONTRACTS = r.contracts || []; if (r.admins) ADMINS = r.admins;
-    lsSet(LS.cache, { ITEMS, LINKS, CONTRACTS, ADMINS });
+    ITEMS = r.items || []; LINKS = r.links || {}; CONTRACTS = r.contracts || []; SITES = r.sites || []; KAIPH = r.kaiPhotos || {}; if (r.admins) ADMINS = r.admins;
+    lsSet(LS.cache, { ITEMS, LINKS, CONTRACTS, ADMINS, SITES, KAIPH });
     $('errBanner').style.display = 'none';
   } catch (e) {
     const c = lsGet(LS.cache, null);
-    if (c) { ({ ITEMS, LINKS, CONTRACTS } = c); ADMINS = c.ADMINS || ADMINS; if (!quiet) toast('前回のデータを表示しています（' + NET_ERR + '）'); }
+    if (c) { ({ ITEMS, LINKS, CONTRACTS } = c); SITES = c.SITES || []; KAIPH = c.KAIPH || {}; ADMINS = c.ADMINS || ADMINS; if (!quiet) toast('前回のデータを表示しています（' + NET_ERR + '）'); }
     else showError('指示の一覧を読み込めませんでした。' + (e.message && !/fetch|abort/i.test(e.message) ? e.message : NET_ERR));
   }
-  if (!CONTRACT || !allContracts().includes(CONTRACT)) CONTRACT = bestContract();
+  if (!CONTRACT || !(allContracts().includes(CONTRACT) || allPlaces().includes(CONTRACT))) CONTRACT = bestContract();
   if (CUR) CUR = ITEMS.find(x => x.id === CUR.id) || null;
   render();
 }
+const isPub = x => !x.kind || x.kind === '公共';
+function allPlaces() { return [...new Set(ITEMS.filter(x => !isPub(x)).map(x => x.contract).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja')); }   // 民間の物件（見積を登録したもの）
+const privSel = () => allPlaces().includes(CONTRACT) && !allContracts().includes(CONTRACT);
 function allContracts() {
   const s = new Set(CONTRACTS);
-  ITEMS.forEach(x => x.contract && s.add(x.contract));
+  ITEMS.forEach(x => x.contract && isPub(x) && s.add(x.contract));
   Object.values(LINKS).forEach(l => l.contract && s.add(l.contract));
   return [...s].sort((a, b) => a.localeCompare(b, 'ja'));
 }
@@ -245,12 +270,14 @@ function bestContract() {   // 今年度の指示がいちばん多い委託
   const top = Object.keys(n).sort((a, b) => n[b] - n[a])[0];
   return top || allContracts().find(c => /公園/.test(c)) || allContracts()[0] || '';
 }
-const linkOf = x => LINKS[ckey(x.contract) + '|' + x.fy + '|' + noOf(x.no)] || null;
+const photosOf = x => isPub(x) ? ((linkOf(x) || {}).photos || 0) : (KAIPH[x.kaiId] || 0);
+const linkOf = x => !isPub(x) ? null : LINKS[ckey(x.contract) + '|' + x.fy + '|' + noOf(x.no)] || null;
 /* 状態：手で付けたもの（確認待ち・直してほしい・提出済）が先。無ければ記録のそろい具合 */
 function statusOf(x) {
   if (x.state === '提出済') return { k: 'done', t: '提出済' };
   if (x.state === '直してほしい') return { k: 'bad', t: '直してほしい' };
   if (x.state === '確認待ち') return { k: 'wait', t: '親方の確認待ち' };
+  if (!isPub(x)) return photosOf(x) ? { k: 'ready', t: '写真あり' } : { k: 'none', t: '未着手' };
   const l = linkOf(x);
   if (!l || (!l.reports.length && !l.photos && !l.slips && !l.yudo)) return { k: 'none', t: '未着手' };
   if (l.reports.length && l.photos) return { k: 'ready', t: '報告書・写真あり' };
@@ -272,22 +299,25 @@ function render() {
   if (CUR) return renderDetail();
   $('listView').hidden = false; $('detailView').hidden = true;
   const cs = allContracts();
-  $('cSel').innerHTML = (cs.length ? '' : '<option value="">（委託がまだありません）</option>') + cs.map(c => `<option${c === CONTRACT ? ' selected' : ''}>${esc(c)}</option>`).join('');
+  const ps = allPlaces().filter(p => !cs.includes(p)), opt = c => `<option${c === CONTRACT ? ' selected' : ''}>${esc(c)}</option>`;
+  $('cSel').innerHTML = (cs.length || ps.length ? '' : '<option value="">（まだありません）</option>') + (cs.length ? `<optgroup label="公共の委託（指示書）">${cs.map(opt).join('')}</optgroup>` : '') + (ps.length ? `<optgroup label="民間の物件（見積）">${ps.map(opt).join('')}</optgroup>` : '');
+  const priv = privSel();
+  $('topHint').innerHTML = priv ? '見積の作業を回（季節など）に分けて登録しています。写真は<b>工事写真の「回」</b>ごとに数えます。金額は読み取らず、保存もしません。' : '報告書（公園報告）・写真（工事写真）・処分伝票（残材処分）・交通誘導員は、<b>委託と指示番号</b>が同じものを自動で集めます。';
   const fys = new Set([FY_NOW, FY_NOW - 1, +FY]); ITEMS.forEach(x => x.fy && fys.add(+x.fy));
   $('fySel').innerHTML = [...fys].sort((a, b) => b - a).map(f => `<option value="${f}"${+f === +FY ? ' selected' : ''}>${reiwa(f)}</option>`).join('');
   const list = ITEMS.filter(x => x.contract === CONTRACT && +x.fy === +FY).sort((a, b) => (+a.no || 0) - (+b.no || 0));
   const cnt = k => list.filter(x => statusOf(x).k === k).length;
   const notYet = list.length - cnt('done');
-  $('sum').innerHTML = `<div><b>${list.length}</b><span>指示</span></div><div><b>${notYet}</b><span>未提出</span></div><div><b>${cnt('wait')}</b><span>確認待ち</span></div><div><b>${cnt('done')}</b><span>提出済</span></div>`;
+  $('sum').innerHTML = `<div><b>${list.length}</b><span>${priv ? '回' : '指示'}</span></div><div><b>${notYet}</b><span>未提出</span></div><div><b>${cnt('wait')}</b><span>確認待ち</span></div><div><b>${cnt('done')}</b><span>提出済</span></div>`;
   $('fChips').innerHTML = FILTERS.map(([k, t]) => `<button type="button" class="chip${FILTER === k ? ' on' : ''}" data-f="${k}">${t}<b>${list.filter(x => passFilterK(x, k)).length}</b></button>`).join('');
   const shown = list.filter(passFilter);
   let h = shown.map(cardHtml).join('');
-  if (!list.length) h = '<div class="empty">この委託・年度の指示書はまだ登録されていません。<br>上の「＋ 指示書を読み込む」から入れてください。</div>';
+  if (!list.length) h = priv ? '<div class="empty">この物件・年度の予定はまだ登録されていません。<br>上の「＋ 見積書を読み込む」から入れてください。</div>' : '<div class="empty">この委託・年度の指示書はまだ登録されていません。<br>上の「＋ 指示書を読み込む」から入れてください。</div>';
   else if (!shown.length) h = '<div class="empty">この絞り込みに当てはまる指示はありません。</div>';
   // 指示書が未登録なのに、報告書・伝票などに指示番号が入っている記録
   const has = new Set(list.map(x => noOf(x.no)));
   const orphans = Object.values(LINKS).filter(l => ckey(l.contract) === ckey(CONTRACT) && +l.fy === +FY && !has.has(String(l.no))).sort((a, b) => a.no - b.no);
-  if (orphans.length && FILTER !== 'done') {
+  if (!priv && orphans.length && FILTER !== 'done') {
     h += `<div class="sec"><span>指示書が未登録の記録（${orphans.length}件）</span></div><p class="hint" style="margin:-2px 0 8px">報告書・伝票などに指示番号は入っていますが、指示書がまだ登録されていません。登録すると、提出の確認ができるようになります。</p>`;
     h += orphans.map(l => `<button type="button" class="sj orphan" data-orphan="${esc(l.no)}"><div class="top"><div class="nm"><span class="no">第${esc(l.no)}回</span>${esc(l.parks.join('・') || '（公園名なし）')}</div><span class="pill s-none">指示書なし</span></div>${linksHtml(l)}<div class="sub" style="margin-top:6px">押すと、この番号で指示書を登録します</div></button>`).join('');
   }
@@ -301,6 +331,10 @@ function linksHtml(l, st) {
 }
 function cardHtml(x) {
   const st = statusOf(x), l = linkOf(x);
+  if (!isPub(x)) return `<button type="button" class="sj${st.k === 'done' ? ' done' : ''}" data-id="${esc(x.id)}"><div class="top"><div class="nm"><span class="no">第${esc(x.no)}回</span>${esc(x.park)}</div><span class="pill s-${st.k}">${st.t}</span></div>
+    <div class="sub">${x.plan ? '予定 ' + esc(x.plan) + '　' : x.date ? '予定 ' + esc(md(x.date)) + '〜　' : ''}${esc(x.item || '')}</div>
+    <div class="links"><span class="lk ${photosOf(x) ? 'on' : st.k !== 'none' && st.k !== 'done' ? 'miss' : ''}">📷 写真 ${photosOf(x)}</span><span class="lk">${x.kind === '年間' ? '年間管理' : '単発'}${x.estNo ? '・見積 ' + esc(x.estNo) : ''}</span></div>
+    ${st.k === 'bad' && x.memo ? `<div class="sub" style="color:var(--bad);font-weight:700;margin-top:5px">直すところ：${esc(x.memo)}</div>` : ''}</button>`;
   return `<button type="button" class="sj${st.k === 'done' ? ' done' : ''}" data-id="${esc(x.id)}"><div class="top"><div class="nm"><span class="no">第${esc(x.no)}回</span>${esc(x.park)}</div><span class="pill s-${st.k}">${st.t}</span></div>
     <div class="sub">${x.date ? '指示 ' + esc(md(x.date)) + '　' : ''}${esc(x.item || '')}${x.target ? '｜' + esc(x.target) : ''}</div>${linksHtml(l, st)}
     ${st.k === 'bad' && x.memo ? `<div class="sub" style="color:var(--bad);font-weight:700;margin-top:5px">直すところ：${esc(x.memo)}</div>` : ''}</button>`;
@@ -327,6 +361,7 @@ function renderDetail() {
   if (boss && x.state !== '提出済' && x.state !== '直してほしい') acts += `<button class="btn" data-st="直してほしい">直してほしい</button>`;
   if (x.state === '確認待ち' && (boss || x.stateBy === me())) acts += `<button class="btn" data-st="">確認の依頼をやめる</button>`;
   if (boss && (x.state === '提出済' || x.state === '直してほしい')) acts += `<button class="btn" data-st="">作業中に戻す</button>`;
+  if (!isPub(x)) return renderPrivDetail(x, st, acts, mine, boss);
   $('detailBody').innerHTML = `
   <div class="card">
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><h2>第${esc(x.no)}回　${esc(x.park)}</h2><span class="pill s-${st.k}">${st.t}</span></div>
@@ -352,6 +387,37 @@ function renderDetail() {
     ${row('🦺 交通誘導員', l.yudo ? '' : '使っていなければ空のままでかまいません', l.yudo + '枚', 'zaizai.html')}
   </div>
   <p class="hint">記録が出てこないときは、それぞれのアプリで<b>委託名</b>と<b>指示番号（${esc(x.no)}）</b>が入っているか確かめてください。</p>`;
+  $('stActs').onclick = e => { const b = e.target.closest('[data-st]'); if (b) setState(x, b.dataset.st); };
+  if ($('pdfBtn')) $('pdfBtn').onclick = () => openPdf(x);
+  $('editBtn').onclick = () => openForm(Object.assign({}, x), null);
+  if ($('delBtn')) $('delBtn').onclick = () => delItem(x);
+}
+function itemsTable(items) {
+  if (!items || !items.length) return '<div class="empty">作業の行がありません</div>';
+  return `<div class="tw"><table class="it"><tr><th>工種・作業</th><th>規格・場所</th><th style="text-align:right">数量</th></tr>${items.map(i => `<tr><td>${esc(i.cat)}</td><td>${esc(i.kikaku || '')}</td><td class="q">${esc(i.qty || '')}${esc(i.unit || '')}</td></tr>`).join('')}</table></div>`;
+}
+function renderPrivDetail(x, st, acts, mine, boss) {
+  acts = acts.replace('親方に確認を頼む', '親方に確認を頼む').replace('提出済にする', 'お客さんに渡した（提出済）');
+  $('detailBody').innerHTML = `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><h2>第${esc(x.no)}回　${esc(x.park)}</h2><span class="pill s-${st.k}">${st.t}</span></div>
+    <dl class="info">
+      <dt>物件</dt><dd>${esc(x.contract)}（${reiwa(x.fy)}・${x.kind === '年間' ? '年間管理' : '単発'}）</dd>
+      <dt>予定</dt><dd>${esc(x.plan || (x.date ? md(x.date) + '〜' : '—'))}</dd>
+      <dt>見積番号</dt><dd>${esc(x.estNo || '—')}</dd>
+      ${x.target ? `<dt>メモ</dt><dd>${esc(x.target)}</dd>` : ''}
+      <dt>登録</dt><dd>${esc(x.by || '')}　${esc(String(x.at || '').slice(0, 16))}</dd>
+      ${x.state ? `<dt>状態</dt><dd>${esc(x.state)}（${esc(x.stateBy || '')}　${esc(String(x.stateAt || '').slice(5, 16))}）</dd>` : ''}
+    </dl>
+    ${x.state === '直してほしい' && x.memo ? `<div class="memo-box"><b>直すところ</b>\n${esc(x.memo)}</div>` : ''}
+    <div class="acts" id="stActs">${acts}</div>
+    <div class="acts">${x.pdfId ? '<button class="btn sm" id="pdfBtn">📄 見積書を見る</button>' : ''}<button class="btn sm" id="editBtn">✎ 回の名前・予定を直す</button>${(boss || (mine && x.state !== '提出済')) ? '<button class="btn sm danger" id="delBtn">消す</button>' : ''}</div>
+  </div>
+  <div class="sec"><span>この回の作業（金額は入れていません）</span></div>
+  <div class="card">${itemsTable(x.items)}</div>
+  <div class="sec"><span>この回の記録</span></div>
+  <div class="card"><div class="lrow"><div class="l"><div class="t">📷 写真（工事写真）</div><div class="s">${photosOf(x) ? '工事写真の回「' + esc(x.park) + '」で撮った写真' : '<span style="color:var(--bad)">まだありません</span>'}</div></div><div style="display:flex;gap:8px;align-items:center"><span class="n">${photosOf(x)}枚</span><a class="btn sm" href="shashin.html">開く</a></div></div></div>
+  <p class="hint">工事写真で物件「${esc(x.contract)}」を開き、上の<b>回</b>で「${esc(x.park)}」を選んで撮ると、ここに数えられます。見積の工種は、工事写真の<b>案件の工種</b>にも入っています。</p>`;
   $('stActs').onclick = e => { const b = e.target.closest('[data-st]'); if (b) setState(x, b.dataset.st); };
   if ($('pdfBtn')) $('pdfBtn').onclick = () => openPdf(x);
   $('editBtn').onclick = () => openForm(Object.assign({}, x), null);
@@ -466,7 +532,7 @@ async function nextFile() {
 }
 /* 確認・直すフォーム（新しい指示書の登録にも、内容を直すのにも使う） */
 function openForm(v, ctx) {
-  const isNew = !v.id, left = QUEUE.length;
+  const isNew = !v.id, left = QUEUE.length, pub = isPub(v);
   const F = (k, label, type, extra) => `<div><label class="lbl" for="f_${k}">${label}</label><input type="${type || 'text'}" id="f_${k}" value="${esc(type === 'date' ? (ymdOf(v[k]) || v[k] || '') : (v[k] || ''))}" ${extra || ''}></div>`;
   const note = !ctx ? '' : ctx.how === 'text' ? `<div class="note ok">指示書の文字から読み取りました。違うところは直してください。</div>`
     : ctx.how === 'ai' ? `<div class="note ai">文字の入っていない指示書だったので、AIで読み取りました。<b>特に回・公園名・日付</b>を見比べてください。</div>`
@@ -474,13 +540,14 @@ function openForm(v, ctx) {
   const diff = v.readContract && ckey(v.readContract) !== ckey(v.contract) ? `<p class="hint">指示書の委託名：${esc(v.readContract)}</p>` : '';
   openModal(`<h3>${isNew ? '指示書の内容を確かめて登録' : '指示の内容を直す'}${left ? `<span class="hint" style="font-weight:400">（あと ${left} 枚）</span>` : ''}</h3>
     ${note}${ctx && ctx.thumb ? `<img class="thumb" src="${ctx.thumb}" alt="指示書の1ページ目">` : ''}
-    <label class="lbl" for="f_contract">委託</label><input type="text" id="f_contract" list="cList" value="${esc(v.contract || '')}"><datalist id="cList">${allContracts().map(c => `<option value="${esc(c)}">`).join('')}</datalist>${diff}
+    ${pub ? `<label class="lbl" for="f_contract">委託</label><input type="text" id="f_contract" list="cList" value="${esc(v.contract || '')}"><datalist id="cList">${allContracts().map(c => `<option value="${esc(c)}">`).join('')}</datalist>${diff}` : `<p class="hint">物件：<b>${esc(v.contract)}</b>（物件を変えるときは、消して見積から登録し直してください）</p><input type="hidden" id="f_contract" value="${esc(v.contract)}">`}
     <div class="grid2">${F('no', '回（第○回の数字）', 'text', 'inputmode="numeric"')}${F('date', '指示年月日', 'date')}</div>
-    <div class="grid2">${F('park', '公園名')}${F('code', '公園番号', 'text', 'inputmode="numeric"')}</div>
+    ${pub ? `<div class="grid2">${F('park', '場所（公園・路線など）')}${F('code', '公園番号', 'text', 'inputmode="numeric"')}</div>
     ${F('addr', '住所')}
     ${F('item', '指示事項（作業の内容）')}
     <div><label class="lbl" for="f_target">作業対象箇所・メモ</label><textarea id="f_target">${esc(v.target || '')}</textarea></div>
-    ${F('boss', '監督員')}
+    ${F('boss', '監督員')}` : `${F('park', '回の名前（工事写真の回の名前にもなります）')}${F('plan', '予定の時期（例：4〜5月）')}
+    <div><label class="lbl" for="f_target">メモ</label><textarea id="f_target">${esc(v.target || '')}</textarea></div>`}
     <div id="fMsg"></div>
     <div class="row2" style="margin-top:14px">
       <button class="btn" data-act="cancel">${left ? 'この1枚を飛ばす' : 'やめる'}</button>
@@ -489,9 +556,10 @@ function openForm(v, ctx) {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.act === 'cancel') { closeModal(); if (QUEUE.length) nextFile(); return; }
       if (b.dataset.act !== 'save') return;
-      const val = k => ($('f_' + k).value || '').trim();
+      const val = k => ($('f_' + k) ? $('f_' + k).value || '' : String(v[k] || '')).trim();
       const item = { id: v.id || '', contract: val('contract'), no: noOf(val('no')), park: val('park'), code: val('code'), addr: val('addr'), date: val('date'), item: val('item'), target: val('target'), boss: val('boss'), fy: v.fy };
-      const miss = [!item.contract && '委託', !item.no && '回', !item.park && '公園名'].filter(Boolean);
+      if (!pub) item.plan = val('plan');
+      const miss = [!item.contract && '委託', !item.no && '回', !item.park && (pub ? '場所' : '回の名前')].filter(Boolean);
       if (miss.length) { $('fMsg').innerHTML = `<div class="note ng">${miss.join('・')}を入れてください。</div>`; return; }
       b.disabled = true; b.textContent = '送っています…';
       try {
@@ -505,7 +573,7 @@ function openForm(v, ctx) {
           if (r.item && +r.item.fy !== +FY) { FY = +r.item.fy; lsSet(LS.fy, FY); }
         } else {
           const old = Object.assign({}, v);
-          pushUndo(`第${old.no}回 ${old.park} の直し`, async () => { const u = await postJSON({ app: 'shiji', mode: 'save', item: { id: old.id, contract: old.contract, no: old.no, park: old.park, code: old.code, addr: old.addr, date: old.date, item: old.item, target: old.target, boss: old.boss }, by: me() }); if (!u.ok) throw new Error(u.error || ''); });
+          pushUndo(`第${old.no}回 ${old.park} の直し`, async () => { const u = await postJSON({ app: 'shiji', mode: 'save', item: { id: old.id, contract: old.contract, no: old.no, park: old.park, code: old.code, addr: old.addr, date: old.date, item: old.item, target: old.target, boss: old.boss, plan: old.plan || '' }, by: me() }); if (!u.ok) throw new Error(u.error || ''); });
         }
         closeModal(); toast(isNew ? `第${item.no}回 ${item.park} を登録しました` : '直しました', true);
         await load(true);
@@ -514,9 +582,155 @@ function openForm(v, ctx) {
     });
 }
 
+/* ============ 見積書（民間）：工種・規格・数量だけを読み、回（季節など）に分けて登録する ============ */
+const SEASONS = [{ k: '春', name: '春の作業', plan: '4〜5月', m: 4 }, { k: '夏', name: '夏の作業', plan: '6〜8月', m: 6 }, { k: '秋', name: '秋の作業', plan: '9〜11月', m: 9 }, { k: '冬', name: '冬の作業', plan: '12〜3月', m: 12 }];
+const mSeason = m => m >= 4 && m <= 5 ? '春' : m >= 6 && m <= 8 ? '夏' : m >= 9 && m <= 11 ? '秋' : '冬';
+function seasonGuess(it) {   // 時期・回数から、どの季節の回に入れるかの目安
+  const w = String(it.when || '').normalize('NFKC'), out = new Set();
+  [...w.matchAll(/(\d{1,2})\s*月/g)].forEach(m => { const n = +m[1]; if (n >= 1 && n <= 12) out.add(mSeason(n)); });
+  ['春', '夏', '秋', '冬'].forEach(k => { if (w.includes(k)) out.add(k); });
+  if (/梅雨/.test(w)) out.add('夏'); if (/年末|寒/.test(w)) out.add('冬');
+  if (out.size) return out;
+  const t = +it.times || 0, c = it.cat || '';
+  if (t >= 4 || /毎月|月\d回/.test(w)) return new Set(['春', '夏', '秋', '冬']);
+  if (t === 3) return new Set(['春', '夏', '秋']);
+  if (t === 2) return new Set(/除草|草刈/.test(c) ? ['夏', '秋'] : ['春', '秋']);
+  if (t === 1) return new Set([/剪定|伐採|施肥|寒肥/.test(c) ? '冬' : /刈込|除草|草刈|消毒|防除/.test(c) ? '夏' : '春']);
+  return new Set();
+}
+let EST = null;
+function loadXlsx() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return new Promise((ok, ng) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = () => ok(window.XLSX); s.onerror = () => ng(new Error('Excelを読む部品を読み込めませんでした（' + NET_ERR + '）')); document.head.appendChild(s); });
+}
+function sheetNoMoney(X, ws) {   // Excelは、単価・金額などの列を外してからAIに送る
+  const rows = X.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: '' });
+  const money = /単価|金額|価格|小計|合計|消費税|税込|税抜|値引|円/;
+  let drop = new Set();
+  rows.slice(0, 40).forEach(r => { if (r.some(c => /名称|品名|工種|作業|項目|内容/.test(String(c)))) r.forEach((c, i) => { if (money.test(String(c))) drop.add(i); }); });
+  return rows.filter(r => !r.some(c => /^(小計|合計|総合計|消費税|値引)/.test(String(c).trim()))).map(r => r.filter((c, i) => !drop.has(i)).map(c => String(c).replace(/[\r\n,]+/g, ' ')).join(',')).join('\n');
+}
+function guessSite(name) {
+  const k = ckey(name); if (!k) return null;
+  return SITES.find(s => ckey(s.name) === k) || SITES.find(s => String(s.aliases || '').split(/[,、，\s]+/).some(a => a && ckey(a) === k)) || SITES.find(s => k.includes(ckey(s.name)) || ckey(s.name).includes(k)) || null;
+}
+$('estBtn').onclick = () => { if (!me()) return chooseName(() => $('estIn').click()); $('estIn').click(); };
+$('estIn').onchange = async () => {
+  const file = $('estIn').files[0]; $('estIn').value = ''; if (!file) return;
+  openModal(`<h3>見積書を読んでいます…</h3><p class="hint"><span class="spin"></span> ${esc(file.name)}<br>工種・規格・数量・時期だけを読み取ります（金額は読み取りません）。</p><div class="row2" style="margin-top:14px"><button class="btn" data-act="stop">やめる</button></div>`, e => { if (e.target.closest('[data-act=stop]')) { EST = null; closeModal(); } });
+  const est = EST = { file, thumb: '', items: [], fy: FY, kind: '単発', siteId: '', estNo: '', title: '', err: '' };
+  try {
+    const isPdf = /pdf/i.test(file.type) || /\.pdf$/i.test(file.name), isXls = /\.(xlsx|xls|csv)$/i.test(file.name);
+    const body = { app: 'shiji', mode: 'readEst', by: me() };
+    if (isXls) {
+      const X = await loadXlsx(), wb = X.read(await file.arrayBuffer(), { type: 'array' });
+      body.text = wb.SheetNames.map(n => '■シート：' + n + '\n' + sheetNoMoney(X, wb.Sheets[n])).join('\n\n');
+      est.b64 = await fileB64(file); est.mime = file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    } else if (isPdf) {
+      est.b64 = body.data = await fileB64(file); est.mime = body.mime = 'application/pdf';
+      try { est.thumb = (await readPdf(file)).thumb; } catch (e) { }
+    } else {
+      est.thumb = await shrinkImage(file, 1400); est.b64 = body.data = (await shrinkImage(file, 2200)).split(',')[1]; est.mime = body.mime = 'image/jpeg';
+    }
+    const r = await postJSON(body);
+    if (!r.ok) throw new Error(r.error || '');
+    const d = r.data || {};
+    est.title = d.title || ''; est.estNo = d.estNo || ''; est.kind = d.annual ? '年間' : '単発'; est.client = d.client || '';
+    const site = guessSite(d.client) || guessSite(d.title); if (site) est.siteId = site.id;
+    if (d.date) { const y = +d.date.slice(0, 4), m = +d.date.slice(5, 7); est.fy = m >= 4 ? y : y - 1; if (est.kind === '単発') est.start = d.date; }
+    est.items = (d.items || []).map(x => ({ cat: x.cat, kikaku: x.kikaku || '', qty: x.qty || '', unit: x.unit || '', times: x.times || '', when: x.when || '', ss: seasonGuess(x) }));
+  } catch (e) { est.err = e.message || NET_ERR; }
+  if (EST !== est || !document.querySelector('#modalBg.show')) return;
+  est.rounds = SEASONS.map(x => ({ k: x.k, name: x.name, plan: x.plan, start: `${x.m >= 4 ? est.fy : est.fy + 1}-${p2(x.m)}-01` }));
+  est.single = { name: est.title || '作業', start: est.start || '' };
+  if (!est.items.length) est.items.push({ cat: '', kikaku: '', qty: '', unit: '', ss: new Set() });
+  drawEst();
+};
+function drawEst() {
+  const e = EST, annual = e.kind === '年間', site = SITES.find(s => s.id === e.siteId);
+  const fys = [FY_NOW + 1, FY_NOW, FY_NOW - 1];
+  const rows = e.items.map((it, i) => `<div class="erow">
+    <div class="r1"><input type="text" data-i="${i}" data-f="cat" value="${esc(it.cat)}" placeholder="工種・作業"><input type="text" data-i="${i}" data-f="kikaku" value="${esc(it.kikaku)}" placeholder="規格・場所"></div>
+    <div class="r2"><input type="text" class="q" data-i="${i}" data-f="qty" value="${esc(it.qty)}${esc(it.unit)}" placeholder="数量" inputmode="decimal">
+      ${annual ? SEASONS.map(x => `<label class="sck"><input type="checkbox" data-i="${i}" data-s="${x.k}" ${it.ss.has(x.k) ? 'checked' : ''}>${x.k}</label>`).join('') : '<span style="flex:1"></span>'}
+      <button type="button" class="xbtn" data-del="${i}" aria-label="この行を外す">✕</button></div>
+    ${annual && (it.times || it.when) ? `<div class="hint" style="margin:3px 0 0">見積の記載：${it.times ? '年' + esc(it.times) + '回　' : ''}${esc(it.when || '')}</div>` : annual && it.cat && !it.ss.size ? '<div class="hint" style="margin:3px 0 0;color:var(--bad)">入れる回に✓を付けてください</div>' : ''}</div>`).join('');
+  const none = annual ? e.items.filter(it => it.cat && !it.ss.size).length : 0;
+  openModal(`<h3>見積から予定を作る</h3>
+    ${e.err ? `<div class="note ng">見積書を読み取れませんでした（${esc(e.err)}）。作業を手で入れてください。</div>` : `<div class="note ai">AIで工種・規格・数量・時期を読み取りました。<b>金額は読み取っていません</b>（保存もしません）。違うところは直してください。</div>`}
+    ${e.thumb ? `<img class="thumb" src="${e.thumb}" alt="見積書の1ページ目">` : ''}
+    <label class="lbl" for="e_site">物件（現場マスタ）</label>
+    <input type="text" id="e_site" list="sList" value="${esc(site ? site.name : '')}" placeholder="物件名を入れると候補が出ます"><datalist id="sList">${SITES.map(s => `<option value="${esc(s.name)}">${esc(s.kind)}</option>`).join('')}</datalist>
+    ${!site ? `<p class="hint" style="color:var(--bad)">${e.client ? '見積の宛先「' + esc(e.client) + '」に合う物件が見つかりません。' : ''}現場マスタの物件を選んでください（無いときは現場ノートで親方が追加します）。</p>` : `<p class="hint">${esc(site.kind)}</p>`}
+    <div class="grid2">
+      <div><label class="lbl">見積の種類</label><div class="seg2"><button type="button" class="chip${annual ? ' on' : ''}" data-kind="年間">年間管理</button><button type="button" class="chip${!annual ? ' on' : ''}" data-kind="単発">単発</button></div></div>
+      <div><label class="lbl" for="e_fy">年度</label><select id="e_fy">${fys.map(f => `<option value="${f}"${f === +e.fy ? ' selected' : ''}>${reiwa(f)}</option>`).join('')}</select></div>
+    </div>
+    <div class="grid2"><div><label class="lbl" for="e_no">見積番号</label><input type="text" id="e_no" value="${esc(e.estNo)}"></div><div><label class="lbl" for="e_title">件名</label><input type="text" id="e_title" value="${esc(e.title)}"></div></div>
+    ${annual ? `<div class="sec"><span>回（工程表の回。だいたい季節ごと）</span></div>
+      <div class="tw"><table class="it"><tr><th></th><th>回の名前</th><th>予定の時期</th><th>始まり</th></tr>${e.rounds.map((r, j) => `<tr><td><b>${r.k}</b></td><td><input type="text" data-r="${j}" data-f="name" value="${esc(r.name)}"></td><td style="width:96px"><input type="text" data-r="${j}" data-f="plan" value="${esc(r.plan)}"></td><td style="width:150px"><input type="date" data-r="${j}" data-f="start" value="${esc(r.start)}"></td></tr>`).join('')}</table></div>
+      <p class="hint">作業が1つも入っていない回は作りません。回の名前は、工事写真の「回」の名前にもなります。</p>`
+    : `<div class="grid2"><div><label class="lbl" for="e_sname">回の名前</label><input type="text" id="e_sname" value="${esc(e.single.name)}"></div><div><label class="lbl" for="e_sstart">予定日</label><input type="date" id="e_sstart" value="${esc(e.single.start)}"></div></div>`}
+    <div class="sec"><span>作業${annual ? '（入れる回に✓）' : ''}</span><button type="button" class="btn sm" data-act="addrow">＋ 行を足す</button></div>
+    <div>${rows}</div>
+    ${none ? `<div class="note ng">どの回にも✓が付いていない作業が ${none} 件あります（その作業は登録されません）。</div>` : ''}
+    <p class="hint">登録すると、工事写真のこの物件に<b>回</b>ができ、作業が<b>案件の工種</b>に入ります（黒板の工種からすぐ選べます）。</p>
+    <div id="eMsg"></div>
+    <div class="row2" style="margin-top:14px"><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="save">この内容で登録する</button></div>`, estClick);
+  $('modal').oninput = estInput; $('modal').onchange = estInput;
+}
+function estInput(ev) {
+  const t = ev.target, e = EST; if (!e || !t.dataset) return;
+  if (t.id === 'e_site') { const s = SITES.find(x => x.name === t.value.trim()); const before = e.siteId; e.siteId = s ? s.id : ''; if (ev.type === 'change' && before !== e.siteId) drawEst(); return; }
+  if (t.id === 'e_fy') { const nf = +t.value, d = nf - e.fy; e.fy = nf; e.rounds.forEach(r => { if (r.start) r.start = (+r.start.slice(0, 4) + d) + r.start.slice(4); }); drawEst(); return; }
+  if (t.id === 'e_no') e.estNo = t.value; if (t.id === 'e_title') e.title = t.value;
+  if (t.id === 'e_sname') e.single.name = t.value; if (t.id === 'e_sstart') e.single.start = t.value;
+  if (t.dataset.r != null) e.rounds[+t.dataset.r][t.dataset.f] = t.value;
+  if (t.dataset.i != null) {
+    const it = e.items[+t.dataset.i];
+    if (t.dataset.s) { t.checked ? it.ss.add(t.dataset.s) : it.ss.delete(t.dataset.s); if (ev.type === 'change') drawEstKeep(); }
+    else if (t.dataset.f === 'qty') { const m = t.value.normalize('NFKC').match(/^\s*([\d.]*)\s*(.*)$/); it.qty = m ? m[1] : t.value; it.unit = m ? m[2].trim() : ''; }
+    else it[t.dataset.f] = t.value;
+  }
+}
+function drawEstKeep() { const y = $('modal').scrollTop; drawEst(); $('modal').scrollTop = y; }
+async function estClick(ev) {
+  const b = ev.target.closest('button'); if (!b) return; const e = EST;
+  if (b.dataset.kind) { e.kind = b.dataset.kind; return drawEstKeep(); }
+  if (b.dataset.del != null) { e.items.splice(+b.dataset.del, 1); if (!e.items.length) e.items.push({ cat: '', kikaku: '', qty: '', unit: '', ss: new Set() }); return drawEstKeep(); }
+  if (b.dataset.act === 'addrow') { e.items.push({ cat: '', kikaku: '', qty: '', unit: '', ss: new Set(e.kind === '年間' ? [] : []) }); return drawEstKeep(); }
+  if (b.dataset.act === 'cancel') { EST = null; return closeModal(); }
+  if (b.dataset.act !== 'save') return;
+  const site = SITES.find(s => s.id === e.siteId), msg = m => { $('eMsg').innerHTML = `<div class="note ng">${esc(m)}</div>`; };
+  if (!site) return msg('物件を現場マスタから選んでください。');
+  const items = e.items.filter(it => String(it.cat).trim());
+  if (!items.length) return msg('作業を1つ以上入れてください。');
+  const pick = it => ({ cat: it.cat.trim(), kikaku: String(it.kikaku || '').trim(), qty: it.qty, unit: it.unit });
+  let rounds;
+  if (e.kind === '年間') {
+    rounds = e.rounds.map(r => ({ name: r.name.trim(), plan: r.plan.trim(), start: r.start, items: items.filter(it => it.ss.has(r.k)).map(pick) })).filter(r => r.items.length);
+    if (!rounds.length) return msg('どの回にも作業の✓が付いていません。');
+    if (rounds.some(r => !r.name)) return msg('回の名前を入れてください。');
+  } else {
+    if (!e.single.name.trim()) return msg('回の名前を入れてください。');
+    rounds = [{ name: e.single.name.trim(), plan: '', start: e.single.start, items: items.map(pick) }];
+  }
+  b.disabled = true; b.textContent = '送っています…';
+  try {
+    const r = await postJSON({ app: 'shiji', mode: 'saveEst', siteId: site.id, kind: e.kind, fy: e.fy, estNo: e.estNo.trim(), title: e.title.trim(), rounds, pdf: e.b64, mime: e.mime, pdfName: e.file.name, by: me() });
+    if (!r.ok) throw new Error(r.error || '');
+    const undo = { ids: r.ids, siteId: site.id, addedKoshu: r.addedKoshu };
+    pushUndo(`${site.name} の見積から${r.ids.length}回を登録`, async () => { const u = await postJSON(Object.assign({ app: 'shiji', mode: 'estUndo', by: me() }, undo)); if (!u.ok) throw new Error(u.error || ''); });
+    CONTRACT = site.name; lsSet(LS.contract, CONTRACT); FY = +r.fy; lsSet(LS.fy, FY);
+    EST = null; closeModal();
+    toast(`${site.name}：${r.ids.length}回を登録しました${r.addedKoshu.length ? '（工事写真に工種を' + r.addedKoshu.length + 'つ追加）' : ''}`, true);
+    await load(true);
+  } catch (err) { b.disabled = false; b.textContent = 'この内容で登録する'; msg(err.message || NET_ERR); }
+}
+
 /* ============ はじめ ============ */
 showMe(); refreshUndo();
-const c0 = lsGet(LS.cache, null); if (c0) { ({ ITEMS, LINKS, CONTRACTS } = c0); ADMINS = c0.ADMINS || ADMINS; if (!CONTRACT) CONTRACT = bestContract(); render(); }
+const c0 = lsGet(LS.cache, null); if (c0) { ({ ITEMS, LINKS, CONTRACTS } = c0); SITES = c0.SITES || []; KAIPH = c0.KAIPH || {}; ADMINS = c0.ADMINS || ADMINS; if (!CONTRACT) CONTRACT = bestContract(); render(); }
 load(!!c0); fetchStaff();
 </script>
 </body>
