@@ -219,7 +219,9 @@ const API = {
       const today = findDay_(me.id, date);
       if (!(today && today.in && !today.out)) {
         const yday = addDays_(date, -1), y = findDay_(me.id, yday);
-        if (y && y.in && !y.out && minutesBetween_(yday, y.in, date, time) <= 24 * 60) date = yday;   // 夜勤：昨日の出勤から24時間以内なら昨日の分の退勤
+        // 夜勤：昨日の出勤から24時間以内なら昨日の分の退勤。昨日に「出勤より前の時刻の退勤」が先に入っている（前の夜勤の退勤が紛れた）ときも、こちらで上書きする
+        const yCross = y && y.in && y.out && String(y.out) < String(y.in);
+        if (y && y.in && (!y.out || yCross) && minutesBetween_(yday, y.in, date, time) <= 24 * 60) date = yday;
       }
     }
     if (isClosedDate_(date)) throw err_(periodLabel_(date) + 'は締め済みです。担当に連絡してください', 'closed');

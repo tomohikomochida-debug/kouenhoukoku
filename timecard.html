@@ -348,7 +348,7 @@ function minsSince(date, hm){ const n = jstParts(); let m = toMin(n.time) - toMi
 /** いま続いている勤務（今日の出勤、または日付をまたいで続いている昨日の出勤） */
 function openShift(id){
   const td = today(), d = getDay(id, td);
-  if (d && d.in && !d.out) return { date: td, d };
+  if (d && d.in && (!d.out || crossed(d))) return { date: td, d };   // 今日の分に「出勤より前の退勤」があるのは、前の夜勤の退勤が紛れたもの
   const y = addDays(td, -1), yd = getDay(id, y);
   if (!(d && d.in) && yd && yd.in && !yd.out && minsSince(y, yd.in) <= SHIFT_MAX) return { date: y, d: yd };
   return null;
@@ -455,7 +455,8 @@ function flags(id, s, d){
   if (isRest(d) && !d.pay && !isHourly(id)) f.push({t:'有休か欠勤か確認中', lv:'danger', must:true});
   if (d.in && !d.out && s < td && !isOpenShiftDay(id, s)) f.push({t:'退勤なし', lv:'danger'});
   if (crossed(d)) f.push({t:'日付をまたぐ勤務（退勤 翌' + d.out + '）', lv:'info'});
-  if (d.out && !d.in) f.push({t:'出勤なし', lv:'danger'});
+  if (d.out && !d.in) f.push({t: toMin(d.out) < 12*60 ? '出勤なし（前の日の夜勤の退勤かもしれません）' : '出勤なし', lv:'danger'});
+  if (crossed(d) && s >= td) f.push({t:'退勤の時刻が先に入っています（前の日の夜勤の退勤が紛れたかもしれません）', lv:'danger', must:true});
   if ((Number(d.lag)||0) >= 10) f.push({t:`送信遅れ ${d.lag}分`, lv:'warn'});
   if (d.in && d.src==='打刻' && !d.gps) f.push({t:'位置なし', lv:'warn'});
   if (d.bio==='unverified') f.push({t:'本人確認なし', lv:'warn'});
