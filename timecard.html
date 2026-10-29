@@ -158,6 +158,24 @@
   .cd .fl,.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn)}
   .cd .fl{position:absolute;top:3px;right:3px}
   .cd .cm{position:absolute;top:2px;right:2px;font-size:8px;color:var(--rest)}
+  .cd.blank.out{background:var(--paper)} .cd.blank.out .dn{color:var(--line)}
+  .cd .dn.mo{font-weight:700;color:var(--ink)}
+  .pchips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+  .pchip{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-size:14px;font-weight:700;color:var(--ink);display:inline-flex;align-items:center;gap:6px;min-height:40px}
+  .pchip.on{background:var(--leaf);border-color:var(--leaf);color:#fff}
+  .pchip.done:not(.on){border-color:var(--leaf);color:var(--leaf)}
+  .pchip .pn{background:var(--danger);color:#fff;border-radius:999px;font-size:11.5px;min-width:20px;height:20px;line-height:20px;text-align:center;padding:0 5px}
+  .cnav{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}
+  .cnav h2{margin:0;font-size:17px}
+  @media (max-width:520px){ .cnav .btn{padding:8px 10px;font-size:13px} .cnav h2{font-size:15px} .cnav h2 .small{display:block} #cpanel .stats{grid-template-columns:repeat(3,minmax(0,1fr))} #cpanel .stat .v{font-size:18px} }
+  .pmonth{width:100%;max-width:820px;margin:8px auto;align-self:center}
+  .pmonth .cd{height:60px;font-size:14px}
+  .pmonth .cd .dn{font-size:11.5px}
+  .pmonth .cd .dv,.pmonth .cd .dv.sm{font-size:14px;letter-spacing:0}
+  .pmonth .cd .dv.xs{font-size:12px;letter-spacing:0}
+  .pmonth .cd .hn{font-size:10px}
+  .pmonth .cd.wk{font-size:13px}
+  @media (max-width:520px){ .pmonth .cd{height:52px} .pmonth .cd .dv,.pmonth .cd .dv.sm{font-size:12px} .pmonth .cd .dv.xs{font-size:10px} .pmonth .cd.wk{font-size:11px} }
 
   /* シート */
   .sheet{position:fixed;inset:0;background:rgba(10,14,11,.45);display:flex;align-items:flex-end;justify-content:center;z-index:60;padding:16px}
@@ -296,6 +314,7 @@ const S = {
   yaStaff: null, yaMonth: today().slice(0,7), day: null, edit: null, confirm: null, menu: false, code: null,
   calEdit: null, reflect: null, history: null, staffEdit: null, setEdit: null, login: { step:'names', who:null, pin:'', pin1:'', code:'', err:'' },
   queue: lsGet(LS.queue, []).map(x => { delete x.waiting; return x; }), sites: [], busy: false, pinAsk: null,
+  allMode: lsGet('tc_allmode', 'cal'), cStaff: null, cOnlyOpen: false,
 };
 const K = (id,s) => `${id}|${s}`;
 const byId = id => S.staff.find(x => x.id === id) || (S.me && S.me.id === id ? S.me : null);
@@ -906,11 +925,18 @@ function allView(){
   } else {
     closeBox = `<div class="row"><span class="pill">締め前</span><span class="small muted grow">${short2(pr.to)}の分まで確認できたら締めます。</span><button class="btn primary" data-act="close">${pr.label}を締める</button></div>`;
   }
-  return `
-  <section class="panel">
-    <div class="row"><h2 class="grow">全員の集計　<span class="muted small">${short2(pr.from)}〜${short2(pr.to)}・時間は小数1桁</span></h2>
+  const head = `<div class="row"><h2 class="grow">全員の集計　<span class="muted small">${short2(pr.from)}〜${short2(pr.to)}・時間は小数1桁</span></h2>
       <div class="pnav"><button class="btn" data-act="period" data-arg="-1">◀</button><b>${pr.label}</b><button class="btn" data-act="period" data-arg="1">▶</button></div>
       <button class="btn" data-act="reload">最新にする</button></div>
+    <nav class="seg" aria-label="見方"><button data-act="allmode" data-arg="cal" aria-current="${S.allMode!=='table'}">一人ずつ（カレンダー）</button><button data-act="allmode" data-arg="table" aria-current="${S.allMode==='table'}">全員の表</button></nav>`;
+  if (S.allMode !== 'table') return `<section class="panel">${head}</section>` + closeCalView(pr, staff, open, closed) + `
+  ${cands.length ? `<section class="panel"><h2>出勤調整カレンダーに休みの予定がある日</h2><div class="small muted">手で入れた「名前」の予定です。休みとして登録するときは「開く」から登録してください。</div>
+    <div class="flaglist">${cands.map(c => `<div class="flagitem"><span class="grow"><b>${esc((byId(c.staffId)||{}).name || '')}</b>　${dlabel(c.date)}　<span class="pill rest">${esc(c.title)}</span></span><button class="btn" data-act="day" data-arg="${esc(c.staffId)}|${c.date}">開く</button></div>`).join('')}</div></section>` : ''}
+  <section class="panel"><h2>締め</h2>${closeBox}
+    <div class="row"><button class="btn" data-act="printAtt" data-arg="*">全員の出勤簿を印刷（${pr.label}）</button></div></section>`;
+  return `
+  <section class="panel">
+    ${head}
     <div class="tablewrap"><table>
       <thead><tr><th>氏名</th><th>今日</th><th>日数</th><th>総勤務</th><th>所定内</th><th>法定内残業</th><th>時間外</th><th>深夜</th><th>遅刻早退</th><th>有休</th><th>欠勤</th><th>確認が必要</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
@@ -922,6 +948,67 @@ function allView(){
   <section class="panel"><h2>締め</h2>${closeBox}
     <div class="row"><button class="btn" data-act="printAtt" data-arg="*">全員の出勤簿を印刷（${pr.label}）</button></div></section>`;
 }
+
+/* ---------- 締めの確認：一人ずつ、締めの期間（21日〜20日）の出勤カレンダー ----------
+   ・上の名前をタップ（◀ ▶・カレンダーを左右になでる でも）して人を切りかえる
+   ・名前の横の数字＝確認が必要な日の数。「確認できた」の印はこの端末に残す（人ごと・月分ごと）
+   ・日付をタップすると、いつもの日の画面（時刻の修正・休みの登録）が開く */
+const CHK_LS = 'tc_closechk';
+const chkGet = p => (lsGet(CHK_LS, {})[p] || []);
+function chkToggle(p, id){ const all = lsGet(CHK_LS, {}), a = new Set(all[p] || []); a.has(id) ? a.delete(id) : a.add(id); all[p] = [...a]; lsSet(CHK_LS, all); }
+function closeCalView(pr, staff, open, closed){
+  if (!staff.length) return '<section class="panel"><div class="loading">この月分に記録のある人がいません</div></section>';
+  const openOf = id => open.filter(o => o.s.id === id), done = new Set(chkGet(S.period));
+  let list = S.cOnlyOpen ? staff.filter(s => openOf(s.id).length || !done.has(s.id)) : staff;
+  if (!list.length) list = staff;
+  if (!S.cStaff || !list.some(s => s.id === S.cStaff)) S.cStaff = (list.find(s => openOf(s.id).length) || list[0]).id;
+  const id = S.cStaff, st = byId(id) || {}, idx = list.findIndex(s => s.id === id), td = today();
+  const chips = list.map(s => { const n = openOf(s.id).length, ok = done.has(s.id);
+    return `<button class="pchip ${s.id === id ? 'on' : ''} ${ok ? 'done' : ''}" data-act="cperson" data-arg="${esc(s.id)}">${ok ? '✓ ' : ''}${esc(s.name)}${n ? `<span class="pn">${n}</span>` : ''}</button>`; }).join('');
+  // カレンダー（月〜日、締めの期間の外は薄く）
+  let cells = ['月','火','水','木','金','土','日','週計'].map(x => `<div class="hd">${x}</div>`).join('');
+  for (let ws = weekStart(pr.from); ws <= pr.to; ws = addDays(ws,7)){
+    let mins = 0, any = false;
+    for (let i=0;i<7;i++){ const d = addDays(ws,i);
+      if (d < pr.from || d > pr.to){ cells += `<div class="cd blank out"><span class="dn">${Number(d.slice(8))}</span></div>`; continue; }
+      let c = attendCell(id, d);
+      if (d === pr.from || d.slice(8) === '01') c = c.replace(/<span class="dn">(\d+)<\/span>/, `<span class="dn mo">${Number(d.slice(5,7))}/$1</span>`);
+      cells += c; if (d <= td && !(st.join && d < st.join)){ mins += workMin(getDay(id,d)); any = true; } }
+    cells += `<div class="cd wk num">${any ? hm(mins) : '-'}</div>`;
+  }
+  const t = summarize(id, pr.from, pr.to), mine = openOf(id);
+  const stat = (k, v, u) => `<div class="stat"><div class="k">${k}</div><div class="v num">${v}<small>${u}</small></div></div>`;
+  const flagsHtml = mine.length ? mine.slice().sort((a,b) => a.dt < b.dt ? -1 : 1).map(o => `<div class="flagitem"><span class="grow">${dlabel(o.dt)}　${o.fl.map(f => `<span class="pill ${f.lv}">${esc(f.t)}</span>`).join(' ')}</span>
+      <button class="btn" data-act="day" data-arg="${esc(id)}|${o.dt}" ${closed ? 'disabled' : ''}>開く</button>
+      ${o.fl.some(f => f.must) ? `<button class="btn" data-act="pay" data-arg="${esc(id)}|${o.dt}|paid" ${closed?'disabled':''}>有休にする</button><button class="btn" data-act="pay" data-arg="${esc(id)}|${o.dt}|unpaid" ${closed?'disabled':''}>欠勤にする</button>` : `<button class="btn" data-act="check" data-arg="${esc(id)}|${o.dt}" ${closed?'disabled':''}>確認済みにする</button>`}</div>`).join('')
+    : '<div class="banner ok">この人は、確認が必要な日はありません。</div>';
+  const nDone = staff.filter(s => done.has(s.id)).length, isDone = done.has(id);
+  return `
+  <section class="panel" id="cpanel">
+    <div class="row"><span class="small muted grow">名前をタップして人を切りかえます（左右になでても切りかわります）。数字は確認が必要な日の数です。</span>
+      <label class="small"><input type="checkbox" data-act="conlyopen" ${S.cOnlyOpen ? 'checked' : ''}> まだの人だけ</label>
+      <span class="pill ${nDone === staff.length ? 'ok' : ''}">確認できた ${nDone}/${staff.length}人</span></div>
+    <div class="pchips">${chips}</div>
+    <div class="row cnav"><button class="btn" data-act="cstep" data-arg="-1" ${list.length < 2 ? 'disabled' : ''}>◀ 前の人</button>
+      <h2 class="grow" style="text-align:center">${esc(st.name || '')} さん　<span class="muted small">${pr.label}（${short2(pr.from)}〜${short2(pr.to)}）${idx >= 0 ? `　${idx+1}/${list.length}` : ''}</span></h2>
+      <button class="btn" data-act="cstep" data-arg="1" ${list.length < 2 ? 'disabled' : ''}>次の人 ▶</button></div>
+    <div class="stats">
+      ${stat('出勤日数', t.days, '日')}${stat('総勤務', h1(t.total), '時間')}${stat('所定内', h1(t.shotei), '時間')}${stat('法定内残業', h1(t.hoteinai), '時間')}
+      ${stat('時間外', h1(t.jikangai), '時間')}${stat('深夜', h1(t.shinya), '時間')}${stat('遅刻早退', h1(t.late), '時間')}${stat('有休', t.yukyu, '日')}${isHourly(id) ? '' : stat('欠勤', t.kekkin, '日')}
+    </div>
+    <div class="row small">
+      <span class="pill ok">8:45 ＝ 勤務時間</span><span class="pill danger">休 ＝ 会社の休み</span><span class="pill rest">休み・有休</span>
+      <span class="pill" style="box-shadow:inset 0 0 0 1.5px var(--danger);color:var(--danger)">なし・退勤なし</span><span class="pill"><span class="dot"></span>特記あり</span></div>
+    <div class="month pmonth" id="cswipe"><div class="mgrid">${cells}</div></div>
+    <div class="small muted">日付をタップすると、時刻のあとからの入力・修正（理由が必要）と休みの登録ができます。週計は、この月分の中で実際に働いた時間の合計です。</div>
+  </section>
+  <section class="panel"><h2>${esc(st.name || '')} さんの確認が必要な日</h2><div class="flaglist">${flagsHtml}</div>
+    <div class="row"><button class="btn" data-act="printAtt" data-arg="${esc(id)}">この人の出勤簿を印刷</button><button class="btn" data-act="detail" data-arg="${esc(id)}">年間の出勤カレンダー</button><span class="grow"></span>
+      <button class="btn ${isDone ? '' : 'primary'}" data-act="cdone" data-arg="${esc(id)}">${isDone ? '✓ 確認できた（取り消す）' : (mine.length ? 'この人を確認できたにする' : '確認できた → 次の人へ')}</button></div>
+    <div class="small muted">「確認できた」の印は、この端末だけに残ります（締めには影響しません）。</div></section>`;
+}
+function cStep(n){ const pr = periodRange(S.period), staff = [...document.querySelectorAll('.pchip')].map(b => b.dataset.arg); if (staff.length < 2) return;
+  const i = staff.indexOf(S.cStaff); S.cStaff = staff[(i + n + staff.length) % staff.length]; render(); }
 
 /* ---------- 年間の実績 ---------- */
 function yearView(){
@@ -1324,6 +1411,11 @@ function printAttendance(which){
 
 /* ===================== 操作 ===================== */
 async function run(fn){ try { await fn(); } catch(e){ toast(e.message, true); } render(); }
+/* 締めの確認のカレンダーを左右になでて、人を切りかえる */
+let swp = null;
+document.addEventListener('touchstart', e => { const c = e.target.closest && e.target.closest('#cswipe'); swp = c && e.touches.length === 1 ? { x:e.touches[0].clientX, y:e.touches[0].clientY } : null; }, { passive:true });
+document.addEventListener('touchend', e => { if (!swp) return; const t = e.changedTouches[0], dx = t.clientX - swp.x, dy = t.clientY - swp.y; swp = null;
+  if (Math.abs(dx) > 70 && Math.abs(dy) < 50 && S.view === 'all' && S.allMode !== 'table') cStep(dx < 0 ? 1 : -1); }, { passive:true });
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act, arg = el.dataset.arg;
@@ -1408,6 +1500,14 @@ document.addEventListener('click', async e => {
     case 'pay': { const [id, s, p] = arg.split('|'); run(async () => { const r = await api('pay', { staffId:id, date:s, pay:p }); putDay(r.day); S.day = null; S.history = null; toast(`${(byId(id)||{}).disp} ${short2(s)} を${p==='paid' ? '有休' : p==='unpaid' ? '欠勤' : 'ふつうの休み'}にしました`); }); return; }
     case 'check': { const [id, s] = arg.split('|'); run(async () => { const r = await api('check', { staffId:id, date:s }); putDay(r.day); toast('確認済みにしました'); }); return; }
     case 'showAllOpen': S.showAllOpen = !S.showAllOpen; render(); return;
+    case 'allmode': S.allMode = arg; lsSet('tc_allmode', arg); render(); return;
+    case 'cperson': S.cStaff = arg; render(); return;
+    case 'cstep': cStep(Number(arg)); return;
+    case 'conlyopen': S.cOnlyOpen = el.checked; render(); return;
+    case 'cdone': { const was = chkGet(S.period).includes(arg); chkToggle(S.period, arg);
+      if (!was){ toast(`${(byId(arg)||{}).name || ''} さんを確認できたにしました`); const ids = [...document.querySelectorAll('.pchip')].map(b => b.dataset.arg), done = new Set(chkGet(S.period));
+        const nx = ids.slice(ids.indexOf(arg)+1).concat(ids.slice(0, ids.indexOf(arg))).find(x => !done.has(x)); if (nx) S.cStaff = nx; }
+      render(); return; }
     case 'checkAll': if (S.confirm !== 'checkAll'){ S.confirm = 'checkAll'; toast('もう一度押すと、まとめて確認済みにします'); setTimeout(() => { if (S.confirm === 'checkAll'){ S.confirm = null; } }, 5000); return; }
       run(async () => { const r = await api('checkMany', { items: S.softOpen || [] }, 60000); r.days.forEach(putDay); S.confirm = null; toast(`${r.days.length}件を確認済みにしました`); }); return;
     case 'close': S.confirm = 'close'; render(); return;
