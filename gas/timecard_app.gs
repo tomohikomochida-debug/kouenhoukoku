@@ -219,7 +219,7 @@ const API = {
       const today = findDay_(me.id, date);
       if (!(today && today.in && !today.out)) {
         const yday = addDays_(date, -1), y = findDay_(me.id, yday);
-        if (y && y.in && !y.out && minutesBetween_(yday, y.in, date, time) <= 20 * 60) date = yday;
+        if (y && y.in && !y.out && minutesBetween_(yday, y.in, date, time) <= 24 * 60) date = yday;   // 夜勤：昨日の出勤から24時間以内なら昨日の分の退勤
       }
     }
     if (isClosedDate_(date)) throw err_(periodLabel_(date) + 'は締め済みです。担当に連絡してください', 'closed');

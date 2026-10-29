@@ -158,6 +158,7 @@
   .cd .fl,.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn)}
   .cd .fl{position:absolute;top:3px;right:3px}
   .cd .cm{position:absolute;top:2px;right:2px;font-size:8px;color:var(--rest)}
+  .pill.info{background:#e8eef7;color:#2b4a7a}
   .cd.blank.out{background:var(--paper)} .cd.blank.out .dn{color:var(--line)}
   .cd .dn.mo{font-weight:700;color:var(--ink)}
   .pchips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
@@ -334,6 +335,34 @@ const staffInPeriod = pr => S.staff.filter(s => s.active || datesIn(pr.from, pr.
 const SET = () => { const st = toMin(S.settings.start), en = toMin(S.settings.end), br = Number(S.settings.break)||0; return { start:st, end:en, brk:br, shotei: Math.max(0, en-st-br) }; };
 const isOff = s => { const c = S.cal[fyOf(s)]; return c ? c.has(s) : (wd(s)===0 || !!S.hol[s]); };
 const dayType = s => isOff(s) ? (wd(s)===0 ? '法定休日' : '所定休日') : '出勤日';
+/* ===== 夜勤・日付をまたぐ勤務 =====
+   ・退勤が出勤より前の時刻なら、翌日の退勤（出勤した日の勤務として数える）
+   ・日付が変わってから退勤を押したとき、今日の出勤がなく、昨日の出勤から24時間以内なら、昨日の分の退勤にする（サーバーも同じ）
+   ・夜勤の日（日付をまたぐ、または14時以降の出勤）は遅刻・早退にしない
+   ・法定休日（日曜）にかかった時間だけを法定休日労働にする（暦の日で分ける） */
+const SHIFT_MAX = 24*60;
+const crossed = d => !!(d && d.in && d.out && toMin(d.out) < toMin(d.in));
+const isNightShift = d => !!(d && d.in && (crossed(d) || toMin(d.in) >= 14*60));
+const outText = d => d && d.out ? (crossed(d) ? '翌' : '') + d.out : '';
+function minsSince(date, hm){ const n = jstParts(); let m = toMin(n.time) - toMin(hm); for (let x = date; x < n.date; x = addDays(x,1)) m += 1440; return m; }
+/** いま続いている勤務（今日の出勤、または日付をまたいで続いている昨日の出勤） */
+function openShift(id){
+  const td = today(), d = getDay(id, td);
+  if (d && d.in && !d.out) return { date: td, d };
+  const y = addDays(td, -1), yd = getDay(id, y);
+  if (!(d && d.in) && yd && yd.in && !yd.out && minsSince(y, yd.in) <= SHIFT_MAX) return { date: y, d: yd };
+  return null;
+}
+const isOpenShiftDay = (id, s) => { const o = openShift(id); return !!(o && o.date === s); };
+/** 法定休日にかかった分（休憩は時間の割合で引く） */
+function holMin(s, d, w){
+  if (!d || !d.in || !d.out || !w) return 0;
+  const a = toMin(d.in); let b = toMin(d.out);
+  if (b >= a) return dayType(s) === '法定休日' ? w : 0;
+  b += 1440; const span = b - a, p1 = 1440 - a, p2 = b - 1440;
+  const hol = (dayType(s) === '法定休日' ? p1 : 0) + (dayType(addDays(s,1)) === '法定休日' ? p2 : 0);
+  return span > 0 ? Math.round(w * hol / span) : 0;
+}
 function workMin(d){
   if (!d || !d.in || !d.out) return 0;
   let a = toMin(d.in), b = toMin(d.out); if (b < a) b += 1440;
@@ -356,16 +385,15 @@ function weekLimit(id, ws){
 }
 /** 1日ごとの内訳（1日 → 1週の順で時間外を数える） */
 function breakdown(id, s){
-  const d = getDay(id,s), w = workMin(d);
-  const r = { w, night: Math.min(w, nightMin(d)), shotei:0, hoteinai:0, ot:0, holiday:0 };
+  const d = getDay(id,s), wAll = workMin(d), hol = holMin(s, d, wAll), w = wAll - hol;
+  const r = { w: wAll, night: Math.min(wAll, nightMin(d)), shotei:0, hoteinai:0, ot:0, holiday: hol };
   if (!w) return r;
-  if (dayType(s) === '法定休日'){ r.holiday = w; return r; }
   const dailyLimit = Math.max(LEGAL_DAY, isHourly(id) ? 0 : shoteiMin(id,s,w));
   const within = Math.min(w, dailyLimit), sp = Math.min(w, shoteiMin(id,s,w));
   r.ot = w - within; r.shotei = Math.min(sp, within); r.hoteinai = within - r.shotei;
   const ws = weekStart(s); let cum = 0;
   for (let x = ws; x < s; x = addDays(x,1)){
-    const ww = workMin(getDay(id,x)); if (!ww || dayType(x)==='法定休日') continue;
+    const dx = getDay(id,x), w0 = workMin(dx), ww = w0 - holMin(x, dx, w0); if (!ww) continue;
     cum += Math.min(ww, Math.max(LEGAL_DAY, isHourly(id) ? 0 : shoteiMin(id,x,ww)));
   }
   const L = weekLimit(id, ws);
@@ -400,9 +428,8 @@ function summarize(id, from, to){
     const r = breakdown(id,s);
     if (r.w > 0){
       t.days += 1; t.total += r.w; t.shinya += r.night; t.shotei += r.shotei; t.hoteinai += r.hoteinai; t.jikangai += r.ot; t.kyujitsu += r.holiday;
-      const lateOk = !isHourly(id) && (kind==='出勤' || (kind==='休み' && d.half && d.pay==='unpaid'));
-      const crossed = toMin(d.out) < toMin(d.in);
-      if (lateOk && dayType(s)==='出勤日') t.late += Math.max(0, toMin(d.in)-set.start) + (crossed ? 0 : Math.max(0, set.end - toMin(d.out)));
+      const lateOk = !isHourly(id) && !isNightShift(d) && (kind==='出勤' || (kind==='休み' && d.half && d.pay==='unpaid'));
+      if (lateOk && dayType(s)==='出勤日') t.late += Math.max(0, toMin(d.in)-set.start) + Math.max(0, set.end - toMin(d.out));
     }
   }
   // 対象期間の最後（3/31）を含む締め（3/21〜4/20）で、総枠を超えた分を時間外に足す
@@ -426,7 +453,8 @@ function flags(id, s, d){
   if (isRest(d) && d.leaveBy && !isHourly(id)) f.push({t:`${restPart(d)}休みの登録（${d.leaveBy === st.disp ? '本人' : d.leaveBy}）`, lv:'warn'});
   if (isRest(d) && d.half && !d.in && !d.out && s < td && dayType(s)==='出勤日' && !isHourly(id)) f.push({t:'半日休みの日に打刻なし', lv:'danger'});
   if (isRest(d) && !d.pay && !isHourly(id)) f.push({t:'有休か欠勤か確認中', lv:'danger', must:true});
-  if (d.in && !d.out && s < td) f.push({t:'退勤なし', lv:'danger'});
+  if (d.in && !d.out && s < td && !isOpenShiftDay(id, s)) f.push({t:'退勤なし', lv:'danger'});
+  if (crossed(d)) f.push({t:'日付をまたぐ勤務（退勤 翌' + d.out + '）', lv:'info'});
   if (d.out && !d.in) f.push({t:'出勤なし', lv:'danger'});
   if ((Number(d.lag)||0) >= 10) f.push({t:`送信遅れ ${d.lag}分`, lv:'warn'});
   if (d.in && d.src==='打刻' && !d.gps) f.push({t:'位置なし', lv:'warn'});
@@ -453,7 +481,7 @@ function siteText(d){
   if (d.out && d.outDist !== undefined && d.outDist !== '' && Number(d.outDist) > officeLimit(0)) t += '（直帰）';
   return t;
 }
-const openFlag = (fl, d) => fl.some(f => f.must) || (fl.length > 0 && !(d && d.checked));
+const openFlag = (fl, d) => { fl = fl.filter(f => f.lv !== 'info'); return fl.some(f => f.must) || (fl.length > 0 && !(d && d.checked)); };   // info（夜勤の知らせ）は確認不要
 
 /* ===================== 通信 ===================== */
 function fetchT(url, opts, ms){ const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), ms||30000);
@@ -598,7 +626,8 @@ async function doPunch(type){
   // 押した時刻で、まず端末に残して画面に出す（位置を待つあいだにアプリを閉じても消えない）
   const item = { staffId: S.me.id, clientId: uuid(), type, pressedAt, site, kind, bio, device: device(), lat: '', lng: '', acc: '' };
   S.queue.push(item); lsSet(LS.queue, S.queue);
-  const t = jstParts(new Date(pressedAt));
+  const t = Object.assign({}, jstParts(new Date(pressedAt)));
+  if (type === 'out'){ const o = openShift(S.me.id); if (o && o.date !== t.date) t.date = o.date; }   // 夜勤：昨日の出勤の退勤にする
   const k = K(S.me.id, t.date), prevDay = S.days[k], old = prevDay || { staffId:S.me.id, date:t.date, kind, brk:S.settings.break };
   const sitePatch = type==='in' || !old.site ? { site: site || old.site } : { outSite: site && site !== old.site ? site : (old.outSite || '') };
   S.days[k] = Object.assign({}, old, type==='in' ? { in:t.time } : { out:t.time }, sitePatch, { src: old.src || '打刻', pending:true });
@@ -755,20 +784,21 @@ function logoutLocal(){ S.token = null; S.me = null; lsSet(LS.token, null); lsSe
 
 /* ---------- 打刻 ---------- */
 function punchView(){
-  const td = today(), d = getDay(S.me.id, td) || {};
+  const td = today(), os = openShift(S.me.id), night = os && os.date !== td, d = night ? os.d : (getDay(S.me.id, td) || {});
   const q = S.queue.filter(x => !x.staffId || x.staffId === S.me.id).length;
   const prev = datesIn(addDays(td,-7), addDays(td,-1)).reverse().find(s => { const x = getDay(S.me.id, s); return x && x.in; });
   const pd = prev && getDay(S.me.id, prev);
-  const missing = pd && pd.in && !pd.out && !isClosed(prev);
+  const missing = pd && pd.in && !pd.out && !isClosed(prev) && !(night && prev === os.date);
   const lastSite = lsGet(LS.site, '') || '';
   return `
   ${missing ? `<div class="banner danger"><span class="grow"><b>${dlabel(prev)}の退勤が未入力です。</b>あとから入力してください。</span><button class="btn" data-act="edit" data-arg="${S.me.id}|${prev}">入力する</button></div>` : ''}
+  ${night ? `<div class="banner ok"><span class="grow"><b>夜勤中</b>　${dlabel(os.date)} ${esc(os.d.in)}から。退勤を押すと、${dlabel(os.date)}の勤務の退勤（翌${nowHM()}）として記録します。</span></div>` : ''}
   ${isRest(d) && !d.half ? `<div class="banner ok"><span class="grow">今日は<b>休み</b>で登録されています。出勤したときは、そのまま出勤を押してください。</span></div>` : ''}
   <section class="panel">
     <div class="clock"><div class="date">${dlabel(td)}</div><div class="time num" id="clock">${nowHM()}</div></div>
     <div class="status">
       ${d.in ? `<span class="pill ok">出勤 ${d.in}</span>` : `<span class="pill">未出勤</span>`}
-      ${d.out ? `<span class="pill ok">退勤 ${d.out}</span>` : ''}
+      ${d.out ? `<span class="pill ok">退勤 ${outText(d)}</span>` : ''}
       ${q ? `<span class="pill warn">未送信 ${q}件</span>` : ''}
     </div>
     ${S.confirm ? `<div class="banner warn"><span class="grow">もう${S.confirm==='in'?'出勤':'退勤'}を押しています。押した時刻で上書きしますか？</span><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="punchGo" data-arg="${S.confirm}">上書きする</button></div>` : ''}
@@ -806,11 +836,12 @@ function attendCell(id, s){
     txt = d.kind==='雨天中止（全日）' ? '雨天' : half ? (d.half==='pm' ? '午後休' : '午前休') : isRest(d) ? (d.pay==='paid' ? '有休' : (d.pay==='unpaid' && !isHourly(id)) ? '欠勤' : '休み') : d.kind;
   }
   else if (s > td){ cls = 'fut'; txt = off ? '休' : ''; }
-  else if (d && d.in && !d.out){ if (s === td){ cls = 'att'; txt = '出勤中'; } else { cls = 'ng'; txt = '退勤なし'; } }
+  else if (d && d.in && !d.out){ if (s === td || isOpenShiftDay(id, s)){ cls = 'att'; txt = '出勤中'; } else { cls = 'ng'; txt = '退勤なし'; } }
   else if (w){ cls = 'att'; txt = hm(w); }
   else if (off){ cls = 'off'; txt = '休'; }
   else if (s < td && s >= (S.settings.useFrom || '') && !isHourly(id) && !(d && d.checked)){ cls = 'ng'; txt = 'なし'; }
   if (half && (w || d.in)) tag = d.half==='pm' ? '午後休' : '午前休';
+  else if (crossed(d)) tag = '夜勤 〜翌' + d.out;
   const fl = openFlag(flags(id,s,d), d) && (s <= td || isRest(d));
   const pr = periodRange(periodOf(s));
   const editable = canEdit(id) && !isClosed(s) && !(st.join && s < st.join);
@@ -866,7 +897,7 @@ function listView(id, admin){
     const kind = d && d.kind && d.kind!=='出勤' ? kindLabel(d,id) : '';
     const off = type!=='出勤日' && !(d && d.in);
     let txt;
-    if (d && d.in) txt = `${d.in}〜${d.out || '<span style="color:var(--danger)">退勤なし</span>'}`;
+    if (d && d.in) txt = `${d.in}〜${d.out ? outText(d) : (isOpenShiftDay(id, s) ? '<span style="color:var(--leaf)">勤務中</span>' : '<span style="color:var(--danger)">退勤なし</span>')}`;
     else if (kind) txt = '';
     else txt = off ? (type==='法定休日' ? '休日' : '所定休日') : (s===td ? 'まだ打刻なし' : '—');
     const cls = wd(s)===0 ? 'sun' : wd(s)===6 ? 'sat' : '';
@@ -1236,8 +1267,8 @@ function daySheet(){
   const st = byId(id) || {}, d = getDay(id,s) || {}, w = workMin(d), rest = isRest(d), td = today();
   const canTime = canEdit(id) && s <= td && !isClosed(s);
   let now;
-  if (rest) now = kindLabel(d,id) + (d.in ? `　出勤 ${d.in}〜${d.out || '（退勤なし）'}` : '');
-  else if (d.in) now = `出勤 ${d.in}〜${d.out || '（退勤なし）'}${w ? `　${hm(w)}` : ''}`;
+  if (rest) now = kindLabel(d,id) + (d.in ? `　出勤 ${d.in}〜${outText(d) || '（退勤なし）'}` : '');
+  else if (d.in) now = `出勤 ${d.in}〜${outText(d) || (isOpenShiftDay(id, s) ? '（勤務中）' : '（退勤なし）')}${w ? `　${hm(w)}` : ''}`;
   else if (d.kind && d.kind !== '出勤') now = d.kind;
   else now = isOff(s) ? '会社の休み' : (s > td ? '出勤日（予定）' : '記録なし');
   const sel = k => rest && ((k==='all' && !d.half) || d.half===k);
@@ -1289,7 +1320,7 @@ function editSheet(){
       <label class="f">出勤の現場<input id="e-site" list="siteList2" value="${esc(d.site||'')}"></label>
       <label class="f">退勤の現場<span class="muted small">（出勤と違うときだけ）</span><input id="e-outSite" list="siteList2" value="${esc(d.outSite||'')}"><datalist id="siteList2">${S.sites.map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>
       <label class="f">出勤<input id="e-in" type="time" value="${esc(d.in||'')}"></label>
-      <label class="f">退勤<input id="e-out" type="time" value="${esc(d.out||'')}"></label>
+      <label class="f">退勤<span class="muted small">（出勤より前の時刻＝翌日の退勤・夜勤）</span><input id="e-out" type="time" value="${esc(d.out||'')}"></label>
       <label class="f">休憩（分）<input id="e-brk" type="number" min="0" step="5" value="${esc(d.brk === undefined || d.brk === '' ? S.settings.break : d.brk)}"></label>
       <label class="f">理由（必須）<select id="e-reason"><option value="">選んでください</option>${REASONS.map(r => `<option ${F && F.reason===r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
     </div>
@@ -1400,7 +1431,7 @@ function printAttendance(which){
     const st = byId(id) || {}, t = summarize(id, pr.from, pr.to);
     const rows = datesIn(pr.from, pr.to).map(s => {
       const d = getDay(id,s), w = workMin(d), fl = flags(id,s,d);
-      return `<tr><td>${dlabel(s)}</td><td>${esc(d && d.kind && d.kind !== '出勤' ? kindLabel(d,id) : (d && d.in ? '出勤' : (isOff(s) ? '休日' : '')))}</td><td class="r">${esc(d && d.in || '')}</td><td class="r">${esc(d && d.out || '')}</td>
+      return `<tr><td>${dlabel(s)}</td><td>${esc(d && d.kind && d.kind !== '出勤' ? kindLabel(d,id) : (d && d.in ? '出勤' : (isOff(s) ? '休日' : '')))}</td><td class="r">${esc(d && d.in || '')}</td><td class="r">${esc(outText(d))}</td>
         <td class="r">${w ? esc(d.brk === '' || d.brk === undefined ? S.settings.break : d.brk) : ''}</td><td class="r">${w ? hm(w) : ''}</td><td>${esc(siteText(d))}</td><td>${esc(fl.map(f => f.t).join('・'))}</td></tr>`;
     }).join('');
     return `<div class="pr-page"><div class="pr-head"><div class="pr-title">出勤簿　${esc(st.name)}</div><div>${pr.label}（${pr.from}〜${pr.to}）　庭乃持田園有限会社</div></div>
