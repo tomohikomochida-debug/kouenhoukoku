@@ -1264,16 +1264,35 @@ function histHTML(id, s, short){
 }
 
 /* ---------- freee出力 ---------- */
-const CSV_HEAD = ['氏名','従業員番号','勤務・賃金設定','労働日数','総勤務時間','所定内労働時間','法定内残業時間','時間外労働時間','法定休日労働時間','深夜労働時間','支給対象の所定内労働時間','支給対象の法定内残業時間','支給対象の時間外労働時間','支給対象の法定休日労働時間','支給対象の深夜労働時間','欠勤日数','有休取得日数','時間休取得時間','遅刻早退時間','振替休日取得日数','代休取得日数','代休残日数'];
+/* freee人事労務［勤怠］→［勤怠情報］→［一括更新］→［勤怠サマリー］の取り込みの型（freeeのサンプルCSVと同じ列・同じ並び）
+   時間はすべて「分」の整数、日付は yyyy/mm/dd、文字コードはUTF-8（BOMなし）。所定休日労働時間・みなし外・不足時間は空欄（サンプルと同じ） */
+const CSV_HEAD = ['従業員番号','氏名','所定労働時間（分）','法定内残業時間（分）','時間外労働時間（分）','所定休日労働時間（分）','深夜労働時間（分）','法定休日労働時間（分）','総労働時間（分）',
+  '総労働日数','所定労働出勤日数','所定休日出勤日数','法定休日出勤日数','遅刻時間（分）','早退時間（分）','欠勤日数','遅刻日数','早退日数','有休取得日数','集計開始日','集計終了日',
+  'みなし外の法定内残業時間（分）','みなし外の時間外労働時間（分）','不足時間（分）'];
 const csvName = p => `勤怠サマリー_20日締め（当月末払い）_${p.slice(0,4)}_${p.slice(5,7)}.csv`;
+/** freee用の日数・遅刻と早退の分け（遅刻早退の数え方は summarize と同じ） */
+function freeeExtra(id, from, to){
+  const x = { dWork:0, dShoteiKyu:0, dHoteiKyu:0, late:0, early:0, lateDays:0, earlyDays:0 }, set = SET();
+  for (const s of datesIn(from, to)){
+    const d = getDay(id, s), w = workMin(d); if (!w) continue;
+    const ty = dayType(s); if (ty === '出勤日') x.dWork++; else if (ty === '所定休日') x.dShoteiKyu++; else x.dHoteiKyu++;
+    const kind = d.kind || '出勤';
+    const lateOk = !isHourly(id) && !isNightShift(d) && (kind==='出勤' || (kind==='休み' && d.half && d.pay==='unpaid'));
+    if (lateOk && ty === '出勤日'){ const l = Math.max(0, toMin(d.in) - set.start), e = Math.max(0, set.end - toMin(d.out)); x.late += l; x.early += e; if (l > 0) x.lateDays++; if (e > 0) x.earlyDays++; }
+  }
+  return x;
+}
 function buildCSV(p){
-  const pr = periodRange(p);
-  const q = v => /[",\r\n]/.test(v) ? `"${String(v).replace(/"/g,'""')}"` : v;
+  const pr = periodRange(p), ymd = s => s.replace(/-/g, '/');
+  const q = v => { v = String(v == null ? '' : v); return /[",\r\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v; };
+  const m = v => String(Math.round(v || 0)), dn = v => String(Math.round((v || 0) * 10) / 10);
   const lines = [CSV_HEAD.join(',')];
   for (const s of staffInPeriod(pr)){
-    const t = (s.punch || datesIn(pr.from, pr.to).some(x => hasContent(getDay(s.id, x)))) ? summarize(s.id, pr.from, pr.to) : { days:0,total:0,shotei:0,hoteinai:0,jikangai:0,kyujitsu:0,shinya:0,late:0,kekkin:0,yukyu:0,furi:0,daikyu:0 };
-    lines.push([q(s.name), s.freeeNo === '' ? '""' : q(s.freeeNo), q(s.setting), t.days.toFixed(1), h1(t.total), h1(t.shotei), h1(t.hoteinai), h1(t.jikangai), h1(t.kyujitsu), h1(t.shinya),
-      '0.0','0.0','0.0','0.0','0.0', t.kekkin.toFixed(1), t.yukyu.toFixed(1), '0', h1(t.late), t.furi.toFixed(1), t.daikyu.toFixed(1), '0'].join(','));
+    const has = s.punch || datesIn(pr.from, pr.to).some(x => hasContent(getDay(s.id, x)));
+    const t = has ? summarize(s.id, pr.from, pr.to) : { days:0,total:0,shotei:0,hoteinai:0,jikangai:0,kyujitsu:0,shinya:0,kekkin:0,yukyu:0 };
+    const x = has ? freeeExtra(s.id, pr.from, pr.to) : { dWork:0, dShoteiKyu:0, dHoteiKyu:0, late:0, early:0, lateDays:0, earlyDays:0 };
+    lines.push([q(s.freeeNo), q(s.name), m(t.shotei), m(t.hoteinai), m(t.jikangai), '', m(t.shinya), m(t.kyujitsu), m(t.total),
+      t.days, x.dWork, x.dShoteiKyu, x.dHoteiKyu, m(x.late), m(x.early), dn(t.kekkin), x.lateDays, x.earlyDays, dn(t.yukyu), ymd(pr.from), ymd(pr.to), '', '', ''].join(','));
   }
   return lines.join('\r\n') + '\r\n';
 }
@@ -1696,7 +1715,7 @@ document.addEventListener('click', async e => {
     // 履歴・CSV
     case 'histReload': S.history = null; render(); return;
     case 'csvDl': {
-      const blob = new Blob(['﻿' + buildCSV(S.period)], { type:'text/csv' });
+      const blob = new Blob([buildCSV(S.period)], { type:'text/csv' });   // freeeのサンプルと同じ UTF-8（BOMなし）
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = csvName(S.period); document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
       toast('CSVを保存しました'); return;
     }
