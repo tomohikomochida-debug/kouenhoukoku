@@ -198,6 +198,15 @@
   .pmonth .cd .hn{font-size:10px}
   .pmonth .cd.wk{font-size:13px}
   @media (max-width:520px){ .pmonth .cd{height:52px} .pmonth .cd .dv,.pmonth .cd .dv.sm{font-size:12px} .pmonth .cd .dv.xs{font-size:10px} .pmonth .cd.wk{font-size:11px} }
+  /* 締めの確認：出勤・退勤の時刻（上の2段）＋勤務時間（太字）。日付・現場名と重ならないよう、上下に余白を取って縦に並べる */
+  .pmonth.tmode .cd:not(.wk){height:86px;flex-direction:column;justify-content:flex-start;padding:17px 1px 14px;gap:2px}
+  .cd .tio{display:flex;flex-direction:column;align-items:center;line-height:1.15;font-size:11.5px;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .cd.ng .tio{color:var(--danger)}
+  .pmonth.tmode .cd .dv{font-weight:700}
+  .pmonth.tmode .cd .dn{line-height:1.2}
+  .pmonth.tmode .cd.wk{height:86px}
+  @media (max-width:520px){ .pmonth.tmode .cd:not(.wk){height:84px;padding:18px 0 13px} .pmonth.tmode .cd.wk{height:84px} .cd .tio{font-size:10px;letter-spacing:-.03em}
+    .pmonth.tmode .cd .dv.xs{white-space:normal;line-height:1.1;max-width:2.3em;text-align:center} }
 
   /* シート */
   .sheet{position:fixed;inset:0;background:rgba(10,14,11,.45);display:flex;align-items:flex-end;justify-content:center;z-index:60;padding:16px}
@@ -859,7 +868,7 @@ function recordView(id, admin){
 }
 const NONWORK = { '休み':'yu', '振休':'off', '代休':'off', '公休':'off', '雨天中止（全日）':'yu' };
 function calRestFor(id, s){ return S.calRests.find(r => r.staffId === id && r.date === s); }
-function attendCell(id, s){
+function attendCell(id, s, withTimes){
   const st = byId(id) || {}, d = getDay(id,s), off = isOff(s), hol = S.hol[s], w = workMin(d), td = today();
   let cls = '', txt = '', tag = '';
   const half = d && isRest(d) && d.half;
@@ -874,14 +883,17 @@ function attendCell(id, s){
   else if (off){ cls = 'off'; txt = '休'; }
   else if (s < td && s >= (S.settings.useFrom || '') && !isHourly(id) && !(d && d.checked)){ cls = 'ng'; txt = 'なし'; }
   if (half && (w || d.in)) tag = d.half==='pm' ? '午後休' : '午前休';
-  else if (crossed(d)) tag = '夜勤 〜翌' + d.out;
+  else if (crossed(d)) tag = withTimes ? '夜勤' : '夜勤 〜翌' + d.out;
+  // 締めの確認のカレンダーでは、勤務時間の上に出勤・退勤の時刻も出す（退勤が翌日なら「翌」を付ける）
+  const tio = withTimes && d && d.in ? `<span class="tio"><span>${esc(d.in)}</span><span>${d.out ? esc(outText(d)) : '—'}</span></span>` : '';
   const fl = openFlag(flags(id,s,d), d) && (s <= td || isRest(d));
   const pr = periodRange(periodOf(s));
   const editable = canEdit(id) && !isClosed(s) && !(st.join && s < st.join);
   const cr = calRestFor(id, s);
   const sub = tag || hol;
-  return `<button class="cd ${cls}" data-act="day" data-arg="${esc(id)}|${s}" ${editable ? '' : 'disabled'} aria-label="${dlabel(s)} ${txt || '記録なし'}${tag ? ' ' + tag : ''}${fl ? ' 特記あり' : ''}">
-    <span class="dn">${Number(s.slice(8))}</span><span class="dv ${txt.length >= 4 ? 'xs' : txt.length >= 3 ? 'sm' : ''}">${txt}</span>${sub ? `<span class="hn ${tag ? 'tag' : ''}">${esc(sub)}</span>` : ''}${fl ? '<span class="fl"></span>' : (cr && !isRest(d) ? '<span class="cm">予定</span>' : '')}</button>`;
+  const tlabel = tio ? ` 出勤${d.in}${d.out ? ' 退勤' + outText(d) : ''}` : '';
+  return `<button class="cd ${cls}" data-act="day" data-arg="${esc(id)}|${s}" ${editable ? '' : 'disabled'} aria-label="${dlabel(s)}${tlabel} ${txt || '記録なし'}${tag ? ' ' + tag : ''}${fl ? ' 特記あり' : ''}">
+    <span class="dn">${Number(s.slice(8))}</span>${tio}<span class="dv ${txt.length >= 4 ? 'xs' : txt.length >= 3 ? 'sm' : ''}">${txt}</span>${sub ? `<span class="hn ${tag ? 'tag' : ''}">${esc(sub)}</span>` : ''}${fl ? '<span class="fl"></span>' : (cr && !isRest(d) ? '<span class="cm">予定</span>' : '')}</button>`;
 }
 function attendBlock(id, y, m){
   const st = byId(id) || {}, key = ym(y,m), last = `${key}-${pad(lastDay(y,m))}`, td = today();
@@ -1074,7 +1086,7 @@ function closeCalView(pr, staff, open, closed){
     let mins = 0, any = false;
     for (let i=0;i<7;i++){ const d = addDays(ws,i);
       if (d < pr.from || d > pr.to){ cells += `<div class="cd blank out"><span class="dn">${Number(d.slice(8))}</span></div>`; continue; }
-      let c = attendCell(id, d);
+      let c = attendCell(id, d, true);
       const nr = nipFor(id, d)[0];
       if (nr && nr.site && c.indexOf('class="hn') < 0) c = c.replace('</button>', `<span class="hn st">${esc(nr.site)}</span></button>`);
       if (d === pr.from || d.slice(8) === '01') c = c.replace(/<span class="dn">(\d+)<\/span>/, `<span class="dn mo">${Number(d.slice(5,7))}/$1</span>`);
@@ -1104,10 +1116,10 @@ function closeCalView(pr, staff, open, closed){
       ${stat('時間外', h1(t.jikangai), '時間')}${stat('深夜', h1(t.shinya), '時間')}${stat('遅刻早退', h1(t.late), '時間')}${stat('有休', t.yukyu, '日')}${isHourly(id) ? '' : stat('欠勤', t.kekkin, '日')}
     </div>
     <div class="row small">
-      <span class="pill ok">8:45 ＝ 勤務時間</span><span class="pill danger">休 ＝ 会社の休み</span><span class="pill rest">休み・有休</span>
+      <span class="pill ok">上の2段＝出勤・退勤　太字（8:45）＝勤務時間</span><span class="pill danger">休 ＝ 会社の休み</span><span class="pill rest">休み・有休</span>
       <span class="pill" style="box-shadow:inset 0 0 0 1.5px var(--danger);color:var(--danger)">なし・退勤なし</span><span class="pill"><span class="dot"></span>特記あり</span></div>
     <div class="row pmnav"><button class="btn" data-act="period" data-arg="-1">◀ 前の月</button><b class="grow" style="text-align:center">${pr.label}（${short2(pr.from)}〜${short2(pr.to)}）${closed ? '<span class="pill ok" style="margin-left:6px">締め済み</span>' : ''}</b><button class="btn" data-act="period" data-arg="1">次の月 ▶</button></div>
-    <div class="month pmonth" id="cswipe"><div class="mgrid">${cells}</div></div>
+    <div class="month pmonth tmode" id="cswipe"><div class="mgrid">${cells}</div></div>
     <div class="small muted">日付をタップすると、時刻のあとからの入力・修正（理由が必要）と休みの登録ができます。週計は、この月分の中で実際に働いた時間の合計です。</div>
   </section>
   <section class="panel"><h2>${esc(st.name || '')} さんの確認が必要な日</h2><div class="flaglist">${flagsHtml}</div>
