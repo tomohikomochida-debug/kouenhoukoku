@@ -288,7 +288,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvO
 const NIPPOU_GAS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
 const LS = { token:'tc_token', me:'tc_me', names:'tc_names', queue:'tc_queue', bio:'tc_bio', site:'tc_site', bioAsked:'tc_bio_asked', cache:'tc_cache' };
 const KINDS = ['出勤','休日出勤','休み','振休','代休','雨天中止（半日）','雨天中止（全日）','公休'];
-const REASONS = ['打ち忘れ（直行）','打ち忘れ（直帰）','打ち忘れ（直行直帰）','打ち忘れ','電池切れ','電波なし','時刻の間違い','暗証番号忘れ','その他'];
+const REASONS = ['現場直行で打刻忘れ','現場直帰で打刻忘れ','現場直行・直帰で打刻忘れ','打ち忘れ','電池切れ','電波なし','時刻の間違い','暗証番号忘れ','その他'];
 const ROLE_LABEL = { boss:'親方', office:'事務担当', staff:'スタッフ', none:'打刻なし' };
 const LEGAL_DAY = 480, LEGAL_WEEK = 2400;
 
@@ -636,6 +636,8 @@ function getPos(fresh){
 }
 async function doPunch(type){
   S.confirm = null;
+  const directPre = type === 'in' && !!S.direct;
+  if (directPre && !(($('#site') && $('#site').value.trim()) || '')){ toast('直行する現場名を入れてください', true); const f = $('#site'); if (f) f.focus(); return; }
   const bio = await confirmMe();
   if (bio === 'cancel') { render(); return; }
   const pressedAt = Date.now();
@@ -655,7 +657,8 @@ async function doPunch(type){
   item.waiting = true;
   let pos = await getPos();
   // 朝の出勤は事務所で押す。離れていたら、直行か、事務所に着いてから押すかを聞く
-  if (type === 'in'){
+  if (type === 'in' && directPre){ item.direct = true; S.direct = false; }
+  else if (type === 'in'){
     let away = officeAway(pos);
     while (away){
       $('#toast').className = 'toast';
@@ -805,6 +808,14 @@ function logoutLocal(){ S.token = null; S.me = null; lsSet(LS.token, null); lsSe
 /* ---------- 打刻 ---------- */
 function punchView(){
   const td = today(), os = openShift(S.me.id), night = os && os.date !== td, d = night ? os.d : (getDay(S.me.id, td) || {});
+  if (S.directDate !== td){ S.direct = false; S.directDate = td; }
+  const needIn = !d.in && !night;
+  if (needIn && (!S.prePosAt || Date.now() - S.prePosAt > 60000)){ S.prePosAt = Date.now(); getPos().then(p => { S.prePos = p; if (S.view === 'punch') render(); }); }
+  const awayNow = needIn ? officeAway(S.prePos) : null;
+  const wayHTML = needIn && S.settings.officeLat && S.settings.officeCheck !== '0' ? `
+    ${awayNow && !S.direct ? `<div class="banner warn"><span class="grow">事務所から<b>${distLabel(awayNow)}</b>離れています。今日は<b>現場直行</b>ですか？</span><button class="btn primary" data-act="setDirect" data-arg="1">現場直行にする</button></div>` : ''}
+    <div class="row"><span class="small"><b>出勤のしかた</b></span><nav class="seg" aria-label="出勤のしかた"><button data-act="setDirect" data-arg="0" aria-current="${!S.direct}">事務所で出勤</button><button data-act="setDirect" data-arg="1" aria-current="${!!S.direct}">現場直行</button></nav></div>
+    ${S.direct ? '<div class="small muted">現場名を入れて「出勤」を押してください。事務所から離れていても、そのまま直行で記録します（担当が確認します）。</div>' : ''}` : '';
   const q = S.queue.filter(x => !x.staffId || x.staffId === S.me.id).length;
   const prev = datesIn(addDays(td,-7), addDays(td,-1)).reverse().find(s => { const x = getDay(S.me.id, s); return x && x.in; });
   const pd = prev && getDay(S.me.id, prev);
@@ -822,12 +833,13 @@ function punchView(){
       ${q ? `<span class="pill warn">未送信 ${q}件</span>` : ''}
     </div>
     ${S.confirm ? `<div class="banner warn"><span class="grow">もう${S.confirm==='in'?'出勤':'退勤'}を押しています。押した時刻で上書きしますか？</span><button class="btn" data-act="cancel">やめる</button><button class="btn primary" data-act="punchGo" data-arg="${S.confirm}">上書きする</button></div>` : ''}
+    ${wayHTML}
     <div class="punch">
-      <button class="in" data-act="punch" data-arg="in">出勤<small>${d.in ? '出勤済み' : 'タップで記録'}</small></button>
+      <button class="in" data-act="punch" data-arg="in">出勤<small>${d.in ? '出勤済み' : S.direct ? '現場直行で記録' : 'タップで記録'}</small></button>
       <button class="out" data-act="punch" data-arg="out">退勤<small>${d.out ? '退勤済み' : 'タップで記録'}</small></button>
     </div>
     <div class="fields">
-      <label class="f">${d.in && !d.out ? '退勤する現場<span class="muted small">（出勤と違う現場で終わるときは直す）</span>' : '現場'}<input id="site" list="siteList" value="${esc(d.in && !d.out ? (d.outSite || d.site || lastSite) : (d.site || lastSite))}" placeholder="現場名（なくてもOK）"><datalist id="siteList">${S.sites.map(s => `<option value="${esc(s)}">`).join('')}</datalist></label>
+      <label class="f">${d.in && !d.out ? '退勤する現場<span class="muted small">（出勤と違う現場で終わるときは直す）</span>' : S.direct ? '直行する現場<span class="muted small">（必須）</span>' : '現場'}<input id="site" list="siteList" value="${esc(d.in && !d.out ? (d.outSite || d.site || lastSite) : (d.site || lastSite))}" placeholder="現場名（なくてもOK）"><datalist id="siteList">${S.sites.map(s => `<option value="${esc(s)}">`).join('')}</datalist></label>
       <label class="f">今日の区分<select id="kind">${['出勤','休日出勤','雨天中止（半日）'].map(k => `<option ${d.kind===k?'selected':''}>${k}</option>`).join('')}</select></label>
     </div>
     <div class="small muted">押した場所と時刻を記録します。休憩は標準の${esc(S.settings.break)}分を自動で引きます。${bioInfo() ? '押すと顔認証・指紋認証が出ます。' : ''}</div>
@@ -1591,6 +1603,7 @@ document.addEventListener('click', async e => {
       doPunch(arg); return;
     }
     case 'punchGo': doPunch(arg); return;
+    case 'setDirect': S.direct = arg === '1'; S.directDate = today(); render(); if (S.direct){ const f = $('#site'); if (f && !f.value.trim()) f.focus(); } return;
     case 'cancel': S.confirm = null; render(); return;
     case 'flush': flushQueue(false); return;
     // 記録
