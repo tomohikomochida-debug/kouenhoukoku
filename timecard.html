@@ -1287,8 +1287,9 @@ function buildCSV(p){
   const q = v => { v = String(v == null ? '' : v); return /[",\r\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v; };
   const m = v => String(Math.round(v || 0)), dn = v => String(Math.round((v || 0) * 10) / 10);
   const lines = [CSV_HEAD.join(',')];
-  for (const s of staffInPeriod(pr)){
-    const has = s.punch || datesIn(pr.from, pr.to).some(x => hasContent(getDay(s.id, x)));
+  // 打刻しない人（記録もない人）と、freeeの従業員番号がない人は入れない（0の行でfreeeの勤怠を上書きしない・番号がないと取り込めない）
+  for (const s of staffInPeriod(pr).filter(s => String(s.freeeNo || '').trim() && (s.punch || datesIn(pr.from, pr.to).some(x => hasContent(getDay(s.id, x)))))){
+    const has = true;
     const t = has ? summarize(s.id, pr.from, pr.to) : { days:0,total:0,shotei:0,hoteinai:0,jikangai:0,kyujitsu:0,shinya:0,kekkin:0,yukyu:0 };
     const x = has ? freeeExtra(s.id, pr.from, pr.to) : { dWork:0, dShoteiKyu:0, dHoteiKyu:0, late:0, early:0, lateDays:0, earlyDays:0 };
     lines.push([q(s.freeeNo), q(s.name), m(t.shotei), m(t.hoteinai), m(t.jikangai), '', m(t.shinya), m(t.kyujitsu), m(t.total),
