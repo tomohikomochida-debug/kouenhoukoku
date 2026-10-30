@@ -159,6 +159,25 @@
   .cd .fl{position:absolute;top:3px;right:3px}
   .cd .cm{position:absolute;top:2px;right:2px;font-size:8px;color:var(--rest)}
   .pill.info{background:#e8eef7;color:#2b4a7a}
+  .cd .hn.st{color:var(--leaf);font-weight:600}
+  .hist{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+  .nipbox{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+  .nip{background:var(--paper);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:4px}
+  .nip .nipw{white-space:pre-wrap}
+  .nipov{position:fixed;inset:0;z-index:90;background:var(--card);display:flex;flex-direction:column}
+  .nipbar{display:flex;align-items:center;gap:10px;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));border-bottom:1px solid var(--line);background:var(--paper)}
+  .nipov iframe{flex:1;border:0;width:100%}
+  .tbtn{display:block;width:100%;text-align:left;font-size:18px;font-weight:700;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-variant-numeric:tabular-nums}
+  .tbtn.on{border-color:var(--leaf);box-shadow:0 0 0 2px var(--leaf-soft)}
+  .tpanel{border:1.5px solid var(--leaf);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--card)}
+  .tqrow{display:flex;flex-wrap:wrap;gap:6px}
+  .tq{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .tq.on,.tgrid button.on{background:var(--leaf);border-color:var(--leaf);color:#fff}
+  .tgrid{display:grid;gap:4px}
+  .tgrid.h{grid-template-columns:repeat(8,1fr)} .tgrid.m{grid-template-columns:repeat(6,1fr)}
+  .tgrid button{border:1px solid var(--line);background:#fff;border-radius:8px;min-height:42px;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .tgrid button.nt{background:#eef1f7}
+  .tgrid button:disabled{opacity:.4}
   .cd.blank.out{background:var(--paper)} .cd.blank.out .dn{color:var(--line)}
   .cd .dn.mo{font-weight:700;color:var(--ink)}
   .pchips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
@@ -943,7 +962,7 @@ function allView(){
   const cands = S.calRests.filter(r => r.date >= pr.from && r.date <= pr.to && !isRest(getDay(r.staffId, r.date)) && !(getDay(r.staffId, r.date) || {}).in);
   const soft = open.filter(o => o.fl.every(f => f.lv === 'warn'));
   const shown = S.showAllOpen ? open : open.slice(0, 30);
-  const openHtml = open.length ? shown.map(o => `<div class="flagitem"><span class="grow"><b>${esc(o.s.name)}</b>　${dlabel(o.dt)}　${o.fl.map(f => `<span class="pill ${f.lv}">${esc(f.t)}</span>`).join(' ')}</span>
+  const openHtml = open.length ? shown.map(o => `<div class="flagitem"><span class="grow"><b>${esc(o.s.name)}</b>　${dlabel(o.dt)}　${o.fl.map(f => `<span class="pill ${f.lv}">${esc(f.t)}</span>`).join(' ')}${o.fl.some(f => /修正|あとから|代理/.test(f.t)) ? histHTML(o.s.id, o.dt, true) : ''}</span>
       <button class="btn" data-act="day" data-arg="${esc(o.s.id)}|${o.dt}" ${closed ? 'disabled' : ''}>開く</button>
       ${o.fl.some(f => f.must) ? `<button class="btn" data-act="pay" data-arg="${esc(o.s.id)}|${o.dt}|paid" ${closed?'disabled':''}>有休にする</button><button class="btn" data-act="pay" data-arg="${esc(o.s.id)}|${o.dt}|unpaid" ${closed?'disabled':''}>欠勤にする</button>` : `<button class="btn" data-act="check" data-arg="${esc(o.s.id)}|${o.dt}" ${closed?'disabled':''}>確認済みにする</button>`}</div>`).join('')
     : '<div class="banner ok">確認が必要な日はありません。</div>';
@@ -982,6 +1001,43 @@ function allView(){
     <div class="row"><button class="btn" data-act="printAtt" data-arg="*">全員の出勤簿を印刷（${pr.label}）</button></div></section>`;
 }
 
+/* ---------- 日報を見る（締めの確認で、その日の現場・作業をその場で見る） ----------
+   日報アプリのデータ（今年度）を読んで、その人が書いた・作業人員に入っている日報を出す。
+   「日報で開く」は日報ダッシュボードを上に重ねて開き、「← 確認にもどる」で閉じる（確認の画面はそのまま） */
+const NIP = { recs:null, loading:false, err:'' };
+async function loadNippou(force){
+  if (NIP.loading || (NIP.recs && !force)) return;
+  NIP.loading = true; NIP.err = '';
+  try { const r = await fetchT(NIPPOU_GAS_URL + '?action=dashboard', {}, 40000); const d = await r.json(); NIP.recs = (d && d.cur) || []; }
+  catch(e){ NIP.recs = []; NIP.err = '日報を読めませんでした（電波のよい所で「日報を読み直す」）'; }
+  NIP.loading = false; render();
+}
+const nipNames = id => { const st = byId(id) || {}; return [st.disp, st.name].filter(Boolean).map(x => String(x).replace(/\s/g,'')); };
+function nipHit(id, n){ n = String(n || '').replace(/\s/g,''); if (!n) return false; const ns = nipNames(id); return ns.some(x => x === n || (n.length >= 2 && x.startsWith(n))); }
+function nipFor(id, s){
+  return (NIP.recs || []).filter(r => String(r.date || '').slice(0,10) === s &&
+    (nipHit(id, r.author) || [r.members, r.joiners, r.helpers].some(f => String(f || '').split(/[・、,，\s]+/).some(m => nipHit(id, m)))));
+}
+function nipHTML(id, s){
+  if (NIP.loading && !NIP.recs) return '<div class="small muted">日報を読み込み中…</div>';
+  const list = nipFor(id, s);
+  const err = NIP.err ? `<div class="small" style="color:var(--danger)">${esc(NIP.err)} <button class="linkbtn" data-act="nipreload">日報を読み直す</button></div>` : '';
+  if (!list.length) return err + '<div class="small muted">この日の日報は見つかりません。</div>';
+  return err + list.map(r => `<div class="nip">
+    <div class="row"><b class="grow">📍 ${esc(r.site || '（現場名なし）')}</b><button class="btn" data-act="nipopen" data-arg="${esc(r.site || '')}">日報で開く</button></div>
+    <div class="small">${r.start || r.end ? `${esc(r.start || '')}〜${esc(r.end || '')}　` : ''}${r.hours ? esc(r.hours) + 'h　' : ''}書いた人：${esc(r.author || '')}${r.weather ? '　' + esc(r.weather) : ''}</div>
+    ${r.work ? `<div class="small nipw">${esc(String(r.work).slice(0, 160))}${String(r.work).length > 160 ? '…' : ''}</div>` : ''}
+    ${r.members ? `<div class="small muted">作業人員：${esc(r.members)}${r.joiners ? '／途中合流：' + esc(r.joiners) : ''}${r.helpers ? '／応援：' + esc(r.helpers) : ''}</div>` : ''}</div>`).join('');
+}
+function nipOpen(site){
+  nipClose();
+  const ov = document.createElement('div'); ov.id = 'nipov'; ov.className = 'nipov';
+  ov.innerHTML = `<div class="nipbar"><button class="btn primary" data-act="nipclose">← 確認にもどる</button><b class="grow">日報${site ? '：' + esc(site) : ''}</b></div>
+    <iframe src="nippou_dashboard.html${site ? '?site=' + encodeURIComponent(site) : ''}" title="日報"></iframe>`;
+  document.body.appendChild(ov); document.body.style.overflow = 'hidden';
+}
+function nipClose(){ const ov = document.getElementById('nipov'); if (ov) ov.remove(); document.body.style.overflow = ''; }
+
 /* ---------- 締めの確認：一人ずつ、締めの期間（21日〜20日）の出勤カレンダー ----------
    ・上の名前をタップ（◀ ▶・カレンダーを左右になでる でも）して人を切りかえる
    ・名前の横の数字＝確認が必要な日の数。「確認できた」の印はこの端末に残す（人ごと・月分ごと）
@@ -990,6 +1046,7 @@ const CHK_LS = 'tc_closechk';
 const chkGet = p => (lsGet(CHK_LS, {})[p] || []);
 function chkToggle(p, id){ const all = lsGet(CHK_LS, {}), a = new Set(all[p] || []); a.has(id) ? a.delete(id) : a.add(id); all[p] = [...a]; lsSet(CHK_LS, all); }
 function closeCalView(pr, staff, open, closed){
+  loadNippou();
   if (!staff.length) return '<section class="panel"><div class="loading">この月分に記録のある人がいません</div></section>';
   const openOf = id => open.filter(o => o.s.id === id), done = new Set(chkGet(S.period));
   let list = S.cOnlyOpen ? staff.filter(s => openOf(s.id).length || !done.has(s.id)) : staff;
@@ -1005,13 +1062,17 @@ function closeCalView(pr, staff, open, closed){
     for (let i=0;i<7;i++){ const d = addDays(ws,i);
       if (d < pr.from || d > pr.to){ cells += `<div class="cd blank out"><span class="dn">${Number(d.slice(8))}</span></div>`; continue; }
       let c = attendCell(id, d);
+      const nr = nipFor(id, d)[0];
+      if (nr && nr.site && c.indexOf('class="hn') < 0) c = c.replace('</button>', `<span class="hn st">${esc(nr.site)}</span></button>`);
       if (d === pr.from || d.slice(8) === '01') c = c.replace(/<span class="dn">(\d+)<\/span>/, `<span class="dn mo">${Number(d.slice(5,7))}/$1</span>`);
       cells += c; if (d <= td && !(st.join && d < st.join)){ mins += workMin(getDay(id,d)); any = true; } }
     cells += `<div class="cd wk num">${any ? hm(mins) : '-'}</div>`;
   }
   const t = summarize(id, pr.from, pr.to), mine = openOf(id);
   const stat = (k, v, u) => `<div class="stat"><div class="k">${k}</div><div class="v num">${v}<small>${u}</small></div></div>`;
-  const flagsHtml = mine.length ? mine.slice().sort((a,b) => a.dt < b.dt ? -1 : 1).map(o => `<div class="flagitem"><span class="grow">${dlabel(o.dt)}　${o.fl.map(f => `<span class="pill ${f.lv}">${esc(f.t)}</span>`).join(' ')}</span>
+  const nipLine = dt => { const l = nipFor(id, dt); return l.length ? `<br><span class="small muted">📍 ${l.map(r => esc(r.site || '（現場名なし）') + (r.start || r.end ? `（${esc(r.start||'')}〜${esc(r.end||'')}）` : '')).join('・')}</span>` : ''; };
+  const flagsHtml = mine.length ? mine.slice().sort((a,b) => a.dt < b.dt ? -1 : 1).map(o => `<div class="flagitem"><span class="grow">${dlabel(o.dt)}　${o.fl.map(f => `<span class="pill ${f.lv}">${esc(f.t)}</span>`).join(' ')}${nipLine(o.dt)}${o.fl.some(f => /修正|あとから|代理/.test(f.t)) ? histHTML(id, o.dt, true) : ''}</span>
+      ${nipFor(id, o.dt).length ? `<button class="btn" data-act="nipopen" data-arg="${esc(nipFor(id, o.dt)[0].site || '')}">日報</button>` : ''}
       <button class="btn" data-act="day" data-arg="${esc(id)}|${o.dt}" ${closed ? 'disabled' : ''}>開く</button>
       ${o.fl.some(f => f.must) ? `<button class="btn" data-act="pay" data-arg="${esc(id)}|${o.dt}|paid" ${closed?'disabled':''}>有休にする</button><button class="btn" data-act="pay" data-arg="${esc(id)}|${o.dt}|unpaid" ${closed?'disabled':''}>欠勤にする</button>` : `<button class="btn" data-act="check" data-arg="${esc(id)}|${o.dt}" ${closed?'disabled':''}>確認済みにする</button>`}</div>`).join('')
     : '<div class="banner ok">この人は、確認が必要な日はありません。</div>';
@@ -1168,7 +1229,14 @@ function historyView(){
     <div class="tablewrap"><table><thead><tr><th>日時</th><th>した人</th><th>対象</th><th>項目</th><th>前 → 後</th><th>理由</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="6">まだ履歴はありません</td></tr>'}</tbody></table></div></section>`;
 }
-async function loadHistory(){ try { const d = await api('history', { limit: 500 }); S.history = d.history; } catch(e){ S.history = []; toast(e.message, true); } render(); }
+async function loadHistory(){ if (S.histLoading) return; S.histLoading = true; try { const d = await api('history', { limit: 500 }); S.history = d.history; } catch(e){ S.history = []; toast(e.message, true); } S.histLoading = false; render(); }
+/* その人・その日の修正の中身（管理者が「修正あり」「あとから入力」「代理入力」の中身を見る） */
+const histFor = (id, s) => (S.history || []).filter(h => String(h.staffId) === String(id) && String(h.date || '').slice(0,10) === s);
+function histHTML(id, s, short){
+  if (!S.history){ loadHistory(); return '<div class="small muted">修正の中身を読み込み中…</div>'; }
+  const l = histFor(id, s); if (!l.length) return short ? '' : '<div class="small muted">この日の修正の記録はありません。</div>';
+  return `<div class="hist">${l.map(h => `<div class="small">✏️ <b>${esc(h.field)}</b>　${esc(h.before)} → <b>${esc(h.after)}</b>　<span class="muted">${esc(h.reason || '')}（${esc(h.by || '')}　${esc(String(h.at || '').slice(5,16))}）</span></div>`).join('')}</div>`;
+}
 
 /* ---------- freee出力 ---------- */
 const CSV_HEAD = ['氏名','従業員番号','勤務・賃金設定','労働日数','総勤務時間','所定内労働時間','法定内残業時間','時間外労働時間','法定休日労働時間','深夜労働時間','支給対象の所定内労働時間','支給対象の法定内残業時間','支給対象の時間外労働時間','支給対象の法定休日労働時間','支給対象の深夜労働時間','欠勤日数','有休取得日数','時間休取得時間','遅刻早退時間','振替休日取得日数','代休取得日数','代休残日数'];
@@ -1265,6 +1333,7 @@ function officePanel(){
 /* ---------- シート：日付 ---------- */
 function daySheet(){
   const [id, s] = S.day.split('|');
+  if (isAdmin()) loadNippou();
   const st = byId(id) || {}, d = getDay(id,s) || {}, w = workMin(d), rest = isRest(d), td = today();
   const canTime = canEdit(id) && s <= td && !isClosed(s);
   let now;
@@ -1303,9 +1372,31 @@ function daySheet(){
     <div class="small muted">登録すると、出勤調整カレンダーに「${dn}」（半日は「${dn} 午前休」「${dn} 午後休」）の終日予定で入ります。半日の休みの日は、働いた時間も打刻します。</div>
     ${pay}`}
     ${canTime ? '<button class="btn" data-act="totime">時刻を入力・修正する</button>' : ''}
+    ${isAdmin() && (d.src === '修正' || d.src === 'あとから' || d.src === '代理') ? `<div class="nipbox"><div class="small"><b>この日の修正の中身</b></div>${histHTML(id, s)}</div>` : ''}
+    ${isAdmin() && s <= td ? `<div class="nipbox"><div class="small"><b>この日の日報</b></div>${nipHTML(id, s)}</div>` : ''}
     <div class="row" style="justify-content:flex-end"><button class="btn" data-act="dayclose">閉じる</button></div>
   </div></div>`;
 }
+
+/* ---------- 時刻を選ぶ（時→分の順にタップ。よく使う時刻はボタン一つ） ---------- */
+function timePickHTML(d0, d){
+  const tp = S.edit.tp, f = tp.f, cur = d[f] || '', h = tp.h != null ? tp.h : (cur ? Number(cur.slice(0,2)) : null);
+  const mm = cur ? Number(cur.slice(3,5)) : null;
+  const quick = (f === 'in' ? ['07:00','07:30','08:00','08:30','20:00','20:30','21:00'] : ['17:00','17:10','17:30','18:00','04:00','05:00','06:00']);
+  const punched = d0[f] && !quick.includes(d0[f]) ? [d0[f]] : [];
+  const btn = (t, lab) => `<button type="button" class="tq ${cur===t?'on':''}" data-act="tset" data-arg="${t}">${lab || t}</button>`;
+  return `<div class="tpanel"><div class="row"><b class="grow">${f === 'in' ? '出勤' : '退勤'}の時刻を選ぶ</b><button type="button" class="linkbtn" data-act="tpclose">閉じる</button></div>
+    <div class="tqrow">${punched.map(t => btn(t, '打刻 ' + t)).join('')}${quick.map(t => btn(t)).join('')}${btn(nowHM().slice(0,5), '今 ' + nowHM().slice(0,5))}</div>
+    <div class="small muted">時</div>
+    <div class="tgrid h">${Array.from({length:24}, (_,i) => `<button type="button" class="${h===i?'on':''} ${i<5||i>=22?'nt':''}" data-act="thour" data-arg="${i}">${i}</button>`).join('')}</div>
+    <div class="small muted">分${h == null ? '（先に時を選んでください）' : ''}</div>
+    <div class="tgrid m">${Array.from({length:12}, (_,i) => i*5).map(m => `<button type="button" class="${mm===m && h===Number((cur||'').slice(0,2)) ?'on':''}" data-act="tmin" data-arg="${m}" ${h == null ? 'disabled' : ''}>${pad(m)}</button>`).join('')}</div>
+    <div class="row">${cur ? `<button type="button" class="btn" data-act="tstep" data-arg="-1">−1分</button><button type="button" class="btn" data-act="tstep" data-arg="1">＋1分</button>` : ''}<span class="grow"></span>${f === 'out' && cur ? '<button type="button" class="btn" data-act="tset" data-arg="">退勤を消す</button>' : ''}</div>
+  </div>`;
+}
+function captureEdit(){ const [id, s] = S.edit.key.split('|'); const v = k => ($('#'+k) || {}).value || '';
+  S.edit.form = { staffId:id, date:s, kind:v('e-kind'), in:v('e-in'), out:v('e-out'), brk:v('e-brk'), site:v('e-site'), outSite:v('e-outSite'), reason:v('e-reason'), memo:v('e-memo') }; }
+function tpSet(t){ captureEdit(); S.edit.form[S.edit.tp.f] = t; S.edit.tp = null; render(); }
 
 /* ---------- シート：時刻の入力・修正 ---------- */
 function editSheet(){
@@ -1320,11 +1411,12 @@ function editSheet(){
       <label class="f">区分<select id="e-kind">${KINDS.map(k => `<option ${(d.kind||'出勤')===k ? 'selected':''}>${k}</option>`).join('')}</select></label>
       <label class="f">出勤の現場<input id="e-site" list="siteList2" value="${esc(d.site||'')}"></label>
       <label class="f">退勤の現場<span class="muted small">（出勤と違うときだけ）</span><input id="e-outSite" list="siteList2" value="${esc(d.outSite||'')}"><datalist id="siteList2">${S.sites.map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>
-      <label class="f">出勤<input id="e-in" type="time" value="${esc(d.in||'')}"></label>
-      <label class="f">退勤<span class="muted small">（出勤より前の時刻＝翌日の退勤・夜勤）</span><input id="e-out" type="time" value="${esc(d.out||'')}"></label>
+      <div class="f">出勤<input id="e-in" type="hidden" value="${esc(d.in||'')}"><button type="button" class="tbtn ${S.edit.tp && S.edit.tp.f==='in' ? 'on' : ''}" data-act="tpick" data-arg="in">${d.in ? esc(d.in) : '選ぶ'}</button></div>
+      <div class="f">退勤<span class="muted small">（出勤より前の時刻＝翌日の退勤・夜勤）</span><input id="e-out" type="hidden" value="${esc(d.out||'')}"><button type="button" class="tbtn ${S.edit.tp && S.edit.tp.f==='out' ? 'on' : ''}" data-act="tpick" data-arg="out">${d.out ? (d.in && d.out < d.in ? '翌' : '') + esc(d.out) : '選ぶ'}</button></div>
       <label class="f">休憩（分）<input id="e-brk" type="number" min="0" step="5" value="${esc(d.brk === undefined || d.brk === '' ? S.settings.break : d.brk)}"></label>
       <label class="f">理由（必須）<select id="e-reason"><option value="">選んでください</option>${REASONS.map(r => `<option ${F && F.reason===r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
     </div>
+    ${S.edit.tp ? timePickHTML(d0, d) : ''}
     <label class="f">メモ（理由が「その他」のときは必須）<input id="e-memo" type="text" value="${esc(F ? F.memo : '')}" placeholder="例：携帯を事務所に忘れた"></label>
     ${S.edit.err ? `<div class="err">${esc(S.edit.err)}</div>` : ''}
     <div class="row" style="justify-content:flex-end"><button class="btn" data-act="editclose">やめる</button><button class="btn primary" data-act="editsave" ${S.edit.saving?'disabled':''}>保存する</button></div>
@@ -1512,6 +1604,15 @@ document.addEventListener('click', async e => {
     case 'totime': S.edit = { key: S.day }; S.day = null; render(); return;
     case 'edit': S.edit = { key: arg }; render(); return;
     case 'editclose': S.edit = null; render(); return;
+    case 'tpick': captureEdit(); S.edit.tp = S.edit.tp && S.edit.tp.f === arg ? null : { f: arg }; render(); return;
+    case 'tpclose': captureEdit(); S.edit.tp = null; render(); return;
+    case 'tset': tpSet(arg); return;
+    case 'thour': captureEdit(); S.edit.tp.h = Number(arg); render(); return;
+    case 'tmin': tpSet(pad(S.edit.tp.h) + ':' + pad(Number(arg))); return;
+    case 'tstep': { captureEdit(); const f = S.edit.tp.f, c = S.edit.form[f]; if (!c) return; let m = (toMin(c) + Number(arg) + 1440) % 1440; S.edit.form[f] = pad(Math.floor(m/60)) + ':' + pad(m%60); S.edit.tp.h = Math.floor(m/60); render(); return; }
+    case 'nipopen': nipOpen(arg); return;
+    case 'nipclose': nipClose(); return;
+    case 'nipreload': loadNippou(true); return;
     case 'editsave': {
       const [id, s] = S.edit.key.split('|'); const v = k => ($('#'+k) || {}).value || '';
       const form = { staffId:id, date:s, kind:v('e-kind'), in:v('e-in'), out:v('e-out'), brk:v('e-brk'), site:v('e-site'), outSite:v('e-outSite'), reason:v('e-reason'), memo:v('e-memo') };
