@@ -173,6 +173,7 @@
   .tqrow{display:flex;flex-wrap:wrap;gap:6px}
   .tq{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
   .tq.on,.tgrid button.on{background:var(--leaf);border-color:var(--leaf);color:#fff}
+  .tpin{font-size:22px;font-weight:700;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-variant-numeric:tabular-nums;width:100%;max-width:220px;background:#fff}
   .tgrid{display:grid;gap:4px}
   .tgrid.h{grid-template-columns:repeat(8,1fr)} .tgrid.m{grid-template-columns:repeat(6,1fr)}
   .tgrid button{border:1px solid var(--line);background:#fff;border-radius:8px;min-height:42px;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
@@ -1390,7 +1391,7 @@ function daySheet(){
   </div></div>`;
 }
 
-/* ---------- 時刻を選ぶ（時→分の順にタップ。よく使う時刻はボタン一つ） ---------- */
+/* ---------- 時刻を選ぶ（よく使う時刻はボタン一つ、ほかは1分単位で くるくる／数字で入れる） ---------- */
 function timePickHTML(d0, d){
   const tp = S.edit.tp, f = tp.f, cur = d[f] || '', h = tp.h != null ? tp.h : (cur ? Number(cur.slice(0,2)) : null);
   const mm = cur ? Number(cur.slice(3,5)) : null;
@@ -1399,10 +1400,8 @@ function timePickHTML(d0, d){
   const btn = (t, lab) => `<button type="button" class="tq ${cur===t?'on':''}" data-act="tset" data-arg="${t}">${lab || t}</button>`;
   return `<div class="tpanel"><div class="row"><b class="grow">${f === 'in' ? '出勤' : '退勤'}の時刻を選ぶ</b><button type="button" class="linkbtn" data-act="tpclose">閉じる</button></div>
     <div class="tqrow">${punched.map(t => btn(t, '打刻 ' + t)).join('')}${quick.map(t => btn(t)).join('')}${btn(nowHM().slice(0,5), '今 ' + nowHM().slice(0,5))}</div>
-    <div class="small muted">時</div>
-    <div class="tgrid h">${Array.from({length:24}, (_,i) => `<button type="button" class="${h===i?'on':''} ${i<5||i>=22?'nt':''}" data-act="thour" data-arg="${i}">${i}</button>`).join('')}</div>
-    <div class="small muted">分${h == null ? '（先に時を選んでください）' : ''}</div>
-    <div class="tgrid m">${Array.from({length:12}, (_,i) => i*5).map(m => `<button type="button" class="${mm===m && h===Number((cur||'').slice(0,2)) ?'on':''}" data-act="tmin" data-arg="${m}" ${h == null ? 'disabled' : ''}>${pad(m)}</button>`).join('')}</div>
+    <div class="small muted">1分単位で入れる（iPhone・iPadは くるくる回して選び、パソコンは数字を打てます）</div>
+    <input type="time" step="60" id="tp-input" class="tpin" value="${esc(cur)}">
     <div class="row">${cur ? `<button type="button" class="btn" data-act="tstep" data-arg="-1">−1分</button><button type="button" class="btn" data-act="tstep" data-arg="1">＋1分</button>` : ''}<span class="grow"></span>${f === 'out' && cur ? '<button type="button" class="btn" data-act="tset" data-arg="">退勤を消す</button>' : ''}</div>
   </div>`;
 }
@@ -1549,6 +1548,8 @@ function printAttendance(which){
 
 /* ===================== 操作 ===================== */
 async function run(fn){ try { await fn(); } catch(e){ toast(e.message, true); } render(); }
+/* 時刻を選ぶ画面：くるくる（または数字）で入れたら、その時刻にする */
+document.addEventListener('change', e => { if (e.target && e.target.id === 'tp-input' && S.edit && S.edit.tp && e.target.value) tpSet(e.target.value.slice(0,5)); });
 /* 締めの確認のカレンダーを左右になでて、人を切りかえる */
 let swp = null;
 document.addEventListener('touchstart', e => { const c = e.target.closest && e.target.closest('#cswipe'); swp = c && e.touches.length === 1 ? { x:e.touches[0].clientX, y:e.touches[0].clientY } : null; }, { passive:true });
