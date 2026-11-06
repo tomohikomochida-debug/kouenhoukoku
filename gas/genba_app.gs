@@ -860,14 +860,18 @@ function readSlip_(b64, mime, hints) {
     '"type":"次の候補から1つ：' + JSON.stringify(types) + '。剪定枝・枝・葉・木くず・せん定くずは枝葉、幹・丸太・太い木は幹、草・刈草・雑草は草。決められなければ空",' +
     '"netKg":"正味重量（総重量−空車重量。搬入量）を kg の数値で。t表記なら kg に直す。無ければ空",' +
     '"amount":"支払った金額（手数料・処分費の税込合計）を円の数値で。無ければ空",' +
+    '"unitPrice":"処分の単価（重さあたりの料金）が書かれていれば、1kgあたりの円の数値で。「円/t」「1トン当たり」なら1000で割り、「10kg当たり」なら10で割る。書かれていなければ空",' +
+    '"unitTax":"その単価が税抜なら「税抜」、税込なら「税込」、分からなければ空",' +
     '"plate":"車両番号（ナンバー）"}。読めない項目は空文字。推測で埋めない。';
   var j = ai_('伝票読み取り', [{ inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }, { text: prompt }]) || {};
   var num = function (v) { var n = Number(String(v == null ? '' : v).replace(/[^\d.]/g, '')); return isFinite(n) && n > 0 ? n : ''; };
   var d = String(j.date || '').replace(/\//g, '-');
   var m = d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   d = m ? (m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2)) : '';
+  var up = num(j.unitPrice); if (up && up >= 1000) up = up / 1000;   // 円/t のまま返ってきたとき（処分の単価は1kgあたり数十円）
   return { ok: true, data: { date: d, place: String(j.place || '').trim(), item: String(j.item || '').trim(),
-    type: types.indexOf(j.type) >= 0 ? j.type : '', netKg: num(j.netKg), amount: num(j.amount), plate: String(j.plate || '').trim() } };
+    type: types.indexOf(j.type) >= 0 ? j.type : '', netKg: num(j.netKg), amount: num(j.amount), plate: String(j.plate || '').trim(),
+    unitPrice: up, unitTaxEx: String(j.unitTax || '').indexOf('税抜') >= 0 } };
 }
 /* 取引先：届いた請求書・納品書・見積書・領収書・名刺の写真／スクショ／PDF（1〜4枚）から、取引先の登録に使う項目を読む（入力欄への仮入力用）
    宛先の自社（庭乃持田園）ではなく、発行した側の会社を読む */

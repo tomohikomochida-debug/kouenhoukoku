@@ -268,6 +268,7 @@
   /* 伝票からの仮入力 */
   .ai-fill{outline:2px solid #e0a52a !important;outline-offset:1px;background:#fff8e6 !important}
   .pick.ai-fill{border-radius:10px;padding:4px}
+  .up-hint{display:block;margin-top:4px;color:#8a5a00;background:#fff8e6;border-radius:6px;padding:4px 8px}
   .slip-ai{display:none;margin-top:10px;font-size:13px;line-height:1.6;border-radius:8px;padding:10px 12px;background:#fff8e6;border:1px solid #f0d08a;color:#6b4e12}
   .slip-ai.err{background:#fbece8;border-color:#e8b9ad;color:var(--danger,#B0533F)}
   /* 区分でしぼる・まとめる */
@@ -412,7 +413,7 @@
     </div>
     <div class="slip-grid" id="slipGrid"></div>
     <div class="slip-ai" id="slipAiMsg"></div>
-    <span class="hlp">先に伝票を撮ると、日付・処分場所・種類・数量・金額を読み取って下の欄に仮入力します（黄色の枠）。伝票が無いときは、そのまま下から入力してください。</span>
+    <span class="hlp">先に伝票を撮ると、日付・処分場所・種類・数量・金額を読み取って下の欄に仮入力します（黄色の枠）。合計金額が無く単価が書いてあるときは、処分量×単価で金額を入れます。伝票が無いときは、そのまま下から入力してください。</span>
     <div class="slip-off" id="slipOff" style="display:none">伝票の保管先（伝票GAS）がまだ設定されていません。</div>
   </div>
 
@@ -454,7 +455,7 @@
   <div class="card">
     <div class="nums">
       <div class="field fld-private" id="qtyTotalWrap"><label>処分量（合計・<span id="qtyUnitLbl">kg</span>）</label><input type="text" inputmode="numeric" id="f_qty" placeholder="例：805"></div>
-      <div class="field fld-private" id="amountWrap"><label>民間処分費（円）</label><input type="text" inputmode="numeric" id="f_amount" placeholder="例：10868"><span class="hlp">民間：種類で変わるので手入力。0円・わからないときは空のままで記録できます</span></div>
+      <div class="field fld-private" id="amountWrap"><label>民間処分費（円）</label><input type="text" inputmode="numeric" id="f_amount" placeholder="例：10868"><span class="hlp">民間：種類で変わるので手入力。0円・わからないときは空のままで記録できます</span><span class="hlp up-hint" id="upHint" hidden></span></div>
       <div class="field fld-public" id="govqtyWrap"><label>処分量（<span id="qtyUnitLbl2">kg</span>）</label><input type="text" inputmode="numeric" id="f_govqty" placeholder="例：540"><span class="hlp">公共焼却場：kg×15円で自動</span></div>
     </div>
     <div class="calc">
@@ -916,7 +917,18 @@ function totals(){
   return {govqty:0, amount, govfee:0, total:amount, qtyKg};
 }
 function toKg(v){ return qtyUnit==='m3' ? num(v)*num(hijuu) : num(v); }
+/* 伝票に単価が書いてあるとき：処分量×単価で民間処分費を入れる（伝票に合計金額があればそちらを使う）。
+   金額を手で直したら、それからは量を変えても金額は動かさない */
+let slipUp=null, amtAuto=false;   // slipUp={up:円/kg, taxEx:税抜か}
+function upAmount(){ if(!slipUp||currentIsPublic) return null; const kg=toKg($('#f_qty').value); if(!(kg>0)) return null;
+  return Math.round(kg*slipUp.up*(slipUp.taxEx?1.1:1)); }
+function showUpHint(){ const el=$('#upHint'); if(!el) return;
+  if(!slipUp||currentIsPublic){ el.hidden=true; return; } el.hidden=false;
+  el.innerHTML='伝票の単価 <b>'+fmtUp(slipUp.up)+'</b>'+(slipUp.taxEx?'（税抜なので消費税10%を足して計算）':'')+
+    (amtAuto?'<br>処分量×単価で金額を入れています。量を直すと金額も直ります。金額を手で直せば、その金額にします。':''); }
 function recalc(){
+  if(amtAuto){ const a=upAmount(); if(a!=null) $('#f_amount').value=String(a); }
+  showUpHint();
   const t=totals();
   $('#c_govfee').textContent=yen(t.govfee); $('#c_total').textContent=yen(t.total); $('#barTotal').textContent=yen(t.total);
   const arr=siteList(), n=arr.length, sh=shares();
@@ -988,7 +1000,7 @@ function apply(d){ d=d||{};
   setChipsOn(pickElems.vehicle,d.vehicle||[]); $('#vehicleOther').value=d.vehicleOther||'';
   refreshPlaceMode(); normalizeTo100(); syncSliders(); recalc(); }
 let editAuthor='';   // 直している記録の、もともとの記入者
-function resetForm(){ editDenpyo=null; editKey=null; editAuthor=''; slipEdit=[]; renderSlips();
+function resetForm(){ editDenpyo=null; editKey=null; editAuthor=''; slipEdit=[]; renderSlips(); slipUp=null; amtAuto=false;
   if(typeof clearAiMarks==='function'){ clearAiMarks(); slipAiMsg(''); }
   $('#editBadge').classList.remove('show'); $('#pvDelete').style.display='none'; $('#btnDelete').style.display='none'; $('#btnBackList').style.display='none';
   apply({date:todayStr()}); clearDraft(); try{ sessionStorage.removeItem('zaizai_edit'); }catch(e){} }
@@ -1286,6 +1298,10 @@ function applySlipRead(d){
     if(!box.value.trim()){ if(qtyUnit!=='kg') setUnit('kg'); box.value=String(Math.round(d.netKg)); markAi(box); done.push('数量（'+Math.round(d.netKg).toLocaleString()+'kg）'); }
   }
   if(d.amount && !currentIsPublic && !$('#f_amount').value.trim()){ $('#f_amount').value=String(Math.round(d.amount)); markAi($('#f_amount')); done.push('処分費'); }
+  if(Number(d.unitPrice)>0){ slipUp={up:Number(d.unitPrice), taxEx:!!d.unitTaxEx};
+    if(!currentIsPublic && !$('#f_amount').value.trim()){ const a=upAmount();
+      if(a!=null){ $('#f_amount').value=String(a); amtAuto=true; markAi($('#f_amount'));
+        done.push('処分費（'+yen(Math.round(toKg($('#f_qty').value)))+'kg×'+fmtUp(slipUp.up)+(slipUp.taxEx?'＋税':'')+'）'); } } }
   recalc(); saveDraft();
   return done;
 }
@@ -2340,6 +2356,7 @@ function openEdit(k){
 }
 
 /* ===== 起動 ===== */
+$('#f_amount').addEventListener('input',()=>{ amtAuto=false; });   // 金額を手で直したら、単価からの自動計算をやめる
 ['f_amount','f_govqty','f_qty'].forEach(id=>$('#'+id).addEventListener('input',()=>{recalc();saveDraft();}));
 ['f_date','typeOther','vehicleOther'].forEach(id=>$('#'+id).addEventListener('input',saveDraft));
 $('#placeOther').addEventListener('input',()=>{ if($('#placeOther').value.trim()) pickElems.place.querySelectorAll('.chip.on').forEach(x=>x.classList.remove('on'));
