@@ -716,7 +716,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     var rate = (num(P.miscRate) == null ? 20 : num(P.miscRate)) / 100;
     P.sets.forEach(function (S) {
       var tag = P.sets.length > 1 ? "（" + S.label + "）" : "";
-      var cv = wb.addWorksheet(("表紙" + tag).slice(0, 31), { pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1, horizontalCentered: true,
+      var cv = wb.addWorksheet(("表紙" + tag).slice(0, 31), { pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1, horizontalCentered: true, verticalCentered: true,
         margins: { left: 0.57, right: 0.57, top: 0.54, bottom: 0.54, header: 0.3, footer: 0.3 } } });
       var ws = wb.addWorksheet(("内訳" + tag).slice(0, 31), { pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: "3:3",
         margins: { left: 1.26, right: 0.9, top: 0.44, bottom: 0.44, header: 0.3, footer: 0.3 } }, views: [{ state: "frozen", ySplit: 3 }] });
@@ -756,7 +756,10 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       ws.getCell(rS, 2).font = f(M); ws.getCell(rM, 2).font = f(M); ws.getCell(rK, 2).font = f(M);
       ws.pageSetup.printArea = "A1:I" + rK;
       /* --- 表紙 --- */
-      for (var c0 = 1; c0 <= 15; c0++) cv.getColumn(c0).width = 9;
+      /* 枠（A1:O28）が用紙の横幅いっぱいになるように、横に長めにする。A4横の印刷できる所は 横÷縦＝約1.47。
+         列の幅は Windows では1文字約5.25pt、Mac では約4.5pt と細く出るので、細い Mac でも 横÷縦が1.47 になる幅（12）にする
+         （幅9だと Mac では 横÷縦＝1.1 しかなく、縦で縮められて横に25%ほど余っていた）。Windows では縦が少し余り、上下に分ける */
+      for (var c0 = 1; c0 <= 15; c0++) cv.getColumn(c0).width = 12;
       var RH = { 1: 17.25, 2: 45.75, 3: 15.75, 4: 18.75, 6: 30, 7: 29.25, 8: 21, 10: 21, 11: 21, 12: 23.25, 14: 27.75, 20: 18.75, 23: 25.5, 24: 18.75, 25: 14.25, 26: 14.25 };
       for (var r0 = 1; r0 <= 28; r0++) cv.getRow(r0).height = RH[r0] || 15.75;
       function put(a, v, sz, o) { var c = cv.getCell(a); c.value = v; c.font = f(M, sz, o && o.u); c.alignment = { horizontal: (o && o.al) || "left", vertical: "middle" }; if (o && o.fmt) c.numFmt = o.fmt; return c; }
@@ -779,6 +782,12 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     });
   }
 
+  /* 位置図の地図を置く大きさ（px）。A4 横 900×620。A3 は用紙いっぱいに大きく */
+  function mapFit(mm) {
+    var portrait = mm.orient === "portrait", a3 = mm.paper === 8, BOX = a3 ? (portrait ? [1000, 1420] : [1450, 960]) : (portrait ? [620, 900] : [900, 620]), BW = BOX[0], BH = BOX[1], MW = BW, MH = BH;
+    if (mm.mapW && mm.mapH) { var fs = Math.min(BW / mm.mapW, BH / mm.mapH); MW = Math.round(mm.mapW * fs); MH = Math.round(mm.mapH * fs); }
+    return { portrait: portrait, a3: a3, BW: BW, BH: BH, MW: MW, MH: MH, mark: 42 };
+  }
   function buildTreeWorkbook(ExcelJS, state, imgs) {
     imgs = imgs || { photos: {} };
     var trees = state.trees || [];
@@ -917,6 +926,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
 
     } // 公共用でないとき
     /* ===== 位置図（マーカーは独立オブジェクト＝Excelで移動/削除可）。図面が何枚もあれば、区画ごとにシートを分ける ===== */
+    /* 番号の丸は、アプリの側で地図の絵に描き込んでから渡す（mm.markers は空）。
+       Mac の Excel は、位置を「何行目から何pt」で置いた絵を約0.75倍の大きさで出すため、地図と丸を別々の絵にすると
+       行の位置で置いた丸と、縮んだ地図がずれていた。1枚の絵にすれば、どの Excel・どの端末でもずれない */
     var mapList = imgs.maps || (imgs.map ? [{ sheet: "位置図", title: "", map: imgs.map, mapW: imgs.mapW, mapH: imgs.mapH, markers: imgs.markers }] : []);
     mapList.forEach(function (mm) { mapSheet(mm); });
     function mapSheet(mm) {
@@ -925,12 +937,12 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
          （幅8の列なら本当は約58万 EMU なのに 8万 EMU）ので、列をまたいで置くと番号が最大1列分ずれていた */
       var EMU = 9525, R1 = 32, RH = 20; // 1行目 24pt＝32px、ほかの行 15pt＝20px（行の高さは pt なので端末によらず同じ）
       // 地図を置く枠（px）：A4 横 900×620。A3 は用紙いっぱいに大きく（Excel の「1ページに合わせる」は縮めるだけで広げないので、枠そのものを大きくする）
-      var portrait = mm.orient === "portrait", a3 = mm.paper === 8, BOX = a3 ? (portrait ? [1000, 1420] : [1450, 960]) : (portrait ? [620, 900] : [900, 620]), BW = BOX[0], BH = BOX[1];
+      var fit = mapFit(mm), portrait = fit.portrait, a3 = fit.a3, BW = fit.BW, BH = fit.BH;
       var ps = { orientation: portrait ? "portrait" : "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1 }; if (mm.paper) ps.paperSize = mm.paper; // 8＝A3、9＝A4
       var mp = wb.addWorksheet(String(mm.sheet || "位置図").replace(/[\[\]:*?\/\\]/g, "").slice(0, 31), { pageSetup: ps });
       mp.getCell("A1").value = "位置図　" + (mm.title ? mm.title + "　" : "") + name; mp.getCell("A1").font = font(14, true);
       var MW = BW, MH = BH, ox = 24, oy = R1 + 12, sz = 42;
-      if (mm.mapW && mm.mapH) { var fs = Math.min(BW / mm.mapW, BH / mm.mapH); MW = Math.round(mm.mapW * fs); MH = Math.round(mm.mapH * fs); } // 縦横比を変えない（縮尺が狂わない）
+      MW = fit.MW; MH = fit.MH; // 縦横比を変えない（縮尺が狂わない）
       mp.getColumn(1).width = (portrait || a3) ? Math.min(255, Math.ceil((MW + ox * 2) / 7) + 4) : 150; // 地図より十分広く（A3・縦の用紙は余白が出ないように地図に合わせる）
       var nRows = Math.ceil((oy + MH + sz - R1) / RH) + 2;
       mp.getRow(1).height = 24; for (var gr = 2; gr <= nRows; gr++) mp.getRow(gr).height = 15;
@@ -960,7 +972,11 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     /* 写真帳：6枚ごとに改ページ。Excel は「1ページに合わせる（fitToPage）」にすると手で入れた改ページを無視して
        次のページの写真の上が少し入ってしまうので、倍率（80%）で決めて改ページを効かせる */
     var pb = wb.addWorksheet("写真帳", { pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: false, scale: 80, horizontalCentered: true, margins: { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } } });
-    [2, 35, 2, 35, 2, 35].forEach(function (w, i) { pb.getColumn(i + 1).width = w; });
+    /* 1枚の枠＝［すき間｜写真のマス｜すき間］×［すき間の行／写真の行／すき間の行］。写真は「写真のマス」の角から角に置く
+       （大きさを px で決めると、Mac の Excel では約0.75倍に小さく出ていた。マスに合わせれば、どの Excel でも枠いっぱい）。
+       写真のマスの縦横比は、列の幅の出方が違う Windows（1文字約5.25pt）と Mac（約4.5pt）の間をとって、写真（650×858）に合わせる */
+    var PW = 36, GW = 1, SW = 1.5, PC = [3, 7, 11], photoPt = 233, gapPt = 5, capPt = 80;
+    [SW, GW, PW, GW, SW, GW, PW, GW, SW, GW, PW, GW].forEach(function (w, i) { pb.getColumn(i + 1).width = w; });
     pb.getCell("A1").value = ((state.bookTitle||"写真帳")+"　"+name); pb.getCell("A1").font = font(14, true);
     pb.getCell("A2").value = date + "　全" + trees.length + "件"; pb.getCell("A2").font = font(10);
     var frames = [];
@@ -970,28 +986,32 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       if (ph.length) { ph.forEach(function (p, k) { var cap = caption(t, no) + (ph.length > 1 ? ("\n（" + (k + 1) + "/" + ph.length + "）") : ""); frames.push({ img: p, cap: cap }); }); }
       else { frames.push({ img: null, cap: caption(t, no) }); }
     });
-    var COLS = [1, 3, 5], FW = 250, FH = 330, photoPt = FH * 0.75 + 3, capPt = 80, top = 3;
+    function outline(r1, c1, r2, c2) { for (var r = r1; r <= r2; r++) for (var c = c1; c <= c2; c++) { var b = {};
+      if (r === r1) b.top = { style: "thin" }; if (r === r2) b.bottom = { style: "thin" }; if (c === c1) b.left = { style: "thin" }; if (c === c2) b.right = { style: "thin" };
+      if (b.top || b.bottom || b.left || b.right) { var x = pb.getCell(r, c); x.border = Object.assign({}, x.border || {}, b); } } }
+    var top = 3;
     for (var pg = 0; pg < frames.length; pg += 6) {
       var chunk = frames.slice(pg, pg + 6);
       // ページの頭に細い空き行を入れる（改ページのすぐ上に次の写真の上の端が写り込まないように）
       pb.getRow(top).height = 9; top += 1;
-      pb.getRow(top).height = photoPt; pb.getRow(top + 2).height = photoPt;
-      pb.getRow(top + 1).height = capPt; pb.getRow(top + 3).height = capPt;
+      var halves = [top, top + 4];
+      halves.forEach(function (t0) { pb.getRow(t0).height = gapPt; pb.getRow(t0 + 1).height = photoPt; pb.getRow(t0 + 2).height = gapPt; pb.getRow(t0 + 3).height = capPt; });
       chunk.forEach(function (fr, k) {
-        var colIdx = COLS[k % 3], prow = top + (k < 3 ? 0 : 2), crow = prow + 1;
-        if (fr.img) { var iid = wb.addImage({ base64: raw(fr.img), extension: "jpeg" }); pb.addImage(iid, { tl: { col: colIdx, row: prow - 1 }, ext: { width: FW, height: FH }, editAs: "oneCell" }); }
-        pb.getCell(prow, colIdx + 1).border = border();
-        var cc = pb.getCell(crow, colIdx + 1); cc.value = fr.cap; cc.font = font(10);
-        cc.alignment = { horizontal: "left", vertical: "top", wrapText: true }; cc.border = border();
+        var t0 = halves[k < 3 ? 0 : 1], pc = PC[k % 3], prow = t0 + 1, crow = t0 + 3;
+        if (fr.img) { var iid = wb.addImage({ base64: raw(fr.img), extension: "jpeg" }); pb.addImage(iid, { tl: { col: pc - 1, row: prow - 1 }, br: { col: pc, row: prow }, editAs: "oneCell" }); }
+        outline(t0, pc - 1, t0 + 2, pc + 1);
+        pb.mergeCells(crow, pc - 1, crow, pc + 1);
+        var cc = pb.getCell(crow, pc - 1); cc.value = fr.cap; cc.font = font(10);
+        cc.alignment = { horizontal: "left", vertical: "top", wrapText: true }; outline(crow, pc - 1, crow, pc + 1);
       });
-      if (pg + 6 < frames.length) pb.getRow(top + 3).addPageBreak();
-      top += 4;
+      if (pg + 6 < frames.length) pb.getRow(top + 7).addPageBreak();
+      top += 8;
     }
     return wb;
   }
 
   root.buildTreeWorkbook = buildTreeWorkbook;
-  root.surveyText = { boardRows: boardRows, BOARD_HEAD: BOARD_HEAD, nameOf: nameOf, specOf: specOf, qtyOf: qtyOf, unitOf: unitOf, kubun: kubun, caption: caption, PRIO_SETS: PRIO_SETS, setPrio: setPrio, prioName: prioName, memoOf: memoOf };
+  root.surveyText = { boardRows: boardRows, BOARD_HEAD: BOARD_HEAD, nameOf: nameOf, specOf: specOf, qtyOf: qtyOf, unitOf: unitOf, kubun: kubun, caption: caption, mapFit: mapFit, PRIO_SETS: PRIO_SETS, setPrio: setPrio, prioName: prioName, memoOf: memoOf };
   if (typeof module !== "undefined" && module.exports) module.exports = { buildTreeWorkbook: buildTreeWorkbook };
 })(typeof window !== "undefined" ? window : globalThis);
 
@@ -4004,6 +4024,20 @@ function updateToMap(){ const b=document.getElementById("toMapBtn"); if(!b) retu
   b.style.display=show?"block":"none"; }
 window.addEventListener("scroll",updateToMap,{passive:true});
 function clearMarkers(){ const cm=CM(); if(!state.trees.some(t=>onMap(t,cm))) return; if(confirm((maps().length>1?"この図面（区画"+zoneCode(cm)+"）の":"地図の")+"番号配置を全て消去しますか？")){ pushUndo("clearpins"); state.trees.forEach(t=>{ if(onMap(t,cm)){ t.mx=null; t.my=null; t.mauto=false; } }); activePlace=-1; markDirty(); renderTrees(); renderMap(); } }
+/* 地図の絵に番号の丸を描き込む（Excel 用）。marks：[{x,y（地図の中の割合）,n,col}]、dRel：丸の直径（地図の幅に対する割合）。
+   丸の形は markerPng と同じ。地図が小さい絵のときは、丸がにじまないように大きくしてから描く */
+async function bakeMarks(src,marks,dRel){ const im=await loadImgEl(src), nw=im.naturalWidth, nh=im.naturalHeight, k=Math.max(1,Math.min(3,1400/Math.max(nw,1)));
+  const c=document.createElement("canvas"); c.width=Math.round(nw*k); c.height=Math.round(nh*k); const x=c.getContext("2d");
+  x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0,c.width,c.height);
+  let D=dRel*c.width, sc=D/84, pad=0, W=c.width, H=c.height;
+  if(marks.some(m=>m.x*W<D/2||m.y*H<D/2||(1-m.x)*W<D/2||(1-m.y)*H<D/2)){   // 端の丸が切れないように、まわりに白い余白を足す
+    pad=Math.ceil(D/2+3); const c2=document.createElement("canvas"); c2.width=W+pad*2; c2.height=H+pad*2; const x2=c2.getContext("2d");
+    x2.fillStyle="#fff"; x2.fillRect(0,0,c2.width,c2.height); x2.drawImage(c,pad,pad); return bakeOn(c2,x2); }
+  return bakeOn(c,x);
+  function bakeOn(cv,g){ marks.forEach(m=>{ const cx=pad+m.x*W, cy=pad+m.y*H, lb=String(m.n), x=g;
+    x.beginPath(); x.arc(cx,cy,(42-5)*sc,0,Math.PI*2); x.fillStyle=m.col||"rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=6*sc; x.strokeStyle="#fff"; x.stroke();
+    x.fillStyle="#fff"; x.font="bold "+([44,44,44,34,27,22][Math.min(5,lb.length)]*sc)+"px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(lb,cx,cy+sc); });
+    return { url:cv.toDataURL("image/jpeg",0.92), w:cv.width, h:cv.height }; } }
 function markerPng(n,color){ const S=84, cv=document.createElement("canvas"); cv.width=S; cv.height=S; const x=cv.getContext("2d");
   x.beginPath(); x.arc(S/2,S/2,S/2-5,0,Math.PI*2); x.fillStyle=color||"rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=6; x.strokeStyle="#fff"; x.stroke();
   const lb=String(n); x.fillStyle="#fff"; x.font="bold "+[44,44,44,34,27,22][Math.min(5,lb.length)]+"px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(lb,S/2,S/2+1);
@@ -5724,14 +5758,17 @@ async function exportExcel(pub){
           xmaps.push({ sheet: "位置図_全体_"+pt.label.slice(0,1), title: om.title+"　"+pt.label+"（"+(pk+1)+"/2）", map: pimg, mapW: msz[0]*pw, mapH: msz[1]*ph, legend: legendPng(om, legW(8, !plan.land, msz[0]*pw, msz[1]*ph)),
             paper: 8, orient: plan.land ? "landscape" : "portrait",
             markers: om.mks.filter(function(k){ return k[0]>=pt.u0-0.005&&k[0]<=pt.u1+0.005&&k[1]>=pt.v0-0.005&&k[1]<=pt.v1+0.005; })
-              .map(function(k){ return {x:(k[0]-pt.u0)/pw, y:(k[1]-pt.v0)/ph, img:markerPng(k[2],k[3])}; }) }); }
+              .map(function(k){ return {x:(k[0]-pt.u0)/pw, y:(k[1]-pt.v0)/ph, n:k[2], col:k[3]}; }) }); }
         continue;
       }
       if(om.frames.length) mapImg = await bakeFrames(mapImg, om.frames); // 全体図は区画の枠を描き込む
       else if(!/^data:image\/jpeg/.test(mapImg)) mapImg = await toJpeg(mapImg); // Excel には jpeg として入れる
       xmaps.push({ sheet: isAll(om.m) ? "位置図_全体" : oms.length>1 ? "位置図"+zoneCode(om.m) : "位置図", title: om.title, map: mapImg, mapW: msz&&msz[0], mapH: msz&&msz[1],
         paper: plan ? (plan.paper==="a3" ? 8 : 9) : undefined, legend: legendPng(om, legW(plan ? (plan.paper==="a3" ? 8 : 9) : 9, false, msz&&msz[0], msz&&msz[1])),
-        markers: om.mks.map(function(k){ return {x:k[0], y:k[1], img:markerPng(k[2],k[3])}; }) }); }
+        markers: om.mks.map(function(k){ return {x:k[0], y:k[1], n:k[2], col:k[3]}; }) }); }
+    for(var xi=0; xi<xmaps.length; xi++){ var xm=xmaps[xi]; if(!xm.markers||!xm.markers.length) continue;   // 番号の丸は地図の絵に描き込む（Excel でずれない）
+      var fit=window.surveyText.mapFit(xm), bk=await bakeMarks(xm.map, xm.markers, fit.mark/fit.MW);
+      if(bk.w!==bk.h*(xm.mapW/xm.mapH)){ xm.mapH=xm.mapW*bk.h/bk.w; } xm.map=bk.url; xm.markers=[]; }
     var wb=window.buildTreeWorkbook(window.ExcelJS, stCopy, {maps: xmaps});
     var buf=await wb.xlsx.writeBuffer();
     var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
