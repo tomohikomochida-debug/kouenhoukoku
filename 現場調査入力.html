@@ -756,8 +756,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       ws.getCell(rS, 2).font = f(M); ws.getCell(rM, 2).font = f(M); ws.getCell(rK, 2).font = f(M);
       ws.pageSetup.printArea = "A1:I" + rK;
       /* --- 表紙 --- */
-      /* 枠（A1:O28）が用紙の横幅いっぱいになるように、横÷縦を A4横の印刷できる所（約1.47）より少し横長に（1.53）。縦の余りは上下に分ける */
-      for (var c0 = 1; c0 <= 15; c0++) cv.getColumn(c0).width = 10;
+      /* 枠（A1:O28）が用紙の横幅いっぱいになるように、横÷縦を A4横の印刷できる所（約1.47）より少し横長に（約1.51）。縦の余りは上下に分ける。
+         列の幅1は 8px（日本語の Excel の標準のフォント：Mac・Windows とも）で計算 */
+      for (var c0 = 1; c0 <= 15; c0++) cv.getColumn(c0).width = 9.25;
       var RH = { 1: 17.25, 2: 45.75, 3: 15.75, 4: 18.75, 6: 30, 7: 29.25, 8: 21, 10: 21, 11: 21, 12: 23.25, 14: 27.75, 20: 18.75, 23: 25.5, 24: 18.75, 25: 14.25, 26: 14.25 };
       for (var r0 = 1; r0 <= 28; r0++) cv.getRow(r0).height = RH[r0] || 15.75;
       function put(a, v, sz, o) { var c = cv.getCell(a); c.value = v; c.font = f(M, sz, o && o.u); c.alignment = { horizontal: (o && o.al) || "left", vertical: "middle" }; if (o && o.fmt) c.numFmt = o.fmt; return c; }
@@ -780,6 +781,22 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     });
   }
 
+  /* 印刷の倍率を先に計算して入れておく。表示の情報が入ったファイルでは、Mac の Excel は「1ページに合わせる」を計算し直さず、
+     書いてある倍率（scale）のまま出すため。列の幅1＝8px（日本語の Excel の標準のフォント）、行は pt で計算する */
+  function fitScale(sh) {
+    var ps = sh.pageSetup || {}; if (!ps.fitToPage) return;
+    var pw = ps.paperSize === 8 ? 11.69 : 8.27, ph = ps.paperSize === 8 ? 16.54 : 11.69; if (ps.orientation === "landscape") { var t = pw; pw = ph; ph = t; }
+    var m = Object.assign({ left: 0.7, right: 0.7, top: 0.75, bottom: 0.75 }, ps.margins || {});
+    var W = (pw - m.left - m.right) * 72, H = (ph - m.top - m.bottom) * 72;
+    var c1 = 1, c2 = sh.columnCount || 1, r1 = 1, r2 = sh.rowCount || 1;
+    var mm = /^\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)$/.exec(String(ps.printArea || ""));
+    var cn = function (a) { var n = 0; for (var i = 0; i < a.length; i++) n = n * 26 + a.charCodeAt(i) - 64; return n; };
+    if (mm) { c1 = cn(mm[1]); r1 = +mm[2]; c2 = cn(mm[3]); r2 = +mm[4]; }
+    var cw = 0, rh = 0; for (var c = c1; c <= c2; c++) cw += Math.floor((sh.getColumn(c).width || 9) * 8) * 0.75;
+    for (var r = r1; r <= r2; r++) rh += sh.getRow(r).height || 15;
+    var sc = cw ? W / cw : 1; if (ps.fitToHeight === 1 && rh) sc = Math.min(sc, H / rh);
+    ps.scale = Math.max(10, Math.min(100, Math.floor(sc * 100 * 0.98)));
+  }
   /* 位置図の地図を置く大きさ（px）。A4 横 900×620。A3 は用紙いっぱいに大きく */
   function mapFit(mm) {
     var portrait = mm.orient === "portrait", a3 = mm.paper === 8, BOX = a3 ? (portrait ? [1000, 1420] : [1450, 960]) : (portrait ? [620, 900] : [900, 620]), BW = BOX[0], BH = BOX[1], MW = BW, MH = BH;
@@ -938,8 +955,8 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       mp.getCell("A1").value = "位置図　" + (mm.title ? mm.title + "　" : "") + name; mp.getCell("A1").font = font(14, true);
       var MW = BW, MH = BH, ox = 24, oy = R1 + 12, sz = 42;
       MW = fit.MW; MH = fit.MH; // 縦横比を変えない（縮尺が狂わない）
-      mp.getColumn(1).width = (portrait || a3) ? Math.min(255, Math.ceil((MW + ox * 2) / 7) + 4) : 150; // 地図より十分広く（A3・縦の用紙は余白が出ないように地図に合わせる）
-      var nRows = Math.ceil((oy + MH + sz - R1) / RH) + 2;
+      mp.getColumn(1).width = Math.min(255, Math.ceil((MW + ox * 2) / 7) + 4); // 地図より少し広く（幅1＝日本語の Excel で 8px、ほかで 7px。どちらでも地図が列からはみ出さない）
+      var nRows = Math.ceil((oy + MH + sz - R1) / RH) + 1;
       mp.getRow(1).height = 24; for (var gr = 2; gr <= nRows; gr++) mp.getRow(gr).height = 15;
       var at = function (x, y) {
         x = Math.max(0, x); y = Math.max(0, y);
@@ -950,7 +967,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
         var lw = Math.min(mm.legend.w, MW), lh = Math.round(mm.legend.h * lw / mm.legend.w);
         var lid = wb.addImage({ base64: raw(mm.legend.img), extension: "png" });
         mp.addImage(lid, { tl: at(ox, oy), ext: { width: lw, height: lh }, editAs: "oneCell" });
-        oy += lh + 10; nRows = Math.ceil((oy + MH + sz - R1) / RH) + 2; for (var gr2 = 2; gr2 <= nRows; gr2++) mp.getRow(gr2).height = 15;
+        oy += lh + 10; nRows = Math.ceil((oy + MH + sz - R1) / RH) + 1; for (var gr2 = 2; gr2 <= nRows; gr2++) mp.getRow(gr2).height = 15;
       }
       var mid = wb.addImage({ base64: raw(mm.map), extension: "jpeg" });
       mp.addImage(mid, { tl: at(ox, oy), ext: { width: MW, height: MH }, editAs: "oneCell" });
@@ -969,8 +986,8 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     var pb = wb.addWorksheet("写真帳", { pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: false, scale: 80, horizontalCentered: true, margins: { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } } });
     /* 1枚の枠＝［すき間｜写真のマス｜すき間］×［すき間の行／写真の行／すき間の行］。写真は「写真のマス」の角から角に置く
        （マスに合わせるので、どの Excel でも枠いっぱい）。
-       写真のマスは 幅36（252px）× 高さ249.5pt（333px）で、写真（650×858）と同じ縦横比 */
-    var PW = 36, GW = 1, SW = 1.5, PC = [3, 7, 11], photoPt = 249.5, gapPt = 5, capPt = 80;
+       写真のマスは 幅31（日本語の Excel で 248px）× 高さ245.5pt（327px）で、写真（650×858）と同じ縦横比 */
+    var PW = 31, GW = 1, SW = 1.5, PC = [3, 7, 11], photoPt = 245.5, gapPt = 5, capPt = 80;
     [SW, GW, PW, GW, SW, GW, PW, GW, SW, GW, PW, GW].forEach(function (w, i) { pb.getColumn(i + 1).width = w; });
     pb.getCell("A1").value = ((state.bookTitle||"写真帳")+"　"+name); pb.getCell("A1").font = font(14, true);
     pb.getCell("A2").value = date + "　全" + trees.length + "件"; pb.getCell("A2").font = font(10);
@@ -1007,8 +1024,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     wb.views = [{ x: 0, y: 0, width: 20000, height: 12000, firstSheet: 0, activeTab: 0, visibility: "visible" }];
     wb.eachSheet(function (sh) {
       var vs = (sh.views && sh.views.length) ? sh.views : [{}];
-      sh.views = vs.map(function (v) { return Object.assign({ state: "normal", zoomScale: 100, zoomScaleNormal: 100 }, v); });
+      sh.views = vs.map(function (v) { return Object.assign({ state: "normal" }, v); });
       sh.properties.dyDescent = 0.25;
+      fitScale(sh);
     });
     return wb;
   }
