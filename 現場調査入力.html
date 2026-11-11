@@ -405,7 +405,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   .pbtn{ border:1.5px solid var(--line); background:#fff; border-radius:999px; padding:5px 14px; font-size:14px; font-weight:700; color:var(--sub); }
   .pbtn.p1.on{ background:#D62828; border-color:#D62828; color:#fff; } .pbtn.p2.on{ background:#E8890C; border-color:#E8890C; color:#fff; } .pbtn.p3.on{ background:#2E7D55; border-color:#2E7D55; color:#fff; }
   .no.p1{ background:#D62828; } .no.p2{ background:#E8890C; } .no.p3{ background:#2E7D55; }
-  #prioBar .pbrow,#outPanelBook .pbrow{ display:flex; align-items:center; gap:6px 8px; flex-wrap:wrap; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin:0 0 8px; font-size:13px; }
+  #prioBar .pbrow,#outPanelBook .pbrow,#quotePrio .pbrow{ display:flex; align-items:center; gap:6px 8px; flex-wrap:wrap; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin:0 0 8px; font-size:13px; }
   .pchip{ border-radius:999px; padding:2px 10px; font-weight:700; color:#fff; font-size:12.5px; }
   .pchip.p1{ background:#D62828; } .pchip.p2{ background:#E8890C; } .pchip.p3{ background:#2E7D55; } .pchip.p0{ background:#9a958b; }
   .psel{ width:auto; max-width:190px; font-size:13px; padding:5px 6px; }
@@ -414,6 +414,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   .osep{ width:1px; height:20px; background:var(--line); margin:0 2px; }
   .obreak{ flex-basis:100%; height:0; }
   .ocnt{ margin-left:auto; color:var(--sub); }
+  .qpset{ border:1.5px solid var(--line); background:#fff; border-radius:999px; padding:4px 12px; font-size:13px; font-weight:700; color:var(--sub); }
+  .qpset.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .qpnote{ flex-basis:100%; font-size:12px; color:var(--sub); }
   .pleg{ display:flex; flex-wrap:wrap; gap:6px 14px; justify-content:center; align-items:center; font-size:13px; margin-top:6px; padding:5px 10px; border:1px solid #bbb; border-radius:4px; }
   .pleg i{ display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:4px; vertical-align:-1px; }
   .pleg i.fr{ border-radius:1px; border:2px solid; width:10px; height:10px; }
@@ -493,6 +496,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   </section>
 
   <section id="quote" style="display:none">
+    <div id="quotePrio"></div>
     <div class="case">
       <div class="row2">
         <div><label>運搬費(円)</label><input id="exCarry" inputmode="numeric" oninput="setExtra('carry',this.value)"></div>
@@ -4840,8 +4844,9 @@ function showTab(w){
   if(typeof updateToMap==="function") updateToMap();
 }
 function qtyNum(t){ return t.type==="exterior"?(Number(t.qty)||0):1; }
-function computeTotals(){ let items=0; (state.trees||[]).forEach(t=>{ items+=(Number(t.up)||0)*qtyNum(t); });
-  const ex=effExtras().ex; const extra=(Number(ex.carry)||0)+(Number(ex.dispose)||0)+(Number(ex.misc)||0);
+const otNoQ=t=>t.__no||"";
+function computeTotals(){ let items=0; const OT=outTrees(); OT.forEach(t=>{ items+=(Number(t.up)||0)*qtyNum(t); });
+  const ex=effExtras(OT,otNoQ).ex; const extra=(Number(ex.carry)||0)+(Number(ex.dispose)||0)+(Number(ex.misc)||0);
   const kei=items+extra; const tr=(state.taxRate!==""&&state.taxRate!=null)?Number(state.taxRate):0.1;
   const tax=Math.round(kei*tr); return {items,extra,kei,tax,total:kei+tax,tr}; }
 function yen(n){ return "¥"+Math.round(n||0).toLocaleString(); }
@@ -4915,7 +4920,7 @@ function setDispCfg(k,v){ pushUndo("upd:disp:"+k); const c=dispCfg(); c[k]=v==="
 function dispApply(k,v){ pushUndo("dispapply"); state.extras=state.extras||{}; state.extras[k]=String(v); markDirty(); renderQuote(); toast((k==="dispose"?"処分費":"運搬費")+"に "+yen(v)+" を入れました（↶で戻せます）"); }
 function renderDispRef(keepFocus){ const el=document.getElementById("dispRef"); if(!el) return;
   if(state.mode==="exterior"&&!(state.trees||[]).some(t=>t.type!=="exterior")){ el.style.display="none"; return; } el.style.display="";
-  const M=dispRefMoney(), cf=M.cf, r=M.r, fx=n=>Math.round(n*100)/100, disp=M.dispose, trip=M.trip, trucks=M.trucks, carry=M.carry, S=dispSite(), park=M.site==="park";
+  const M=dispRefMoney(outTrees(),otNoQ), cf=M.cf, r=M.r, fx=n=>Math.round(n*100)/100, disp=M.dispose, trip=M.trip, trucks=M.trucks, carry=M.carry, S=dispSite(), park=M.site==="park";
   const kinds=Object.keys(S.T).filter(k=>r.rows[k]);
   const warn=[r.miss.nog?"幹周が入っていない木 "+r.miss.nog+"本は入っていません":"", r.miss.other.length?"「"+[...new Set(r.miss.other)].join("・")+"」の "+r.miss.other.length+"本は入っていません":""].filter(Boolean);
   const inp=(k,ph,w)=>`<input type="number" inputmode="decimal" class="dpin" style="width:${w||110}px" value="${cf[k]===""||cf[k]==null?"":cf[k]}" placeholder="${ph}" onchange="setDispCfg('${k}',this.value)">`;
@@ -4983,10 +4988,10 @@ function pubHTML(){ const cf=pubCfg(), n=prioNames();
     <div class="row2"><div><label>諸経費（小計の何%）</label><input inputmode="decimal" value="${esc(cf.miscRate)}" oninput="setPub('miscRate',this.value)"></div>
     <div><label>見積有効期限（書くときだけ）</label><input value="${esc(cf.valid)}" placeholder="例 令和9年3月31日まで" oninput="setPub('valid',this.value)"></div></div>
     <div class="muted" style="font-size:12.5px;margin-top:4px">下の「公共用Excel」で、表紙と内訳を書き出し、位置図と写真帳を付けます。優先度を付けていれば「全部」「${esc(n[0])}・${esc(n[1])}」「${esc(n[0])}」の3組を作ります（内訳の番号は全部の組で同じ。入らない木は番号だけ残します）。運搬費・処分費は組ごとに千円単位で出します。</div>`; }
-function renderQuote(){ const ex=state.extras||{}; renderDispRef(); { const pe=document.getElementById("pubCfg"); if(pe&&!pe.contains(document.activeElement)) pe.innerHTML=pubHTML(); }
+function renderQuote(){ const ex=state.extras||{}; renderQuotePrio(); renderDispRef(); { const pe=document.getElementById("pubCfg"); if(pe&&!pe.contains(document.activeElement)) pe.innerHTML=pubHTML(); }
   const c=document.getElementById("exCarry"),dsp=document.getElementById("exDispose"),m=document.getElementById("exMisc"),tx=document.getElementById("taxRate");
   if(c) c.value=ex.carry||""; if(dsp) dsp.value=ex.dispose||""; if(m) m.value=ex.misc||"";
-  { const M=dispRefMoney(); if(c) c.placeholder=M.carry?"空なら参考 "+M.carry.toLocaleString()+" 円":""; if(dsp) dsp.placeholder=M.dispose?"空なら参考 "+M.dispose.toLocaleString()+" 円":""; }
+  { const M=dispRefMoney(outTrees(),otNoQ); if(c) c.placeholder=M.carry?"空なら参考 "+M.carry.toLocaleString()+" 円":""; if(dsp) dsp.placeholder=M.dispose?"空なら参考 "+M.dispose.toLocaleString()+" 円":""; }
   if(tx) tx.value=(state.taxRate!==""&&state.taxRate!=null)?Math.round(Number(state.taxRate)*100):"";
   const t=computeTotals(); const el=document.getElementById("totals");
   if(el) el.innerHTML=`<div class="trow"><span>明細小計</span><b>${yen(t.items)}</b></div>`+
@@ -5553,7 +5558,18 @@ function allPaperHTML(){ const p=ovPlanNow(); if(!p) return ""; const v=state.al
   return `<span class="obreak"></span><label class="ochk">全体図の用紙 <select class="psel" onchange="setAllPaper(this.value)">${o.map(([k,t])=>`<option value="${k}" ${k===v?"selected":""}>${t}</option>`).join("")}</select></label>`+
     `<span class="ocnt" style="margin-left:2px">${p.auto?"→ いまは ":"→ "}<b>${paperLabel(p)}</b>${p.crowd?"（丸の重なり "+p.crowd+"個）":""}</span>`; }
 function setAllPaper(v){ state.allPaper=v; markDirty(); renderPrioBar(); }
-function setOutPrio(k,on){ const f=outFilter(); let p=f.p.filter(x=>x!==k); if(on) p.push(k); state.outFilter={p,renum:f.renum}; markDirty(); renderPrioBar(); if(document.getElementById("book").style.display!=="none") renderBook(); }
+/* 見積タブ：見積に入れる優先度（写真帳・Excel・PDF の「出力」と同じ設定） */
+function renderQuotePrio(){ const box=document.getElementById("quotePrio"); if(!box) return;
+  if(!anyPrio()){ box.innerHTML=""; return; }
+  const n=prioNames(), f=outFilter(), OT=outTrees(), same=(a)=>a.length===f.p.length&&a.every(x=>f.p.includes(x));
+  const sets=[["全部",[1,2,3,0]],[n[0]+"・"+n[1],[1,2]],[n[0],[1]]];
+  const ex=state.extras||{}, hand=["carry","dispose"].filter(k=>String(ex[k]||"").trim()!=="").map(k=>k==="carry"?"運搬費":"処分費");
+  box.innerHTML=`<div class="pbrow"><b>見積に入れる優先度</b>`+sets.map(([l,p])=>`<button type="button" class="qpset ${same(p)?"on":""}" onclick="setOutSet('${p.join(",")}')">${esc(l)}</button>`).join("")+
+    `<span class="osep"></span>`+[1,2,3,0].map(k=>`<label class="ochk"><input type="checkbox" ${f.p.includes(k)?"checked":""} onchange="setOutPrio(${k},this.checked)">${k?esc(n[k-1]):"未設定"}</label>`).join("")+
+    `<span class="ocnt">${state.trees.length}件中 <b>${OT.length}件</b> の金額</span>`+
+    `<span class="qpnote">写真帳・Excel・PDF の「出力」と同じ選び方です。${hand.length&&!outAll()?"<b>"+hand.join("・")+"は入れた金額のまま</b>です（欄を空にすると、選んだ木の発生材で参考の金額になります）。":""}</span></div>`; }
+function setOutSet(v){ const f=outFilter(); state.outFilter={p:v.split(",").map(Number),renum:f.renum}; markDirty(); renderPrioBar(); renderQuote(); if(document.getElementById("book").style.display!=="none") renderBook(); }
+function setOutPrio(k,on){ const f=outFilter(); let p=f.p.filter(x=>x!==k); if(on) p.push(k); state.outFilter={p,renum:f.renum}; markDirty(); renderPrioBar(); renderQuote(); if(document.getElementById("book").style.display!=="none") renderBook(); }
 function setRenum(v){ const f=outFilter(); state.outFilter={p:f.p,renum:v}; markDirty(); renderPrioBar(); if(document.getElementById("book").style.display!=="none") renderBook(); }
 function setPrioSet(k){ pushUndo("prioset"); state.prioSet=k; window.surveyText.setPrio(k); markDirty(); renderTrees(); }
 function sortByPrio(){
