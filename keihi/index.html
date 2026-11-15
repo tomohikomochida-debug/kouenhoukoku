@@ -42,6 +42,8 @@ body{margin:0; background:var(--paper); color:var(--ink);
 .list{display:flex; flex-direction:column; gap:10px; margin-bottom:14px}
 .rc{display:flex; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:10px}
 .thumb{width:60px; height:80px; object-fit:cover; border-radius:6px; flex:0 0 auto; background:#eee}
+.photo-link{font-size:12px; color:var(--bark); text-decoration:none; border:1px solid var(--line); border-radius:999px; padding:2px 8px; white-space:nowrap}
+.photo-wait{font-size:12px; color:var(--bark); opacity:.7}
 .rc-body{flex:1; min-width:0}
 .reading{color:var(--bark); font-size:14px; padding:14px 2px}
 .err{color:var(--danger); font-size:14px; font-weight:700}
@@ -174,11 +176,13 @@ input:focus{outline:none; border-bottom-color:var(--leaf)}
 
   <section class="card" id="captureCard">
     <div class="col" id="captureIdle">
-      <button class="btn primary big" id="pickFile">📷 レシートを撮る・選ぶ（複数OK）</button>
-      <input id="fileInput" type="file" accept="image/*" capture="environment" multiple hidden>
+      <button class="btn primary big" id="pickCam">📷 カメラで撮る</button>
+      <button class="btn ghost" id="pickFile">🖼 撮った写真から選ぶ（何枚でも）</button>
+      <input id="camInput" type="file" accept="image/*" capture="environment" hidden>
+      <input id="fileInput" type="file" accept="image/*" multiple hidden>
       <div id="camWarn"></div>
       <button class="btn ghost" id="manualAdd">手入力で1件追加</button>
-      <p class="note">撮った写真がくっきりしているほど、よく読み取れます。何枚でもまとめて選べます。</p>
+      <p class="note">1枚の写真にレシートを何枚並べてもOKです（重ねずに、4〜6枚くらいまで）。1枚ずつ別の明細になり、レシートの写真は控えとしてドライブに残ります。紙のレシートは今まで通り保管してください。</p>
     </div>
   </section>
 
@@ -407,15 +411,23 @@ function recCardHTML(r){
     <div class="why-row">${r.why?`<span class="why">${esc(r.why)}</span>`:`<span class="why"></span>`}
       ${r.pay==="advance"&&r.settled?`<span class="settled">清算済</span>`:""}
       ${r.edited?`<span class="badge-log">変更履歴あり</span>`:""}
+      <span data-photo="${esc(String(r.id))}">${photoHTML(r)}</span>
       <button class="del" data-act="delrec" data-id="${r.id}">削除</button></div>
   </div></div>`;
 }
+function photoHTML(r){
+  if(r.photo) return `<a class="photo-link" href="${esc(r.photo)}" target="_blank" rel="noopener">📷 レシートの写真</a>`;
+  if(r.photoSaving) return `<span class="photo-wait">写真を保存中…</span>`;
+  if(r.photoErr) return `<span class="photo-wait">写真は保存できませんでした</span>`;
+  return "";
+}
+function setPhotoUI(id){ const r=rec(id); const el=document.querySelector(`[data-photo="${CSS.escape(String(id))}"]`); if(r&&el) el.innerHTML=photoHTML(r); }
 function renderList(){ $("recList").innerHTML = state.records.map(recCardHTML).join(""); }
 
 function renderPending(){
   $("pendingList").innerHTML = pending.map(p=>{
     let inner;
-    if(p.status==="reading") inner=`<div class="reading">読み取り中…</div>`;
+    if(p.status==="reading") inner=`<div class="reading">読み取り中…${p.list?`（${p.added.length}/${p.list.length}枚 保存済み）`:""}</div>`;
     else inner=`<div class="err">読み取れませんでした</div><div class="errmsg">${esc(p.errMsg||"")}</div>
       <div class="err-btns">
         <button class="btn ghost sm" data-act="retry" data-tid="${p.tempId}">もう一度</button>
@@ -569,28 +581,71 @@ async function addManual(){
 }
 $("manualAdd").onclick=addManual;
 
+$("pickCam").onclick=()=>$("camInput").click();
 $("pickFile").onclick=()=>$("fileInput").click();
-$("fileInput").onchange=(e)=>{ Array.from(e.target.files||[]).forEach(f=>{ const r=new FileReader(); r.onload=()=>addPhoto(r.result); r.readAsDataURL(f); }); e.target.value=""; };
+function takeFiles(e){ Array.from(e.target.files||[]).forEach(f=>{ const r=new FileReader(); r.onload=()=>addPhoto(r.result); r.readAsDataURL(f); }); e.target.value=""; }
+$("camInput").onchange=takeFiles;
+$("fileInput").onchange=takeFiles;
 
-function compress(dataUrl,maxW=1280,q=0.82){
-  return new Promise(res=>{ const img=new Image(); img.onload=()=>{ const sc=Math.min(1,maxW/img.width); const cv=document.createElement("canvas"); cv.width=Math.round(img.width*sc); cv.height=Math.round(img.height*sc); cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height); const o=cv.toDataURL("image/jpeg",q); res({thumb:o,b64:o.split(",")[1]}); }; img.src=dataUrl; });
+function loadImg(src){ return new Promise((res,rej)=>{ const img=new Image(); img.onload=()=>res(img); img.onerror=()=>rej(new Error("写真を開けませんでした")); img.src=src; }); }
+/* 画像の一部（box＝[上,左,下,右] を0〜1000）を、長い辺 maxL まで縮めて JPEG にする。box が無ければ全体 */
+function cut(img,box,maxL,q){
+  let sx=0,sy=0,sw=img.width,sh=img.height;
+  if(box){ const m=15; // 枠の外に少し余白
+    const t=Math.max(0,box[0]-m), l=Math.max(0,box[1]-m), bt=Math.min(1000,box[2]+m), r=Math.min(1000,box[3]+m);
+    sx=Math.round(img.width*l/1000); sy=Math.round(img.height*t/1000); sw=Math.max(1,Math.round(img.width*(r-l)/1000)); sh=Math.max(1,Math.round(img.height*(bt-t)/1000)); }
+  const sc=Math.min(1,maxL/Math.max(sw,sh));
+  const cv=document.createElement("canvas"); cv.width=Math.round(sw*sc); cv.height=Math.round(sh*sc);
+  cv.getContext("2d").drawImage(img,sx,sy,sw,sh,0,0,cv.width,cv.height);
+  const o=cv.toDataURL("image/jpeg",q); return {url:o,b64:o.split(",")[1]};
 }
 async function addPhoto(dataUrl){
-  const {thumb,b64}=await compress(dataUrl);
-  const p={tempId:tempSeq++, thumb, b64, status:"reading", errMsg:""};
-  pending.unshift(p); renderPending(); analyze(p);
+  const p={tempId:tempSeq++, thumb:"", src:dataUrl, status:"reading", errMsg:"", list:null, added:[], ym, author};
+  pending.unshift(p); renderPending();
+  try{
+    const img=await loadImg(dataUrl);
+    p.thumb=cut(img,null,240,0.7).url;
+    p.b64=cut(img,null,2400,0.85).b64;   // 何枚も並べても文字が読めるよう、大きめで読ませる
+    renderPending(); analyze(p);
+  }catch(e){ p.status="error"; p.errMsg=String(e.message||e); renderPending(); }
 }
 async function analyze(p){
   try{
-    const d=await apiPost({mode:"analyze",image:p.b64});
-    if(!d.ok) throw new Error(d.error||"読み取り失敗");
-    const j=d.data;
-    const add=await apiPost({mode:"addRecord",row:{ym,date:j.date,category:j.category,store:j.store,items:j.items,amount:j.total,pay:j.pay,who:"",settled:false,author}});
-    if(!add.ok) throw new Error("保存に失敗しました");
+    if(!p.list){
+      const d=await apiPost({mode:"analyze",image:p.b64});
+      if(!d.ok) throw new Error(d.error||"読み取り失敗");
+      p.list=(d.list&&d.list.length)?d.list:[d.data];
+      if(p.list.length===1) p.list[0].box=null;   // 1枚だけなら写真全体を残す
+      renderPending();
+    }
+    const img=await loadImg(p.src);
+    for(let i=0;i<p.list.length;i++){
+      if(p.added.indexOf(i)>=0) continue;   // 「もう一度」で同じレシートを二重に入れない
+      const j=p.list[i];
+      const row={ym:p.ym,date:j.date,category:j.category,store:j.store,items:j.items,amount:j.total,pay:j.pay,who:"",settled:false,author:p.author};
+      const add=await apiPost({mode:"addRecord",row});
+      if(!add.ok) throw new Error("保存に失敗しました");
+      p.added.push(i);
+      const r=Object.assign({id:add.id},row,{why:j.why,photo:"",photoSaving:true});
+      if(p.ym===ym){ state.records.unshift(r); renderAll(); }
+      renderPending();
+      savePhoto(r, cut(img,j.box,1600,0.8).b64);
+    }
+    const n=p.list.length;
     pending=pending.filter(x=>x!==p); renderPending();
-    state.records.unshift({id:add.id,ym,date:j.date,category:j.category,store:j.store,items:j.items,amount:j.total,pay:j.pay,who:"",settled:false,author});
-    renderAll();
+    if(n>1) toast(n+"枚のレシートを読み取りました");
   }catch(e){ p.status="error"; p.errMsg=String(e.message||e); renderPending(); }
+}
+/* レシートの写真（控え）をドライブへ。失敗しても明細はそのまま */
+async function savePhoto(r,b64){
+  try{
+    const d=await apiPost({mode:"savePhoto",id:r.id,image:b64});
+    r.photoSaving=false;
+    if(d&&d.ok){ r.photo=d.url; }
+    else if(d&&d.error==="unknown mode"){ /* GASがまだ前の版：写真は残さない */ }
+    else r.photoErr=true;
+  }catch(e){ r.photoSaving=false; r.photoErr=true; }
+  setPhotoUI(r.id);
 }
 
 /* ===== 月締め・月移動 ===== */

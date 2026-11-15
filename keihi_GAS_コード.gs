@@ -5,6 +5,9 @@
  * ・財布の残高は「最初からの通し計算」で常に即時（締めなくても翌月につながる）
  * ・財布を数えて帳簿とズレていたら、差額を「過不足」として記録して合わせる
  * ・明細の編集／削除を「編集履歴」シートに自動で記録（いつ・誰が・どの項目を・旧→新）
+ * ・1枚の写真に何枚レシートが写っていても、1枚ずつ別の明細にする（位置も読んで切り抜く）
+ * ・レシートの写真を控えとして「社内アプリ ＞ 経費のレシート ＞ 年度 ＞ 月」に保存し、明細の photo 列にリンク
+ *   （電子帳簿保存法のスキャナ保存ではない。紙のレシートは今まで通り保管する）
  *
  * 返り値はすべて { ok:true/false, error?:"..." } 形式（日報アプリと同じ作法）
  ****************************************************************/
@@ -12,7 +15,7 @@
 var GEMINI_MODEL = 'gemini-3.8-flash';   // レシートを読むGeminiのモデル（2.5 は新しい利用者には出ないので使わない）
 
 var SHEETS = {
-  rec: { name: '明細', head: ['id', 'ym', 'date', 'category', 'store', 'items', 'amount', 'pay', 'who', 'settled', 'createdAt', 'author'] },
+  rec: { name: '明細', head: ['id', 'ym', 'date', 'category', 'store', 'items', 'amount', 'pay', 'who', 'settled', 'createdAt', 'author', 'photo'] },
   inj: { name: '入金', head: ['id', 'ym', 'amount', 'createdAt'] },
   mon: { name: '月設定', head: ['ym', 'opening', 'counted', 'closed'] },
   adj: { name: '過不足', head: ['id', 'ym', 'amount', 'counted', 'book', 'who', 'createdAt'] },
@@ -22,11 +25,13 @@ var SHEETS = {
 // 編集履歴に残すときの項目名（日本語）
 var FIELD_LBL = { date: '日付', category: '費目', store: '店名', amount: '金額', pay: '支払い', who: '立替の人', settled: '精算', items: '品目', author: '記録者' };
 
-// レシート読み取りの指示文（費目は「買った物の中身」で判定）
+// レシート読み取りの指示文（費目は「買った物の中身」で判定）。1枚の写真に何枚写っていても全部読む
 var PROMPT =
-  'あなたは造園会社の経理担当です。レシート画像から現金出納帳の1行を作ります。' +
+  'あなたは造園会社の経理担当です。画像に写っているレシート・領収書を全部見つけ、1枚ごとに現金出納帳の1行を作ります。' +
+  '写っているのが1枚だけでも、何枚並んでいても、レシート1枚につき receipts に1つ入れてください。同じレシートを2回入れないこと。' +
   'JSONだけ返してください。' +
-  '{"date":"M/D","store":"店名","items":["主な品目を最大5つ"],"total":合計金額の数値,"category":費目,"pay":"cash または card","why":"理由15字","confidence":0〜1}' +
+  '{"receipts":[{"date":"M/D","store":"店名","items":["主な品目を最大5つ"],"total":合計金額の数値,"category":費目,"pay":"cash または card","why":"理由15字","confidence":0〜1,"box":[ymin,xmin,ymax,xmax]}]}' +
+  'box はそのレシート全体を囲む位置で、画像の左上を0・右下を1000とした整数。receipts は画像の左上から右下へ読む順に並べる。' +
   '費目は必ず次から1つ: 車両費 / 材料費 / 消耗品費 / 設備費 / 処分費 / 交通費 / 福利厚生費 / 雑費。' +
   '費目は店ではなく買った物の中身で決める（例：ホームセンターでも刃やビスは消耗品費、木材や砂利や植木は材料費、棚や機械は設備費）。' +
   'ガソリン・軽油・高速料金・駐車場・洗車・車の整備や部品は車両費。残土や廃材やゴミの処分代は処分費。' +
@@ -41,7 +46,14 @@ function sh_(key) {
   if (!s) { s = ss.insertSheet(def.name); s.appendRow(def.head); }
   return s;
 }
-function setup() { sh_('rec'); sh_('inj'); sh_('mon'); sh_('adj'); sh_('log'); } // 初回に1度だけ手動実行
+// 初回と、更新したときに1度だけ手動実行（新しい列の見出しを足し、ドライブへの保存を許可する）
+function setup() { sh_('rec'); sh_('inj'); sh_('mon'); sh_('adj'); sh_('log'); ensureHead_('rec'); receiptRoot_(); }
+/* 後から足した列の見出し（photo など）が、すでにあるシートに無ければ足す */
+function ensureHead_(key) {
+  var s = sh_(key), head = SHEETS[key].head;
+  var cur = s.getRange(1, 1, 1, Math.max(s.getLastColumn(), 1)).getValues()[0];
+  head.forEach(function (h, i) { if (String(cur[i] || '') !== h && !cur[i]) s.getRange(1, i + 1).setValue(h); });
+}
 
 function out_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
@@ -90,7 +102,7 @@ function logCountByRec_() {
 /* ============ 読み取り（GET） ============ */
 function doGet(e) {
   var a = (e.parameter.action || '');
-  if (a === 'ping') return out_({ ok: true, msg: 'ok', model: GEMINI_MODEL });
+  if (a === 'ping') return out_({ ok: true, msg: 'ok', model: GEMINI_MODEL, multi: true, photo: true });
   if (a === 'month') return out_(readMonth(e.parameter.ym));
   if (a === 'summary') return out_(getSummary());
   return out_({ ok: false, error: 'unknown action' });
@@ -206,6 +218,7 @@ function doPost(e) {
   try {
     switch (b.mode) {
       case 'analyze':         return out_(analyzeReceipt(b.image));
+      case 'savePhoto':       return out_(savePhoto(b.id, b.image));
       case 'addRecord':       return out_(addRecord(b.row));
       case 'updateRecord':    return out_(updateRecord(b.id, b.patch, b.editor));
       case 'deleteRecord':    return out_(deleteRecord(b.id, b.editor));
@@ -226,7 +239,7 @@ function addRecord(row) {
   sh_('rec').appendRow([
     id, row.ym, row.date || '', row.category || '', row.store || '',
     (row.items || []).join('/'), Number(row.amount) || 0,
-    row.pay || 'cash', row.who || '', row.settled ? true : false, new Date(), row.author || ''
+    row.pay || 'cash', row.who || '', row.settled ? true : false, new Date(), row.author || '', ''
   ]);
   return { ok: true, id: id };
 }
@@ -395,17 +408,62 @@ function analyzeReceipt(b64) {
     j = JSON.parse(text.slice(s, e + 1));
   }
   var allow = ['車両費','材料費','消耗品費','設備費','処分費','交通費','福利厚生費','雑費'];
-  return {
-    ok: true,
-    data: {
-      date: j.date || '',
-      store: j.store || '',
-      items: Array.isArray(j.items) ? j.items : [],
-      total: Number(String(j.total).replace(/[^\d.-]/g, '')) || 0,
-      category: allow.indexOf(j.category) >= 0 ? j.category : '',
-      pay: j.pay === 'card' ? 'card' : 'cash',
-      why: j.why || '',
-      confidence: Number(j.confidence) || 0
-    }
-  };
+  var arr = Array.isArray(j) ? j : (Array.isArray(j.receipts) ? j.receipts : [j]);
+  var list = arr.filter(function (x) { return x && typeof x === 'object'; }).map(function (x) {
+    var bx = Array.isArray(x.box) && x.box.length === 4 ? x.box.map(function (v) { return Math.max(0, Math.min(1000, Number(v) || 0)); }) : null;
+    if (bx && (bx[2] - bx[0] < 20 || bx[3] - bx[1] < 20)) bx = null;   // 小さすぎる枠は使わない（写真全体を残す）
+    return {
+      date: x.date || '',
+      store: x.store || '',
+      items: Array.isArray(x.items) ? x.items : [],
+      total: Number(String(x.total).replace(/[^\d.-]/g, '')) || 0,
+      category: allow.indexOf(x.category) >= 0 ? x.category : '',
+      pay: x.pay === 'card' ? 'card' : 'cash',
+      why: x.why || '',
+      confidence: Number(x.confidence) || 0,
+      box: bx
+    };
+  }).filter(function (x) { return x.total || x.store; });
+  if (!list.length) return { ok: false, error: 'レシートが見つかりませんでした' };
+  return { ok: true, list: list, data: list[0] };   // data は前の版のアプリ用（1枚目）
+}
+
+/* ============ レシートの写真（控え）を保存 ============
+ * 置き場所：社内アプリ ＞ 経費のレシート ＞ 2026年度 ＞ 2026-11
+ * 公開リンクにはせず、社内アプリのフォルダを共有している人だけが開ける */
+var RECEIPT_FOLDER = '経費のレシート';
+var SHANAI_HINT_ID = '145jhqHrw_pCMpd97pwDIQcNyzRksAzFM';   // 社内アプリ ＞ 車両の書類（この1つ上が「社内アプリ」）
+function sub_(parent, name) { var it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : parent.createFolder(name); }
+function receiptRoot_() {
+  var p = PropertiesService.getScriptProperties(), id = p.getProperty('RECEIPT_FOLDER_ID');
+  if (id) { try { var f = DriveApp.getFolderById(id); if (!f.isTrashed()) return f; } catch (e) {} }
+  var parent = null;
+  try { var ps = DriveApp.getFolderById(SHANAI_HINT_ID).getParents(); if (ps.hasNext()) parent = ps.next(); } catch (e) {}
+  if (!parent) { try { var ps2 = DriveApp.getFileById(SpreadsheetApp.getActiveSpreadsheet().getId()).getParents(); if (ps2.hasNext()) parent = ps2.next(); } catch (e) {} }
+  var folder = sub_(parent || DriveApp.getRootFolder(), RECEIPT_FOLDER);
+  p.setProperty('RECEIPT_FOLDER_ID', folder.getId());
+  return folder;
+}
+function savePhoto(id, b64) {
+  if (!b64) return { ok: false, error: '写真がありません' };
+  var s = sh_('rec'), vals = s.getDataRange().getValues(), head = SHEETS.rec.head;
+  for (var i = 1; i < vals.length; i++) {
+    if (String(vals[i][0]) !== String(id)) continue;
+    var ym = ymOf_(vals[i][1]) || curYm_(), y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7));
+    var fy = m >= 4 ? y : y - 1;
+    var md = String(mdOf_(vals[i][2]) || '').match(/(\d{1,2})\D+(\d{1,2})/);
+    var day = md ? ym.slice(0, 5) + ('0' + md[1]).slice(-2) + '-' + ('0' + md[2]).slice(-2) : ym;
+    var store = String(vals[i][4] || '店名なし').replace(/[\\\/:*?"<>|]/g, '').trim().slice(0, 30);
+    var amt = Number(vals[i][6]) || 0;
+    var name = day + '_' + store + '_' + amt.toLocaleString('ja-JP') + '円_' + String(id).slice(-4) + '.jpg';
+    var folder = sub_(sub_(receiptRoot_(), fy + '年度'), ym);
+    var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b64), 'image/jpeg', name));
+    var url = file.getUrl();
+    var c = head.indexOf('photo') + 1;
+    if (!vals[0][c - 1]) s.getRange(1, c).setValue('photo');
+    s.getRange(i + 1, c).setValue(url);
+    return { ok: true, url: url };
+  }
+  return { ok: false, error: 'not found' };
+
 }
