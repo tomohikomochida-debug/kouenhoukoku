@@ -176,6 +176,7 @@
   .upnote{ font-size:12px; color:var(--sub); margin-top:3px; line-height:1.5; }
   .upnote .upk{ display:inline-block; background:#E8890C; color:#fff; border-radius:4px; padding:0 5px; margin-right:4px; font-weight:700; font-style:normal; }
   .upnote .uplf,.upnote .upre{ border:1px solid var(--line); background:#fff; border-radius:999px; padding:1px 9px; font-size:12px; margin-left:6px; color:var(--accent); }
+  .upnote .uplf.on{ background:#fff3e0; border-color:#f57c00; color:#e65100; font-weight:700; }
   .gsifoot{ display:flex; align-items:center; gap:10px; padding:0 12px calc(12px + env(safe-area-inset-bottom)); flex-wrap:wrap; }
   .gsifoot span{ flex:1 1 200px; }
   .gsifoot .primary{ background:var(--accent); color:#fff; border:none; border-radius:10px; padding:13px 18px; font-weight:700; font-size:15px; }
@@ -4967,7 +4968,11 @@ function photosHTML(t,i){ const ph=(state.trees[i].photos)||[];
 }
 /* 落葉木／着葉木：ふだんは樹種から決める（着葉木の一覧にない樹種は落葉木）。ボタンで選ぶと、その木はそれに決まる */
 function leafHTML(t,i){ const L=typeof prLeaf==="function"?prLeaf(t):(t.leaf||"deci"), man=t.leaf==="ever"||t.leaf==="deci";
-  return `<div class="fld"><label>落葉木／着葉木　<span class="muted" style="font-weight:400">${man?"選んだ":"樹種から"}</span></label><div class="leafsel"><button type="button" class="${L==="deci"?"on":""}" onclick="setLeaf(${i},'deci')">落葉木</button><button type="button" class="${L==="ever"?"on":""}" onclick="setLeaf(${i},'ever')">着葉木</button></div></div>`; }
+  return `<div class="fld"><label>落葉木／着葉木${slopeHTML(t,i)?"・地形":""}　<span class="muted" style="font-weight:400">${man?"選んだ":"樹種から"}</span></label><div class="leafsel"><button type="button" class="${L==="deci"?"on":""}" onclick="setLeaf(${i},'deci')">落葉木</button><button type="button" class="${L==="ever"?"on":""}" onclick="setLeaf(${i},'ever')">着葉木</button></div>${slopeHTML(t,i)}</div>`; }
+/* 平坦地／斜面地：樹林地の単価のように地形で分かれている工種を使うとき（緑地の案件・その工種の木）だけ出す */
+function slopeHTML(t,i){ const r=typeof prFor==="function"?prFor(t):null; if(!((r&&r.ter)||(typeof siteOf==="function"&&siteOf()==="ryokuchi"))) return "";
+  return `<div class="leafsel" style="margin-top:6px"><button type="button" class="${t.slope?"":"on"}" onclick="setSlope(${i},false)">平坦地</button><button type="button" class="${t.slope?"on":""}" onclick="setSlope(${i},true)">⛰ 斜面地</button></div>`; }
+function setSlope(i,v){ const t=state.trees[i]; if(!t||!!t.slope===v) return; pushUndo("slope"+i); t.slope=v; markDirty(); if(typeof autoUp==="function") autoUp(i,false); renderTrees(); }
 function setLeaf(i,v){ const t=state.trees[i]; if(!t) return; pushUndo("leaf"+i); t.leaf=v; markDirty(); if(typeof autoUp==="function") autoUp(i,false); renderTrees(); }
 function fieldsHTML(t,i){
   if(t.type==="exterior"){
@@ -6281,7 +6286,12 @@ function prFor(t){
   const work=t.work||"", pk=(typeof siteOf==="function"&&siteOf()==="park"&&!prCustom(work))?prParkMap(work):null, m=pk||prMapOf(work), leaf=prLeaf(t), ref=m[leaf]||m[leaf==="ever"?"deci":"ever"]||"";
   if(!ref) return { price:null, why:work?"「"+work+"」は単価のもとを決めていません":"" };
   const hit=prItem(ref); if(!hit) return { price:null, why:"単価のもとの工種が見つかりません（置き場で選び直してください）" };
-  const it=hit.item, src=hit.book.short||hit.book.name;
+  let it=hit.item, ter=null; const src=hit.book.short||hit.book.name;
+  // 樹林地の単価のように「平坦地／斜面地」で分かれている工種は、木ごとに選んだ方を使う（はじめは平坦地）
+  if(/（(平坦|斜面)地）/.test(it.name)){ ter=t.slope?"斜面地":"平坦地"; const nm=it.name.replace(/（(平坦|斜面)地）/,"（"+ter+"）"), alt=hit.book.items.find(x=>x.name===nm); if(alt) it=alt; else ter=null; }
+  const R0=o=>(ter&&o&&(o.ter=ter),o);
+  return R0(prForItem(t,it,src,leaf)); }
+function prForItem(t,it,src,leaf){
   if(it.price!=null&&!it.bands) return { price:it.price, label:it.name, src, leaf };
   const c=prGirth(t); if(c==null) return { price:null, why:"幹周を入れると、"+it.name+"の単価が入ります", leaf };
   const b=(it.bands||[]).find(b=>c>=b[0]&&(b[1]==null||c<b[1]));
@@ -6300,11 +6310,12 @@ function prPaint(i){ const t=state.trees[i]; if(!t) return; const u=document.get
   if(u&&u!==document.activeElement) u.value=t.up==null?"":t.up; if(u) u.classList.toggle("upauto",!!t.upAuto); if(n) n.innerHTML=upNoteHTML(t,i); }
 function upNoteHTML(t,i){
   const r=prFor(t); if(!r) return "";
-  const lf=r.leaf?`<button type="button" class="uplf" onclick="prToggleLeaf(${i})" title="落葉木と着葉木を切りかえる">${r.leaf==="ever"?"着葉木":"落葉木"}</button>`:"";
+  const lf=(r.leaf?`<button type="button" class="uplf" onclick="prToggleLeaf(${i})" title="落葉木と着葉木を切りかえる">${r.leaf==="ever"?"着葉木":"落葉木"}</button>`:"");
   if(t.upAuto&&t.upSrc) return `<span class="upk">仮</span>${esc(t.upSrc)}${lf}`;
   if(r.price!=null&&String(t.up||"").trim()!==""&&String(t.up)!==String(r.price)) return `手入力。仮なら ${prYen(r.price)}円 <button type="button" class="upre" onclick="prRedo(${i})">仮に戻す</button>${lf}`;
   if(r.price==null&&r.why) return `<span class="muted">${esc(r.why)}</span>${lf}`;
   return lf; }
+function prToggleSlope(i){ const t=state.trees[i]; if(!t) return; pushUndo("slope"+i); t.slope=!t.slope; markDirty(); autoUp(i,false); renderTrees(); }
 function prToggleLeaf(i){ const t=state.trees[i]; if(!t) return; pushUndo("leaf"+i); t.leaf=prLeaf(t)==="ever"?"deci":"ever"; markDirty(); autoUp(i,false); renderTrees(); }
 function prRedo(i){ const t=state.trees[i]; if(!t) return; pushUndo("upre"+i); t.up=""; t.upAuto=false; autoUp(i,true); markDirty(); }
 /* 案件の単価をまとめて：mode="empty"（空いているところだけ）／"auto"（仮の単価も入れ直す） */
