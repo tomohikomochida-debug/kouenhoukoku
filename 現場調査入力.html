@@ -42,6 +42,29 @@
   .dpsite{ border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:999px; padding:6px 12px; font-size:13.5px; font-weight:600; font-family:inherit; }
   .dpsite.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
   .dpdet summary{ cursor:pointer; color:var(--sub); font-size:13px; margin-top:6px; }
+  .cststat{ width:auto; font-size:13.5px; padding:6px 8px; border:1px solid var(--line); border-radius:999px; background:#fff; font-weight:700; }
+  .cflist{ flex:1; overflow:auto; padding:8px 12px 16px; }
+  .cfctl{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 12px 4px; }
+  .cfctl input[type=search]{ flex:1 1 220px; font-size:16px; padding:9px 12px; border:1px solid var(--line); border-radius:10px; }
+  .cfctl select{ width:auto; font-size:14px; padding:7px 8px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  .cfchips{ display:flex; flex-wrap:wrap; gap:6px; padding:2px 12px 6px; }
+  .cfchips button{ border:1px solid var(--line); background:#fff; border-radius:999px; padding:6px 11px; font-size:13.5px; }
+  .cfchips button.on{ background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700; }
+  .cfinfo{ padding:0 12px 4px; font-size:12.5px; }
+  .cfrow{ display:flex; gap:10px; align-items:center; background:#fff; border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; }
+  .cfrow.cur{ border-color:var(--accent); box-shadow:0 0 0 2px rgba(31,111,67,.18); }
+  .cfmain{ flex:1; min-width:0; cursor:pointer; }
+  .cfmain b{ font-size:15px; } .cfmain .muted{ font-size:12.5px; margin-top:3px; overflow:hidden; text-overflow:ellipsis; }
+  .cfact{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+  .cfact select{ width:auto; font-size:13px; padding:5px 6px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  .cfact button{ font-size:12.5px; padding:5px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  .cfact button.pin{ background:#fff8e1; border-color:#f9a825; font-weight:700; }
+  .cfwhere{ font-size:12px; padding:2px 7px; border-radius:999px; background:#eef4f0; color:#1f6f43; white-space:nowrap; }
+  .cfwhere.cl{ background:#eef2f8; color:#1f5f9a; }
+  details.mapmore{ flex-basis:100%; }
+  details.mapmore>summary{ cursor:pointer; font-size:13.5px; color:var(--accent); font-weight:700; padding:4px 0; list-style:none; }
+  details.mapmore>summary::-webkit-details-marker{ display:none; }
+  details.mapmore>summary::before{ content:"▶ "; font-size:11px; } details.mapmore[open]>summary::before{ content:"▼ "; }
   .casebar2{ display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
   .origbtn{ border-color:#1E88E5 !important; color:#1565C0 !important; font-weight:700; background:#EEF5FD !important; }
   .modebar{ display:flex; gap:8px; margin-bottom:12px; }
@@ -455,6 +478,8 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     <div class="casebar">
       <button class="newcase" onclick="newCase()">＋ 新しい現場調査</button>
       <select id="caseSel" onchange="switchCase(this.value)" title="これまでの案件を開く"></select>
+      <button class="iconbtn" onclick="caseFind()" title="案件を名前・場所・樹種・状態で探す（しまった案件も）">🔍 案件を探す</button>
+      <select id="caseStatus" class="cststat" onchange="setCaseStatus(caseId,this.value)" title="この案件の状態（📦しまうと、端末から外せます）"></select>
       <button class="iconbtn copycase" onclick="copyCase()" title="この案件をまるごと複製して、別の案件として直せるようにします（元の案件はそのまま）">⧉ この案件をコピー</button>
       <button class="iconbtn delcase" onclick="deleteCase()">この案件を削除</button>
     </div>
@@ -488,6 +513,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
           <span class="muted" id="mkcount"></span>
           <button class="iconbtn" id="cutBtn" onclick="toggleCut()" style="display:none">✂ 囲んで区画を作る</button>
           <span class="mksz" id="mkSizeSel"></span>
+          <details class="mapmore" id="mapMore" ontoggle="try{localStorage.setItem('chosa_mapmore',this.open?'1':'0')}catch(e){}"><summary>地図の変更・番号の道具（作り直す・差し替える・振り直す など）</summary><div class="maptools">
           <button class="iconbtn" id="renumBtn" onclick="renumberRoute()">🔢 番号を道順に振り直す</button>
           <button class="iconbtn" id="clearPinsBtn" onclick="clearMarkers()">番号を全消去</button>
           <button class="iconbtn" id="gsiBtn" onclick="gsiOpen()">🛰 線画・地理院で作り直す</button>
@@ -495,6 +521,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
           <button class="iconbtn" onclick="gmOpen()">🗺 Googleマップで作り直す</button>
           <label class="iconbtn" id="swapBtn" style="display:none">📄 図面を差し替える（番号はそのまま）<input type="file" accept="image/*,.pdf,application/pdf" multiple hidden onchange="swapPick(this)"></label>
           <button class="iconbtn" onclick="clearMap()">画像を変更</button>
+          </div></details>
         </div>
         <div class="muted maphint" id="mkhint" style="display:none"></div>
       </div>
@@ -3512,7 +3539,9 @@ function markDirty(){ document.getElementById("saveState").textContent="保存�
 let caseId=null, casesIndex=[];
 function newId(){ return "c"+Date.now()+Math.floor(Math.random()*1000); }
 function emptyState(){ return { mode:(state&&state.mode)||"tree", caseName:"", caseDate:today(), place:"", maps:[], curMap:null, numMode:(state&&state.numMode)||"seq", mapMarkers:[], extras:{carry:"",dispose:"",misc:""}, taxRate:0.1, trees:[] }; }
-function touchIndex(){ const meta={id:caseId,name:state.caseName||"(無題)",date:state.caseDate||"",updatedAt:Date.now(),n:(state.trees||[]).length}; const e=casesIndex.find(c=>c.id===caseId); if(e) Object.assign(e,meta); else casesIndex.unshift(meta); }
+/* 探すための言葉（樹種・作業・外構の品目・メモの頭） */
+function kwOf(st){ const a=new Set(); (st&&st.trees||[]).forEach(t=>{ [t.species,t.work,t.item].forEach(v=>{ v=String(v||"").trim(); if(v) a.add(v.slice(0,30)); }); const mm=String(t.memo||"").trim(); if(mm) a.add(mm.slice(0,40)); }); return [...a].join(" ").slice(0,1500); }
+function touchIndex(){ const meta={id:caseId,name:state.caseName||"(無題)",date:state.caseDate||"",updatedAt:Date.now(),n:(state.trees||[]).length,place:state.place||"",kw:kwOf(state)}; const e=casesIndex.find(c=>c.id===caseId); if(e) Object.assign(e,meta); else casesIndex.unshift(meta); }
 async function save(){ try{ if(!caseId) caseId=newId(); touchIndex();
   await casePut(caseId, state, true); await idbSet("cases",casesIndex); await idbSet("current",caseId);
   document.getElementById("saveState").textContent="保存済"; renderCaseBar(); updateStorage();
@@ -4260,6 +4289,7 @@ function mkScale(){ const v=+state.mkScale; return v>0?v:1; }
 function setMkScale(v){ if(mkScale()===v) return; pushUndo("mksize"); state.mkScale=v; markDirty(); renderMap(); }
 function mkSizeUI(){ const el=document.getElementById("mkSizeSel"); if(el) el.innerHTML="<b>丸の大きさ</b>"+MK_SIZES.map(([v,l])=>`<button type="button" class="${mkScale()===v?"on":""}" onclick="setMkScale(${v})">${l}</button>`).join("");
   const mb=document.getElementById("mapbox"); if(mb) mb.style.setProperty("--mks",String(mkScale())); }
+(function(){ try{ const d=document.getElementById("mapMore"); if(d&&localStorage.getItem("chosa_mapmore")==="1") d.open=true; }catch(e){} })();
 function renumberRoute(){ const T=state.trees; if(T.length<2) return;
   const zs=zoneMaps().filter(m=>m.image), groups=[], seen=new Set();
   for(const m of (zs.length?zs:[CM()].filter(Boolean))){ const sz=m.size||[1,1], list=T.filter(t=>!seen.has(t)&&onMap(t,m));
@@ -6013,7 +6043,7 @@ async function exportExcel(pub){
     var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
     a.download=(state.caseName||'現場調査').replace(/[\/:*?"<>|\\]/g,'_')+'_'+(state.caseDate||'')+outSuffix()+(pub?'_公共用':'')+'.xlsx';
-    a.click();
+    a.click(); if(window.askQuoted) setTimeout(window.askQuoted,800);
   }catch(e){ alert('Excel作成でエラー: '+(e&&e.message?e.message:e)); }
   finally{ if(btn){ btn.textContent=btnLabel; btn.disabled=false; } }
 }
@@ -6237,7 +6267,7 @@ async function exportPdf(){
     const blob=makePdf(pages);
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
     a.download=(state.caseName||"現場調査").replace(/[\/:*?"<>|\\]/g,"_")+"_"+(state.caseDate||"")+outSuffix()+".pdf";
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),60000);
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),60000); if(window.askQuoted) setTimeout(window.askQuoted,800);
     toast("PDFを作りました（"+pages.length+"ページ）");
   }catch(e){ alert("PDF作成でエラー: "+(e&&e.message?e.message:e)); }
   finally{ if(btn){ btn.disabled=false; btn.textContent="PDF書き出し"; } }
@@ -6827,7 +6857,10 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
   const M=id=>(meta[id]=meta[id]||{ver:0,dirty:false,seq:0});
   async function refreshList(force){
     if(!force && Date.now()-lastList<60000) return;
-    try{ const r=await get("action=list",20000); if(!r.ok) throw new Error(r.error); cloud=r.items||[]; if(r.admins) admins=r.admins; lastList=Date.now(); renderCaseBar(); }
+    try{ const r=await get("action=list",20000); if(!r.ok) throw new Error(r.error); cloud=r.items||[]; if(r.admins) admins=r.admins; lastList=Date.now();
+      let ch=false; casesIndex.forEach(e=>{ const it=cloud.find(c=>c.id===e.id), m=meta[e.id]; if(it&&it.status&&!(m&&m.stPending)&&e.status!==it.status){ e.status=it.status; ch=true; } });   // ほかの端末で変えた状態をそろえる
+      if(ch) await idbSet("cases",casesIndex);
+      renderCaseBar(); cfRender(); }
     catch(e){ setStatus(navigator.onLine===false?"☁️ 電波なし（あとで送ります）":"☁️ 共有につながりません", "ng"); throw e; }
   }
 
@@ -6839,14 +6872,12 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
     const p=pack(st), hs=Object.keys(p.imgs);
     if(hs.length){
       const h=await post({mode:"have",hashes:hs}); if(!h.ok) throw new Error(notUpdated(h.error));
-      const miss=h.missing||[];
-      for(let i=0;i<miss.length;i++){
-        progress="写真 "+(i+1)+"/"+miss.length; paint();
-        const r=await post({mode:"photo",hash:miss[i],data:p.imgs[miss[i]]}); if(!r.ok) throw new Error(r.error);
-      }
+      const miss=h.missing||[]; let done=0;
+      await pool(miss,3,async hh=>{ const r=await post({mode:"photo",hash:hh,data:p.imgs[hh]}); if(!r.ok) throw new Error(r.error); done++; progress="写真 "+done+"/"+miss.length; paint(); });   // 3枚ずつ同時に送る
     }
     progress="案件"; paint();
-    const r=await post({mode:"save",id,base:m.ver||0,name:st.caseName||info.name||"",date:st.caseDate||"",caseMode:st.mode||"",n:(st.trees||[]).length,photos:hs.length,json:JSON.stringify(p.data)});
+    const stSend=m.stPending||(!m.ver?(info.status||"調査中"):"");   // 状態は、変えたとき・はじめて送るときだけ
+    const r=await post({mode:"save",id,base:m.ver||0,name:st.caseName||info.name||"",date:st.caseDate||"",caseMode:st.mode||"",n:(st.trees||[]).length,photos:hs.length,place:st.place||"",kw:kwOf(st),status:stSend||undefined,json:JSON.stringify(p.data)});
     if(r.conflict){
       if(!again&&me()&&String(r.updatedBy||"").trim()===me()){   // 自分が別の場所（ほかの端末・入れ直す前のアプリ）で先に直していた：どれを残すか選ぶ
         const ch=await askSame(st.caseName||info.name||"(無題)",r);
@@ -6856,6 +6887,7 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
       await fork(id,r); return; }
     if(!r.ok) throw new Error(notUpdated(r.error));
     m.ver=r.ver; if(m.seq===seq) m.dirty=false;   // 送っている間にまた直したら、もう一度送る
+    if(stSend&&m.stPending===stSend) delete m.stPending;
     await saveMeta();
   }
   // ほかの人が先に保存し直していた：自分の変更は新しい番号の別案件にして送る（元の番号はほかの人の版として残る）
@@ -6888,9 +6920,11 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
           await upload(ids[i]);
         }
       }
+      for(const id of Object.keys(meta).filter(id=>meta[id].stPending)){ try{ await sendStatus(id); }catch(e){} }   // 電波のないときに変えた状態
       progress="";
       await refreshList(true);
       await pullCurrent();
+      await prefetchLocal();
       const left=Object.keys(meta).filter(id=>meta[id].dirty && casesIndex.some(c=>c.id===id)).length;
       if(left){ setStatus("☁️ 共有待ち "+left+"件","wait"); schedule(); }
       else setStatus("☁️ 共有済 "+new Date().toTimeString().slice(0,5),"ok");
@@ -6903,6 +6937,8 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
   function schedule(ms){ clearTimeout(timer); timer=setTimeout(()=>syncNow(),ms||WAIT); }
 
   /* ---- 取り込む ---- */
+  async function pool(items,n,fn){ let i=0; const run=async()=>{ while(i<items.length){ const k=i++; await fn(items[k]); } }; await Promise.all(Array.from({length:Math.min(n,items.length)},run)); }
+  let quiet=false;
   async function download(id){
     const g=await get("action=get&id="+encodeURIComponent(id),60000);
     if(!g.ok) throw new Error(notUpdated(g.error));
@@ -6911,21 +6947,21 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
     // この端末にもう同じ写真があれば使う（単価だけ直した、などのとき写真を取り直さない）
     try{ const old=await caseGet(id); if(old) Object.values(pack(old).imgs).forEach(v=>{ have[hashOf(v)]=v; }); }catch(e){}
     if(typeof state==="object") Object.values(pack(state).imgs).forEach(v=>{ have[hashOf(v)]=v; });
-    const miss=need.filter(h=>!have[h]);
-    for(let i=0;i<miss.length;i+=4){
-      progress="写真 "+Math.min(i+4,miss.length)+"/"+miss.length; paint();
-      const r=await get("action=photos&h="+miss.slice(i,i+4).join(","),60000);
-      if(!r.ok) throw new Error(r.error);
-      Object.assign(have,r.photos||{});
-    }
+    const miss=need.filter(h=>!have[h]), chunks=[]; let done=0;
+    for(let i=0;i<miss.length;i+=8) chunks.push(miss.slice(i,i+8));
+    if(miss.length&&!quiet){ progress="写真 0/"+miss.length; paint(); }
+    await pool(chunks,4,async ch=>{   // 8枚ずつを4本同時に取る
+      const r=await get("action=photos&h="+ch.join(","),90000); if(!r.ok) throw new Error(r.error);
+      Object.assign(have,r.photos||{}); done+=ch.length; if(!quiet){ progress="写真 "+done+"/"+miss.length; paint(); } });
     progress="";
     const st=unpack(data,have);
     if(meta[id]&&meta[id].seq!==seq0&&meta[id].dirty) return null;   // 取り込み中にこの端末で直した → 取り込まない（送るときに別案件として残る）
     await casePut(id,st,caseId===id);
-    const it=g.item||{}, e=casesIndex.find(c=>c.id===id), row={id,name:st.caseName||it.name||"(無題)",date:st.caseDate||"",updatedAt:Date.now(),n:(st.trees||[]).length};
+    const it=g.item||{}, e=casesIndex.find(c=>c.id===id), pend=meta[id]&&meta[id].stPending;
+    const row={id,name:st.caseName||it.name||"(無題)",date:st.caseDate||"",updatedAt:Date.now(),n:(st.trees||[]).length,place:st.place||"",kw:kwOf(st),status:pend||it.status||(e&&e.status)||"調査中"};
     if(e) Object.assign(e,row); else casesIndex.unshift(row);
     await idbSet("cases",casesIndex);
-    meta[id]={ver:it.ver||1,dirty:false,seq:0}; await saveMeta();
+    meta[id]=Object.assign({ver:it.ver||1,dirty:false,seq:0},pend?{stPending:pend}:{}); await saveMeta();
     return st;
   }
   function showCase(st){
@@ -6998,14 +7034,15 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
   const _render=renderCaseBar;
   renderCaseBar=function(){ _render.apply(this,arguments);
     const sel=$("caseSel"); if(!sel) return;
-    const only=cloud.filter(c=>!casesIndex.some(x=>x.id===c.id)), mine=only.filter(mineIt).sort((a,b)=>whenOf(b)-whenOf(a)), others=only.filter(c=>!mineIt(c));
+    paintStatus();
+    const only=cloud.filter(c=>!casesIndex.some(x=>x.id===c.id)&&c.status!=="しまう"), mine=only.filter(mineIt).sort((a,b)=>whenOf(b)-whenOf(a)), others=only.filter(c=>!mineIt(c));
     if(mine.length){   // 自分の案件（ほかの端末・入れ直す前に作ったもの）。選ぶと開く
       const g=document.createElement("optgroup"); g.label="自分の案件（共有にあります・選ぶと開きます）";
       g.innerHTML=mine.map(c=>`<option value="cloud:${esc(c.id)}">${esc(c.name||"(無題)")}｜${esc(c.date||"")}（${c.n||0}件）</option>`).join("");
       sel.appendChild(g);
     }
     if(others.length){
-      const g=document.createElement("optgroup"); g.label="☁️ みんなの案件（選ぶとこの端末に取り込みます）";
+      const g=document.createElement("optgroup"); g.label="☁️ みんなの案件（選ぶとこの端末に取り込みます・しまった案件は 🔍 案件を探す から）";
       g.innerHTML=others.map(c=>`<option value="cloud:${esc(c.id)}">☁️ ${esc(c.name||"(無題)")}｜${esc(c.date||"")}（${c.n||0}件・${esc(c.updatedBy||c.by||"")}）</option>`).join("");
       sel.appendChild(g);
     }
@@ -7016,10 +7053,11 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
     if(id&&String(id).startsWith("cloud:")){
       const cid=id.slice(6), it=cloud.find(c=>c.id===cid)||{};
       setStatus("☁️ 取り込み中…","run");
-      try{ await save(); await download(cid); setStatus("☁️ 共有済","ok"); }
+      try{ await save(); await download(cid); const e=casesIndex.find(c=>c.id===cid); if(e) e.openedAt=Date.now(); setStatus("☁️ 共有済","ok"); }
       catch(e){ progress=""; setStatus("☁️ 取り込めませんでした","ng"); alert("「"+(it.name||"案件")+"」を取り込めませんでした。\n"+(e&&e.message||e)+"\n\n電波の届くところで、もう一度選んでください。"); renderCaseBar(); return; }
       return _switch(cid);
     }
+    { const e=casesIndex.find(c=>c.id===id); if(e) e.openedAt=Date.now(); }
     // ほかの端末で新しくなっていたら、開く前に取り込む
     const it=cloud.find(c=>c.id===id), m=meta[id];
     if(it&&m&&!m.dirty&&it.ver>(m.ver||0)){ try{ setStatus("☁️ 新しい版を取り込み中…","run"); await download(id); setStatus("☁️ 共有済","ok"); }catch(e){ setStatus("☁️ 取り込めませんでした","ng"); } }
@@ -7041,6 +7079,106 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
     renderCaseBar();
   };
 
+  /* ---- 案件の状態・探す・端末から外す ----
+   * 状態：調査中／見積提出済／受注／しまう（共有の一覧に持つ。変えたら状態だけ送る）
+   * 端末から外す：共有に送り終わった案件だけ。📌の案件と開いている案件は外さない */
+  const STS=["調査中","見積提出済","受注","しまう"], STI={"調査中":"🟢","見積提出済":"🟡","受注":"🔵","しまう":"📦"}, KEEP_DAYS=30;
+  const ixOf=id=>casesIndex.find(c=>c.id===id);
+  function statusOf(id){ const e=ixOf(id), m=meta[id], it=cloud.find(c=>c.id===id); return (m&&m.stPending)||(e&&e.status)||(it&&it.status)||"調査中"; }
+  async function sendStatus(id){ const m=meta[id]; if(!m||!m.stPending) return; if(!m.ver&&!cloud.some(c=>c.id===id)) return;   // まだ共有にない案件は、中身と一緒に送る
+    const st=m.stPending, r=await post({mode:"status",id,status:st},30000); if(!r.ok) throw new Error(notUpdated(r.error));
+    if(meta[id]&&meta[id].stPending===st){ delete meta[id].stPending; await saveMeta(); } }
+  function paintStatus(){ const el=$("caseStatus"); if(!el) return; const v=caseId?statusOf(caseId):"調査中";
+    el.innerHTML=STS.map(s=>`<option value="${s}" ${s===v?"selected":""}>${STI[s]} ${s}</option>`).join(""); }
+  async function setCaseStatus(id,st){ if(!id||STS.indexOf(st)<0) return; const was=statusOf(id); if(was===st){ paintStatus(); return; }
+    const e=ixOf(id); if(e){ e.status=st; await idbSet("cases",casesIndex); }
+    const it=cloud.find(c=>c.id===id); if(it) it.status=st;
+    M(id).stPending=st; await saveMeta();
+    sendStatus(id).catch(()=>{}); renderCaseBar(); cfRender();
+    if(st==="しまう"&&id===caseId&&!(e&&e.pin)){
+      if(confirm("この案件を「📦 しまう」にしました。\nこの端末から外しますか？（共有には残ります。🔍 案件を探す から、いつでも開けます）")) await unload(id);
+    } else toast("状態を「"+STI[st]+" "+st+"」にしました"); }
+  // 見積を書き出したとき：調査中なら「見積提出済」にするか聞く
+  async function askQuoted(){ if(!caseId||statusOf(caseId)!=="調査中") return;
+    if(confirm("見積を書き出しました。この案件を「🟡 見積提出済」にしますか？\n（案件名の横の状態から、いつでも変えられます）")) setCaseStatus(caseId,"見積提出済"); }
+  // この端末から外す（共有に送り終わっていることを確かめてから）
+  async function unload(id,silent){
+    const m=meta[id]; if(!m||m.dirty||!m.ver){ try{ await syncNow(true); }catch(e){} }
+    const m2=meta[id]; if(!m2||m2.dirty||!m2.ver||!cloud.some(c=>c.id===id)){ if(!silent) alert("まだ共有に送れていない変更があるので、この端末から外せません。\n電波の届くところで、少し待ってからもう一度やってください。"); return false; }
+    if(id===caseId){ const next=casesIndex.filter(c=>c.id!==id).sort((a,b)=>Math.max(b.openedAt||0,b.updatedAt||0)-Math.max(a.openedAt||0,a.updatedAt||0))[0];
+      if(next) await _switch(next.id); else await newCase(); }
+    casesIndex=casesIndex.filter(c=>c.id!==id); try{ await idbDel("case_"+id); }catch(e){} delete meta[id];
+    await idbSet("cases",casesIndex); await saveMeta(); renderCaseBar(); cfRender();
+    setTimeout(()=>phCleanup().then(updateStorage).catch(()=>{}),2000);
+    if(!silent) toast("この端末から外しました（共有には残っています）"); return true; }
+  // 起動のとき：しまった案件と、見積提出済のまま30日開いていない案件を、この端末から外す
+  async function autoTidy(){ const now=Date.now(), out=[];
+    for(const c of casesIndex.slice()){ if(c.id===caseId||c.pin) continue; const m=meta[c.id];
+      if(!m||!m.ver||m.dirty||m.stPending||!cloud.some(x=>x.id===c.id)) continue;
+      const st=statusOf(c.id), last=Math.max(c.openedAt||0,c.updatedAt||0);
+      if(st==="しまう"||(st==="見積提出済"&&now-last>KEEP_DAYS*864e5)){ casesIndex=casesIndex.filter(x=>x.id!==c.id); try{ await idbDel("case_"+c.id); }catch(e){} delete meta[c.id]; out.push(c.name); } }
+    if(out.length){ await idbSet("cases",casesIndex); await saveMeta(); renderCaseBar(); setTimeout(()=>phCleanup().then(updateStorage).catch(()=>{}),3000);
+      toast("使っていない案件 "+out.length+"件を、この端末から外しました（共有には残っています。🔍 案件を探す から開けます）"); } }
+  // ほかの端末で直された案件を、開く前に裏で取り込んでおく（この端末に置いてある案件だけ）
+  async function prefetchLocal(){ let n=0;
+    for(const c of casesIndex.slice()){ if(n>=3) break; if(c.id===caseId) continue; const it=cloud.find(x=>x.id===c.id), m=meta[c.id];
+      if(!it||!m||m.dirty||!(it.ver>(m.ver||0))) continue;
+      try{ quiet=true; setStatus("☁️ 新しい版を裏で取り込み中…","run"); await download(c.id); n++; }catch(e){} finally{ quiet=false; } } }
+  function pinCase(id){ const e=ixOf(id); if(!e) return; e.pin=!e.pin; idbSet("cases",casesIndex); cfRender(); toast(e.pin?"📌 この端末に残します（自動で外しません）":"📌 をはずしました"); }
+  async function cfDelete(id){ const row=cfRows().find(r=>r.id===id); if(!row) return;
+    if(!confirm("「"+row.name+"」を消しますか？\nこの端末からも、みんなの共有からも消えます（元に戻せません）。")) return;
+    if(cloud.some(c=>c.id===id)){ try{ const r=await post({mode:"delete",id}); if(!r.ok) throw new Error(r.error); }catch(e){ alert("みんなの共有からは消せませんでした。\n"+(e&&e.message||e)); return; } }
+    if(ixOf(id)){ if(id===caseId){ const next=casesIndex.find(c=>c.id!==id); if(next) await _switch(next.id); else await newCase(); }
+      casesIndex=casesIndex.filter(c=>c.id!==id); try{ await idbDel("case_"+id); }catch(e){} delete meta[id]; await idbSet("cases",casesIndex); await saveMeta(); }
+    cloud=cloud.filter(c=>c.id!==id); renderCaseBar(); cfRender(); toast("消しました"); }
+
+  /* ---- 🔍 案件を探す ---- */
+  const CF={ q:"", st:"live", who:"all", fy:"" }; try{ Object.assign(CF,JSON.parse(localStorage.getItem("chosa_cf")||"{}"),{q:""}); }catch(e){}
+  const norm=s=>String(s||"").normalize("NFKC").toLowerCase().replace(/[ァ-ヶ]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0x60)).replace(/\s+/g," ");
+  const fyOf=d=>{ const m=String(d||"").match(/^(\d{4})-(\d{1,2})/); if(!m) return ""; const y=+m[1], mo=+m[2]; return String(mo>=4?y:y-1); };
+  const tsOf=r=>r.local?Math.max(r.updatedAt||0,r.cupd||0):r.cupd;
+  function cfRows(){ const map=new Map();
+    cloud.forEach(c=>map.set(c.id,{ id:c.id, name:c.name||"(無題)", date:c.date||"", place:c.place||"", kw:c.kw||"", n:c.n||0, by:c.by||"", ub:c.updatedBy||c.by||"", cupd:whenOf(c), status:c.status||"調査中", cloud:true, mine:mineIt(c) }));
+    casesIndex.forEach(e=>{ const r=map.get(e.id)||{ id:e.id, cloud:false, by:me()||"", ub:"", cupd:0, mine:true };
+      Object.assign(r,{ name:e.name||r.name||"(無題)", date:e.date||r.date||"", place:e.place||r.place||"", kw:e.kw||r.kw||"", n:e.n!=null?e.n:r.n, local:true, pin:!!e.pin, updatedAt:e.updatedAt||0 });
+      r.status=statusOf(e.id); map.set(e.id,r); });
+    return [...map.values()]; }
+  function cfOpen(){ let d=$("cfDlg"); if(!d){ d=document.createElement("div"); d.id="cfDlg"; d.className="gsidlg"; document.body.appendChild(d);
+      d.innerHTML=`<div class="gsihead"><b>🔍 案件を探す</b><span class="sp" style="flex:1"></span><button type="button" onclick="caseFindClose()">閉じる</button></div>
+      <div class="cfctl"><input type="search" id="cfQ" placeholder="名前・場所・樹種・作業・メモ・作った人で探す" oninput="caseFindSet('q',this.value)">
+        <select id="cfWho" onchange="caseFindSet('who',this.value)"><option value="all">みんなの案件</option><option value="mine">自分の案件だけ</option><option value="local">この端末にある案件だけ</option></select>
+        <select id="cfFy" onchange="caseFindSet('fy',this.value)"></select></div>
+      <div class="cfchips" id="cfChips"></div><div class="cfinfo muted" id="cfInfo"></div><div class="cflist" id="cfList"></div>`; }
+    d.style.display="flex"; document.body.style.overflow="hidden"; $("cfQ").value=CF.q; $("cfWho").value=CF.who; cfRender(); refreshList(true).catch(()=>{}); }
+  function cfClose(){ const d=$("cfDlg"); if(d) d.style.display="none"; document.body.style.overflow=""; }
+  function cfSet(k,v){ CF[k]=v; try{ localStorage.setItem("chosa_cf",JSON.stringify(Object.assign({},CF,{q:""}))); }catch(e){} cfRender(); }
+  function cfRender(){ const d=$("cfDlg"); if(!d||d.style.display==="none") return;
+    const all=cfRows(), fys=[...new Set(all.map(r=>fyOf(r.date)).filter(Boolean))].sort().reverse();
+    $("cfFy").innerHTML=`<option value="">すべての年度</option>`+fys.map(y=>`<option value="${y}" ${CF.fy===y?"selected":""}>${y}年度（R${y-2018}）</option>`).join("");
+    const cnt=s=>all.filter(r=>s==="live"?r.status!=="しまう":r.status===s).length;
+    $("cfChips").innerHTML=[["live","しまった以外"],["調査中","🟢 調査中"],["見積提出済","🟡 見積提出済"],["受注","🔵 受注"],["しまう","📦 しまった案件"]]
+      .map(([v,l])=>`<button type="button" class="${CF.st===v?"on":""}" onclick="caseFindSet('st','${v}')">${l}（${cnt(v)}）</button>`).join("");
+    const q=norm(CF.q).trim().split(" ").filter(Boolean);
+    const rows=all.filter(r=>(CF.st==="live"?r.status!=="しまう":r.status===CF.st)
+        &&(CF.who!=="mine"||r.mine)&&(CF.who!=="local"||r.local)&&(!CF.fy||fyOf(r.date)===CF.fy)
+        &&(!q.length||(t=>q.every(w=>t.includes(w)))(norm([r.name,r.place,r.kw,r.by,r.ub,r.date].join(" ")))))
+      .sort((a,b)=>tsOf(b)-tsOf(a));
+    const loc=all.filter(r=>r.local).length, pin=all.filter(r=>r.pin).length;
+    $("cfInfo").textContent=rows.length+"件　｜　この端末にある案件 "+loc+"件"+(pin?"（📌"+pin+"）":"")+"・共有 "+cloud.length+"件　｜　📦しまった案件と、🟡見積提出済のまま"+KEEP_DAYS+"日開いていない案件は、この端末から自動で外れます（📌を付けた案件は外しません）";
+    const when=r=>{ const t=tsOf(r); if(!t) return ""; const dt=new Date(t); return (dt.getMonth()+1)+"/"+dt.getDate()+" 更新"; };
+    $("cfList").innerHTML=rows.length?rows.map(r=>`<div class="cfrow${r.id===caseId?" cur":""}">
+      <div class="cfmain" onclick="caseFindOpen('${esc(r.id)}')"><b>${esc(r.name)}</b>${r.id===caseId?' <span class="cfwhere">いま開いている</span>':""}
+        <div class="muted">${[r.date,r.place,(r.n||0)+"件",r.ub||r.by,when(r)].filter(Boolean).map(esc).join("・")}</div></div>
+      <div class="cfact"><span class="cfwhere${r.local?"":" cl"}">${r.local?"📱 端末にある":"☁️ 共有だけ"}</span>
+        <select onchange="setCaseStatus('${esc(r.id)}',this.value)" title="状態">${STS.map(s=>`<option value="${s}" ${s===r.status?"selected":""}>${STI[s]} ${s}</option>`).join("")}</select>
+        ${r.local?`<button type="button" class="${r.pin?"pin":""}" onclick="caseFindPin('${esc(r.id)}')" title="この端末に残す（自動で外さない）">📌${r.pin?" 残す":""}</button>`:""}
+        ${r.local&&r.cloud?`<button type="button" onclick="caseFindUnload('${esc(r.id)}')" title="この端末から外す（共有には残る）">端末から外す</button>`:""}
+        ${r.status==="しまう"?`<button type="button" onclick="caseFindDelete('${esc(r.id)}')" style="color:#b03a2e">消す</button>`:""}</div></div>`).join("")
+      :`<div class="muted" style="padding:20px;text-align:center">見つかりません。${CF.st!=="live"||CF.who!=="all"||CF.fy?"絞り込みをゆるめてみてください。":""}</div>`; }
+  async function cfOpenCase(id){ cfClose(); if(id===caseId) return; await switchCase(ixOf(id)?id:"cloud:"+id); }
+  Object.assign(window,{ caseFind:cfOpen, caseFindClose:cfClose, caseFindSet:cfSet, caseFindOpen:cfOpenCase, caseFindPin:pinCase,
+    caseFindUnload:id=>unload(id), caseFindDelete:cfDelete, setCaseStatus, askQuoted });
+
   /* ---- 起動 ---- */
   async function start(){
     for(let i=0;i<50 && !(casesIndex&&casesIndex.length);i++) await sleep(100);   // もとの起動が終わるのを待つ
@@ -7049,7 +7187,7 @@ window.addEventListener("load",()=>setTimeout(prPull,3000));
     let add=false; casesIndex.forEach(c=>{ if(!meta[c.id]){ meta[c.id]={ver:0,dirty:true,seq:1}; add=true; } });
     if(add) await saveMeta();
     paint();
-    try{ await refreshList(true); await askWho(); await restoreMine(); }catch(e){}
+    try{ await refreshList(true); await askWho(); await restoreMine(); await autoTidy(); }catch(e){}
     syncNow();
     setInterval(()=>{ if(!busy && Object.values(meta).some(m=>m.dirty)) syncNow(); },120000);
     window.addEventListener("online",()=>syncNow());
