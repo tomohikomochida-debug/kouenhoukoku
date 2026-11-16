@@ -99,9 +99,14 @@
   .cutmenu .pri{ background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700; }
   .mapcap{ position:absolute; left:8px; top:8px; z-index:3; font-size:13.5px; font-weight:700; color:var(--accent); background:rgba(255,255,255,.92); border:1px solid var(--line); border-radius:8px; padding:3px 9px; line-height:1.4; pointer-events:none; max-width:calc(100% - 16px); }
   .zsel{ font-size:13px; padding:5px 6px; border:1px solid var(--line); border-radius:8px; background:#fff; max-width:150px; }
-  .mk{ position:absolute; transform:translate(-50%,-50%); min-width:24px; height:24px; padding:0 4px; border-radius:12px; touch-action:none; cursor:move;
+  .mk{ position:absolute; transform:translate(-50%,-50%) scale(var(--mks,1)); min-width:24px; height:24px; padding:0 4px; border-radius:12px; touch-action:none; cursor:move;
        background:rgba(214,40,40,.9); color:#fff; font-weight:800; font-size:13px; line-height:24px; text-align:center;
        border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.45); cursor:pointer; }
+  .mksz{ display:inline-flex; align-items:center; gap:0; font-size:12.5px; color:var(--sub); }
+  .mksz b{ font-weight:600; margin-right:4px; }
+  .mksz button{ border:1px solid var(--line); background:#fff; padding:4px 9px; font-size:12.5px; margin-left:-1px; color:var(--ink,#333); }
+  .mksz button:first-of-type{ border-radius:999px 0 0 999px; } .mksz button:last-of-type{ border-radius:0 999px 999px 0; }
+  .mksz button.on{ background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700; }
   .maptools{ display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap; }
   .maphint{ margin-top:4px; }
   #mapbox .mk.auto{ border-style:dashed; }
@@ -482,6 +487,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
           <span class="muted" id="mkhelp">空きをタップで番号カードを追加／番号をタップでその木へ移動／番号をドラッグで位置調整</span>
           <span class="muted" id="mkcount"></span>
           <button class="iconbtn" id="cutBtn" onclick="toggleCut()" style="display:none">✂ 囲んで区画を作る</button>
+          <span class="mksz" id="mkSizeSel"></span>
           <button class="iconbtn" id="renumBtn" onclick="renumberRoute()">🔢 番号を道順に振り直す</button>
           <button class="iconbtn" id="clearPinsBtn" onclick="clearMarkers()">番号を全消去</button>
           <button class="iconbtn" id="gsiBtn" onclick="gsiOpen()">🛰 線画・地理院で作り直す</button>
@@ -956,7 +962,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       var ps = { orientation: portrait ? "portrait" : "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1 }; if (mm.paper) ps.paperSize = mm.paper; // 8＝A3、9＝A4
       var mp = wb.addWorksheet(String(mm.sheet || "位置図").replace(/[\[\]:*?\/\\]/g, "").slice(0, 31), { pageSetup: ps });
       mp.getCell("A1").value = "位置図　" + (mm.title ? mm.title + "　" : "") + name; mp.getCell("A1").font = font(14, true);
-      var MW = BW, MH = BH, ox = 24, oy = R1 + 12, sz = 42;
+      var MW = BW, MH = BH, ox = 24, oy = R1 + 12, sz = Math.round(42 * (+state.mkScale > 0 ? +state.mkScale : 1)); // 丸の大きさ（アプリで選んだ割合）
       MW = fit.MW; MH = fit.MH; // 縦横比を変えない（縮尺が狂わない）
       mp.getColumn(1).width = Math.min(255, Math.ceil((MW + ox * 2) / 7) + 4); // 地図より少し広く（幅1＝日本語の Excel で 8px、ほかで 7px。どちらでも地図が列からはみ出さない）
       var nRows = Math.ceil((oy + MH + sz - R1) / RH) + 1;
@@ -4164,6 +4170,7 @@ function renderMap(){ const box=document.getElementById("mapbox"); const tools=d
       const hp=document.getElementById("mkhelp"); if(hp) hp.textContent=all?"全体図：区画に置いた番号も出ます。番号・枠をタップでその区画へ／「✂ 囲んで区画を作る」で範囲を囲むと拡大図の区画ができます":"空きをタップで番号カードを追加／番号をタップでその木へ移動／番号をドラッグで位置調整";
       const gb=document.getElementById("gsiBtn"); if(gb) gb.textContent=cm.geo?"🛰 範囲・地図を変える":"🛰 線画・地理院で作り直す";
       const rb=document.getElementById("refBtn"); if(rb){ rb.style.display=cm.geo?"none":""; rb.textContent=cm.ref?"📍 目印を直す":"📍 目印で地図と合わせる"; }
+      mkSizeUI();
       const sb=document.getElementById("swapBtn"); if(sb){ sb.style.display=""; sb.firstChild.textContent=all?"📄 全体の図面を差し替える（番号はそのまま）":"📄 図面を差し替える（番号はそのまま）"; }
       const hn=document.getElementById("mkhint"); if(hn){ const h=mapHint(); hn.textContent=h; hn.style.display=h?"block":"none"; } }
   } else {
@@ -4247,6 +4254,12 @@ function routeOrder(pts){ const n=pts.length; if(n<3) return pts.map((_,k)=>k).s
       if(after<before-1e-9){ let x=i, y=j; while(x<y){ const t=path[x]; path[x]=path[y]; path[y]=t; x++; y--; } imp=true; } }
     if(!imp) break; }
   return path; }
+/* 番号の丸の大きさ（案件ごと）：画面の位置図・PDF・Excel の位置図に同じ割合で効く */
+const MK_SIZES=[[0.6,"小"],[0.8,"やや小"],[1,"標準"],[1.25,"大"]];
+function mkScale(){ const v=+state.mkScale; return v>0?v:1; }
+function setMkScale(v){ if(mkScale()===v) return; pushUndo("mksize"); state.mkScale=v; markDirty(); renderMap(); }
+function mkSizeUI(){ const el=document.getElementById("mkSizeSel"); if(el) el.innerHTML="<b>丸の大きさ</b>"+MK_SIZES.map(([v,l])=>`<button type="button" class="${mkScale()===v?"on":""}" onclick="setMkScale(${v})">${l}</button>`).join("");
+  const mb=document.getElementById("mapbox"); if(mb) mb.style.setProperty("--mks",String(mkScale())); }
 function renumberRoute(){ const T=state.trees; if(T.length<2) return;
   const zs=zoneMaps().filter(m=>m.image), groups=[], seen=new Set();
   for(const m of (zs.length?zs:[CM()].filter(Boolean))){ const sz=m.size||[1,1], list=T.filter(t=>!seen.has(t)&&onMap(t,m));
@@ -6024,7 +6037,7 @@ function pdfLegend(om,w,h,avail,ar){ const K=1.6, G=12; let lg=legendPng(om,w/K)
   for(let k=0;k<2;k++){ const lh=lg.h*K+G; if(h+lh<=avail) break; h=Math.max(100,avail-lh); w=h*ar; lg=legendPng(om,w/K); }
   const L=lg, lh=L.h*K+G;
   return { w,h,lh, draw:async(x,ox,y)=>{ const im=await loadImgEl(L.img); x.drawImage(im,ox,y+G,L.w*K,L.h*K); } }; }
-const mkDia=w=>Math.max(28,Math.min(46,w*0.032));       // PDF の番号の丸の大きさ（地図の幅に合わせる）
+const mkDia=w=>Math.max(28,Math.min(46,w*0.032))*mkScale();       // PDF の番号の丸の大きさ（地図の幅に合わせる）
 function mapBox(paper,land){ const P=PAPER[paper]||PAPER.a4, W=land?P[1]:P[0], H=land?P[0]:P[1]; return [W-PDF_M*2, H-PDF_M-28-(PDF_M+64)-MAP_TH]; }
 function fitIn(ar,box){ let w=box[0], h=w/ar; if(h>box[1]){ h=box[1]; w=h*ar; } return [w,h]; }
 function splitParts(ar){ const a=0.5+OV_OVL, b=0.5-OV_OVL;
