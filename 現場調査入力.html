@@ -963,19 +963,24 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
         var row = y < R1 ? 0 : 1 + Math.floor((y - R1) / RH), off = y < R1 ? y : (y - R1) - (row - 1) * RH;
         return { nativeCol: 0, nativeColOff: Math.round(x * EMU), nativeRow: row, nativeRowOff: Math.round(off * EMU) };
       };
+      /* 絵は「左上の角」と「右下の角」の両方をマスに留める（写真帳と同じ置き方）。
+         Windows の Excel で PDF・印刷にすると、マスの位置は印刷の倍率で縮むのに、角1つで置いた絵の大きさは縮み方が違い、
+         地図の下の方・右の方ほど丸がずれていた。両方の角をマスに留めると、地図も丸もマスと同じだけ縮むのでずれない。
+         丸は今までどおり1つずつ動かせる */
+      var box = function (x, y, w, h) { x = Math.max(0, x); y = Math.max(0, y); return { tl: at(x, y), br: at(x + w, y + h), editAs: "oneCell" }; };
       if (mm.legend && mm.legend.img) {   // 凡例（丸の色＝優先度、色の枠＝区画など）
         var lw = Math.min(mm.legend.w, MW), lh = Math.round(mm.legend.h * lw / mm.legend.w);
         var lid = wb.addImage({ base64: raw(mm.legend.img), extension: "png" });
-        mp.addImage(lid, { tl: at(ox, oy), ext: { width: lw, height: lh }, editAs: "oneCell" });
+        mp.addImage(lid, box(ox, oy, lw, lh));
         oy += lh + 10; nRows = Math.ceil((oy + MH + sz - R1) / RH) + 1; for (var gr2 = 2; gr2 <= nRows; gr2++) mp.getRow(gr2).height = 15;
       }
       var mid = wb.addImage({ base64: raw(mm.map), extension: "jpeg" });
-      mp.addImage(mid, { tl: at(ox, oy), ext: { width: MW, height: MH }, editAs: "oneCell" });
+      mp.addImage(mid, box(ox, oy, MW, MH));
       (mm.markers || []).forEach(function (mk) {
         if (!mk || !mk.img) return;
         var cx = ox + mk.x * MW, cy = oy + mk.y * MH;
         var kid = wb.addImage({ base64: raw(mk.img), extension: "png" });
-        mp.addImage(kid, { tl: at(cx - sz / 2, cy - sz / 2), ext: { width: sz, height: sz }, editAs: "oneCell" });
+        mp.addImage(kid, box(cx - sz / 2, cy - sz / 2, sz, sz));
       });
       mp.pageSetup.printArea = "A1:A" + nRows;
     }
@@ -1001,13 +1006,17 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     function outline(r1, c1, r2, c2) { for (var r = r1; r <= r2; r++) for (var c = c1; c <= c2; c++) { var b = {};
       if (r === r1) b.top = { style: "thin" }; if (r === r2) b.bottom = { style: "thin" }; if (c === c1) b.left = { style: "thin" }; if (c === c2) b.right = { style: "thin" };
       if (b.top || b.bottom || b.left || b.right) { var x = pb.getCell(r, c); x.border = Object.assign({}, x.border || {}, b); } } }
+    // 説明が何行になるか（枠の幅に全角でおよそ17字。半角は半分）
+    function capLines(t) { return String(t || "").split("\n").reduce(function (n, ln) { var u = 0; for (var i = 0; i < ln.length; i++) u += ln.charCodeAt(i) < 0x100 ? 1 : 2; return n + Math.max(1, Math.ceil(u / 34)); }, 0); }
     var top = 3;
     for (var pg = 0; pg < frames.length; pg += 6) {
       var chunk = frames.slice(pg, pg + 6);
       // ページの頭に細い空き行を入れる（改ページのすぐ上に次の写真の上の端が写り込まないように）
       pb.getRow(top).height = 9; top += 1;
       var halves = [top, top + 4];
-      halves.forEach(function (t0) { pb.getRow(t0).height = gapPt; pb.getRow(t0 + 1).height = photoPt; pb.getRow(t0 + 2).height = gapPt; pb.getRow(t0 + 3).height = capPt; });
+      // 説明の欄の高さ：その段でいちばん行数の多い説明に合わせる（備考が長くても切れない）
+      var capH = function (list) { var n = 0; list.forEach(function (fr) { n = Math.max(n, capLines(fr.cap)); }); return Math.min(200, Math.max(capPt, n * 16 + 14)); };
+      halves.forEach(function (t0, h) { pb.getRow(t0).height = gapPt; pb.getRow(t0 + 1).height = photoPt; pb.getRow(t0 + 2).height = gapPt; pb.getRow(t0 + 3).height = capH(chunk.slice(h * 3, h * 3 + 3)); });
       chunk.forEach(function (fr, k) {
         var t0 = halves[k < 3 ? 0 : 1], pc = PC[k % 3], prow = t0 + 1, crow = t0 + 3;
         if (fr.img) { var iid = wb.addImage({ base64: raw(fr.img), extension: "jpeg" }); pb.addImage(iid, { tl: { col: pc - 1, row: prow - 1 }, br: { col: pc, row: prow }, editAs: "oneCell" }); }
