@@ -3926,7 +3926,8 @@ function refPaint(V,r){
   const RL=noLabels();
   if(RF.mode==="stitch"&&V.kind==="O"&&r.f){ // つなぐ：足す図面の外枠を、つないだ図面の上に
     x.beginPath(); [[0,0],[RF.iw,0],[RF.iw,RF.ih],[0,RF.ih]].forEach((q,k)=>{ const w=r.f(q), p=sc(w[0],w[1]); k?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]); }); x.closePath();
-    x.lineWidth=3; x.strokeStyle="#1E88E5"; x.setLineDash([8,5]); x.stroke(); x.setLineDash([]); }
+    x.lineWidth=3; x.strokeStyle="#1E88E5"; x.setLineDash([8,5]); x.stroke(); x.setLineDash([]);
+    const sm=stitchSeam(RF,r.f), p0=sc(...sm.line[0]), p1=sc(...sm.line[1]); x.beginPath(); x.moveTo(p0[0],p0[1]); x.lineTo(p1[0],p1[1]); x.lineWidth=2.5; x.strokeStyle="#E53935"; x.stroke(); } // 赤＝つなぎ目
   const SM=RF.mode==="swap"?swapMarks():null;
   state.trees.forEach((t,i)=>{ let w;
     if(RF.mode==="stitch") return;
@@ -3985,7 +3986,7 @@ function refApply(){ if(!RF) return; if(RF.mode==="swap") return swapApply(); if
   const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
 refBind("A"); refBind("B");
 function refTexts(swap){ const T=(id,v)=>{ const e=document.getElementById(id); if(e) e.innerHTML=v; };
-  if(swap==="stitch"){ T("refTitle","📄 図面をつなぐ（"+RF.pg+"枚目）"); T("refHint","2枚の<b>重なっている所</b>で、建物の角・道の角など同じ場所を、<b>足す図面 → つないだ図面</b>の順にタップ。<b>離れた所を2〜4か所</b>。合わせると、足す図面の外枠が右に青い点線で出ます。");
+  if(swap==="stitch"){ T("refTitle","📄 図面をつなぐ（"+RF.pg+"枚目）"); T("refHint","2枚の<b>重なっている所</b>で、建物の角・道の角など同じ場所を、<b>足す図面 → つないだ図面</b>の順にタップ。<b>離れた所を2〜4か所</b>。合わせると、足す図面の外枠が右に青い点線、つなぎ目が赤い線で出ます。重なった所は、赤い線から先が足す図面になります（透けて二重には見えません）。");
     T("refLabA","① 足す図面"); T("refLabB","② つないだ図面（同じ場所）"); T("refOk",RF.pg<RF.pages.length?"つないで次の図面へ":"つなぐ"); const fb=document.getElementById("refFindBtn"); if(fb) fb.style.display="none"; return; }
   T("refTitle",swap?(RF&&isAll(RF.map)?"📄 全体の図面を差し替える（番号はそのまま）":"📄 図面を差し替える（番号はそのまま）"):"📍 目印で地図と合わせる");
   T("refHint",swap?"建物の角・道の角・池の端など、<b>両方の図面ではっきり分かる所</b>を、<b>新しい図面 → いまの図面</b>の順に同じ場所をタップ。<b>離れた所を2〜4か所</b>（3か所以上だと、図面のゆがみも合わせます）。合わせると、いまの番号が新しい図面の上に緑で出ます。印はドラッグで直せます。"
@@ -4128,15 +4129,21 @@ async function stitchOpen(urls,k,base){ k=k||1;
        pairs:Array.from({length:REF_N},()=>({uv:null,m:null})), A:{id:"refA",kind:"A",cx:0,cy:0,s:1}, B:{id:"refB",kind:"O",cx:0,cy:0,s:1} };
   refTexts("stitch"); document.getElementById("refDlg").style.display="flex"; document.body.style.overflow="hidden";
   refResize(); refFitA(); const B=RF.B; B.s=Math.min(B.W/RF.ow,B.H/RF.oh)*0.96; B.cx=RF.ow/2; B.cy=RF.oh/2; refUI(); refDraw(); }
+/* つなぎ目：2枚の中心を結ぶ向きで、重なっている幅のまん中に引く線。clip＝足す図面を見せる側（つないだ図面の座標） */
+function stitchSeam(S,f){ const cB=[S.ow/2,S.oh/2], cP=f([S.iw/2,S.ih/2]); let d=[cP[0]-cB[0],cP[1]-cB[1]]; const L=Math.hypot(d[0],d[1])||1; d=[d[0]/L,d[1]/L];
+  const pj=p=>p[0]*d[0]+p[1]*d[1], bmax=Math.max(...[[0,0],[S.ow,0],[S.ow,S.oh],[0,S.oh]].map(pj)), pmin=Math.min(...[[0,0],[S.iw,0],[S.iw,S.ih],[0,S.ih]].map(f).map(pj));
+  const sp=pmin<bmax?(pmin+bmax)/2:pmin, n=[-d[1],d[0]], o=[d[0]*sp,d[1]*sp], B=1e6, P=(u,v)=>[o[0]+n[0]*u+d[0]*v, o[1]+n[1]*u+d[1]*v];
+  return { clip:[P(B,0),P(-B,0),P(-B,B),P(B,B)], line:[P(B,0),P(-B,0)] }; }
 async function stitchApply(){ const r=refFit(); if(!(r.n>=2&&r.spread>=8&&r.f)) return; const S=RF, f=r.f;
   const cs=[[0,0],[S.iw,0],[S.iw,S.ih],[0,S.ih]].map(f), xs=[0,S.ow,...cs.map(c=>c[0])], ys=[0,S.oh,...cs.map(c=>c[1])];
   const X0=Math.min(...xs), Y0=Math.min(...ys), W=Math.max(...xs)-X0, H=Math.max(...ys)-Y0, k=Math.min(1,3600/Math.max(W,H));
   const cv=document.createElement("canvas"); cv.width=Math.round(W*k); cv.height=Math.round(H*k); const x=cv.getContext("2d");
   x.fillStyle="#fff"; x.fillRect(0,0,cv.width,cv.height); x.imageSmoothingQuality="high";
   x.setTransform(k,0,0,k,-X0*k,-Y0*k); x.drawImage(S.oimg,0,0);
-  // 足す図面：合わせた向き・大きさで重ねる（白は透けるように「暗い方」を残す）
+  // 足す図面：合わせた向き・大きさで、重なりのまん中（つなぎ目）から先だけを上に置く。重なった所が透けて二重に見えないように
+  const sm=stitchSeam(S,f); x.save(); x.beginPath(); sm.clip.forEach((p,j)=>j?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])); x.closePath(); x.clip();
   const a=f([0,0]), b=f([1,0]), c=f([0,1]); x.setTransform(k*(b[0]-a[0]),k*(b[1]-a[1]),k*(c[0]-a[0]),k*(c[1]-a[1]),k*(a[0]-X0),k*(a[1]-Y0));
-  x.globalCompositeOperation="darken"; x.drawImage(S.img,0,0); x.globalCompositeOperation="source-over"; x.setTransform(1,0,0,1,0,0);
+  x.drawImage(S.img,0,0); x.restore(); x.setTransform(1,0,0,1,0,0);
   const url=cv.toDataURL("image/jpeg",0.85), pages=S.pages, nk=S.k+1; refClose();
   if(nk<pages.length){ stitchOpen(pages,nk,url); return; }
   toast("図面をつなぎました。続けて、いまの図面と合わせます",5000); swapStart(url); }
