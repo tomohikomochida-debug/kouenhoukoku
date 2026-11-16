@@ -52,7 +52,7 @@ var SHEETS = {
   memos:     { name: '要点メモ',     head: ['memoId', 'at', 'by', 'to', 'kind', 'headline', 'points', 'needs', 'vehicles', 'site', 'when', 'people', 'missing', 'message', 'rawText', 'readBy', 'status', 'doneAt', 'doneBy', 'routes'] },
   cautions:  { name: '現場の注意点', head: ['cautionId', 'siteId', 'site', 'kind', 'text', 'lat', 'lng', 'photoUrl', 'photoId', 'until', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },
   replies:   { name: '要点メモの返事', head: ['replyId', 'memoId', 'at', 'by', 'text', 'scope', 'showAt', 'actions', 'readBy'] },
-  chosa:     { name: '現場調査の案件', head: ['id', 'name', 'date', 'mode', 'n', 'photos', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 中身は Drive の「現場調査データ」、写真は1枚1ファイルで「現場調査データ ＞ 写真」
+  chosa:     { name: '現場調査の案件', head: ['id', 'name', 'date', 'mode', 'n', 'photos', 'fileId', 'size', 'ver', 'state', 'by', 'at', 'updatedBy', 'updatedAt', 'status', 'place', 'kw'] },   // status：調査中／見積提出済／受注／しまう。place：工事場所。kw：探すための言葉（樹種・作業など）   // 中身は Drive の「現場調査データ」、写真は1枚1ファイルで「現場調査データ ＞ 写真」
   chosaPhotos:{ name: '現場調査の写真', head: ['hash', 'fileId', 'mime', 'size', 'at'] },
   chosaDocs: { name: '現場調査の設計書', head: ['id', 'name', 'fileId', 'mime', 'size', 'book', 'state', 'by', 'at', 'updatedBy', 'updatedAt'] },   // 単価のもとにした設計書（ファイルは「現場調査データ ＞ 設計書」）
   parkHist:  { name: '公園報告の履歴', head: ['hid', 'id', 'atMs', 'at', 'by', 'figures', 'fileId', 'img', 'map', 'size', 'ver', 'note'] },   // 前の版（30分に1回・人が変わったとき・戻す前）。画像は別ファイル（img/map＝その目印）で、同じ画像は1つだけ
@@ -646,6 +646,7 @@ function doPost(e) {
       case 'chosa:photo':      return withLock_(function () { return chosaPhoto_(b.hash, b.data); });
       case 'chosa:save':       return withLock_(function () { return chosaSave_(b); });
       case 'chosa:delete':     return withLock_(function () { return chosaDelete_(b.id, b.by); });
+      case 'chosa:status':     return withLock_(function () { return chosaStatus_(b); });
       case 'chosa:prices':     return withLock_(function () { return chosaPricesSave_(b); });
       case 'chosa:doc':        return withLock_(function () { return chosaDocSave_(b); });
       case 'chosa:docDelete':  return withLock_(function () { return chosaDocDelete_(b.id, b.by); });
@@ -2410,7 +2411,15 @@ function chosaFolder_(sub) {
   return sub ? subFolder_(folder, sub) : folder;
 }
 function chosaRow_(id) { var list = rows_('chosa'); for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i]; return null; }
-function chosaItem_(r) { return { id: r.id, name: r.name, date: r.date, mode: r.mode, n: Number(r.n) || 0, photos: Number(r.photos) || 0, ver: Number(r.ver) || 1, by: r.by, updatedBy: r.updatedBy || r.by, updated: r.updatedAt }; }
+function chosaItem_(r) { return { id: r.id, name: r.name, date: r.date, mode: r.mode, n: Number(r.n) || 0, photos: Number(r.photos) || 0, ver: Number(r.ver) || 1, by: r.by, updatedBy: r.updatedBy || r.by, updated: r.updatedAt, status: r.status || '調査中', place: r.place || '', kw: r.kw || '' }; }
+var CHOSA_STATUS = ['調査中', '見積提出済', '受注', 'しまう'];
+function chosaStatus_(b) {   // 案件の状態だけを変える（中身は送り直さない・版も上げない）
+  var r = chosaRow_(b.id), st = String(b.status || '');
+  if (!r || r.state === '削除') return { ok: false, error: 'この案件は見つかりませんでした（消されたかもしれません）' };
+  if (CHOSA_STATUS.indexOf(st) < 0) return { ok: false, error: '状態の名前がちがいます：' + st };
+  upsert_('chosa', 'id', 'C', { id: r.id, status: st }, String(b.by || '').trim());
+  return { ok: true, id: r.id, status: st };
+}
 function chosaPhotoMap_() { var m = {}; rows_('chosaPhotos').forEach(function (r) { if (r.hash && !m[r.hash]) m[r.hash] = r; }); return m; }
 function chosaGet_(a, p) {
   if (a === 'list') {
@@ -2509,7 +2518,8 @@ function chosaSave_(b) {
     return { ok: false, conflict: true, ver: Number(old.ver) || 1, updatedBy: old.updatedBy || old.by, updated: old.updatedAt };
   var live = old && old.state !== '削除';
   var obj = { id: id, name: String(b.name || '').trim() || '（無題）', date: b.date || '', mode: b.caseMode || '', n: Number(b.n) || 0, photos: Number(b.photos) || 0,
-    ver: live ? (Number(old.ver) || 1) + 1 : 1, state: '有効' };
+    ver: live ? (Number(old.ver) || 1) + 1 : 1, state: '有効', place: String(b.place || '').slice(0, 120), kw: String(b.kw || '').slice(0, 1500) };
+  if (CHOSA_STATUS.indexOf(String(b.status || '')) >= 0) obj.status = String(b.status); else if (!live) obj.status = '調査中';   // 状態は送ってきたときだけ変える（ほかの端末で変えた状態を消さない）
   if (!live) { obj.by = by; obj.at = now_(); }
   var name = [obj.name, obj.date || '日付なし', id].join('_').replace(/[\\\/:*?"<>|]/g, '') + '.json';
   var file = chosaFolder_().createFile(Utilities.newBlob(json, 'application/json', name));
