@@ -485,7 +485,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
           <button class="iconbtn" id="gsiBtn" onclick="gsiOpen()">🛰 線画・地理院で作り直す</button>
           <button class="iconbtn" id="refBtn" onclick="refOpen()" style="display:none">📍 目印で地図と合わせる</button>
           <button class="iconbtn" onclick="gmOpen()">🗺 Googleマップで作り直す</button>
-          <label class="iconbtn" id="swapBtn" style="display:none">📄 図面を差し替える（番号はそのまま）<input type="file" accept="image/*,.pdf,application/pdf" hidden onchange="swapPick(this)"></label>
+          <label class="iconbtn" id="swapBtn" style="display:none">📄 図面を差し替える（番号はそのまま）<input type="file" accept="image/*,.pdf,application/pdf" multiple hidden onchange="swapPick(this)"></label>
           <button class="iconbtn" onclick="clearMap()">画像を変更</button>
         </div>
         <div class="muted maphint" id="mkhint" style="display:none"></div>
@@ -3923,7 +3923,7 @@ function refPaint(V,r){
   }
   // 位置のある木（地図には実際の位置、スクショには合わせた結果の位置）
   const RL=noLabels();
-  if(RF.mode==="stitch"&&V.kind==="O"&&r.f){ // つなぐ：足すページの外枠を、つないだ図面の上に
+  if(RF.mode==="stitch"&&V.kind==="O"&&r.f){ // つなぐ：足す図面の外枠を、つないだ図面の上に
     x.beginPath(); [[0,0],[RF.iw,0],[RF.iw,RF.ih],[0,RF.ih]].forEach((q,k)=>{ const w=r.f(q), p=sc(w[0],w[1]); k?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]); }); x.closePath();
     x.lineWidth=3; x.strokeStyle="#1E88E5"; x.setLineDash([8,5]); x.stroke(); x.setLineDash([]); }
   const SM=RF.mode==="swap"?swapMarks():null;
@@ -3984,8 +3984,8 @@ function refApply(){ if(!RF) return; if(RF.mode==="swap") return swapApply(); if
   const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
 refBind("A"); refBind("B");
 function refTexts(swap){ const T=(id,v)=>{ const e=document.getElementById(id); if(e) e.innerHTML=v; };
-  if(swap==="stitch"){ T("refTitle","📄 ページをつなぐ（"+RF.pg+"枚目）"); T("refHint","2枚の<b>重なっている所</b>で、建物の角・道の角など同じ場所を、<b>足すページ → つないだ図面</b>の順にタップ。<b>離れた所を2〜4か所</b>。合わせると、足すページの外枠が右に青い点線で出ます。");
-    T("refLabA","① 足すページ"); T("refLabB","② つないだ図面（同じ場所）"); T("refOk",RF.pg<RF.pages.length?"つないで次のページへ":"つなぐ"); const fb=document.getElementById("refFindBtn"); if(fb) fb.style.display="none"; return; }
+  if(swap==="stitch"){ T("refTitle","📄 図面をつなぐ（"+RF.pg+"枚目）"); T("refHint","2枚の<b>重なっている所</b>で、建物の角・道の角など同じ場所を、<b>足す図面 → つないだ図面</b>の順にタップ。<b>離れた所を2〜4か所</b>。合わせると、足す図面の外枠が右に青い点線で出ます。");
+    T("refLabA","① 足す図面"); T("refLabB","② つないだ図面（同じ場所）"); T("refOk",RF.pg<RF.pages.length?"つないで次の図面へ":"つなぐ"); const fb=document.getElementById("refFindBtn"); if(fb) fb.style.display="none"; return; }
   T("refTitle",swap?(RF&&isAll(RF.map)?"📄 全体の図面を差し替える（番号はそのまま）":"📄 図面を差し替える（番号はそのまま）"):"📍 目印で地図と合わせる");
   T("refHint",swap?"建物の角・道の角・池の端など、<b>両方の図面ではっきり分かる所</b>を、<b>新しい図面 → いまの図面</b>の順に同じ場所をタップ。<b>離れた所を2〜4か所</b>（3か所以上だと、図面のゆがみも合わせます）。合わせると、いまの番号が新しい図面の上に緑で出ます。印はドラッグで直せます。"
     :"建物の角・道の交差点・横断歩道の端など、<b>両方ではっきり分かる所</b>を、<b>スクショ → 地図</b>の順に同じ場所をタップ。<b>離れた所を2〜4か所</b>付けると合わせられます（印はドラッグで直せます）。");
@@ -3998,13 +3998,16 @@ const loadImg=src=>new Promise((ok,ng)=>{ const i=new Image(); i.onload=()=>ok(i
    図面の差し替え（番号はそのまま）：PDF・画像の新しい図面を、いまの図面と目印2〜4か所で合わせ、
    置いてある番号を新しい図面の同じ場所へ移す。地図の位置（地理院・目印）が分かっていれば、それも引き継ぐ
    ========================================================= */
-async function swapPick(input){ const f=input.files&&input.files[0]; input.value=""; if(!f) return;
+/* 図面は PDF でも画像（写真・スキャン・スクショ）でもよい。画像を何枚か選ぶと、PDF の何ページかと同じように、つないで1枚にする */
+async function swapPick(input){ const fs=[...(input.files||[])].sort((a,b)=>(a.name||"").localeCompare(b.name||"","ja",{numeric:true})); input.value=""; if(!fs.length) return;
   const cm=CM(); if(!cm||!cm.image) return;
-  let urls;
+  const urls=[];
   try{
-    if(/\.pdf$/i.test(f.name||"")||f.type==="application/pdf"){ toast("PDFを読んでいます…",8000); urls=await pdfPageImages(f); if(!urls) return; }
-    else urls=[await shrink(f,2400,0.9)];
+    for(const f of fs){
+      if(/\.pdf$/i.test(f.name||"")||f.type==="application/pdf"){ toast("PDFを読んでいます…",8000); const u=await pdfPageImages(f); if(!u) return; urls.push(...u); }
+      else urls.push(await shrink(f,2400,0.9)); }
   }catch(e){ alert("図面を読めませんでした："+(e&&e.message?e.message:e)); return; }
+  if(!urls.length) return;
   if(urls.length>1){ stitchOpen(urls); return; } // 何ページもあれば、つないで1枚にしてから
   swapStart(urls[0]);
 }
@@ -4067,7 +4070,7 @@ function swapFit(P){ const n=P.length, out={n,spread:0,err:null,f:null}; if(n<2)
     out.err=Math.sqrt(d.reduce((a,v)=>a+v*v,0)/n); out.errUnit=T?"m":"%"; }
   return out; }
 function swapUI(){ const r=refFit(), info=document.getElementById("refInfo"), ok=document.getElementById("refOk"), cur=RF.pairs[RF.i];
-  const st=RF.mode==="stitch", nA=st?"足すページ":"新しい図面", nB=st?"つないだ図面":"いまの図面";
+  const st=RF.mode==="stitch", nA=st?"足す図面":"新しい図面", nB=st?"つないだ図面":"いまの図面";
   const next=!cur.uv?(r.n>=2&&r.f?"目印"+(RF.i+1)+"は付けなくても"+(st?"つなげます":"差し替えられます"):"目印"+(RF.i+1)+"：① "+nA+"の上をタップ"):!cur.m?"目印"+(RF.i+1)+"：② "+nB+"の同じ場所をタップ":"";
   const e=r.err==null?"":r.errUnit==="m"?"・ずれの目安 約"+(r.err<1?r.err.toFixed(1):Math.round(r.err))+"m":"・ずれの目安 図面の幅の約"+r.err.toFixed(1)+"%";
   info.textContent=[next, r.n<2?"あと"+(2-r.n)+"か所":r.spread<8?"目印どうしが近すぎます（図面の端と端くらい離してください）":"目印 "+r.n+"か所"+(r.n>=3?e:"（3か所にすると、ずれの目安が出ます）")].filter(Boolean).join("　");
@@ -4130,12 +4133,12 @@ async function stitchApply(){ const r=refFit(); if(!(r.n>=2&&r.spread>=8&&r.f)) 
   const cv=document.createElement("canvas"); cv.width=Math.round(W*k); cv.height=Math.round(H*k); const x=cv.getContext("2d");
   x.fillStyle="#fff"; x.fillRect(0,0,cv.width,cv.height); x.imageSmoothingQuality="high";
   x.setTransform(k,0,0,k,-X0*k,-Y0*k); x.drawImage(S.oimg,0,0);
-  // 足すページ：合わせた向き・大きさで重ねる（白は透けるように「暗い方」を残す）
+  // 足す図面：合わせた向き・大きさで重ねる（白は透けるように「暗い方」を残す）
   const a=f([0,0]), b=f([1,0]), c=f([0,1]); x.setTransform(k*(b[0]-a[0]),k*(b[1]-a[1]),k*(c[0]-a[0]),k*(c[1]-a[1]),k*(a[0]-X0),k*(a[1]-Y0));
   x.globalCompositeOperation="darken"; x.drawImage(S.img,0,0); x.globalCompositeOperation="source-over"; x.setTransform(1,0,0,1,0,0);
   const url=cv.toDataURL("image/jpeg",0.85), pages=S.pages, nk=S.k+1; refClose();
   if(nk<pages.length){ stitchOpen(pages,nk,url); return; }
-  toast("ページをつなぎました。続けて、いまの図面と合わせます",5000); swapStart(url); }
+  toast("図面をつなぎました。続けて、いまの図面と合わせます",5000); swapStart(url); }
 function clearMap(){ const m=CM(); if(!m) return; pushUndo("map"); m.image=""; m.geo=null; m.size=null; m.ref=null; markDirty(); renderMap(); }
 const MAP_CHOOSE=`<div class="mapchoose"><button type="button" class="mapbig" onclick="gmOpen()">🗺 Googleマップのスクショから作る<br><small style="font-weight:400">新しい航空写真</small></button><button type="button" class="mapbig" onclick="gsiOpen()">🛰 線画・地理院の地図から作る<br><small style="font-weight:400">範囲を決めるだけ・番号も自動</small></button><label class="mapbig">🖼 ほかの画像を選ぶ<input type="file" accept="image/*" onchange="setMap(this)" hidden></label></div>`;
 let activePlace=-1;
