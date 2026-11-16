@@ -485,6 +485,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
           <button class="iconbtn" id="gsiBtn" onclick="gsiOpen()">🛰 線画・地理院で作り直す</button>
           <button class="iconbtn" id="refBtn" onclick="refOpen()" style="display:none">📍 目印で地図と合わせる</button>
           <button class="iconbtn" onclick="gmOpen()">🗺 Googleマップで作り直す</button>
+          <label class="iconbtn" id="swapBtn" style="display:none">📄 図面を差し替える（番号はそのまま）<input type="file" accept="image/*,.pdf,application/pdf" hidden onchange="swapPick(this)"></label>
           <button class="iconbtn" onclick="clearMap()">画像を変更</button>
         </div>
         <div class="muted maphint" id="mkhint" style="display:none"></div>
@@ -530,12 +531,12 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   <input id="prFile" type="file" accept=".pdf,.xlsx,.xlsm,.csv,application/pdf" style="display:none" onchange="prFilePicked(this)">
 </div>
 <div id="refDlg" class="gsidlg" style="display:none">
-  <div class="gsihead"><b>📍 目印で地図と合わせる</b><span class="sp"></span><button type="button" onclick="refClose()">やめる</button></div>
-  <div class="refhint">建物の角・道の交差点・横断歩道の端など、<b>両方ではっきり分かる所</b>を、<b>スクショ → 地図</b>の順に同じ場所をタップ。<b>離れた所を2〜4か所</b>付けると合わせられます（印はドラッグで直せます）。</div>
-  <div class="refbar"><div class="seg" id="refPairs"></div><button type="button" onclick="refDel()">この目印を消す</button><span style="flex:1"></span><div class="seg" id="refLayer"></div><button type="button" onclick="refFind()">木・住所へ</button></div>
+  <div class="gsihead"><b id="refTitle">📍 目印で地図と合わせる</b><span class="sp"></span><button type="button" onclick="refClose()">やめる</button></div>
+  <div class="refhint" id="refHint">建物の角・道の交差点・横断歩道の端など、<b>両方ではっきり分かる所</b>を、<b>スクショ → 地図</b>の順に同じ場所をタップ。<b>離れた所を2〜4か所</b>付けると合わせられます（印はドラッグで直せます）。</div>
+  <div class="refbar"><div class="seg" id="refPairs"></div><button type="button" onclick="refDel()">この目印を消す</button><span style="flex:1"></span><div class="seg" id="refLayer"></div><button type="button" id="refFindBtn" onclick="refFind()">木・住所へ</button></div>
   <div class="refpanes">
-    <div class="refpane"><div class="reflab">① スクショ</div><canvas id="refA"></canvas><div class="gsizoom"><button type="button" onclick="refZoom('A',1)">＋</button><button type="button" onclick="refZoom('A',-1)">－</button></div></div>
-    <div class="refpane"><div class="reflab">② 地図（同じ場所）</div><canvas id="refB"></canvas><div class="gsizoom"><button type="button" onclick="refZoom('B',1)">＋</button><button type="button" onclick="refZoom('B',-1)">－</button></div></div>
+    <div class="refpane"><div class="reflab" id="refLabA">① スクショ</div><canvas id="refA"></canvas><div class="gsizoom"><button type="button" onclick="refZoom('A',1)">＋</button><button type="button" onclick="refZoom('A',-1)">－</button></div></div>
+    <div class="refpane"><div class="reflab" id="refLabB">② 地図（同じ場所）</div><canvas id="refB"></canvas><div class="gsizoom"><button type="button" onclick="refZoom('B',1)">＋</button><button type="button" onclick="refZoom('B',-1)">－</button></div></div>
   </div>
   <div class="gsifoot"><span id="refInfo" class="muted"></span><button type="button" id="refOk" class="primary" onclick="refApply()">この目印で合わせる</button></div>
 </div>
@@ -3866,7 +3867,7 @@ function refOpen(){ const cm=CM(); if(!cm||!cm.image) return;
     RF={ map:cm, img, iw, ih, i:0, layer:gsiLastLayer(), pairs:Array.from({length:REF_N},(_,k)=>old[k]?{uv:[old[k].uv[0]*iw,old[k].uv[1]*ih],m:old[k].m.slice()}:{uv:null,m:null}),
          A:{id:"refA",kind:"A",cx:0,cy:0,s:1}, B:{id:"refB",kind:"B",cx:0,cy:0,s:2**18} };
     RF.i=Math.max(0,RF.pairs.findIndex(p=>!p.uv||!p.m)); if(RF.i<0) RF.i=0;
-    document.getElementById("refDlg").style.display="flex"; document.body.style.overflow="hidden";
+    refTexts(false); document.getElementById("refDlg").style.display="flex"; document.body.style.overflow="hidden";
     refResize(); refFitA(); refCenterB(); refUI(); refDraw();
   }; img.src=cm.image; }
 function refClose(){ document.getElementById("refDlg").style.display="none"; document.body.style.overflow=""; RF=null; }
@@ -3893,6 +3894,7 @@ function refUI(){ if(!RF) return;
   RF.pairs.forEach((p,k)=>{ const b=document.createElement("button"); b.type="button"; b.className=k===RF.i?"on":"";
     b.innerHTML=`<i style="background:${REF_COL[k]}"></i>目印${k+1}${p.uv&&p.m?" ✓":p.uv||p.m?" …":""}`; b.onclick=()=>{ RF.i=k; refUI(); refDraw(); }; box.appendChild(b); });
   const lb=document.getElementById("refLayer"); lb.innerHTML="";
+  if(RF.mode==="swap"){ swapUI(); return; }
   for(const k of ["osm","std","photo"]){ const b=document.createElement("button"); b.type="button"; b.className=RF.layer===k?"on":""; b.textContent=GSI[k].name; b.onclick=()=>{ RF.layer=k; refUI(); refDraw(); }; lb.appendChild(b); }
   const r=refFit(), info=document.getElementById("refInfo"), ok=document.getElementById("refOk"), cur=RF.pairs[RF.i];
   const next=!cur.uv?"目印"+(RF.i+1)+"：① スクショの上をタップ":!cur.m?"目印"+(RF.i+1)+"：② 地図の上の同じ場所をタップ":"";
@@ -3900,6 +3902,7 @@ function refUI(){ if(!RF) return;
   ok.disabled=!(r.n>=2&&r.spread>=10); }
 /* 組になった目印から、地図（メルカトル）⇔ スクショ（画像の点）を計算 */
 function refFit(){ const P=RF.pairs.filter(p=>p.uv&&p.m), n=P.length, out={n,spread:0,err:null,f:null};
+  if(RF.mode==="swap") return swapFit(P);
   if(n<2) return out;
   for(let a=0;a<n;a++) for(let b=a+1;b<n;b++){ const ga=unmerc(...P[a].m), gb=unmerc(...P[b].m); out.spread=Math.max(out.spread,geoDist({lat:ga[0],lon:ga[1]},{lat:gb[0],lon:gb[1]})); }
   out.f=fitSimilarity(P.map(p=>[p.m,p.uv])); const bk=fitSimilarity(P.map(p=>[p.uv,p.m]));
@@ -3911,6 +3914,7 @@ function refPaint(V,r){
   x.setTransform(d,0,0,d,0,0); x.fillStyle="#dfe3e6"; x.fillRect(0,0,W,H);
   const sc=(wx,wy)=>[W/2+(wx-V.cx)*S, H/2+(wy-V.cy)*S];
   if(V.kind==="A"){ const p=sc(0,0); x.imageSmoothingEnabled=true; x.drawImage(RF.img,p[0],p[1],RF.iw*S,RF.ih*S); }
+  else if(V.kind==="O"){ const p=sc(0,0); x.imageSmoothingEnabled=true; x.drawImage(RF.oimg,p[0],p[1],RF.ow*S,RF.oh*S); }
   else {
     const tz=Math.max(2,Math.min(GSI_MAX,Math.round(Math.log2(S)))), n=2**tz, tw=256/n;
     const x0=Math.floor((V.cx-W/2/S)/tw), x1=Math.floor((V.cx+W/2/S)/tw), y0=Math.max(0,Math.floor((V.cy-H/2/S)/tw)), y1=Math.min(n-1,Math.floor((V.cy+H/2/S)/tw));
@@ -3919,7 +3923,9 @@ function refPaint(V,r){
   }
   // 位置のある木（地図には実際の位置、スクショには合わせた結果の位置）
   const RL=noLabels();
-  state.trees.forEach((t,i)=>{ const g=itemGeo(t); if(!g) return; let w=merc(g.lat,g.lon);
+  state.trees.forEach((t,i)=>{ let w;
+    if(RF.mode==="swap"){ if(!onMap(t,RF.map)) return; w=[t.mx*RF.ow,t.my*RF.oh]; } // 差し替え：いまの図面の番号（新しい図面には合わせた結果の場所）
+    else { const g=itemGeo(t); if(!g) return; w=merc(g.lat,g.lon); }
     if(V.kind==="A"){ if(!r.f) return; w=r.f(w); }
     const p=sc(w[0],w[1]); if(p[0]<-20||p[1]<-20||p[0]>W+20||p[1]>H+20) return;
     x.beginPath(); x.arc(p[0],p[1],9,0,Math.PI*2); x.fillStyle="rgba(46,125,50,.85)"; x.fill(); x.lineWidth=2; x.strokeStyle="#fff"; x.stroke();
@@ -3933,7 +3939,7 @@ function refPaint(V,r){
 }
 function refZoom(which,dz,sx,sy){ if(!RF) return; const V=RF[which]; if(sx==null){ sx=V.W/2; sy=V.H/2; }
   const wx=V.cx+(sx-V.W/2)/V.s, wy=V.cy+(sy-V.H/2)/V.s;
-  const lim=V.kind==="A"?[Math.min(V.W/RF.iw,V.H/RF.ih)*0.5,8]:[2**4,2**20.5];
+  const lim=V.kind==="A"?[Math.min(V.W/RF.iw,V.H/RF.ih)*0.5,8]:V.kind==="O"?[Math.min(V.W/RF.ow,V.H/RF.oh)*0.5,8]:[2**4,2**20.5];
   V.s=Math.max(lim[0],Math.min(lim[1],V.s*2**dz)); V.cx=wx-(sx-V.W/2)/V.s; V.cy=wy-(sy-V.H/2)/V.s; refDraw(); }
 /* 指の操作：1本で動かす／タップで目印を置く／目印をドラッグで直す／2本で拡大縮小 */
 const refPtr=new Map(); let refG=null;
@@ -3955,6 +3961,7 @@ function refBind(which){ const cv=document.getElementById(which==="A"?"refA":"re
     if(refPtr.size===0){ const g=refG; refG=null;
       if(!g.moved){ const V=RF[which], w=[V.cx+(g.start.x-V.W/2)/V.s, V.cy+(g.start.y-V.H/2)/V.s];
         if(which==="A"&&(w[0]<0||w[1]<0||w[0]>RF.iw||w[1]>RF.ih)) return;
+        if(which==="B"&&RF.mode==="swap"&&(w[0]<0||w[1]<0||w[0]>RF.ow||w[1]>RF.oh)) return;
         const pr=RF.pairs[RF.i]; if(which==="A") pr.uv=w; else pr.m=w;
         if(pr.uv&&pr.m){ const nx=RF.pairs.findIndex(q=>!q.uv||!q.m); if(nx>=0) RF.i=nx; }
         refUI(); refDraw(); } }
@@ -3963,7 +3970,7 @@ function refBind(which){ const cv=document.getElementById(which==="A"?"refA":"re
   cv.addEventListener("wheel",e=>{ e.preventDefault(); const p=pos(e); refZoom(which,-e.deltaY/300,p.x,p.y); },{passive:false});
 }
 function refDel(){ if(!RF) return; RF.pairs[RF.i]={uv:null,m:null}; refUI(); refDraw(); }
-function refApply(){ if(!RF) return; const r=refFit(); if(r.n<2||r.spread<10) return;
+function refApply(){ if(!RF) return; if(RF.mode==="swap") return swapApply(); const r=refFit(); if(r.n<2||r.spread<10) return;
   pushUndo("mapref");
   const cm=RF.map; cm.ref={ pairs:RF.pairs.filter(p=>p.uv&&p.m).map(p=>({ m:[+p.m[0].toFixed(9),+p.m[1].toFixed(9)], uv:[+(p.uv[0]/RF.iw).toFixed(5),+(p.uv[1]/RF.ih).toFixed(5)] })) };
   if(!cm.size) cm.size=[RF.iw,RF.ih]; refreshFrames();
@@ -3971,6 +3978,90 @@ function refApply(){ if(!RF) return; const r=refFit(); if(r.n<2||r.spread<10) re
   toast("地図と合わせました。"+(res.n?"位置のある木"+res.n+"本の番号を置きました":"木の位置を測ると、番号が自動で置かれます")+(res.out?"（範囲の外："+res.out+"本）":""),6000);
   const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
 refBind("A"); refBind("B");
+function refTexts(swap){ const T=(id,v)=>{ const e=document.getElementById(id); if(e) e.innerHTML=v; };
+  T("refTitle",swap?"📄 図面を差し替える（番号はそのまま）":"📍 目印で地図と合わせる");
+  T("refHint",swap?"建物の角・道の角・池の端など、<b>両方の図面ではっきり分かる所</b>を、<b>新しい図面 → いまの図面</b>の順に同じ場所をタップ。<b>離れた所を2〜4か所</b>（3か所以上だと、図面のゆがみも合わせます）。合わせると、いまの番号が新しい図面の上に緑で出ます。印はドラッグで直せます。"
+    :"建物の角・道の交差点・横断歩道の端など、<b>両方ではっきり分かる所</b>を、<b>スクショ → 地図</b>の順に同じ場所をタップ。<b>離れた所を2〜4か所</b>付けると合わせられます（印はドラッグで直せます）。");
+  T("refLabA",swap?"① 新しい図面":"① スクショ"); T("refLabB",swap?"② いまの図面（同じ場所）":"② 地図（同じ場所）");
+  T("refOk",swap?"この目印で差し替える":"この目印で合わせる");
+  const fb=document.getElementById("refFindBtn"); if(fb) fb.style.display=swap?"none":""; }
+const loadImg=src=>new Promise((ok,ng)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=()=>ng(new Error("画像を読めませんでした")); i.src=src; });
+
+/* =========================================================
+   図面の差し替え（番号はそのまま）：PDF・画像の新しい図面を、いまの図面と目印2〜4か所で合わせ、
+   置いてある番号を新しい図面の同じ場所へ移す。地図の位置（地理院・目印）が分かっていれば、それも引き継ぐ
+   ========================================================= */
+async function swapPick(input){ const f=input.files&&input.files[0]; input.value=""; if(!f) return;
+  const cm=CM(); if(!cm||!cm.image||isAll(cm)) return;
+  let url;
+  try{
+    if(/\.pdf$/i.test(f.name||"")||f.type==="application/pdf"){ toast("PDFを読んでいます…",8000); url=await pdfPageImage(f); if(!url) return; }
+    else url=await shrink(f,2400,0.9);
+  }catch(e){ alert("図面を読めませんでした："+(e&&e.message?e.message:e)); return; }
+  const n=state.trees.filter(t=>onMap(t,cm)).length;
+  if(!n&&!mapTransform(cm)){ await setMapUrl(url); toast("図面を差し替えました"); return; } // 番号も地図の位置もなければ、合わせる物がない
+  swapOpen(url);
+}
+/* PDFの1ページを図面の画像に（何ページもあれば選ぶ）。長い辺 2400px */
+async function pdfPageImage(f){ const lib=await prLoadPdfjs();
+  const pdf=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+  let pg=1; if(pdf.numPages>1){ pg=await pdfChoosePage(pdf); if(!pg) return null; }
+  const page=await pdf.getPage(pg), v1=page.getViewport({scale:1}), k=2400/Math.max(v1.width,v1.height), vp=page.getViewport({scale:k});
+  const cv=document.createElement("canvas"); cv.width=Math.round(vp.width); cv.height=Math.round(vp.height); const x=cv.getContext("2d");
+  x.fillStyle="#fff"; x.fillRect(0,0,cv.width,cv.height); await page.render({canvasContext:x,viewport:vp}).promise;
+  return cv.toDataURL("image/jpeg",0.85); }
+function pdfChoosePage(pdf){ return new Promise(async res=>{
+  const ov=document.createElement("div"); ov.className="gsidlg"; ov.style.display="flex";
+  ov.innerHTML=`<div class="gsihead"><b>どのページを図面にしますか</b><span class="sp"></span><button type="button">やめる</button></div><div class="pgpick" style="flex:1;overflow:auto;display:flex;flex-wrap:wrap;gap:12px;padding:12px;align-content:flex-start"></div>`;
+  document.body.appendChild(ov); const done=v=>{ ov.remove(); res(v); };
+  ov.querySelector(".gsihead button").onclick=()=>done(0);
+  const box=ov.querySelector(".pgpick");
+  for(let n=1;n<=pdf.numPages;n++){ const b=document.createElement("button"); b.type="button"; b.style.cssText="display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border:2px solid #cfd8dc;border-radius:10px;background:#fff;cursor:pointer";
+    b.innerHTML=`<canvas style="max-width:320px;max-height:240px;border:1px solid #eee"></canvas><span>${n}ページ目</span>`; b.onclick=()=>done(n); box.appendChild(b);
+    try{ const page=await pdf.getPage(n), v1=page.getViewport({scale:1}), vp=page.getViewport({scale:480/Math.max(v1.width,v1.height)}), cv=b.querySelector("canvas");
+      cv.width=Math.round(vp.width); cv.height=Math.round(vp.height); await page.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise; }catch(e){} }
+}); }
+async function swapOpen(url){ const cm=CM(); if(!cm) return;
+  let img, oimg; try{ [img,oimg]=await Promise.all([loadImg(url),loadImg(cm.image)]); }catch(e){ alert(e.message); return; }
+  RF={ mode:"swap", map:cm, url, img, iw:img.naturalWidth, ih:img.naturalHeight, oimg, ow:oimg.naturalWidth, oh:oimg.naturalHeight, i:0, layer:gsiLastLayer(),
+       pairs:Array.from({length:REF_N},()=>({uv:null,m:null})), A:{id:"refA",kind:"A",cx:0,cy:0,s:1}, B:{id:"refB",kind:"O",cx:0,cy:0,s:1} };
+  refTexts(true); document.getElementById("refDlg").style.display="flex"; document.body.style.overflow="hidden";
+  refResize(); refFitA(); const B=RF.B; B.s=Math.min(B.W/RF.ow,B.H/RF.oh)*0.96; B.cx=RF.ow/2; B.cy=RF.oh/2; refUI(); refDraw(); }
+/* 3か所以上：ゆがみも含めて合わせる（アフィン・最小二乗）。一直線に並ぶと決まらない */
+function fitAffine(pairs){ if(pairs.length<3) return null;
+  const M=[[0,0,0],[0,0,0],[0,0,0]], bx=[0,0,0], by=[0,0,0];
+  for(const [z,w] of pairs){ const v=[z[0],z[1],1]; for(let a=0;a<3;a++){ for(let b=0;b<3;b++) M[a][b]+=v[a]*v[b]; bx[a]+=v[a]*w[0]; by[a]+=v[a]*w[1]; } }
+  const det=m=>m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])-m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])+m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+  const D=det(M); if(!isFinite(D)||Math.abs(D)<1e-9*Math.pow(M[0][0]+M[1][1]+1,3)) return null;
+  const solve=b=>[0,1,2].map(k=>det(M.map((r,i)=>r.map((c,j)=>j===k?b[i]:c)))/D);
+  const X=solve(bx), Y=solve(by); return z=>[X[0]*z[0]+X[1]*z[1]+X[2], Y[0]*z[0]+Y[1]*z[1]+Y[2]]; }
+/* 差し替えの目印：いまの図面（m＝画像の点）→ 新しい図面（uv＝画像の点） */
+function swapFit(P){ const n=P.length, out={n,spread:0,err:null,f:null}; if(n<2) return out;
+  const dg=Math.hypot(RF.ow,RF.oh); for(let a=0;a<n;a++) for(let b=a+1;b<n;b++) out.spread=Math.max(out.spread,Math.hypot(P[a].m[0]-P[b].m[0],P[a].m[1]-P[b].m[1])/dg*100);
+  const pr=P.map(p=>[p.m,p.uv]); out.f=(n>=3&&fitAffine(pr))||fitSimilarity(pr);
+  if(n>=3&&out.f){ const T=mapTransform(RF.map), bk=(fitAffine(P.map(p=>[p.uv,p.m])))||fitSimilarity(P.map(p=>[p.uv,p.m]));
+    const d=P.map(p=>{ const q=bk(p.uv); if(T){ const a=unmerc(...T.inv([q[0]/RF.ow,q[1]/RF.oh])), b=unmerc(...T.inv([p.m[0]/RF.ow,p.m[1]/RF.oh])); return geoDist({lat:a[0],lon:a[1]},{lat:b[0],lon:b[1]}); } return Math.hypot(q[0]-p.m[0],q[1]-p.m[1])/dg*100; });
+    out.err=Math.sqrt(d.reduce((a,v)=>a+v*v,0)/n); out.errUnit=T?"m":"%"; }
+  return out; }
+function swapUI(){ const r=refFit(), info=document.getElementById("refInfo"), ok=document.getElementById("refOk"), cur=RF.pairs[RF.i];
+  const next=!cur.uv?(r.n>=2&&r.f?"目印"+(RF.i+1)+"は付けなくても差し替えられます":"目印"+(RF.i+1)+"：① 新しい図面の上をタップ"):!cur.m?"目印"+(RF.i+1)+"：② いまの図面の同じ場所をタップ":"";
+  const e=r.err==null?"":r.errUnit==="m"?"・ずれの目安 約"+(r.err<1?r.err.toFixed(1):Math.round(r.err))+"m":"・ずれの目安 図面の幅の約"+r.err.toFixed(1)+"%";
+  info.textContent=[next, r.n<2?"あと"+(2-r.n)+"か所":r.spread<8?"目印どうしが近すぎます（図面の端と端くらい離してください）":"目印 "+r.n+"か所"+(r.n>=3?e:"（3か所にすると、ずれの目安が出ます）")].filter(Boolean).join("　");
+  ok.disabled=!(r.n>=2&&r.spread>=8&&r.f); }
+async function swapApply(){ const r=refFit(); if(!(r.n>=2&&r.spread>=8&&r.f)) return;
+  const S=RF, cm=S.map, F=r.f, Told=mapTransform(cm);
+  pushUndo("mapswap");
+  let moved=0, out=0;
+  state.trees.forEach(t=>{ if(!onMap(t,cm)) return; const q=F([t.mx*S.ow,t.my*S.oh]), u=q[0]/S.iw, v=q[1]/S.ih;
+    if(u<-0.01||u>1.01||v<-0.01||v>1.01){ t.mx=null; t.my=null; t.mauto=false; out++; return; } // 新しい図面の外
+    t.mx=Math.max(0,Math.min(1,u)); t.my=Math.max(0,Math.min(1,v)); moved++; });
+  let ref=null; // 地図の位置が分かっていた図面は、四隅で新しい図面に引き継ぐ（あとで「📍 目印を直す」で地図と合わせ直せる）
+  if(Told) ref={ pairs:[[0,0],[S.ow,0],[S.ow,S.oh],[0,S.oh],[S.ow/2,S.oh/2]].map(p=>{ const m=Told.inv([p[0]/S.ow,p[1]/S.oh]), q=F(p);
+    return { m:[+m[0].toFixed(9),+m[1].toFixed(9)], uv:[+(q[0]/S.iw).toFixed(5),+(q[1]/S.ih).toFixed(5)] }; }) };
+  cm.image=S.url; cm.size=[S.iw,S.ih]; cm.geo=null; cm.ref=ref; refreshFrames();
+  autoPlace(); markDirty(); refClose(); renderTrees();
+  toast("図面を差し替えました。番号"+moved+"本を新しい図面の同じ場所へ移しました"+(out?"（新しい図面の外："+out+"本。カードの📍から置き直せます）":"")+"。ずれていたらドラッグで直せます。戻すときは「↶ 取り消し」",8000);
+  const mb=document.getElementById("mapbox"); if(mb&&mb.scrollIntoView) mb.scrollIntoView({behavior:"smooth",block:"center"}); }
 function clearMap(){ const m=CM(); if(!m) return; pushUndo("map"); m.image=""; m.geo=null; m.size=null; m.ref=null; markDirty(); renderMap(); }
 const MAP_CHOOSE=`<div class="mapchoose"><button type="button" class="mapbig" onclick="gmOpen()">🗺 Googleマップのスクショから作る<br><small style="font-weight:400">新しい航空写真</small></button><button type="button" class="mapbig" onclick="gsiOpen()">🛰 線画・地理院の地図から作る<br><small style="font-weight:400">範囲を決めるだけ・番号も自動</small></button><label class="mapbig">🖼 ほかの画像を選ぶ<input type="file" accept="image/*" onchange="setMap(this)" hidden></label></div>`;
 let activePlace=-1;
@@ -3987,6 +4078,7 @@ function renderMap(){ const box=document.getElementById("mapbox"); const tools=d
       const hp=document.getElementById("mkhelp"); if(hp) hp.textContent=all?"全体図：区画に置いた番号も出ます。番号・枠をタップでその区画へ／「✂ 囲んで区画を作る」で範囲を囲むと拡大図の区画ができます":"空きをタップで番号カードを追加／番号をタップでその木へ移動／番号をドラッグで位置調整";
       const gb=document.getElementById("gsiBtn"); if(gb) gb.textContent=cm.geo?"🛰 範囲・地図を変える":"🛰 線画・地理院で作り直す";
       const rb=document.getElementById("refBtn"); if(rb){ rb.style.display=cm.geo?"none":""; rb.textContent=cm.ref?"📍 目印を直す":"📍 目印で地図と合わせる"; }
+      const sb=document.getElementById("swapBtn"); if(sb) sb.style.display=all?"none":"";
       const hn=document.getElementById("mkhint"); if(hn){ const h=mapHint(); hn.textContent=h; hn.style.display=h?"block":"none"; } }
   } else {
     box.innerHTML = (cm&&multi?`<div class="mapcap">${all?"全体図を作ります（区画の範囲が枠で出ます）":esc(zoneCode(cm))+"　"+esc(mapTitle(cm))+"：この区画の図面を作ります"}</div>`:"")+MAP_CHOOSE;
