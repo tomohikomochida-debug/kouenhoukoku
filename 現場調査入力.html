@@ -4326,9 +4326,10 @@ window.addEventListener("scroll",updateToMap,{passive:true});
    番号＝木の並び順なので、木（写真・内容ごと）を並べ替えるだけ。番号と中身は入れ違わない。
    木の前の番号は、木のメモに「旧No.○」で残す（もう残っていれば、最初の番号のまま）
    ========================================================= */
-function routeOrder(pts){ const n=pts.length; if(n<3) return pts.map((_,k)=>k).sort((a,b)=>(pts[a][0]+pts[a][1])-(pts[b][0]+pts[b][1]));
+function routeOrder(pts,corner){ const n=pts.length, sx=/r/.test(corner||"")?-1:1, sy=/b/.test(corner||"")?-1:1, sc=k=>sx*pts[k][0]+sy*pts[k][1];
+  if(n<3) return pts.map((_,k)=>k).sort((a,b)=>sc(a)-sc(b));
   const D=(a,b)=>Math.hypot(pts[a][0]-pts[b][0],pts[a][1]-pts[b][1]);
-  let st=0; for(let k=1;k<n;k++) if(pts[k][0]+pts[k][1]<pts[st][0]+pts[st][1]) st=k;   // 左上の木から
+  let st=0; for(let k=1;k<n;k++) if(sc(k)<sc(st)) st=k;   // 選んだ角（はじめは左上）にいちばん近い木から
   const used=new Array(n).fill(false), path=[st]; used[st]=true;
   for(let s=1;s<n;s++){ const a=path[path.length-1]; let b=-1, bd=Infinity; for(let k=0;k<n;k++) if(!used[k]){ const d=D(a,k); if(d<bd){ bd=d; b=k; } } path.push(b); used[b]=true; }
   for(let pass=0;pass<60;pass++){ let imp=false;   // 2-opt：交差・遠回りをほどく（はじめの木は動かさない）
@@ -4344,21 +4345,43 @@ function setMkScale(v){ if(mkScale()===v) return; pushUndo("mksize"); state.mkSc
 function mkSizeUI(){ const el=document.getElementById("mkSizeSel"); if(el) el.innerHTML="<b>丸の大きさ</b>"+MK_SIZES.map(([v,l])=>`<button type="button" class="${mkScale()===v?"on":""}" onclick="setMkScale(${v})">${l}</button>`).join("");
   const mb=document.getElementById("mapbox"); if(mb) mb.style.setProperty("--mks",String(mkScale())); }
 (function(){ try{ const d=document.getElementById("mapMore"); if(d&&localStorage.getItem("chosa_mapmore")==="1") d.open=true; }catch(e){} })();
-function renumberRoute(){ const T=state.trees; if(T.length<2) return;
+/* 振り直し：何度でもできる。始める角と、前の番号をメモに残すかを選ぶ（選んだものは覚える） */
+const RN_KEY="chosa_renum";
+function renumberRoute(){ if((state.trees||[]).length<2) return;
+  let o={corner:"tl",old:"first"}; try{ Object.assign(o,JSON.parse(localStorage.getItem(RN_KEY)||"{}")); }catch(e){}
+  const zs=zoneMaps().filter(m=>m.image), d=document.createElement("dialog"); d.className="vdlg";
+  const rad=(name,v,l,cur)=>`<label style="display:flex;gap:8px;align-items:center;padding:5px 0;font-size:14.5px"><input type="radio" name="${name}" value="${v}" ${cur===v?"checked":""} style="width:auto"> ${l}</label>`;
+  d.innerHTML=`<h3>🔢 番号を道順に振り直す</h3>
+    <div class="muted" style="font-size:13px;margin-bottom:8px">${zs.length>1?"区画"+zs.map(zoneCode).join("→")+"の順に、区画の中で":""}近い木を順につなぐ道順で番号を付けます。写真・樹種・内容は木と一緒に動きます（番号と中身は入れ違いません）。何度でもやり直せます。</div>
+    <b style="font-size:13.5px">どの角から始めるか</b><div style="display:grid;grid-template-columns:1fr 1fr">${rad("rnc","tl","↖ 左上から",o.corner)+rad("rnc","tr","↗ 右上から",o.corner)+rad("rnc","bl","↙ 左下から",o.corner)+rad("rnc","br","↘ 右下から",o.corner)}</div>
+    <b style="font-size:13.5px;display:block;margin-top:8px">前の番号（メモの「旧No.○」）</b>
+    ${rad("rno","first","残す（いちばん最初の番号のまま）",o.old)+rad("rno","last","残す（振り直す前の番号に書きかえる）",o.old)+rad("rno","none","付けない（付いている「旧No.○」も消す）",o.old)}
+    <div class="muted" style="font-size:12.5px;margin-top:6px">位置図に置いていない木は、その区画の後ろに回ります。「↶ 取り消し」で戻せます。</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button type="button" class="iconbtn" data-x>やめる</button><button type="button" data-ok style="padding:8px 18px;background:var(--accent);color:#fff;border:0;border-radius:10px;font-weight:700">振り直す</button></div>`;
+  document.body.appendChild(d); d.addEventListener("close",()=>d.remove());
+  d.querySelector("[data-x]").onclick=()=>d.close();
+  d.querySelector("[data-ok]").onclick=()=>{ const v=n=>(d.querySelector(`input[name=${n}]:checked`)||{}).value; o={corner:v("rnc")||"tl",old:v("rno")||"first"};
+    try{ localStorage.setItem(RN_KEY,JSON.stringify(o)); }catch(e){} d.close(); renumberApply(o); };
+  d.showModal(); }
+function renumberApply(o){ const T=state.trees;
   const zs=zoneMaps().filter(m=>m.image), groups=[], seen=new Set();
   for(const m of (zs.length?zs:[CM()].filter(Boolean))){ const sz=m.size||[1,1], list=T.filter(t=>!seen.has(t)&&onMap(t,m));
     if(!list.length) continue; list.forEach(t=>seen.add(t));
-    const ord=routeOrder(list.map(t=>[t.mx*sz[0],t.my*sz[1]])); groups.push(ord.map(k=>list[k]));
+    const ord=routeOrder(list.map(t=>[t.mx*sz[0],t.my*sz[1]]),o.corner); groups.push(ord.map(k=>list[k]));
     const rest=T.filter(t=>!seen.has(t)&&zoneOf(t)===m); rest.forEach(t=>seen.add(t)); if(rest.length) groups.push(rest); } // その区画で位置のない木は、区画の最後に
-  const tail=T.filter(t=>!seen.has(t)), next=groups.flat().concat(tail);
   if(!groups.length){ toast("位置図に置いた番号がありません"); return; }
-  const moved=next.filter((t,k)=>T[k]!==t).length; if(!moved){ toast("もう道順に並んでいます"); return; }
-  if(!confirm((zs.length>1?"区画"+zs.map(zoneCode).join("→")+"の順に、区画の中で":"")+"近い木を順につなぐ道順で、番号を振り直します。\n・写真・樹種・内容は木と一緒に動きます（番号と中身は入れ違いません）\n・前の番号は、木のメモに「旧No.○」で残します\n・位置図に置いていない木は、後ろに回ります\n（「↶ 取り消し」で戻せます）")) return;
+  const next=groups.flat().concat(T.filter(t=>!seen.has(t))), moved=next.filter((t,k)=>T[k]!==t).length;
+  const RX=/(　|\s)*旧No\.\S+/g, hasOld=T.some(t=>/旧No\./.test(t.memo||""));
+  if(!moved&&!(o.old==="none"&&hasOld)){ toast("この始め方では、もう道順に並んでいます（ほかの角から始めると変わります）"); return; }
   pushUndo("renum"); const old=noLabels(), oldOf=new Map(T.map((t,k)=>[t,old[k]]));
   state.trees=next; const now=noLabels();
-  next.forEach((t,k)=>{ const o=oldOf.get(t); if(t.type==="exterior"||o===now[k]||/旧No\./.test(t.memo||"")) return; t.memo=(t.memo?t.memo+"　":"")+"旧No."+o; });
+  next.forEach((t,k)=>{ if(t.type==="exterior") return; const was=oldOf.get(t), memo=String(t.memo||""), had=/旧No\./.test(memo), clean=memo.replace(RX,"").trim();
+    if(o.old==="none"){ if(had) t.memo=clean; return; }
+    if(o.old==="first"&&had) return;
+    if(was===now[k]){ if(o.old==="last"&&had) t.memo=clean; return; }   // 番号が変わらなかった木は付けない
+    t.memo=(clean?clean+"　":"")+"旧No."+was; });
   activePlace=-1; markDirty(); renderTrees(); const bk=document.getElementById("book"); if(bk&&bk.style.display!=="none") renderBook();
-  toast("番号を道順に振り直しました（"+moved+"本の番号が変わりました）。戻すときは「↶ 取り消し」",7000); }
+  toast((moved?"番号を道順に振り直しました（"+moved+"本の番号が変わりました）":"番号はそのままです")+(o.old==="none"?"。旧番号は付けていません":"")+"。戻すときは「↶ 取り消し」",7000); }
 function clearMarkers(){ const cm=CM(); if(!state.trees.some(t=>onMap(t,cm))) return; if(confirm((maps().length>1?"この図面（区画"+zoneCode(cm)+"）の":"地図の")+"番号配置を全て消去しますか？")){ pushUndo("clearpins"); state.trees.forEach(t=>{ if(onMap(t,cm)){ t.mx=null; t.my=null; t.mauto=false; } }); activePlace=-1; markDirty(); renderTrees(); renderMap(); } }
 function markerPng(n,color){ const S=84, cv=document.createElement("canvas"); cv.width=S; cv.height=S; const x=cv.getContext("2d");
   x.beginPath(); x.arc(S/2,S/2,S/2-5,0,Math.PI*2); x.fillStyle=color||"rgba(214,40,40,0.92)"; x.fill(); x.lineWidth=6; x.strokeStyle="#fff"; x.stroke();
