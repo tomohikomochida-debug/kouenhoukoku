@@ -880,6 +880,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     if (mm) { c1 = cn(mm[1]); r1 = +mm[2]; c2 = cn(mm[3]); r2 = +mm[4]; }
     var cw = 0, rh = 0; for (var c = c1; c <= c2; c++) cw += Math.floor((sh.getColumn(c).width || 9) * 8) * 0.75;
     for (var r = r1; r <= r2; r++) rh += sh.getRow(r).height || 15;
+    if (sh.__page) { cw = sh.__page.w * 0.75; rh = sh.__page.h * 0.75; ps = Object.assign(ps, {}); var sc1 = Math.min(W / cw, H / rh); ps.scale = Math.max(10, Math.min(100, Math.floor(sc1 * 100 * 0.98))); return; }   // 2ページに分けた位置図：1ページ分の大きさで
     var fw = ps.fitToWidth || 1, fh = ps.fitToHeight || 0;   // 横に2ページ（左右に分けた位置図）なら、1ページの幅に入る倍率
     var sc = cw ? W * fw / cw : 1; if (fh >= 1 && rh) sc = Math.min(sc, H * fh / rh);
     ps.scale = Math.max(10, Math.min(100, Math.floor(sc * 100 * 0.98)));
@@ -1033,45 +1034,34 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     } // 公共用でないとき
     /* ===== 位置図（マーカーは独立オブジェクト＝Excelで移動/削除可）。図面が何枚もあれば、区画ごとにシートを分ける ===== */
     var mapList = imgs.maps || (imgs.map ? [{ sheet: "位置図", title: "", map: imgs.map, mapW: imgs.mapW, mapH: imgs.mapH, markers: imgs.markers }] : []);
-    mapList.forEach(function (mm) { if (mm.halves) mapSheetSplit(mm); else mapSheet(mm); });
-    /* 全体図を A3 2枚に分けるとき：1つのシートに左右（または上下）の半分を並べ、印刷すると2ページに分かれる。
-       左右なら A列＝左半分・B列＝右半分（1列に1ページ。Excel は列の途中では改ページしないので、列の境目で分かれる）。
-       上下なら上半分の下に改ページを入れる。番号の丸は、それぞれの半分の列・行に留める */
+    mapList.forEach(function (mm) { if (mm.split) mapSheetSplit(mm); else mapSheet(mm); });
+    /* 全体図を A3 2枚に分けるとき：1枚の図をそのまま半分に割る（重ね代・つなぎ目の印なし）。1つのシートに図を1枚置き、
+       左右なら A列とB列の境目を図のまん中に（Excel は列の途中では改ページしないので、境目で2ページに分かれる）、
+       上下なら図のまん中の行の下に改ページ。列の幅は日本語の Excel（Mac・Windows とも 1＝8px）でぴったりになるように決める */
     function mapSheetSplit(mm) {
       var R1 = 32, RH = 20, sz = Math.round(42 * (+state.mkScale > 0 ? +state.mkScale : 1)), lr = !!mm.lr, ox = 24;
       var ps = { paperSize: mm.paper || 8, orientation: mm.orient || "landscape", fitToPage: true, fitToWidth: lr ? 2 : 1, fitToHeight: lr ? 1 : 2 };
       var mp = wb.addWorksheet(String(mm.sheet || "位置図").replace(/[\[\]:*?\/\\]/g, "").slice(0, 31), { pageSetup: ps });
-      var fits = mm.halves.map(function (h) { return mapFit({ mapW: h.mapW, mapH: h.mapH, paper: mm.paper || 8, orient: mm.orient }); });
-      var at = function (col, x, y) { x = Math.max(0, x); y = Math.max(0, y);
+      var hf = mapFit({ mapW: lr ? mm.mapW / 2 : mm.mapW, mapH: lr ? mm.mapH : mm.mapH / 2, paper: mm.paper || 8, orient: mm.orient });   // 半分を1ページに
+      var MW = lr ? hf.MW * 2 : hf.MW, MH = lr ? hf.MH : hf.MH * 2;
+      var colA = lr ? ox + hf.MW : MW + ox * 2;   // A列の幅（px）。左右なら、ちょうど図のまん中まで
+      mp.getColumn(1).width = colA / 8; if (lr) mp.getColumn(2).width = (hf.MW + ox) / 8;
+      var at = function (X, y) { X = Math.max(0, X); y = Math.max(0, y); var col = lr && X >= colA ? 1 : 0, xo = col ? X - colA : X;
         var row = y < R1 ? 0 : 1 + Math.floor((y - R1) / RH), off = y < R1 ? y : (y - R1) - (row - 1) * RH;
-        return { nativeCol: col, nativeColOff: Math.round(x * 9525), nativeRow: row, nativeRowOff: Math.round(off * 9525) }; };
-      var box = function (col, x, y, w, h) { return { tl: at(col, x, y), br: at(col, x + w, y + h), editAs: "oneCell" }; };
-      var place = function (k, col, y0) {   // 半分 k を、列 col・上から y0（px）に置く。使った高さ（px）を返す
-        var h = mm.halves[k], f = fits[k], oy = y0;
-        if (mm.legend && mm.legend.img) { var lw = Math.min(mm.legend.w, f.MW), lh = Math.round(mm.legend.h * lw / mm.legend.w);
-          mp.addImage(wb.addImage({ base64: raw(mm.legend.img), extension: "png" }), box(col, ox, oy, lw, lh)); oy += lh + 10; }
-        mp.addImage(wb.addImage({ base64: raw(h.map), extension: "jpeg" }), box(col, ox, oy, f.MW, f.MH));
-        (h.markers || []).forEach(function (mk) { if (!mk || !mk.img) return; var cx = ox + mk.x * f.MW, cy = oy + mk.y * f.MH;
-          mp.addImage(wb.addImage({ base64: raw(mk.img), extension: "png" }), box(col, cx - sz / 2, cy - sz / 2, sz, sz)); });
-        return oy + f.MH + sz - y0; };
-      var title = "位置図　" + (mm.title ? mm.title + "　" : "") + name;
-      mp.getRow(1).height = 24;
-      if (lr) {
-        [0, 1].forEach(function (k) { mp.getColumn(k + 1).width = Math.min(255, Math.ceil((fits[k].MW + ox * 2) / 7) + 4);
-          var c = mp.getCell(1, k + 1); c.value = title + "　" + (mm.halves[k].label || ""); c.font = font(14, true); });
-        var used = Math.max(place(0, 0, R1 + 12), place(1, 1, R1 + 12)), nRows = Math.ceil((R1 + 12 + used - R1) / RH) + 1;
-        for (var r = 2; r <= nRows; r++) mp.getRow(r).height = 15;
-        mp.pageSetup.printArea = "A1:B" + nRows;
-      } else {
-        mp.getColumn(1).width = Math.min(255, Math.ceil((Math.max(fits[0].MW, fits[1].MW) + ox * 2) / 7) + 4);
-        var u0 = place(0, 0, R1 + 12), n1 = Math.ceil((R1 + 12 + u0 - R1) / RH) + 1;   // 上半分の行（1〜n1）
-        var top2 = R1 + (n1 - 1) * RH, u1 = place(1, 0, top2 + RH + 12), n2 = Math.ceil((top2 + RH + 12 + u1 - R1) / RH) + 1;   // 下半分は n1+1 行目から
-        for (var r2 = 2; r2 <= n2; r2++) mp.getRow(r2).height = 15;
-        mp.getCell(1, 1).value = title + "　" + (mm.halves[0].label || ""); mp.getCell(1, 1).font = font(14, true);
-        mp.getCell(n1 + 1, 1).value = title + "　" + (mm.halves[1].label || ""); mp.getCell(n1 + 1, 1).font = font(14, true);
-        mp.getRow(n1).addPageBreak();
-        mp.pageSetup.printArea = "A1:A" + n2;
-      }
+        return { nativeCol: col, nativeColOff: Math.round(xo * 9525), nativeRow: row, nativeRowOff: Math.round(off * 9525) }; };
+      var box = function (x, y, w, h) { return { tl: at(x, y), br: at(x + w, y + h), editAs: "oneCell" }; };
+      mp.getRow(1).height = 24; mp.getCell("A1").value = "位置図　" + (mm.title ? mm.title + "　" : "") + name; mp.getCell("A1").font = font(14, true);
+      var oy = R1 + 12;
+      if (mm.legend && mm.legend.img) { var lw = Math.min(mm.legend.w, lr ? hf.MW : MW), lh = Math.round(mm.legend.h * lw / mm.legend.w);
+        mp.addImage(wb.addImage({ base64: raw(mm.legend.img), extension: "png" }), box(ox, oy, lw, lh)); oy += lh + 10; }
+      if (!lr) oy += ((R1 - (oy + hf.MH)) % RH + RH) % RH;   // 上下：図のまん中が行の境目に来るように下げる
+      mp.addImage(wb.addImage({ base64: raw(mm.map), extension: "jpeg" }), box(ox, oy, MW, MH));
+      (mm.markers || []).forEach(function (mk) { if (!mk || !mk.img) return; var cx = ox + mk.x * MW, cy = oy + mk.y * MH;
+        mp.addImage(wb.addImage({ base64: raw(mk.img), extension: "png" }), box(cx - sz / 2, cy - sz / 2, sz, sz)); });
+      var nRows = Math.ceil((oy + MH + sz / 2 - R1) / RH) + 1; for (var r = 2; r <= nRows; r++) mp.getRow(r).height = 15;
+      if (lr) { mp.pageSetup.printArea = "A1:B" + nRows; mp.__page = { w: Math.max(colA, hf.MW + ox), h: R1 + (nRows - 1) * RH }; }
+      else { var mid = oy + hf.MH, rb = Math.round((mid - R1) / RH) + 1; mp.getRow(rb).addPageBreak();
+        mp.pageSetup.printArea = "A1:A" + nRows; mp.__page = { w: colA, h: Math.max(mid, R1 + (nRows - 1) * RH - mid) }; }
     }
     function mapSheet(mm) {
       /* 地図と番号はすべて A列の中に、位置を EMU で直接置く。
@@ -6155,14 +6145,11 @@ async function exportExcel(pub){
     for(var omi=0; omi<oms.length; omi++){ var om=oms[omi], mapImg=om.m.image;
       var msz = om.m.size || await imgSize(mapImg);
       var plan = isAll(om.m) ? ovPlan(om) : null;
-      if(plan && plan.split){ // 全体図を A3 2枚に：1つのシートに半分ずつ並べ、印刷すると2ページに分かれる（番号はその半分の中の割合に直す）
-        var halves=[], pt0=plan.parts[0];
-        for(var pk=0; pk<plan.parts.length; pk++){ var pt=plan.parts[pk], pw=pt.u1-pt.u0, ph=pt.v1-pt.v0;
-          halves.push({ label: pt.label+"（"+(pk+1)+"/2）", map: await cropPart(om.m.image, om.frames, pt), mapW: msz[0]*pw, mapH: msz[1]*ph,
-            markers: om.mks.filter(function(k){ return k[0]>=pt.u0-0.005&&k[0]<=pt.u1+0.005&&k[1]>=pt.v0-0.005&&k[1]<=pt.v1+0.005; })
-              .map(function(k){ return {x:(k[0]-pt.u0)/pw, y:(k[1]-pt.v0)/ph, img:markerPng(k[2],k[3])}; }) }); }
-        xmaps.push({ sheet: "位置図_全体", title: om.title, halves: halves, lr: !!pt0.lr, paper: 8, orient: plan.land ? "landscape" : "portrait",
-          legend: legendPng(om, legW(8, !plan.land, msz[0]*(pt0.u1-pt0.u0), msz[1]*(pt0.v1-pt0.v0))) });
+      if(plan && plan.split){ // 全体図を A3 2枚に：1枚の図をそのまま半分に割って印刷（1つのシート・重ね代なし）
+        var pt0=plan.parts[0], fimg=om.frames.length?await bakeFrames(mapImg, om.frames):(!/^data:image\/jpeg/.test(mapImg)?await toJpeg(mapImg):mapImg);
+        xmaps.push({ sheet: "位置図_全体", title: om.title, split: true, lr: !!pt0.lr, map: fimg, mapW: msz[0], mapH: msz[1], paper: 8, orient: plan.land ? "landscape" : "portrait",
+          legend: legendPng(om, legW(8, !plan.land, msz[0]*(pt0.u1-pt0.u0), msz[1]*(pt0.v1-pt0.v0))),
+          markers: om.mks.map(function(k){ return {x:k[0], y:k[1], img:markerPng(k[2],k[3])}; }) });
         continue;
       }
       if(om.frames.length) mapImg = await bakeFrames(mapImg, om.frames); // 全体図は区画の枠を描き込む
@@ -6192,7 +6179,7 @@ const PAPER={ a4:[1240,1754], a3:[1754,2480] }; // 150dpi の [幅, 高さ]（�
 /* ===== 全体図の用紙：A4 → A3 → A3を2枚に分ける =====
    state.allPaper："auto"（番号の丸の重なりで決める）／"a4"／"a3"／"split"
    2枚に分けるときは長い方向で半分に（横長＝左右、縦長＝上下）。継ぎ目は両方のページに少し重ねて入れる */
-const OV_OVL=0.03, MAP_TH=58;
+const OV_OVL=0, MAP_TH=58;   // 全体図を2枚に分けるときの重ね代（なし：1枚の図をそのまま半分に割る）
 /* PDF の位置図の下に凡例を入れる。入りきらなければ地図を少し小さくする（w,h は地図の大きさ、avail は残りの高さ） */
 function pdfLegend(om,w,h,avail,ar){ const K=1.6, G=12; let lg=legendPng(om,w/K);
   if(!lg) return { w,h,lh:0,draw:async()=>{} };
@@ -6308,7 +6295,6 @@ function pdfLayout(name,date){
           x.save(); x.beginPath(); x.rect(ox,yy,w,h); x.clip();
           if(frs.length) drawFrames(x,frs,fx,fy,FW,FH,U);
           for(const [u,v,n,col] of mks){ const cx=fx+u*FW, cy=fy+v*FH; if(cx<ox-d||cx>ox+w+d||cy<yy-d||cy>yy+h+d) continue; drawMk(x,cx,cy,d,n,col); }
-          drawSeam(x,pt,fx,fy,FW,FH,ox,yy,w,h,U);
           x.restore(); x.strokeStyle="#999"; x.lineWidth=2; x.strokeRect(ox,yy,w,h); await LG.draw(x,ox,yy+h); });
         y+=h+LG.lh;
       }
