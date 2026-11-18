@@ -538,6 +538,10 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
         <div><label>運搬費(円)</label><input id="exCarry" inputmode="numeric" oninput="setExtra('carry',this.value)"></div>
         <div><label>処分費(円)</label><input id="exDispose" inputmode="numeric" oninput="setExtra('dispose',this.value)"></div>
       </div>
+      <div class="row2" id="exInnerRow" style="display:none">
+        <div><label>場内運搬（50m以内）(円)</label><input id="exInner" inputmode="numeric" oninput="setExtra('inner',this.value)"></div>
+        <div class="muted" style="font-size:12.5px;align-self:end">緑地（樹林地）の案件：発生材（㎥）× 単価。空なら下の参考の金額を使います</div>
+      </div>
       <div class="row2">
         <div><label>諸経費(円)</label><input id="exMisc" inputmode="numeric" oninput="setExtra('misc',this.value)"></div>
         <div><label>税率(%)</label><input id="taxRate" inputmode="decimal" oninput="setTax(this.value)"></div>
@@ -697,7 +701,9 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     var rows = [{ k: "##見出し行##", v: ["##見出し行##", state.caseName || "現場調査", "", "", ""] }];
     trees.forEach(function (t, i) { var q = qtyOf(t); rows.push({ k: "item", i: i, v: ["##通常##", boardText(t, noOf(t, i)), bnum(q) === "" ? q : bnum(q), unitOf(t), bnum(t.up)] }); });
     rows.push({ k: "sub", v: ["##小計行##", "小計", "", "", ""] });
-    [["運搬費", exs.carry], ["処分費", exs.dispose], ["諸経費", exs.misc]].forEach(function (x, j) { rows.push({ k: "ex", j: j, v: ["##通常##", x[0], 1, "式", bnum(x[1])] }); });
+    var exl = [["運搬費", exs.carry], ["処分費", exs.dispose], ["諸経費", exs.misc]];
+    if (Number(bnum(exs.inner))) exl.unshift(["場内運搬（50m以内）", exs.inner]);   // 緑地（樹林地）。Excelの内訳と同じ並び
+    exl.forEach(function (x, j) { rows.push({ k: "ex", j: j, v: ["##通常##", x[0], 1, "式", bnum(x[1])] }); });
     rows.push({ k: "kei", v: ["##小計行##", "計", "", "", ""] });
     return rows;
   }
@@ -721,8 +727,11 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       line("処分単価(円/t)", d.unit); line("処分費の参考(円)", d.dispose, null, "千円単位" + (d.usedDispose ? "。見積の処分費に使った" : (d.enteredDispose != null ? "。見積の処分費は入力の " + d.enteredDispose.toLocaleString() + " 円" : "")));
       line("運搬単価(円/t)", d.carryUnit); line("運搬費の参考(円)", d.carry, null, "千円単位" + (d.usedCarry ? "。見積の運搬費に使った" : (d.enteredCarry != null ? "。見積の運搬費は入力の " + d.enteredCarry.toLocaleString() + " 円" : ""))); R++;
     } else {
+    put(R, 1, "場内運搬（50m以内）", { size: 12, bold: true }); R++;
+    line("発生材(t)", d.t1, "0.0", "0.1t単位"); line("発生材(㎥)", d.m3, "0.0", "1tあたり " + d.m3t + "㎥"); line("単価(円/㎥)", d.innerUnit);
+    line("場内運搬の参考(円)", d.inner, null, d.usedInner ? "見積の場内運搬に使った" : (d.enteredInner != null ? "見積の場内運搬は入力の " + d.enteredInner.toLocaleString() + " 円" : "")); R++;
     put(R, 1, "処分費", { size: 12, bold: true }); R++;
-    line("発生材の合計(t)", d.tot, "0.0#"); line("処分単価(円/t)", d.unit); line("処分費の参考(円)", d.dispose, null, d.usedDispose ? "見積の処分費に使った" : (d.enteredDispose != null ? "見積の処分費は入力の " + d.enteredDispose.toLocaleString() + " 円" : "")); R++;
+    line("発生材(t)", d.t1, "0.0", "0.1t単位"); line("処分単価(円/t)", d.unit); line("処分費の参考(円)", d.dispose, null, d.usedDispose ? "見積の処分費に使った" : (d.enteredDispose != null ? "見積の処分費は入力の " + d.enteredDispose.toLocaleString() + " 円" : "")); R++;
     put(R, 1, "運搬費", { size: 12, bold: true }); R++;
     line("1台に積む量(t)", d.perTruck, "0.0#"); line("回数（合計t÷積む量、切り上げ）", d.trucks, "0"); line("往復の時間", d.tripH, "0.0#");
     line("運転手の日当(円)", d.daily); line("1日の実働時間", d.workH, "0.0#"); line("運転手の1時間あたり(円)", d.hourly, null, "日当÷実働時間");
@@ -783,8 +792,14 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
         cell(r, 1, null, {}); cell(r, 2, label, { g: !formula || label === "運搬費" || label === "処分費", al: "center" }); cell(r, 3, null, {}); cell(r, 4, null, {});
         cell(r, 5, qty ? 1 : null, { al: "center" }); cell(r, 6, qty ? "式" : null, { al: "center" });
         cell(r, 7, v, { fmt: NUMF }); cell(r, 8, formula ? { formula: formula, result: res } : { formula: "G" + r + "*E" + r, result: v || 0 }, { fmt: NUMF }); cell(r, 9, null, {}); return r; }
-      var first = 5, rC = money("運搬費", S.carry || null, null, null, true), rD = money("処分費", S.dispose || null, null, null, true);
-      var sub = sum + (S.carry || 0) + (S.dispose || 0);
+      function qline(label, Q) { var r = R++; ws.getRow(r).height = 16.5;   // 数量×単価で書く行（緑地の場内運搬・処分費）
+        cell(r, 1, null, {}); cell(r, 2, label, { g: true, al: "center", fit: true }); cell(r, 3, null, {}); cell(r, 4, null, {});
+        cell(r, 5, Q.q, { al: "center", fmt: "#,##0.0" }); cell(r, 6, Q.u, { al: "center" }); cell(r, 7, Q.p, { fmt: NUMF });
+        cell(r, 8, { formula: "ROUND(G" + r + "*E" + r + ",0)", result: Math.round(Q.q * Q.p) }, { fmt: NUMF }); cell(r, 9, null, {}); return r; }
+      var first = 5;
+      if (S.qIn) qline("残材場内運搬（50m以内）", S.qIn); else if (S.inner) money("場内運搬（50m以内）", S.inner, null, null, true);
+      var rC = money("運搬費", S.carry || null, null, null, true), rD = S.qDs ? qline("残材処分費", S.qDs) : money("処分費", S.dispose || null, null, null, true);
+      var sub = sum + (S.carry || 0) + (S.dispose || 0) + (S.inner || 0);
       var rS = money("小計", null, "SUM(H" + first + ":H" + rD + ")", sub, true);
       var miscV = Math.round(sub * rate);
       var rM = money("諸経費", null, "ROUND(SUM(H" + rS + ")*" + rate + ",0)", miscV, true);
@@ -899,10 +914,12 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     ws.getCell(r, 7).value = { formula: "SUM(G" + r0 + ":G" + rlast + ")" }; ws.getCell(r, 7).font = font(11, true); ws.getCell(r, 7).numFmt = "#,##0";
     var sub = r, ex = [];
     var exList = [["運搬費", exs.carry], ["処分費", exs.dispose], ["諸経費", exs.misc]];
+    if (Number(num(exs.inner))) exList.unshift(["場内運搬（50m以内）", exs.inner]);   // 緑地（樹林地）
     exList.forEach(function (row) {
       r += 1;
       ws.getCell(r, 2).value = row[0]; ws.getCell(r, 2).font = font(11);
       var dr = state.dispRef;
+      if (dr && row[0] === "場内運搬（50m以内）" && dr.usedInner) { ws.getCell(r, 3).value = "発生材 " + dr.m3 + "㎥ × " + (dr.innerUnit || 0).toLocaleString() + "円/㎥（参考）"; ws.getCell(r, 3).font = font(9); }
       if (dr && row[0] === "処分費" && dr.usedDispose) { ws.getCell(r, 3).value = "発生材 " + (dr.site === "park" ? dr.t1 : dr.tot) + "t × " + (dr.unit || 0).toLocaleString() + "円/t（参考）"; ws.getCell(r, 3).font = font(9); }
       if (dr && row[0] === "運搬費" && dr.usedCarry) { ws.getCell(r, 3).value = dr.site === "park" ? "発生材 " + dr.t1 + "t × " + (dr.carryUnit || 0).toLocaleString() + "円/t（参考）" : dr.trucks + "回 × " + (dr.trip || 0).toLocaleString() + "円（参考）"; ws.getCell(r, 3).font = font(9); }
       ws.getCell(r, 4).value = 1; ws.getCell(r, 5).value = "式";
@@ -5152,7 +5169,7 @@ function showTab(w){
 function qtyNum(t){ return t.type==="exterior"?(Number(t.qty)||0):1; }
 const otNoQ=t=>t.__no||"";
 function computeTotals(){ let items=0; const OT=outTrees(); OT.forEach(t=>{ items+=(Number(t.up)||0)*qtyNum(t); });
-  const ex=effExtras(OT,otNoQ).ex; const extra=(Number(ex.carry)||0)+(Number(ex.dispose)||0)+(Number(ex.misc)||0);
+  const ex=effExtras(OT,otNoQ).ex; const extra=(Number(ex.carry)||0)+(Number(ex.dispose)||0)+(Number(ex.misc)||0)+(Number(ex.inner)||0);
   const kei=items+extra; const tr=(state.taxRate!==""&&state.taxRate!=null)?Number(state.taxRate):0.1;
   const tax=Math.round(kei*tr); return {items,extra,kei,tax,total:kei+tax,tr}; }
 function yen(n){ return "¥"+Math.round(n||0).toLocaleString(); }
@@ -5192,7 +5209,8 @@ function setSite(v){ if(siteOf()===v) return; pushUndo("site"); state.site=v;
   if(typeof autoUp==="function") (state.trees||[]).forEach((t,i)=>autoUp(i,false));   // 仮の単価も、現場の種類の単価に入れ直す（手で入れた単価はそのまま）
   markDirty(); renderTrees(); renderQuote(); toast("現場の種類を「"+DISP_SITES[v].label+"」にしました（↶で戻せます）"); }
 const r1000=v=>v?Math.round(v/1000)*1000:0;
-const DISP_DEF={ unit:13630, perTruck:2, tripH:1, daily:27200, workH:6, sonryo:1470, fuelL:3.5, diesel:160, carryUnit:20000 };
+const DISP_DEF={ unit:13630, perTruck:2, tripH:1, daily:27200, workH:6, sonryo:1470, fuelL:3.5, diesel:160, carryUnit:20000, innerUnit:21600, m3t:2 };
+/* 緑地（樹林地）の場内運搬（50m以内）：昨年の市民プラザの見積のやり方。発生材（t）× 2 ＝ ㎥（単価表の注記 1t＝2㎥）× 単価（はじめは 21,600円/㎥：参考の見積の斜面地の単価） */
 function dispCfg(){ if(!state.dispCfg||!("sonryo" in state.dispCfg)){ let last=null; try{ last=JSON.parse(localStorage.getItem("gc_disp_cfg4")||"null"); }catch(e){} if(last&&!last.r8&&Number(last.sonryo)===1280) last.sonryo=1470;   // 前のはじめの値（1,280円）は令和8年度の見込みに直す（一度だけ）
     state.dispCfg=Object.assign({},DISP_DEF,last||{},{r8:1}); }
   else if(!state.dispCfg.r8){ if(Number(state.dispCfg.sonryo)===1280) state.dispCfg.sonryo=1470; state.dispCfg.r8=1; } return state.dispCfg; }
@@ -5214,16 +5232,19 @@ function dispRefMoney(trees,noFn){ const cf=dispCfg(), r=dispCalc(trees,noFn), t
   if(siteOf()==="park"){   // 公園・学校：設計単価（円/t）で、見積に載せやすい数字に（発生材は0.1t、金額は千円単位）
     const t1=Math.round(r.tot*10)/10, cu=cf.carryUnit===""||cf.carryUnit==null?DISP_DEF.carryUnit:Number(cf.carryUnit);
     return {r,cf,site:"park",t1,carryUnit:cu,trip:null,trucks:null,dispose:cf.unit&&t1?r1000(t1*Number(cf.unit)):null,carry:cu&&t1?r1000(t1*cu):null}; }
-  const dispose=cf.unit&&r.tot?Math.round(r.tot*Number(cf.unit)):null;
+  const t1=Math.round(r.tot*10)/10, dispose=cf.unit&&t1?Math.round(t1*Number(cf.unit)):null;   // 処分費 ＝ 発生材（0.1t単位）× 処分単価
+  const m3t=cf.m3t===""||cf.m3t==null?DISP_DEF.m3t:Number(cf.m3t), iu=cf.innerUnit===""||cf.innerUnit==null?DISP_DEF.innerUnit:Number(cf.innerUnit);
+  const m3=Math.round(t1*m3t*10)/10, inner=iu&&m3?Math.round(m3*iu):null;   // 場内運搬（50m以内）＝ 発生材（㎥）× 単価
   const trucks=cf.perTruck>0&&r.tot?Math.ceil(r.tot/Number(cf.perTruck)-1e-9):null, carry=trucks&&trip?trucks*trip:null;
-  return {r,cf,site:"ryokuchi",trip,trucks,dispose,carry}; }
+  return {r,cf,site:"ryokuchi",trip,trucks,dispose,carry,t1,m3,m3t,innerUnit:iu,inner}; }
 /* 運搬費・処分費の欄が空のときは参考の金額を使う（見積の合計・Excel・BOARDとも） */
-function effExtras(trees,noFn){ const ex=Object.assign({carry:"",dispose:"",misc:""},state.extras||{}), m=dispRefMoney(trees,noFn), used={};
+function effExtras(trees,noFn){ const ex=Object.assign({carry:"",dispose:"",misc:"",inner:""},state.extras||{}), m=dispRefMoney(trees,noFn), used={};
+  if(String(ex.inner).trim()===""&&m.inner){ ex.inner=String(m.inner); used.inner=true; }
   if(String(ex.dispose).trim()===""&&m.dispose){ ex.dispose=String(m.dispose); used.dispose=true; }
   if(String(ex.carry).trim()===""&&m.carry){ ex.carry=String(m.carry); used.carry=true; }
   return {ex,used,m}; }
 function setDispCfg(k,v){ pushUndo("upd:disp:"+k); const c=dispCfg(); c[k]=v===""?"":Number(v); try{ localStorage.setItem("gc_disp_cfg4",JSON.stringify(c)); }catch(e){} markDirty(); renderDispRef(true); }
-function dispApply(k,v){ pushUndo("dispapply"); state.extras=state.extras||{}; state.extras[k]=String(v); markDirty(); renderQuote(); toast((k==="dispose"?"処分費":"運搬費")+"に "+yen(v)+" を入れました（↶で戻せます）"); }
+function dispApply(k,v){ pushUndo("dispapply"); state.extras=state.extras||{}; state.extras[k]=String(v); markDirty(); renderQuote(); toast((k==="dispose"?"処分費":k==="inner"?"場内運搬（50m以内）":"運搬費")+"に "+yen(v)+" を入れました（↶で戻せます）"); }
 function renderDispRef(keepFocus){ const el=document.getElementById("dispRef"); if(!el) return;
   if(state.mode==="exterior"&&!(state.trees||[]).some(t=>t.type!=="exterior")){ el.style.display="none"; return; } el.style.display="";
   const M=dispRefMoney(outTrees(),otNoQ), cf=M.cf, r=M.r, fx=n=>Math.round(n*100)/100, disp=M.dispose, trip=M.trip, trucks=M.trucks, carry=M.carry, S=dispSite(), park=M.site==="park";
@@ -5238,8 +5259,13 @@ function renderDispRef(keepFocus){ const el=document.getElementById("dispRef"); 
       ${disp?`<button type="button" class="dpbtn" onclick="dispApply('dispose',${disp})">処分費に入れる</button>`:""}</div>
     <div class="dprow"><span>運搬単価</span>${inp("carryUnit","20000")}<span>円/t</span><span class="dpeq">→ 運搬費の参考 <b>${carry!=null?yen(carry):"—"}</b><span class="muted">（千円単位）</span></span>
       ${carry?`<button type="button" class="dpbtn" onclick="dispApply('carry',${carry})">運搬費に入れる</button>`:""}</div>`:`
-    <div class="dprow"><span>処分単価</span>${inp("unit","13630")}<span>円/t</span><span class="dpeq">→ 処分費の参考 <b>${disp!=null?yen(disp):"—"}</b></span>
+    <div class="dprow"><span>発生材</span><b>${M.t1} t</b><span class="muted">（0.1t単位）</span><span>＝</span><b>${M.m3} ㎥</b><span class="muted">（1tあたり</span>${inp("m3t","2",60)}<span class="muted">㎥）</span></div>
+    <div class="dprow"><span>場内運搬（50m以内）</span>${inp("innerUnit","21600")}<span>円/㎥</span><span class="dpeq">→ 参考 <b>${M.inner!=null?yen(M.inner):"—"}</b><span class="muted">（${M.m3}㎥ × 単価）</span></span>
+      ${M.inner?`<button type="button" class="dpbtn" onclick="dispApply('inner',${M.inner})">場内運搬に入れる</button>`:""}</div>
+    <div class="muted" style="font-size:12px;margin:-2px 0 6px">場内運搬の単価のはじめは、昨年の市民プラザの見積で使った斜面地の単価（21,600円/㎥）。平坦地の現場は単価を直してください</div>
+    <div class="dprow"><span>処分単価</span>${inp("unit","13630")}<span>円/t</span><span class="dpeq">→ 処分費の参考 <b>${disp!=null?yen(disp):"—"}</b><span class="muted">（${M.t1}t × 単価）</span></span>
       ${disp?`<button type="button" class="dpbtn" onclick="dispApply('dispose',${disp})">処分費に入れる</button>`:""}</div>
+    <div class="muted" style="font-size:12.5px;margin:8px 0 2px;font-weight:700">場外への運搬（トラック）</div>
     <div class="dprow"><span>1台に積む量</span>${inp("perTruck","2",70)}<span>t</span><span>往復</span>${inp("tripH","1",70)}<span>時間</span></div>
     <div class="dprow"><span>運転手の日当</span>${inp("daily","27200",100)}<span>円 ÷ 実働</span>${inp("workH","6",60)}<span>時間 ＝ ${dispHourly(cf)?yen(dispHourly(cf))+"/時":"—"}</span></div>
     <div class="dprow"><span>車両の損料</span>${inp("sonryo","1470",90)}<span>円/時 ＋ 燃料</span>${inp("fuelL","3.5",60)}<span>L/時 × 軽油</span>${inp("diesel","160",70)}<span>円/L ＝ ${dispVehH(cf)?yen(dispVehH(cf))+"/時":"—"}</span></div>
@@ -5260,7 +5286,8 @@ function dispSheetData(E,trees,noFn){ const m=E.m, cf=m.cf, r=m.r; if(!r.list.le
   return { list:r.list.map(x=>({ no:x.no, species:x.t.species||"", work:x.t.work||"", c:x.t.c==null?"":String(x.t.c), kind:x.kind, rank:x.rank||"", w:x.w==null?null:x.w, why:x.why||"" })),
     tot:r.tot, unit:Number(cf.unit)||0, dispose:m.dispose, perTruck:Number(cf.perTruck)||0, trucks:m.trucks, tripH:Number(cf.tripH)||0, daily:Number(cf.daily)||0, workH:Number(cf.workH)||0,
     hourly:Math.round(hourly), sonryo:Number(cf.sonryo)||0, fuelL:Number(cf.fuelL)||0, diesel:Number(cf.diesel)||0, vehH:Math.round(dispVehH(cf)), trip:m.trip, carry:m.carry,
-    site:m.site, siteLabel:dispSite().label, t1:m.t1, carryUnit:m.carryUnit,
+    site:m.site, siteLabel:dispSite().label, t1:m.t1, carryUnit:m.carryUnit, m3:m.m3, m3t:m.m3t, innerUnit:m.innerUnit, inner:m.inner,
+    usedInner:!!E.used.inner, enteredInner:E.used.inner?null:Number(E.ex.inner)||null,
     usedDispose:!!E.used.dispose, usedCarry:!!E.used.carry, enteredDispose:E.used.dispose?null:Number(E.ex.dispose)||null, enteredCarry:E.used.carry?null:Number(E.ex.carry)||null,
     table:Object.keys(dispSite().T).map(k=>[k].concat(dispSite().T[k])), ranks:DISP_RANKS.map(x=>x[0]+"（"+x[1]+"〜"+(x[2]==null?"":x[2])+"）"),
     map:dispSite().label+"の表。"+Object.keys(dispSite().T).map(k=>k+"："+Object.keys(dispSite().MAP).filter(w=>dispSite().MAP[w]===k).join("・")).join("　／　") }; }
@@ -5283,8 +5310,11 @@ function pubSets(OT,E){ const n=prioNames(), no=t=>String(t.__no), otNo=t=>t.__n
   const out=[], seen=new Set();
   cand.forEach(c=>{ const key=c.list.map(no).join(","); if(!c.list.length||seen.has(key)) return; seen.add(key);
     const m=dispRefMoney(c.list,otNo), ratio=tAll?m.r.tot/tAll:c.list.length/OT.length;
-    const pick=(k,ref)=>E.used[k]||String((state.extras||{})[k]||"").trim()===""?r1000(ref):(c.list===OT?Number(E.ex[k])||0:r1000((Number(E.ex[k])||0)*ratio));
-    out.push({ label:c.label, nos:c.list.map(no), carry:pick("carry",m.carry), dispose:pick("dispose",m.dispose) }); });
+    const auto=k=>E.used[k]||String((state.extras||{})[k]||"").trim()==="";
+    const pick=(k,ref,exact)=>auto(k)?(exact?(ref||0):r1000(ref)):(c.list===OT?Number(E.ex[k])||0:r1000((Number(E.ex[k])||0)*ratio));
+    const jr=m.site==="ryokuchi";   // 緑地：場内運搬（㎥×単価）と処分費（t×単価）は数量と単価で書く（参考の金額を使うとき）
+    out.push({ label:c.label, nos:c.list.map(no), carry:pick("carry",m.carry), dispose:pick("dispose",m.dispose,jr), inner:jr||!auto("inner")?pick("inner",m.inner,true):0,
+      qDs:jr&&auto("dispose")&&m.dispose?{q:m.t1,u:"t",p:Number(m.cf.unit)||0}:null, qIn:jr&&auto("inner")&&m.inner?{q:m.m3,u:"㎥",p:m.innerUnit}:null }); });
   if(out.length===1) out[0].label="全部";
   return out; }
 function pubData(E,OT){ const cf=pubCfg(); return { to:cf.to, head:cf.head, valid:cf.valid, miscRate:cf.miscRate, sets:pubSets(OT,E) }; }
@@ -5297,6 +5327,9 @@ function pubHTML(){ const cf=pubCfg(), n=prioNames();
 function renderQuote(){ const ex=state.extras||{}; renderQuotePrio(); renderDispRef(); { const pe=document.getElementById("pubCfg"); if(pe&&!pe.contains(document.activeElement)) pe.innerHTML=pubHTML(); }
   const c=document.getElementById("exCarry"),dsp=document.getElementById("exDispose"),m=document.getElementById("exMisc"),tx=document.getElementById("taxRate");
   if(c) c.value=ex.carry||""; if(dsp) dsp.value=ex.dispose||""; if(m) m.value=ex.misc||"";
+  { const ir=document.getElementById("exInnerRow"), ii=document.getElementById("exInner"), M=dispRefMoney(outTrees(),otNoQ);
+    if(ir) ir.style.display=siteOf()==="ryokuchi"||String(ex.inner||"").trim()?"":"none";
+    if(ii){ if(document.activeElement!==ii) ii.value=ex.inner||""; ii.placeholder=M.inner?"空なら参考 "+M.inner.toLocaleString()+" 円":""; } }
   { const M=dispRefMoney(outTrees(),otNoQ); if(c) c.placeholder=M.carry?"空なら参考 "+M.carry.toLocaleString()+" 円":""; if(dsp) dsp.placeholder=M.dispose?"空なら参考 "+M.dispose.toLocaleString()+" 円":""; }
   if(tx) tx.value=(state.taxRate!==""&&state.taxRate!=null)?Math.round(Number(state.taxRate)*100):"";
   const t=computeTotals(); const el=document.getElementById("totals");
