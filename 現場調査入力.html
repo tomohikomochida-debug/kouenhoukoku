@@ -20,6 +20,7 @@
   .hbtn{ background:rgba(255,255,255,.18); color:#fff; border:none; border-radius:8px; width:34px; height:32px; font-size:17px; }
   .hbtn:disabled{ opacity:.4; }
   .iconbtn.drag{ cursor:grab; touch-action:none; }
+  .iconbtn.del{ white-space:nowrap; }
   main{ padding:12px; max-width:820px; margin:0 auto; }
   .case{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; }
   .case label{ font-size:12px; color:var(--sub); display:block; margin:6px 0 3px; }
@@ -75,8 +76,11 @@
   .leafsel button{ flex:1; border:1px solid var(--line); background:#fff; color:var(--ink); padding:9px 6px; font-size:14px; font-family:inherit; }
   .leafsel button:first-child{ border-radius:8px 0 0 8px; } .leafsel button:last-child{ border-radius:0 8px 8px 0; margin-left:-1px; }
   .leafsel button.on{ background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700; }
-  .typ .tbtn{ padding:4px 8px; font-size:12px; border:1px solid var(--line); background:#fff; color:var(--sub); border-radius:6px; font-weight:700; }
+  .typ .tbtn{ padding:4px 6px; white-space:nowrap; font-size:12px; border:1px solid var(--line); background:#fff; color:var(--sub); border-radius:6px; font-weight:700; }
   .typ .tbtn.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .pkind{ display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
+  .pkind .tbtn{ padding:6px 10px; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--sub); border-radius:8px; font-weight:700; }
+  .pkind .tbtn.on{ background:#2e7d32; color:#fff; border-color:#2e7d32; }
   .iconbtn.pin.set{ color:#d62828; border-color:#d62828; }
   .iconbtn.pin.act{ background:#d62828; color:#fff; border-color:#d62828; }
   .iconbtn.pin{ -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; touch-action:manipulation; }
@@ -225,6 +229,7 @@
   .tomap{ position:fixed; right:12px; bottom:66px; z-index:16; background:var(--accent); color:#fff; border:none;
     border-radius:999px; padding:10px 16px; font-weight:700; font-size:14px; box-shadow:0 2px 10px rgba(0,0,0,.28); }
   .tree .top{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  @media (max-width:460px){ .tree .top{ gap:5px; } .tree .top .iconbtn{ padding:7px 7px; } }
   .no{ background:var(--accent); color:#fff; font-weight:800; border-radius:8px; min-width:38px; height:34px;
     display:flex; align-items:center; justify-content:center; font-size:16px; }
   .top .sp{ flex:1; }
@@ -495,6 +500,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
     </div>
     <div class="modebar">
       <button id="mTree" class="mbtn on" onclick="setMode('tree')">🌳 樹木管理</button>
+      <button id="mPlant" class="mbtn" onclick="setMode('plant')">🌱 新植等</button>
       <button id="mExt" class="mbtn" onclick="setMode('exterior')">🏡 庭・外構</button>
     </div>
     <div class="case">
@@ -650,7 +656,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
 <script>/* wblib */
 /* 樹木/外構 混在ワークブック生成（ブラウザ/Node共通）
    buildTreeWorkbook(ExcelJS, state, imgs) -> ExcelJS.Workbook
-   各項目 t.type: "tree"(樹木) | "exterior"(外構)。1案件に混在可。
+   各項目 t.type: "tree"(樹木・剪定等) | "plant"(新植等) | "exterior"(外構)。1案件に混在可。
    tree:     {type,species,h,c,work,memo}
    exterior: {type,item,qty,unit,memo}
    見積は統一様式：番号・品名・仕様・数量・単位・単価・金額。単価は空欄（手入力）、金額等は数式。 */
@@ -661,14 +667,24 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   function fill(a) { return { type: "pattern", pattern: "solid", fgColor: { argb: a } }; }
   function font(sz, b, a) { return { name: JP, size: sz || 11, bold: !!b, color: { argb: a || "FF000000" } }; }
   function raw(b) { return (b && b.indexOf("data:") === 0) ? b.split(",")[1] : b; }
-  function ty(t) { return t && t.type === "exterior" ? "exterior" : "tree"; }
+  function ty(t) { return t && (t.type === "exterior" || t.type === "plant") ? t.type : "tree"; }
+  /* 新植等（植栽・植替え・土壌改良・低木地被）：{type:"plant", pk, species, h(m), pc(C m), pw(W m), prop(支柱), oldSpecies, oldC, method, depth(cm), mat, qty, unit, memo, up} */
+  function pk(t) { return t.pk || "植栽"; }
+  function plantSpec(t, sizeOnly) { var a = [];
+    if (pk(t) === "土壌改良") { if (String(t.depth || "").trim()) a.push("深さ" + t.depth + "cm"); if (String(t.mat || "").trim()) a.push(t.mat); return a.join("　"); }
+    if (String(t.h || "").trim()) a.push("H" + t.h); if (String(t.pc || "").trim()) a.push("C" + t.pc); if (String(t.pw || "").trim()) a.push("W" + t.pw);
+    var s = a.join("×"); if (t.prop && t.prop !== "なし" && !sizeOnly) s += (s ? "　" : "") + t.prop + "支柱"; return s; }
+  function plantName(t) { var k = pk(t);
+    if (k === "土壌改良") return "土壌改良　" + (t.method || "");
+    if (k === "植替え") return "植替え　" + (t.oldSpecies || "") + (t.oldC ? "（C" + t.oldC + "cm）" : "") + "→" + (t.species || "");
+    return (k === "低木・地被" ? "植栽（低木・地被）" : "植栽") + "　" + (t.species || ""); }
 
   // 見積・写真帳・マスター用の共通マッピング
-  function nameOf(t) { return ty(t) === "exterior" ? (t.item || "") : ((t.work || "") + "　" + (t.species || "")).trim(); }
-  function specOf(t) { if (ty(t) === "exterior") return t.memo || ""; var a = []; if (String(t.h == null ? "" : t.h).trim()) a.push("H=" + t.h + "m"); if (String(t.c == null ? "" : t.c).trim()) a.push("C=" + t.c + "cm"); return a.join("　"); }
-  function qtyOf(t) { return ty(t) === "exterior" ? (t.qty || "") : 1; }
-  function unitOf(t) { return ty(t) === "exterior" ? (t.unit || "") : "本"; }
-  function kubun(t) { return ty(t) === "exterior" ? "外構" : "樹木"; }
+  function nameOf(t) { return ty(t) === "exterior" ? (t.item || "") : ty(t) === "plant" ? plantName(t) : ((t.work || "") + "　" + (t.species || "")).trim(); }
+  function specOf(t) { if (ty(t) === "exterior") return t.memo || ""; if (ty(t) === "plant") return plantSpec(t); var a = []; if (String(t.h == null ? "" : t.h).trim()) a.push("H=" + t.h + "m"); if (String(t.c == null ? "" : t.c).trim()) a.push("C=" + t.c + "cm"); return a.join("　"); }
+  function qtyOf(t) { if (ty(t) === "tree") return 1; var q = String(t.qty == null ? "" : t.qty).trim(); return q !== "" && !isNaN(q) ? Number(q) : q; }
+  function unitOf(t) { return ty(t) === "tree" ? "本" : (t.unit || ""); }
+  function kubun(t) { return ty(t) === "exterior" ? "外構" : ty(t) === "plant" ? "新植等" : "樹木"; }
   // 優先度（1＝高 2＝中 3＝低）。呼び方は案件ごとに選べる
   var PRIO_SETS = { hml: ["高", "中", "低"], abc: ["早急", "推奨", "経過観察"], qnl: ["急ぐ", "普通", "後で"], num: ["優先1", "優先2", "優先3"], yr: ["今年", "来年", "再来年"] };   // yr：いつやるか（今年・来年・再来年）
   var prioSet = "hml";
@@ -679,6 +695,12 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   function memoOf(t) { return prioTag(t) + (ty(t) === "exterior" ? "" : (t.memo || "")); }
   function caption(t, no) {
     var pr = prioName(t) ? "　【" + prioName(t) + "】" : "";
+    if (ty(t) === "plant") {
+      var sp = plantSpec(t), q = (t.qty || "") + " " + (t.unit || "");
+      var s2 = "No." + no + "　" + plantName(t) + pr + (sp ? "\n" + sp : "") + "\n数量：" + q;
+      if (t.memo) s2 += "\n備考：" + t.memo;
+      return s2;
+    }
     if (ty(t) === "exterior") {
       var s = "No." + no + "　" + (t.item || "") + pr + "\n数量：" + (t.qty || "") + " " + (t.unit || "");
       if (t.memo) s += "\n仕様：" + t.memo;
@@ -808,17 +830,19 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
       var R = 5, sum = 0;
       function cell(r, k, v, o) { var c = ws.getCell(r, k); c.value = v; c.border = box; c.font = f(o.g ? G : M); c.alignment = { horizontal: o.al, vertical: "middle", shrinkToFit: !!o.fit }; if (o.fmt) c.numFmt = o.fmt; return c; }
       trees.forEach(function (t) {
-        var inSet = S.nos.indexOf(String(t.__no)) >= 0, ext = t.type === "exterior", r = R++;
+        var inSet = S.nos.indexOf(String(t.__no)) >= 0, ext = t.type === "exterior", pl = t.type === "plant", r = R++;
         ws.getRow(r).height = 19.5;
         cell(r, 1, t.__no, { al: "right" });
         if (!inSet) { for (var k = 2; k <= 9; k++) cell(r, k, null, {}); return; }
-        var q = ext ? num(t.qty) : 1, u = num(t.up), memo = [t.__kabu || "", t.memo || ""].filter(Boolean).join("　");
+        var q = ext || pl ? num(t.qty) : 1, u = num(t.up), memo = [t.__kabu || "", t.memo || ""].filter(Boolean).join("　");
         if (q != null && u != null) sum += q * u;
-        cell(r, 2, ext ? (t.item || "") : (t.species || ""), { g: true, fit: true });
-        cell(r, 3, ext ? (t.memo || "") : (t.work || ""), { g: true, al: "center", fit: true });
-        cell(r, 4, ext || t.__girth === "" || t.__girth == null ? null : Math.round(t.__girth), { al: "right", fmt: "0_ " });
+        var k = pl ? pk(t) : "";
+        cell(r, 2, ext ? (t.item || "") : pl ? (k === "土壌改良" ? (t.method || "") : k === "植替え" ? (t.oldSpecies || "") + "→" + (t.species || "") : (t.species || "")) : (t.species || ""), { g: true, fit: true });
+        cell(r, 3, ext ? (t.memo || "") : pl ? (k === "低木・地被" ? "植栽" : k) : (t.work || ""), { g: true, al: "center", fit: true });
+        if (pl) { cell(r, 4, plantSpec(t, true) || null, { al: "center", fit: true }); if (t.prop && t.prop !== "なし" && pk(t) !== "土壌改良") memo = [t.prop + "支柱", memo].filter(Boolean).join("　"); }
+        else cell(r, 4, ext || t.__girth === "" || t.__girth == null ? null : Math.round(t.__girth), { al: "right", fmt: "0_ " });
         cell(r, 5, q != null ? q : (t.qty || ""), { al: "center", fmt: NUMF });
-        cell(r, 6, ext ? (t.unit || "") : "本", { al: "center" });
+        cell(r, 6, ext || pl ? (t.unit || "") : "本", { al: "center" });
         var cu = cell(r, 7, u, { fmt: NUMF }); if (u == null) cu.fill = fill("FFFFF7CC");
         cell(r, 8, { formula: "G" + r + "*E" + r, result: (q != null && u != null) ? q * u : 0 }, { fmt: NUMF });
         cell(r, 9, ext ? "" : memo, { g: true, al: "center", fit: true });
@@ -1161,7 +1185,7 @@ body.camphone>*:not(#cph):not(.toast){display:none!important}
   }
 
   root.buildTreeWorkbook = buildTreeWorkbook;
-  root.surveyText = { priceSheet: priceSheet, finishBook: finishBook, boardRows: boardRows, BOARD_HEAD: BOARD_HEAD, nameOf: nameOf, specOf: specOf, qtyOf: qtyOf, unitOf: unitOf, kubun: kubun, caption: caption, mapFit: mapFit, PRIO_SETS: PRIO_SETS, setPrio: setPrio, prioName: prioName, memoOf: memoOf };
+  root.surveyText = { plantSpec: plantSpec, plantName: plantName, priceSheet: priceSheet, finishBook: finishBook, boardRows: boardRows, BOARD_HEAD: BOARD_HEAD, nameOf: nameOf, specOf: specOf, qtyOf: qtyOf, unitOf: unitOf, kubun: kubun, caption: caption, mapFit: mapFit, PRIO_SETS: PRIO_SETS, setPrio: setPrio, prioName: prioName, memoOf: memoOf };
   if (typeof module !== "undefined" && module.exports) module.exports = { buildTreeWorkbook: buildTreeWorkbook };
 })(typeof window !== "undefined" ? window : globalThis);
 
@@ -3486,7 +3510,7 @@ const SPECIES_AL=(()=>{ const m=new Map(); SPECIES_DICT.split(",").forEach(e=>{ 
 const SPECIES=[...SPECIES_AL.keys()];
 const WORKS=["剪定（基本剪定）","強剪定","枯れ枝剪定","萌芽更新","高さ低減剪定","透かし剪定","伐採","その他"];
 const ITEMS=["土間コンクリート","化粧ブロック積み","ブロック積み","フェンス設置","目隠しフェンス","カーポート","テラス屋根","ウッドデッキ","人工芝","芝張り","植栽","高木植栽","低木植栽","生垣","石張り","乱形石張り","インターロッキング","洗い出し","門柱","表札","ポスト","花壇","立水栓","防草シート","砂利敷き","整地","残土処分","解体撤去"];
-const UNITS=["㎡","m","箇所","本","式","㎥","t","台","枚","組"];
+const UNITS=["㎡","m","箇所","本","株","式","㎥","t","台","枚","組"];
 /* ローカル日付（YYYY-MM-DD）。toISOString()はUTCなので早朝に前日日付になるのを防ぐ */
 function today(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
 /* HTML挿し込み用エスケープ（メモ等に " や < が入っても崩れないように） */
@@ -3504,7 +3528,15 @@ function pushUndo(key){ const now=Date.now();
   if(key&&key.indexOf("upd:")===0&&key===lastKey&&(now-lastTime)<1500){ lastTime=now; return; }
   undoStack.push(snapClone()); if(undoStack.length>60) undoStack.shift(); redoStack=[]; lastKey=key; lastTime=now; updUndoBtn(); }
 function updUndoBtn(){ const u=document.getElementById("undoBtn"), r=document.getElementById("redoBtn"); if(u) u.disabled=!undoStack.length; if(r) r.disabled=!redoStack.length; }
-function syncMode(){ const bt=document.getElementById("mTree"), be=document.getElementById("mExt"); if(bt) bt.classList.toggle("on",state.mode!=="exterior"); if(be) be.classList.toggle("on",state.mode==="exterior"); const ab=document.getElementById("addBtn"); if(ab) ab.textContent=(state.mode==="exterior"?"＋ 項目を追加":"＋ 木を追加"); }
+function syncMode(){ const m=state.mode==="exterior"||state.mode==="plant"?state.mode:"tree";
+  [["mTree","tree"],["mPlant","plant"],["mExt","exterior"]].forEach(([id,v])=>{ const b=document.getElementById(id); if(b) b.classList.toggle("on",m===v); });
+  const ab=document.getElementById("addBtn"); if(ab) ab.textContent=(m==="exterior"?"＋ 項目を追加":m==="plant"?"＋ 新植等を追加":"＋ 木を追加"); }
+/* 樹木（剪定等）かどうか。type なしの古いデータも樹木 */
+function isTreeT(t){ return !t||!t.type||t.type==="tree"; }
+const PKINDS=["植栽","植替え","土壌改良","低木・地被"];
+const PROPS=["なし","二脚鳥居","三脚鳥居","八ツ掛","布掛","添え木","地下支柱"];
+const SOILM=["土壌改良材混入","エアースコップ","縦穴式","放射状溝掘り","客土入替","その他"];
+function plantDefaults(o){ return Object.assign({type:"plant",pk:"植栽",species:"",h:"",pc:"",pw:"",prop:"なし",oldSpecies:"",oldC:"",method:"",depth:"",mat:"",qty:"1",unit:"本",memo:"",up:""},o||{}); }
 function afterRestore(){ lastKey=null; normalize(); markDirty(); syncMode(); renderTrees(); renderMap(); const bk=document.getElementById("book"); if(bk&&bk.style.display!=="none") renderBook(); const qt=document.getElementById("quote"); if(qt&&qt.style.display!=="none") renderQuote(); updUndoBtn(); }
 function doUndo(){ if(!undoStack.length) return; redoStack.push(snapClone()); state=undoStack.pop(); afterRestore(); }
 function doRedo(){ if(!redoStack.length) return; undoStack.push(snapClone()); state=redoStack.pop(); afterRestore(); }
@@ -4473,7 +4505,7 @@ async function photosGeo(files,exs){
 }
 const itemGeo=t=>t&&(validGeo(t.pos)||validGeo(t.pgeo));
 function geoRowHTML(t,i){
-  const g=itemGeo(t), word=t.type==="exterior"?"その場で測る":"木の横で測る";
+  const g=itemGeo(t), word=isTreeT(t)?"木の横で測る":"その場で測る";
   const txt=g?`📍 ${g.lat.toFixed(6)}, ${g.lon.toFixed(6)}（${[accText(g.acc),GEO_SRC[t.pos?"pos":g.src]].filter(Boolean).join("・")}）`:"📍 位置：なし";
   return `<div class="geoln"><span class="${g?"":"muted"}">${txt}</span><button class="iconbtn" onclick="measurePos(${i},this)">📡 ${word}</button>${g?`<button class="iconbtn" onclick="clearGeo(${i})">位置を消す</button>`:""}</div>`;
 }
@@ -4786,7 +4818,7 @@ async function gsiMake(){
 window.addEventListener("resize",()=>{ if(GV) gsiResize(); });
 
 /* モデル */
-function addTree(scroll,noUndo){ if(scroll===undefined) scroll=true; if(!noUndo) pushUndo("add"); state.trees.push(state.mode==="exterior"?{type:"exterior",item:"",qty:"",unit:"",memo:"",photos:[]}:{type:"tree",species:"",h:"",c:"",work:"強剪定",memo:"",photos:[]});
+function addTree(scroll,noUndo){ if(scroll===undefined) scroll=true; if(!noUndo) pushUndo("add"); state.trees.push(state.mode==="exterior"?{type:"exterior",item:"",qty:"",unit:"",memo:"",photos:[]}:state.mode==="plant"?plantDefaults({photos:[]}):{type:"tree",species:"",h:"",c:"",work:"強剪定",memo:"",photos:[]});
   if((zoneMaps().length>=2||overview())&&CM()&&!isAll(CM())) state.trees[state.trees.length-1].zone=CM().id; // 図面が分かれているときは、いま開いている区画に
   camOnAdd(state.trees[state.trees.length-1]); markDirty(); renderTrees(); if(scroll){ const el=document.querySelector("#trees .tree:last-child"); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"center"}); } }
 function delTree(i){ if(confirm(noOfIdx(i)+"番を削除しますか？")){ pushUndo("del"); state.trees.splice(i,1); autoPlace(); markDirty(); renderTrees(); } }
@@ -5163,7 +5195,37 @@ function slopeHTML(t,i){ const r=typeof prFor==="function"?prFor(t):null; if(!((
   return `<div class="leafsel" style="margin-top:6px"><button type="button" class="${t.slope?"":"on"}" onclick="setSlope(${i},false)">平坦地</button><button type="button" class="${t.slope?"on":""}" onclick="setSlope(${i},true)">⛰ 斜面地</button></div>`; }
 function setSlope(i,v){ const t=state.trees[i]; if(!t||!!t.slope===v) return; pushUndo("slope"+i); t.slope=v; markDirty(); if(typeof autoUp==="function") autoUp(i,false); renderTrees(); }
 function setLeaf(i,v){ const t=state.trees[i]; if(!t) return; pushUndo("leaf"+i); t.leaf=v; markDirty(); if(typeof autoUp==="function") autoUp(i,false); renderTrees(); }
+function plantFieldsHTML(t,i){
+  const k=t.pk||"植栽", F=(lab,key,ph,extra)=>`<div class="fld"${extra||""}><label>${lab}</label><input class="yellow${mc(t,key)}" inputmode="decimal" value="${esc(t[key])}" oninput="upd(${i},'${key}',this.value)" placeholder="${ph}"></div>`;
+  const kinds=`<div class="pkind">${PKINDS.map(v=>`<button class="tbtn ${k===v?'on':''}" onclick="setPk(${i},'${v}')">${v}</button>`).join("")}</div>`;
+  const qty=`<div class="fld"><label>数量</label><input class="yellow${mc(t,'qty')}" inputmode="decimal" value="${esc(t.qty)}" oninput="upd(${i},'qty',this.value)" placeholder="例 1"></div>
+       <div class="fld"><label>単位</label><select class="yellow${mc(t,'unit')}" onchange="upd(${i},'unit',this.value)">${opts([""].concat(UNITS),t.unit)}</select></div>
+       <div class="fld"><label>単価(円)</label><input class="yellow" inputmode="numeric" value="${esc(t.up)}" oninput="upd(${i},'up',this.value)" placeholder="任意"></div>`;
+  const memo=`<div class="fld" style="margin-top:8px"><label>メモ（任意）</label><input value="${esc(t.memo)}" oninput="upd(${i},'memo',this.value)" placeholder="${k==="土壌改良"?"範囲・根の状態 など":"植え穴・客土・搬入 など"}"></div>`;
+  if(k==="土壌改良") return kinds+`<div class="grid3">
+       <div class="fld" style="grid-column:1/3"><label>方法</label><select class="yellow${mc(t,'method')}" onchange="upd(${i},'method',this.value)">${opts([""].concat(SOILM),t.method)}</select></div>
+       ${F("深さ (cm)","depth","例 30")}
+       <div class="fld" style="grid-column:1/4"><label>材料（任意）</label><input value="${esc(t.mat)}" oninput="upd(${i},'mat',this.value)" placeholder="例 バーク堆肥・パーライト"></div>
+       ${qty}
+     </div>`+memo;
+  const old=k==="植替え"?`<div class="fld" style="grid-column:1/3"><label>撤去する木</label><input list="splist" class="yellow${mc(t,'oldSpecies')}" value="${esc(t.oldSpecies)}" oninput="upd(${i},'oldSpecies',this.value)" placeholder="いまの樹種"></div>
+       ${F("撤去木の幹周 (cm)","oldC","任意")}`:"";
+  const sh=k==="低木・地被";
+  return kinds+`<div class="grid3">
+       ${old}
+       <div class="fld" style="grid-column:1/3"><label>${k==="植替え"?"植える木":"樹種"}</label><input list="splist" class="yellow${mc(t,'species')}" value="${esc(t.species)}" oninput="upd(${i},'species',this.value)" placeholder="樹種"></div>
+       <div class="fld"><label>支柱</label><select onchange="upd(${i},'prop',this.value)">${opts(PROPS,t.prop||"なし")}</select></div>
+       ${F("高さ H (m)","h",sh?"例 0.3":"例 3.0")}
+       ${F("幹周 C (m)","pc",sh?"任意":"例 0.15")}
+       ${F("枝張 W (m)","pw",sh?"例 0.3":"例 0.8")}
+       ${qty}
+     </div>`+memo;
+}
+function setPk(i,v){ const t=state.trees[i]; if((t.pk||"植栽")===v) return; pushUndo("pk"+i); t.pk=v;
+  if(v==="低木・地被"&&(t.unit==="本"||!t.unit)) t.unit="株"; else if(v==="土壌改良"&&(t.unit==="本"||t.unit==="株"||!t.unit)) t.unit="本"; else if((v==="植栽"||v==="植替え")&&(t.unit==="株"||!t.unit)) t.unit="本";
+  markDirty(); renderTrees(); }
 function fieldsHTML(t,i){
+  if(t.type==="plant") return plantFieldsHTML(t,i);
   if(t.type==="exterior"){
     return `<div class="grid3">
        <div class="fld" style="grid-column:1/3"><label>品名</label><input list="ilist" class="yellow${mc(t,'item')}" value="${esc(t.item)}" oninput="upd(${i},'item',this.value)" placeholder="例 土間コンクリート"></div>
@@ -5186,12 +5248,10 @@ function fieldsHTML(t,i){
 }
 function setType(i,type){ var t=state.trees[i]; if(t.type===type) return; pushUndo("type"+i); t.type=type;
   if(type==="exterior"){ if(t.item===undefined)t.item=""; if(t.qty===undefined)t.qty=""; if(t.unit===undefined)t.unit=""; }
+  else if(type==="plant"){ const d=plantDefaults(); for(const k in d) if(t[k]===undefined) t[k]=d[k]; if(!t.qty) t.qty="1"; if(!t.unit) t.unit="本"; }
   else { if(t.species===undefined)t.species=""; if(t.h===undefined)t.h=""; if(t.c===undefined)t.c=""; if(t.work===undefined)t.work="強剪定"; if(typeof autoUp==="function") autoUp(i,false); }
   markDirty(); renderTrees(); }
-function setMode(m){ state.mode=m; markDirty();
-  var bt=document.getElementById("mTree"), be=document.getElementById("mExt");
-  if(bt) bt.classList.toggle("on",m==="tree"); if(be) be.classList.toggle("on",m==="exterior");
-  var ab=document.getElementById("addBtn"); if(ab) ab.textContent=(m==="exterior"?"＋ 項目を追加":"＋ 木を追加");
+function setMode(m){ state.mode=m; markDirty(); syncMode();
   renderTrees();
 }
 function renderTrees(){
@@ -5211,7 +5271,7 @@ let CARD_L=[];
 function treeCardHTML(t,i){ return `
    <div class="tree">
      <div class="top"><div class="no ${prioOf(t)?"p"+prioOf(t):""}">${esc(CARD_L[i]||String(i+1))}</div><button class="iconbtn drag" onpointerdown="rowDown(event,${i})" title="ドラッグで並べ替え">⠿</button>
-       <div class="typ"><button class="tbtn ${t.type!=='exterior'?'on':''}" onclick="setType(${i},'tree')">樹木</button><button class="tbtn ${t.type==='exterior'?'on':''}" onclick="setType(${i},'exterior')">外構</button></div>
+       <div class="typ"><button class="tbtn ${isTreeT(t)?'on':''}" onclick="setType(${i},'tree')">樹木</button><button class="tbtn ${t.type==='plant'?'on':''}" onclick="setType(${i},'plant')">新植等</button><button class="tbtn ${t.type==='exterior'?'on':''}" onclick="setType(${i},'exterior')">外構</button></div>
        <button class="iconbtn pin ${t.mx!=null?'set':''} ${activePlace===i?'act':''}" onclick="pinBtn(${i})" onpointerdown="pinPress(event,${i})" onpointermove="pinMove(event)" onpointerup="pinRelease()" onpointercancel="pinRelease()" onpointerleave="pinRelease()" oncontextmenu="return false" title="${t.mx!=null?"タップで地図のこの番号へ／長押しで番号を外す":"タップしてから地図をタップすると番号を置けます"}">📍${t.mx!=null?'✓':''}</button>${zoneSelHTML(t,i)}
        <div class="sp"></div>
        <button class="iconbtn" onclick="move(${i},-1)">▲</button>
@@ -5226,7 +5286,9 @@ function treeCardHTML(t,i){ return `
 /* 描画：写真帳（地図ページ＋3枚/ページ） */
 function pageHead(sub){ return `<div class="pghead"><h2>${esc(state.bookTitle||"写真帳")}　${esc(state.caseName)}</h2><div class="m">${esc(state.caseDate)}　全${state.trees.length}件${sub?"　"+esc(sub):""}</div></div>`; }
 function frameHTML(fr){ const t=fr.t, no=fr.no;
-   var cap = t.type==="exterior"
+   var cap = t.type==="plant"
+     ? (()=>{ const sp=surveyText.plantSpec(t); return `<span class="bn">No.${no}</span><br><b>${esc(surveyText.plantName(t))}</b>${sp?`<br>${esc(sp)}`:""}<br>数量：${esc(t.qty)||"-"} ${esc(t.unit)}${prioOf(t)?`<br>優先度：<b>${esc(prioNames()[prioOf(t)-1])}</b>`:""}${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`; })()
+     : t.type==="exterior"
      ? `<span class="bn">No.${no}</span><br><b>${esc(t.item)||"（品名未入力）"}</b><br>数量：${esc(t.qty)||"-"} ${esc(t.unit)}${prioOf(t)?`<br>優先度：<b>${esc(prioNames()[prioOf(t)-1])}</b>`:""}${t.memo?`<br>仕様：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`
      : `<span class="bn">No.${no}</span><br><b>${esc(t.species)||"（樹種未入力）"}</b><br>作業方針：${esc(t.work)||"-"}${String(t.h??"").trim()?`<br>高さ：${esc(t.h)} m`:""}<br>幹周：${esc(t.c)||"-"} cm${prioOf(t)?`<br>優先度：<b>${esc(prioNames()[prioOf(t)-1])}</b>`:""}${t.memo?`<br>備考：${esc(t.memo)}`:""}${fr.sub?`<br>${esc(fr.sub)}`:""}`;
    return `<div class="pbitem"><div class="p">${fr.img?thImg(fr.img):'<div class="none">写真なし</div>'}</div><div class="c">${cap}</div></div>`;
@@ -5256,7 +5318,7 @@ function showTab(w){
   if(w==="quote") renderQuote();
   if(typeof updateToMap==="function") updateToMap();
 }
-function qtyNum(t){ return t.type==="exterior"?(Number(t.qty)||0):1; }
+function qtyNum(t){ return isTreeT(t)?1:(Number(t.qty)||0); }
 const otNoQ=t=>t.__no||"";
 function computeTotals(){ let items=0; const OT=outTrees(); OT.forEach(t=>{ items+=(Number(t.up)||0)*qtyNum(t); });
   const ex=effExtras(OT,otNoQ).ex; const extra=(Number(ex.carry)||0)+(Number(ex.dispose)||0)+(Number(ex.misc)||0)+(Number(ex.inner)||0);
@@ -5311,7 +5373,7 @@ function dispRank(c){ for(let k=DISP_RANKS.length-1;k>=0;k--) if(c>=DISP_RANKS[k
 function dispCalc(trees,noFn){ const rows={}, miss={nog:0,other:[]}, list=[]; let tot=0, n=0;
   trees=trees||state.trees||[]; noFn=noFn||((t,i)=>noOfIdx(i));
   const S=dispSite();
-  trees.forEach((t,i)=>{ if(t.type==="exterior") return; const kind=S.MAP[t.work||""], no=noFn(t,i);
+  trees.forEach((t,i)=>{ if(!isTreeT(t)) return; const kind=S.MAP[t.work||""], no=noFn(t,i);
     if(!kind){ miss.other.push(t.work||"作業方針なし"); list.push({no,t,kind:"",why:"計算に入らない作業方針"}); return; }
     const c=typeof prGirth==="function"?prGirth(t):parseFloat(t.c); if(c==null||isNaN(c)){ miss.nog++; list.push({no,t,kind,why:"幹周が入っていない"}); return; }
     const k=dispRank(c), w=S.T[kind][k], rk=DISP_RANKS[k][0]; const r=rows[kind]||(rows[kind]={n:0,t:0,ranks:{}}); r.n++; r.t+=w; r.ranks[rk]=(r.ranks[rk]||0)+1; tot+=w; n++;
@@ -5335,7 +5397,7 @@ function effExtras(trees,noFn){ const ex=Object.assign({carry:"",dispose:"",misc
 function setDispCfg(k,v){ pushUndo("upd:disp:"+k); const c=dispCfg(); c[k]=v===""?"":Number(v); try{ localStorage.setItem("gc_disp_cfg4",JSON.stringify(c)); }catch(e){} markDirty(); renderDispRef(true); }
 function dispApply(k,v){ pushUndo("dispapply"); state.extras=state.extras||{}; state.extras[k]=String(v); markDirty(); renderQuote(); toast((k==="dispose"?"処分費":k==="inner"?"場内運搬（50m以内）":"運搬費")+"に "+yen(v)+" を入れました（↶で戻せます）"); }
 function renderDispRef(keepFocus){ const el=document.getElementById("dispRef"); if(!el) return;
-  if(state.mode==="exterior"&&!(state.trees||[]).some(t=>t.type!=="exterior")){ el.style.display="none"; return; } el.style.display="";
+  if(state.mode!=="tree"&&state.mode&&!(state.trees||[]).some(isTreeT)){ el.style.display="none"; return; } el.style.display="";
   const M=dispRefMoney(outTrees(),otNoQ), cf=M.cf, r=M.r, fx=n=>Math.round(n*100)/100, disp=M.dispose, trip=M.trip, trucks=M.trucks, carry=M.carry, S=dispSite(), park=M.site==="park";
   const kinds=Object.keys(S.T).filter(k=>r.rows[k]);
   const warn=[r.miss.nog?"幹周が入っていない木 "+r.miss.nog+"本は入っていません":"", r.miss.other.length?"「"+[...new Set(r.miss.other)].join("・")+"」の "+r.miss.other.length+"本は入っていません":""].filter(Boolean);
@@ -5385,7 +5447,7 @@ function dispSheetData(E,trees,noFn){ const m=E.m, cf=m.cf, r=m.r; if(!r.list.le
 const wareki=d=>{ const y=d.getFullYear(); return "令和"+(y-2018)+"年"+(d.getMonth()+1)+"月"+d.getDate()+"日"; };
 function pubCfg(){ const p=state.pub||{}; return { to:p.to!=null?p.to:"川崎市長", head:p.head!=null?p.head:"", valid:p.valid!=null?p.valid:"", miscRate:p.miscRate!=null?p.miscRate:"20" }; }
 function setPub(k,v){ pushUndo("upd:pub:"+k); state.pub=Object.assign({},state.pub||{}); state.pub[k]=v; markDirty(); }
-function pubTree(t){ if(t.type==="exterior") return {};
+function pubTree(t){ if(!isTreeT(t)) return {};
   const c=typeof prGirth==="function"?prGirth(t):parseFloat(t.c), kind=DISP_MAP[t.work||""], o={ __girth:c==null||isNaN(c)?"":c };
   if(c!=null&&!isNaN(c)){ const k=dispRank(c); o.__rank=DISP_RANKS[k][0]; if(kind) o.__w=DISP_T[kind][k]; }
   const st=(t.stems||[]).map(v=>parseFloat(v)).filter(v=>isFinite(v)&&v>0); if(t.kabu&&st.length) o.__kabu="株立ち（"+st.join("・")+"）";
@@ -5455,7 +5517,7 @@ function camId(){ let id=camLS("gc_camid"); if(!id){ id="genba-"+Math.random().t
 function camUrl(){ let u=location.origin+location.pathname+"?cam="+encodeURIComponent(CAM.id||camId()); const o=camLS("gc_peer"); if(o) u+="&ps="+encodeURIComponent(btoa(o)); return u; }
 const camOn=()=>CAM.conns.size>0;
 function itemCid(t){ if(!t.cid) t.cid="i"+Date.now().toString(36)+Math.random().toString(36).slice(2,6); return t.cid; }   // 並べ替えても変わらない目印
-function itemLabel(t,i){ return noOfIdx(i)+"番 "+(t.type==="exterior"?(t.item||"品名未入力"):(t.species||"樹種未入力")); }
+function itemLabel(t,i){ return noOfIdx(i)+"番 "+(t.type==="exterior"?(t.item||"品名未入力"):t.type==="plant"?((t.pk||"植栽")+" "+((t.pk==="土壌改良"?t.method:t.species)||"未入力")):(t.species||"樹種未入力")); }
 function camItem(cid){ const i=cid?state.trees.findIndex(t=>t.cid===cid):-1; return i<0?null:{t:state.trees[i],i}; }
 function camFixTarget(){ if(CAM.target&&camItem(CAM.target)) return; const n=state.trees.length; CAM.target=n?itemCid(state.trees[n-1]):null; }   // 送り先が消えたら、いちばん下の番号へ
 
@@ -5913,7 +5975,7 @@ function npNext(){
   const i=NP.i, t=state.trees[i]; if(!t) return npClose();
   if(NP.f==="h") return npGo(i,t.kabu?"s0":"c");
   if(NP.f[0]==="s"){ const k=+NP.f.slice(1); if(k+1<t.stems.length&&String(t.stems[k+1]).trim()!=="") return npGo(i,"s"+(k+1)); }
-  for(let j=i+1;j<state.trees.length;j++) if(state.trees[j].type!=="exterior") return npGo(j,"h");   // 次の番号の高さへ
+  for(let j=i+1;j<state.trees.length;j++) if(isTreeT(state.trees[j])) return npGo(j,"h");   // 次の番号の高さへ
   npClose(); toast("最後の番号まで入れました");
 }
 function npNextStem(){ const t=state.trees[NP.i]; if(!t||!t.kabu) return; const k=+NP.f.slice(1);
@@ -6044,7 +6106,7 @@ function legendPng(om,W){ const it=legendItems(om,true); if(!it.length) return n
 let SHOW_MISS=false;
 const MISS_LABEL={ species:"樹種", work:"作業方針", h:"高さ", c:"幹周", item:"品名", qty:"数量", unit:"単位" };
 const filled=x=>String(x==null?"":x).trim()!=="";
-function missingOf(t){ return (t.type==="exterior"?["item","qty","unit"]:["species","work","c"]).filter(k=>!filled(t[k])); } // 高さ（H）は測らないことも多いので確認しない
+function missingOf(t){ return (t.type==="exterior"?["item","qty","unit"]:t.type==="plant"?(t.pk==="土壌改良"?["method","qty","unit"]:t.pk==="植替え"?["oldSpecies","species","qty","unit"]:["species","qty","unit"]):["species","work","c"]).filter(k=>!filled(t[k])); } // 高さ（H）は測らないことも多いので確認しない
 function mc(t,k){ return SHOW_MISS&&missingOf(t).includes(k)?" miss":""; }
 function checkBeforeExport(kind){
   if(zoneMode()){ const nz=state.trees.filter(t=>!zoneOf(t)).length;
@@ -6482,7 +6544,7 @@ function prGirth(t){ const v=parseFloat(String(t.c==null?"":t.c).replace(/[^\d.]
 const prBandText=(lo,hi)=>!lo?hi+"cm未満":hi==null?lo+"cm以上":lo+"〜"+hi+"cm";
 /* この木の仮の単価 → { price, label, why }（price が null なら why に理由） */
 function prFor(t){
-  if(!t||t.type==="exterior") return null;
+  if(!t||!isTreeT(t)) return null;
   const work=t.work||"", pk=(typeof siteOf==="function"&&siteOf()==="park"&&!prCustom(work))?prParkMap(work):null, m=pk||prMapOf(work), leaf=prLeaf(t), ref=m[leaf]||m[leaf==="ever"?"deci":"ever"]||"";
   if(!ref) return { price:null, why:work?"「"+work+"」は単価のもとを決めていません":"" };
   const hit=prItem(ref); if(!hit) return { price:null, why:"単価のもとの工種が見つかりません（置き場で選び直してください）" };
@@ -6525,7 +6587,7 @@ async function priceListExport(){ try{ await window.loadExcelJS(); }catch(e){ al
   const buf=await wb.xlsx.writeBuffer(), a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
   a.download="単価一覧_"+d.site.replace(/[\/:*?"<>|（）]/g,"")+"_"+today()+".xlsx"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),60000); }
 /* 作業方針・幹周・樹種を変えたあと：空か仮の単価のままなら入れ直す（手で入れた単価はそのまま） */
-function autoUp(i,paint){ const t=state.trees[i]; if(!t||t.type==="exterior") return false;
+function autoUp(i,paint){ const t=state.trees[i]; if(!t||!isTreeT(t)) return false;
   const free=t.upAuto||String(t.up==null?"":t.up).trim()===""; if(!free){ if(paint) prPaint(i); return false; }
   const r=prFor(t); let ch=false;
   if(r&&r.price!=null){ const v=String(r.price); if(t.up!==v||!t.upAuto||t.upSrc!==r.label+"／"+r.src){ t.up=v; t.upAuto=true; t.upSrc=r.label+"／"+r.src; ch=true; } }
@@ -6546,7 +6608,7 @@ function prRedo(i){ const t=state.trees[i]; if(!t) return; pushUndo("upre"+i); t
 /* 案件の単価をまとめて：mode="empty"（空いているところだけ）／"auto"（仮の単価も入れ直す） */
 function prFillCase(mode){
   const T=state.trees||[]; let n=0, miss=0;
-  const can=T.map(t=>t.type!=="exterior"&&(String(t.up==null?"":t.up).trim()===""||(mode==="auto"&&t.upAuto)));
+  const can=T.map(t=>isTreeT(t)&&(String(t.up==null?"":t.up).trim()===""||(mode==="auto"&&t.upAuto)));
   if(!can.some(Boolean)){ toast(mode==="auto"?"入れ直せる単価がありません（手で入れた単価はそのままにします）":"単価が空いている木はありません"); return; }
   pushUndo("prfill");
   T.forEach((t,i)=>{ if(!can[i]) return; if(mode==="auto"&&t.upAuto){ t.up=""; t.upAuto=false; } const b=t.up; autoUp(i,false); if(t.upAuto&&t.up!==b) n++; else if(!t.upAuto) miss++; });
@@ -6557,7 +6619,7 @@ function prFillCase(mode){
 function prChanged(snap){ prUndo.push(snap); if(prUndo.length>40) prUndo.shift(); PR.dirty=true; prSaveLocal(); prRender(); prPush(); repaintPrices(); }
 const prSnap=()=>JSON.stringify(PR.store);
 function prUndoDo(){ if(!prUndo.length) return; PR.store=JSON.parse(prUndo.pop()); prFix(); PR.dirty=true; prSaveLocal(); prRender(); prPush(); repaintPrices(); toast("1つ前に戻しました"); }
-function repaintPrices(){ (state.trees||[]).forEach((t,i)=>{ if(t.type!=="exterior") prPaint(i); }); }
+function repaintPrices(){ (state.trees||[]).forEach((t,i)=>{ if(isTreeT(t)) prPaint(i); }); }
 function prMerge(a,b){   // 2つの置き場をまぜる（新しく直した方を使う）
   const o={ v:1, books:[], del:Object.assign({},a.del||{}), map:Object.assign({},a.map||{}) };
   Object.keys(b.del||{}).forEach(k=>{ o.del[k]=Math.max(o.del[k]||0,b.del[k]); });
@@ -6612,7 +6674,7 @@ function prRender(){
   document.getElementById("prBackBtn").textContent=PRV.view==="home"?"閉じる":"◀ 戻る";
   const st=PR.err?`<div class="prwarn">${esc(PR.err)}</div>`:"";
   if(PRV.view==="read"){ box.innerHTML=st+prReadHTML(); return; }
-  const n=(state.trees||[]).filter(t=>t.type!=="exterior").length, empty=(state.trees||[]).filter(t=>t.type!=="exterior"&&String(t.up==null?"":t.up).trim()==="").length;
+  const n=(state.trees||[]).filter(isTreeT).length, empty=(state.trees||[]).filter(t=>isTreeT(t)&&String(t.up==null?"":t.up).trim()==="").length;
   let h=st+`<div class="prsec"><h3>作業方針ごとの仮の単価</h3><div class="muted">木の作業方針と幹周から、ここで選んだ工種の幹周ランクの単価を<b>仮</b>で入れます。樹種で落葉木か着葉木（常緑）かを分けます（カードで切りかえられます）。</div>
     <table class="prmap"><tr><th>作業方針</th><th>落葉木</th><th>着葉木（常緑）</th></tr>`+
     WORKS.map(w=>{ const m=prMapOf(w), cu=prCustom(w), R=PR_RULES[w];
