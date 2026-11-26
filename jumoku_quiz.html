@@ -468,6 +468,200 @@ if (typeof module !== 'undefined') module.exports = { IMG };
 
 </script>
 <script>
+// 解説図の追加分（病害・虫害・土壌・気象害・生態・薬剤・法令）。img.js の svg / mark / lead を使う。
+(function () {
+  function P(d, fill, stroke, w) { return '<path d="' + d + '" fill="' + (fill || 'none') + '" stroke="' + (stroke || 'none') + '" stroke-width="' + (w || 1) + '" stroke-linecap="round" stroke-linejoin="round"/>'; }
+  function T(x, y, t, size, anchor, bold) { return '<text x="' + x + '" y="' + y + '" text-anchor="' + (anchor || 'middle') + '" font-size="' + (size || 12) + '"' + (bold ? ' font-weight="700"' : '') + ' fill="#1d1d1b" font-family="sans-serif">' + t + '</text>'; }
+  function crown(cx, cy, rx, ry, c) { return '<g filter="url(#leaf)"><ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry + '" fill="' + (c || '#4e7a3a') + '"/><ellipse cx="' + (cx - rx * 0.4) + '" cy="' + (cy + ry * 0.3) + '" rx="' + rx * 0.55 + '" ry="' + ry * 0.6 + '" fill="#456f34"/><ellipse cx="' + (cx + rx * 0.45) + '" cy="' + (cy + ry * 0.2) + '" rx="' + rx * 0.55 + '" ry="' + ry * 0.6 + '" fill="#5a8843"/></g>'; }
+  function trunk(d) { return '<g filter="url(#bark)">' + P(d, '#6f5640') + '</g>'; }
+  function bigleaf(cx, cy) {
+    return P('M' + cx + ' ' + (cy + 78) + ' C' + (cx - 52) + ' ' + (cy + 40) + ' ' + (cx - 44) + ' ' + (cy - 40) + ' ' + cx + ' ' + (cy - 78) + ' C' + (cx + 44) + ' ' + (cy - 40) + ' ' + (cx + 52) + ' ' + (cy + 40) + ' ' + cx + ' ' + (cy + 78) + ' Z', '#4f7f3a', '#2f5524', 1.6) +
+      P('M' + cx + ' ' + (cy + 96) + ' L' + cx + ' ' + (cy - 70), 'none', '#86b06a', 2) +
+      [-40, -10, 20, 48].map(function (dy) { return P('M' + cx + ' ' + (cy + dy) + ' L' + (cx - 30) + ' ' + (cy + dy - 18) + ' M' + cx + ' ' + (cy + dy) + ' L' + (cx + 30) + ' ' + (cy + dy - 18), 'none', '#86b06a', 1.2); }).join('');
+  }
+  var GROUND = '<rect y="200" width="360" height="50" fill="#b89a72"/><path d="M0 200 H360" stroke="#3f5a2c" stroke-width="4"/>';
+
+  // 葉の症状：A 白い粉、B 黒いすす、C 褐色の斑点
+  IMG.hayamai = function () {
+    var s = bigleaf(62, 120) + bigleaf(180, 120) + bigleaf(298, 120);
+    s += '<g filter="url(#wob)" opacity=".92"><ellipse cx="52" cy="100" rx="22" ry="26" fill="#f4f4f0"/><ellipse cx="76" cy="140" rx="18" ry="22" fill="#f4f4f0"/><ellipse cx="60" cy="168" rx="12" ry="10" fill="#f4f4f0"/></g>';
+    s += '<g filter="url(#wob)" opacity=".88"><ellipse cx="174" cy="104" rx="24" ry="28" fill="#1c1c1a"/><ellipse cx="190" cy="150" rx="20" ry="24" fill="#1c1c1a"/></g>';
+    [[286, 90, 7], [310, 112, 9], [290, 136, 8], [306, 160, 6], [282, 168, 5]].forEach(function (p) { s += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + (p[2] + 3) + '" fill="#d9c54a"/><circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + p[2] + '" fill="#6b4226"/>'; });
+    return svg(s + mark(62, 20, 'A') + mark(180, 20, 'B') + mark(298, 20, 'C'), '症状の違う3枚の葉。白い粉、黒い汚れ、褐色の斑点');
+  };
+
+  // てんぐ巣病の枝を切る位置
+  IMG.tengusu = function () {
+    var s = '<rect width="360" height="250" fill="url(#sky)"/>';
+    s += trunk('M0 196 L0 172 C70 164 130 150 176 134 L182 150 C136 168 76 184 0 196 Z');
+    // こぶ
+    s += '<g filter="url(#bark)"><ellipse cx="200" cy="134" rx="24" ry="17" fill="#5f4834"/></g>';
+    // ほうき状の小枝
+    var b = '';
+    for (var i = 0; i < 12; i++) { var a = -66 + i * 8, r = 96 + (i % 3) * 14, x = 214 + Math.cos(a * Math.PI / 180) * r, y = 128 + Math.sin(a * Math.PI / 180) * r; b += P('M212 130 Q' + ((212 + x) / 2 + 8) + ' ' + ((130 + y) / 2 - 6) + ' ' + x + ' ' + y, 'none', '#6b4f38', 2.2); if (i % 2 === 0) b += '<ellipse cx="' + x + '" cy="' + y + '" rx="7" ry="3.4" fill="#5a8843" transform="rotate(' + a + ' ' + x + ' ' + y + ')"/>'; }
+    s += b;
+    function cut(x1, y1, x2, y2) { return '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="#fff" stroke-width="6"/><line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="#b3261e" stroke-width="3" stroke-dasharray="6 4"/>'; }
+    s += cut(110, 138, 122, 190) + cut(196, 108, 204, 160) + cut(262, 84, 276, 158);
+    s += lead(100, 226, 118, 192) + mark(92, 234, 'A');
+    s += lead(190, 218, 202, 164) + mark(186, 230, 'B');
+    s += lead(292, 212, 276, 162) + mark(298, 224, 'C');
+    s += T(60, 150, '幹の側', 12);
+    return svg(s, 'こぶからほうき状に小枝が出た枝と、切る位置の候補3つ');
+  };
+
+  // 害虫のしるし：A 葉の食べ跡、B 根元の木くず、C 枝の白い粒
+  IMG.gaichu = function () {
+    var s = '<rect width="360" height="250" fill="url(#sky)"/>' + GROUND;
+    s += trunk('M150 200 L158 96 L176 96 L186 200 Z') + trunk('M172 120 L176 106 L286 70 L288 80 Z');
+    s += crown(150, 60, 78, 44);
+    // 食べ跡のある葉（拡大）
+    s += P('M40 70 C52 44 88 44 100 70 C88 96 52 96 40 70 Z', '#5a8843', '#2f5524', 1.4) + '<circle cx="60" cy="64" r="7" fill="#dbe9ef"/><circle cx="78" cy="76" r="6" fill="#dbe9ef"/><path d="M92 58 q8 6 4 14" fill="#dbe9ef"/>';
+    // 穴と木くず
+    s += '<circle cx="168" cy="170" r="4" fill="#1c1410"/><g filter="url(#grain)"><path d="M140 200 Q166 176 196 200 Z" fill="#d9a55a"/></g>';
+    // 枝の白い粒
+    [226, 238, 250, 262].forEach(function (x, i) { s += '<ellipse cx="' + x + '" cy="' + (88 - i * 4) + '" rx="5" ry="3.6" fill="#f4f4f0" stroke="#8a8a80" stroke-width="1"/>'; });
+    s += mark(26, 30, 'A') + lead(36, 40, 52, 56);
+    s += lead(96, 186, 146, 192) + mark(84, 182, 'B');
+    s += lead(318, 126, 252, 88) + mark(326, 136, 'C');
+    return svg(s, '木についた3つのしるし。葉の食べ跡、根元の木くず、枝の白い粒');
+  };
+
+  // 土の三相
+  IMG.sansou = function () {
+    var s = '';
+    s += '<rect x="30" y="92" width="120" height="70" fill="#7b5a3c" stroke="#1d1d1b" stroke-width="1.6"/><g filter="url(#grain)"><rect x="30" y="92" width="120" height="70" fill="#7b5a3c" opacity=".6"/></g>';
+    s += '<rect x="150" y="92" width="90" height="70" fill="#6fa3c7" stroke="#1d1d1b" stroke-width="1.6"/>';
+    [0, 1, 2, 3].forEach(function (i) { s += P('M' + (158 + i * 21) + ' 110 q5 -6 10 0 q5 6 10 0', 'none', '#fff', 1.6) + P('M' + (158 + i * 21) + ' 140 q5 -6 10 0 q5 6 10 0', 'none', '#fff', 1.6); });
+    s += '<rect x="240" y="92" width="90" height="70" fill="#f7f6f1" stroke="#1d1d1b" stroke-width="1.6"/>';
+    [[258, 112], [284, 126], [308, 108], [270, 146], [312, 144]].forEach(function (p) { s += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="6" fill="none" stroke="#8a8a80" stroke-width="1.4"/>'; });
+    s += mark(90, 68, 'A') + mark(195, 68, 'B') + mark(285, 68, 'C');
+    s += T(90, 184, '40%') + T(195, 184, '30%') + T(285, 184, '30%');
+    s += T(180, 222, '土の体積の内訳（目安）', 13);
+    return svg(s, '土の体積の内訳を示す帯。3つに分かれている');
+  };
+
+  // 土の構造：A 団粒、B 詰まった土
+  IMG.danryu = function () {
+    var s = '';
+    function box(x) { return '<rect x="' + x + '" y="44" width="140" height="160" fill="#f1e7d2" stroke="#1d1d1b" stroke-width="1.6"/>'; }
+    s += box(26) + box(194);
+    var c = [[52, 74, 20], [96, 70, 17], [136, 82, 19], [70, 118, 22], [118, 126, 21], [48, 162, 19], [92, 170, 20], [138, 168, 18]];
+    c.forEach(function (p) { s += '<g filter="url(#wob)"><circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + p[2] + '" fill="#7b5a3c"/></g>'; [[-6, -5], [6, -4], [0, 6], [-7, 5], [7, 6]].forEach(function (d) { s += '<circle cx="' + (p[0] + d[0]) + '" cy="' + (p[1] + d[1]) + '" r="2.4" fill="#4a3525"/>'; }); });
+    var g = '';
+    for (var y = 0; y < 13; y++) for (var x = 0; x < 12; x++) g += '<circle cx="' + (201 + x * 11.4 + (y % 2) * 5) + '" cy="' + (52 + y * 12) + '" r="5.4" fill="#7b5a3c" stroke="#4a3525" stroke-width=".8"/>';
+    s += '<clipPath id="cb"><rect x="195" y="45" width="138" height="158"/></clipPath><g clip-path="url(#cb)">' + g + '</g>';
+    s += mark(96, 24, 'A') + mark(264, 24, 'B') + T(180, 232, '白い所＝すき間（水と空気の通り道）', 12);
+    return svg(s, '土の粒の集まり方2種類。すき間の多い土と、詰まった土');
+  };
+
+  // 台風被害の形：A 根返り、B 幹折れ、C 枝折れ
+  IMG.taifu = function () {
+    var s = '<rect width="360" height="250" fill="url(#sky)"/>' + GROUND;
+    // A 根ごと倒れた木
+    s += crown(34, 180, 28, 20) + trunk('M40 180 L104 184 L104 196 L40 190 Z');
+    s += '<g filter="url(#wob)"><ellipse cx="108" cy="184" rx="9" ry="26" fill="#7b5a3c"/></g>' + P('M112 166 L124 156 M114 180 L128 176 M112 196 L124 204', 'none', '#4a3525', 2.4);
+    s += '<ellipse cx="124" cy="204" rx="16" ry="4" fill="#5a4530"/>';
+    // B 幹が折れた木
+    s += trunk('M166 200 L169 150 L183 146 L186 200 Z') + P('M169 150 L172 140 L176 149 L180 138 L183 146 Z', '#e2c592', '#3a2a1c', 1);
+    s += trunk('M190 186 L232 180 L232 190 L190 196 Z') + crown(238, 180, 22, 16);
+    // C 枝が折れた木
+    s += trunk('M286 200 L290 100 L302 100 L306 200 Z') + crown(296, 72, 40, 30);
+    s += P('M302 128 L316 120', 'none', '#6f5640', 6) + P('M314 116 L320 112 L319 123 Z', '#e2c592', '#3a2a1c', 1);
+    s += P('M316 196 L342 188', 'none', '#6f5640', 5) + crown(344, 186, 12, 9);
+    s += mark(70, 232, 'A') + mark(196, 232, 'B') + mark(304, 232, 'C');
+    return svg(s, '風の被害を受けた3本の木。根ごと倒れた木、幹が折れた木、枝が折れた木');
+  };
+
+  // 幹の傷：A 縦の割れ、B 丸い傷
+  IMG.toretsu = function () {
+    var s = '<rect width="360" height="250" fill="url(#sky)"/>';
+    s += trunk('M52 250 L60 0 L140 0 L148 250 Z') + trunk('M212 250 L220 0 L300 0 L308 250 Z');
+    s += P('M100 30 C96 80 104 130 99 220', 'none', '#1c1410', 5) + P('M94 30 C88 80 96 130 91 220 M106 30 C104 80 112 130 107 220', 'none', '#b79b77', 3);
+    s += '<ellipse cx="260" cy="120" rx="26" ry="32" fill="#b79b77" stroke="#4a3525" stroke-width="5"/><ellipse cx="260" cy="120" rx="14" ry="19" fill="#e2c592"/><ellipse cx="260" cy="120" rx="6" ry="8" fill="none" stroke="#a57b45"/>';
+    s += mark(28, 40, 'A') + mark(332, 40, 'B');
+    return svg(s, '傷のある幹2本。縦に長い割れと、丸い傷');
+  };
+
+  // 遷移：A 明るい松林、B 草地、C 暗い常緑樹の林
+  IMG.seni = function () {
+    var s = '<rect width="360" height="250" fill="url(#sky)"/>' + GROUND;
+    s += '<line x1="120" y1="10" x2="120" y2="250" stroke="#1d1d1b" stroke-dasharray="4 4"/><line x1="240" y1="10" x2="240" y2="250" stroke="#1d1d1b" stroke-dasharray="4 4"/>';
+    // A 松林（まばらで明るい）
+    [30, 70, 100].forEach(function (x, i) { s += P('M' + x + ' 200 L' + (x + 2) + ' ' + (96 + i * 6), 'none', '#8a5a3c', 5) + '<g filter="url(#leaf)"><ellipse cx="' + (x + 2) + '" cy="' + (86 + i * 6) + '" rx="20" ry="11" fill="#5a8843"/><ellipse cx="' + (x - 8) + '" cy="' + (104 + i * 6) + '" rx="13" ry="7" fill="#679650"/></g>'; });
+    // B 草地
+    for (var x = 128; x < 236; x += 6) s += P('M' + x + ' 200 q-3 -14 ' + ((x % 12) ? -5 : 4) + ' -24', 'none', '#6a9a4e', 2);
+    s += P('M180 200 L181 176', 'none', '#8a5a3c', 2) + '<ellipse cx="181" cy="170" rx="8" ry="7" fill="#5a8843"/>';
+    // C 常緑樹の林（こんもり暗い）
+    s += trunk('M262 200 L266 110 L276 110 L280 200 Z') + trunk('M316 200 L320 120 L330 120 L334 200 Z');
+    s += '<g filter="url(#leaf)"><ellipse cx="300" cy="78" rx="58" ry="46" fill="#2f5a2c"/><ellipse cx="270" cy="96" rx="30" ry="26" fill="#27502a"/><ellipse cx="332" cy="92" rx="28" ry="26" fill="#356433"/></g>';
+    s += mark(60, 232, 'A') + mark(180, 232, 'B') + mark(300, 232, 'C');
+    return svg(s, '3つの景色。明るい松の林、草地、こんもり暗い常緑樹の林');
+  };
+
+  // ギャップ：A 林冠の下、B 穴の下
+  IMG.gap = function () {
+    var s = '<rect width="360" height="250" fill="url(#sky)"/>' + GROUND;
+    [36, 92, 286, 334].forEach(function (x) { s += trunk('M' + (x - 6) + ' 200 L' + (x - 4) + ' 90 L' + (x + 4) + ' 90 L' + (x + 6) + ' 200 Z'); });
+    s += '<g filter="url(#leaf)"><ellipse cx="62" cy="62" rx="74" ry="40" fill="#2f5a2c"/><ellipse cx="310" cy="62" rx="62" ry="40" fill="#356433"/></g>';
+    // 光
+    s += '<path d="M150 0 L250 0 L236 200 L160 200 Z" fill="#fff3b0" opacity=".55"/>';
+    // 倒木
+    s += '<g transform="rotate(4 200 196)">' + trunk('M150 190 L262 190 L262 200 L150 200 Z') + '</g>';
+    // 若木
+    function sap(x, h, c) { return P('M' + x + ' 200 L' + x + ' ' + (200 - h), 'none', '#6b4f38', 2.4) + '<ellipse cx="' + x + '" cy="' + (196 - h) + '" rx="' + (h * 0.32) + '" ry="' + (h * 0.3) + '" fill="' + c + '"/>'; }
+    s += sap(64, 14, '#6a9a4e') + sap(180, 56, '#5a8843') + sap(214, 44, '#679650');
+    s += mark(64, 232, 'A') + mark(198, 232, 'B');
+    return svg(s, '林の断面。葉でおおわれた所と、木が倒れて光が入る所');
+  };
+
+  // 農薬のラベル（見本）
+  IMG.label = function () {
+    var s = '<rect x="20" y="14" width="250" height="222" rx="6" fill="#fff" stroke="#1d1d1b" stroke-width="1.6"/>';
+    s += T(145, 38, '○○○乳剤（見本）', 14, 'middle', true) + T(145, 56, '農林水産省登録 第00000号', 11);
+    var rows = [['作物名', '樹木類'], ['適用病害虫名', 'ケムシ類'], ['希釈倍数', '1,000倍'], ['使用時期', '発生初期'], ['本剤の使用回数', '4回以内']];
+    rows.forEach(function (r, i) {
+      var y = 68 + i * 32;
+      s += '<rect x="32" y="' + y + '" width="112" height="32" fill="#eef0e6" stroke="#1d1d1b"/><rect x="144" y="' + y + '" width="114" height="32" fill="#fff" stroke="#1d1d1b"/>';
+      s += T(88, y + 21, r[0], 12) + T(201, y + 21, r[1], 13);
+    });
+    s += lead(296, 84, 258, 84) + mark(314, 84, 'A');
+    s += lead(296, 148, 258, 148) + mark(314, 148, 'B');
+    s += lead(296, 212, 258, 212) + mark(314, 212, 'C');
+    return svg(s, '農薬のラベルの見本。作物名、病害虫名、希釈倍数、使用時期、使用回数の欄');
+  };
+
+  // 越境：A 枝、B 根
+  IMG.ekkyo = function () {
+    var s = '<rect width="360" height="150" fill="url(#sky)"/><rect y="150" width="360" height="100" fill="url(#soil)"/><path d="M0 150 H360" stroke="#3f5a2c" stroke-width="4"/>';
+    s += trunk('M96 150 L102 70 L120 70 L128 150 Z') + trunk('M116 92 L120 80 L250 54 L252 64 Z');
+    s += crown(108, 46, 70, 36) + crown(246, 50, 40, 22, '#5a8843');
+    s += P('M112 150 C150 168 200 176 262 180', 'none', '#4a3525', 7) + P('M112 150 C90 170 70 186 40 196', 'none', '#4a3525', 6) + P('M230 178 C250 190 262 200 270 214', 'none', '#4a3525', 3);
+    // 塀と境界
+    s += '<rect x="184" y="92" width="10" height="58" fill="#9a9a92" stroke="#1d1d1b"/><line x1="189" y1="6" x2="189" y2="250" stroke="#fff" stroke-width="4"/><line x1="189" y1="6" x2="189" y2="250" stroke="#b3261e" stroke-width="1.8" stroke-dasharray="7 4"/>';
+    s += T(96, 240, '隣の土地', 12) + T(290, 240, '自分の土地', 12) + T(214, 18, '境界', 11, 'start');
+    s += lead(314, 96, 260, 62) + mark(322, 106, 'A');
+    s += lead(318, 162, 262, 180) + mark(330, 158, 'B');
+    return svg(s, '境界をこえて、枝と根が隣から入ってきている図');
+  };
+
+  // 幹周を測る高さ
+  IMG.mikimawari = function () {
+    var s = '<rect width="360" height="250" fill="url(#sky)"/>' + '<rect y="226" width="360" height="24" fill="#b89a72"/><path d="M0 226 H360" stroke="#3f5a2c" stroke-width="4"/>';
+    s += trunk('M132 226 Q150 214 152 196 L156 0 L206 0 L210 196 Q212 214 230 226 Z');
+    // 物差し
+    s += '<line x1="80" y1="226" x2="80" y2="14" stroke="#1d1d1b" stroke-width="1.6"/>';
+    [[226, '0'], [121, '1.0m'], [16, '2.0m']].forEach(function (p) { s += '<line x1="72" y1="' + p[0] + '" x2="88" y2="' + p[0] + '" stroke="#1d1d1b" stroke-width="1.6"/>' + T(66, p[0] + 4, p[1], 11, 'end'); });
+    function band(y) { return '<line x1="150" y1="' + y + '" x2="212" y2="' + y + '" stroke="#fff" stroke-width="6"/><line x1="150" y1="' + y + '" x2="212" y2="' + y + '" stroke="#b3261e" stroke-width="3"/><line x1="88" y1="' + y + '" x2="150" y2="' + y + '" stroke="#1d1d1b" stroke-dasharray="3 3"/>'; }
+    s += band(194.5) + band(100) + band(68.5);
+    s += lead(286, 194, 214, 194) + mark(300, 194, 'A');
+    s += lead(286, 112, 214, 100) + mark(300, 116, 'B');
+    s += lead(286, 56, 214, 68) + mark(300, 52, 'C');
+    return svg(s, '幹と物差し。地面から0.3m、1.2m、1.5mの高さに線');
+  };
+})();
+
+</script>
+<script>
 // 要点と問題。選択肢は先頭が正解（画面に出すときに並べ替える）。
 // 確度：0=定説 1=有力 2=議論中
 const KAKUDO = ['定説', '有力', '議論中'];
@@ -2266,6 +2460,34 @@ var YOMI = [
   add('t01', ['図のA・B・Cのうち、正しい深さで植えてあるのは？', ['B', 'A', 'C'], 'Bは根張りが地面に見える深さです。Aは根鉢が浮いて乾き、Cは深植えで根が酸素不足になります。', 'ueru']);
   add('t14', ['上から見た根元の図で、将来、幹を締めるおそれがある根は？', ['A', 'B'], 'Aは幹を回っている根です。太ると幹を締めつけます。Bのように外へまっすぐ伸びる根が正常です。', 'makine']);
   add('r10', ['二股の木にケーブルを張ります。目安とされる高さは図のどれ？', ['B', 'A', 'C'], '股から枝先までのおよそ3分の2の高さ（B）が目安です。Aは低すぎて効かず、Cは細すぎて枝が傷みます。', 'cable']);
+})();
+
+</script>
+<script>
+// 図を見て答える問題（img3.js の図を使う）。選択肢は先頭が正解。
+(function () {
+  var by = {};
+  BASE.forEach(function (p) { by[p.id] = p; });
+  function add(id, q) { by[id].qs.push({ q: q[0], o: q[1], ex: q[2], img: q[3] || '' }); }
+
+  add('d05', ['図の3枚の葉のうち、うどんこ病の葉は？', ['A', 'B', 'C'], 'Aは葉の表面に白い粉をまぶしたようになる、うどんこ病です。', 'hayamai']);
+  add('d06', ['図の3枚の葉のうち、すす病の葉は？', ['B', 'A', 'C'], 'Bは黒いすすをかぶったようになる、すす病です。汁を吸う虫の排せつ物にかびが生えたものです。', 'hayamai']);
+  add('d08', ['てんぐ巣病の枝を切り取ります。切る位置は図のどれ？', ['A', 'B', 'C'], 'こぶより幹の側の、健全な所（A）で切ります。BやCではこぶが残り、また小枝が出ます。', 'tengusu']);
+  add('i01', ['図のA・B・Cのうち、幹の中に虫がいるしるしは？', ['B', 'A', 'C'], 'Bは幹の穴と、根元にたまった木くずです。幹の中を食べる虫（穿孔性害虫）のしるしです。', 'gaichu']);
+  add('i05', ['図のA・B・Cのうち、カイガラムシがついている所は？', ['C', 'A', 'B'], 'Cは枝に張りついた白い粒で、カイガラムシです。動かずに汁を吸います。', 'gaichu']);
+  add('s01', ['図は土の体積の内訳です。踏み固めると真っ先に減るのは？', ['C', 'A', 'B'], 'Cは空気（気相）です。踏み固めるとすき間がつぶれ、空気が減って根が弱ります。', 'sansou']);
+  add('s02', ['図のA・Bのうち、団粒構造が発達した土は？', ['A', 'B'], 'Aは粒が集まってかたまりを作り、かたまりの間に大きなすき間があります。水はけと水もちの両方が良くなります。', 'danryu']);
+  add('k01', ['図のA・B・Cのうち、「幹折れ」は？', ['B', 'A', 'C'], 'Bは幹の途中で折れています。Aは根ごと倒れた倒伏、Cは枝折れです。', 'taifu']);
+  add('k01', ['図のA・B・Cのうち、根の張りの弱さが主な原因になる被害は？', ['A', 'B', 'C'], 'Aは根ごと倒れています。根が浅い、片側にしか張れない、根が腐っている、といった木で起きます。', 'taifu']);
+  add('k04', ['図のA・Bのうち、凍裂の傷は？', ['A', 'B'], 'Aは幹に縦に長く入った割れで、凍裂です。Bは枝を落とした跡などの丸い傷です。', 'toretsu']);
+  add('e01', ['図のA・B・Cのうち、陽樹の林は？', ['A', 'B', 'C'], 'Aはマツの明るい林です。マツは陽樹で、暗い林の中では若木が育ちません。', 'seni']);
+  add('e02', ['図のA・B・Cを遷移の順に並べたとき、最後に来るのは？', ['C', 'A', 'B'], '草地（B）→陽樹の林（A）→陰樹の林（C）の順に移り変わります。', 'seni']);
+  add('e05', ['図のA・Bのうち、若木がよく育つ場所は？', ['B', 'A'], 'Bは大きな木が倒れて光が地面まで届く所（ギャップ）です。', 'gap']);
+  add('a02', ['図はラベルの見本です。薄め方を確かめる欄は？', ['B', 'A', 'C'], 'Bの「希釈倍数」です。これより濃くして使ってはいけません。', 'label']);
+  add('a07', ['図はラベルの見本です。その薬を使ってよい植物を確かめる欄は？', ['A', 'B', 'C'], 'Aの「作物名」です。ここに書かれた植物にだけ使います。', 'label']);
+  add('h02', ['図で、以前から越えられた側が自分で切り取れるとされているのは？', ['B', 'A'], 'B（根）は以前から自分で切り取れます。A（枝）は持ち主に切ってもらうのが原則で、条件がそろったときだけ自分で切れます。', 'ekkyo']);
+  add('t06', ['公共用緑化樹木の規格で、幹周を測る高さは図のどれ？', ['B', 'A', 'C'], 'B（根鉢の上端から1.2m）です。', 'mikimawari']);
+  add('h05', ['保存樹の基準で、幹周を測る高さは図のどれ？', ['C', 'A', 'B'], 'C（1.5mの高さ）です。苗木の規格の1.2mとは違います。', 'mikimawari']);
 })();
 
 </script>
