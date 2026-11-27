@@ -297,6 +297,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbzCkxdDCT3hnSEbtpcbQcvO
 // 現場名の候補は日報のマスタから読む
 const NIPPOU_GAS_URL = 'https://script.google.com/macros/s/AKfycbz2iP9eN-79vKTgOvfY6_Vd9rJZ9IMuz4ILkrxE79Muqq0pvTZAAhBG3cMXpZV6ZU1-/exec';
 const LS = { token:'tc_token', me:'tc_me', names:'tc_names', queue:'tc_queue', bio:'tc_bio', site:'tc_site', bioAsked:'tc_bio_asked', cache:'tc_cache' };
+try { localStorage.removeItem('tc_site'); } catch(e){}   // 前の現場名を覚えておくのはやめた（毎回出てしまうため）
 const KINDS = ['出勤','休日出勤','休み','振休','代休','雨天中止（半日）','雨天中止（全日）','公休'];
 const REASONS = ['現場直行・直帰で打刻忘れ','打ち忘れ','電池切れ','電波なし','時刻の間違い','暗証番号忘れ','その他'];
 const ROLE_LABEL = { boss:'親方', office:'事務担当', staff:'スタッフ', none:'打刻なし' };
@@ -653,7 +654,6 @@ async function doPunch(type){
   const pressedAt = Date.now();
   const site = ($('#site') && $('#site').value.trim()) || '';
   const kind = ($('#kind') && $('#kind').value) || '出勤';
-  if (site) lsSet(LS.site, site);
   toast('記録しています…');
   // 押した時刻で、まず端末に残して画面に出す（位置を待つあいだにアプリを閉じても消えない）
   const item = { staffId: S.me.id, clientId: uuid(), type, pressedAt, site, kind, bio, device: device(), lat: '', lng: '', acc: '' };
@@ -680,7 +680,7 @@ async function doPunch(type){
         if (prevDay) S.days[k] = prevDay; else delete S.days[k];
         render(); toast('出勤の記録を取り消しました。事務所に着いてから押してください'); return;
       }
-      item.direct = true; if (ans.site){ item.site = ans.site; lsSet(LS.site, ans.site); if (S.days[k]) S.days[k].site = ans.site; }
+      item.direct = true; if (ans.site){ item.site = ans.site; if (S.days[k]) S.days[k].site = ans.site; }
       break;
     }
     S.awayAsk = null;
@@ -830,7 +830,7 @@ function punchView(){
   const prev = datesIn(addDays(td,-7), addDays(td,-1)).reverse().find(s => { const x = getDay(S.me.id, s); return x && x.in; });
   const pd = prev && getDay(S.me.id, prev);
   const missing = pd && pd.in && !pd.out && !isClosed(prev) && !(night && prev === os.date);
-  const lastSite = lsGet(LS.site, '') || '';
+  // 現場名は前の日のものを入れない（毎朝空欄。出勤後は今日の現場を退勤の欄に出す）
   return `
   ${missing ? `<div class="banner danger"><span class="grow"><b>${dlabel(prev)}の退勤が未入力です。</b>あとから入力してください。</span><button class="btn" data-act="edit" data-arg="${S.me.id}|${prev}">入力する</button></div>` : ''}
   ${night ? `<div class="banner ok"><span class="grow"><b>夜勤中</b>　${dlabel(os.date)} ${esc(os.d.in)}から。退勤を押すと、${dlabel(os.date)}の勤務の退勤（翌${nowHM()}）として記録します。</span></div>` : ''}
@@ -849,7 +849,7 @@ function punchView(){
       <button class="out" data-act="punch" data-arg="out">退勤<small>${d.out ? '退勤済み' : 'タップで記録'}</small></button>
     </div>
     <div class="fields">
-      <label class="f">${d.in && !d.out ? '退勤する現場<span class="muted small">（出勤と違う現場で終わるときは直す）</span>' : S.direct ? '直行する現場<span class="muted small">（必須）</span>' : '現場'}<input id="site" list="siteList" value="${esc(d.in && !d.out ? (d.outSite || d.site || lastSite) : (d.site || lastSite))}" placeholder="現場名（なくてもOK）"><datalist id="siteList">${S.sites.map(s => `<option value="${esc(s)}">`).join('')}</datalist></label>
+      <label class="f">${d.in && !d.out ? '退勤する現場<span class="muted small">（出勤と違う現場で終わるときは直す）</span>' : S.direct ? '直行する現場<span class="muted small">（必須）</span>' : '現場'}<input id="site" list="siteList" value="${esc(d.in && !d.out ? (d.outSite || d.site || '') : (d.site || ''))}" placeholder="現場名（なくてもOK）"><datalist id="siteList">${S.sites.map(s => `<option value="${esc(s)}">`).join('')}</datalist></label>
       <label class="f">今日の区分<select id="kind">${['出勤','休日出勤','雨天中止（半日）'].map(k => `<option ${d.kind===k?'selected':''}>${k}</option>`).join('')}</select></label>
     </div>
     <div class="small muted">押した場所と時刻を記録します。休憩は標準の${esc(S.settings.break)}分を自動で引きます。${bioInfo() ? '押すと顔認証・指紋認証が出ます。' : ''}</div>
